@@ -54,10 +54,38 @@ func (c *CLI) printHelp() {
 
 func printProjectName() {
 	fmt.Println(`
- ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗
- ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝
- ██║  ██║██████╔╝██║   ██║██║  ██║██║  ███╗█████╗
- ██║  ██║██╔══██╗██║   ██║██║  ██║██║   ██║██╔══╝
- ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗
- ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝`)
+  ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗
+  ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝
+  ██║  ██║██████╔╝██║   ██║██║  ██║██║  ███╗█████╗
+  ██║  ██║██╔══██╗██║   ██║██║  ██║██║   ██║██╔══╝
+  ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗
+  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝`)
+}
+
+// HasForceFlag reports whether a slice of args contains --force or -f.
+func HasForceFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--force" || a == "-f" {
+			return true
+		}
+	}
+	return false
+}
+
+// ConfirmDeletion prompts the user to confirm deletion of the given resource.
+// Returns nil if confirmed (or forced), or an abort error.
+func ConfirmDeletion(resource string, force bool) error {
+	if force {
+		return nil
+	}
+	fmt.Printf("This will permanently delete %s\nAre you sure? [y/N]: ", resource)
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
+		return fmt.Errorf("could not read confirmation: %w", err)
+	}
+	if response != "y" && response != "Y" {
+		fmt.Println("Aborted")
+		return nil
+	}
+	return nil
 }

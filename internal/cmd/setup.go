@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"drudge/internal/common"
@@ -13,13 +12,13 @@ var SetupCmd = &Cmd{
 	Usage: "setup",
 	Desc:  "Setup DRUDGE in this computer",
 	Run: func(args []string) error {
-		home, err := os.UserHomeDir()
+		home, err := common.HomeDir()
 		if err != nil {
-			return fmt.Errorf("could not determine home directory: %w", err)
+			return err
 		}
 
-		drudgeDir := filepath.Join(home, ".drudge")
-		projectsDir := filepath.Join(drudgeDir, "projects")
+		drudgeDir := common.DrudgeDir(home)
+		projectsDir := common.ProjectsDir(home)
 		configPath := filepath.Join(drudgeDir, "config.json")
 
 		if err := common.EnsureDir(projectsDir); err != nil {

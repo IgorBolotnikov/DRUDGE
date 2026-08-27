@@ -58,9 +58,9 @@ func TestFormatFrontMatter(t *testing.T) {
 
 func TestFormatFrontMatter_Sorted(t *testing.T) {
 	metadata := map[string]string{
-		"zzz":  "last",
+		"zzz":   "last",
 		"alpha": "first",
-		"beta": "second",
+		"beta":  "second",
 	}
 	result := FormatFrontMatter(metadata)
 

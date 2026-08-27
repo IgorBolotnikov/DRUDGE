@@ -11,9 +11,23 @@ import (
 	"drudge/internal/project"
 )
 
-func TestFileProjectRepository_Project_DeleteProject_DoesNotExist(t *testing.T) {
+func newTestRepo(t *testing.T) (*FileProjectRepository, string) {
+	t.Helper()
 	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	return NewFileProjectRepository(dir), dir
+}
+
+func newTestDto(dir, name, slug string) project.CreateProjectDto {
+	return project.CreateProjectDto{
+		Name:      name,
+		Slug:      slug,
+		Location:  filepath.Join(dir, slug),
+		CreatedAt: time.Now(),
+	}
+}
+
+func TestFileProjectRepository_Project_DeleteProject_DoesNotExist(t *testing.T) {
+	repo, _ := newTestRepo(t)
 
 	err := repo.DeleteProject("nonexistent")
 	if err != nil {
@@ -22,15 +36,9 @@ func TestFileProjectRepository_Project_DeleteProject_DoesNotExist(t *testing.T) 
 }
 
 func TestFileProjectRepository_Project_DeleteProject_RemovesDir(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:     "Delete Test",
-		Slug:     "delete-test",
-		Location: filepath.Join(dir, "delete-test"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "Delete Test", "delete-test")
 	proj, err := repo.CreateProject(dto)
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
@@ -51,8 +59,7 @@ func TestFileProjectRepository_Project_DeleteProject_RemovesDir(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_ListProjects_EmptyDir(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, _ := newTestRepo(t)
 
 	projects, err := repo.ListProjects()
 	if err != nil {
@@ -65,15 +72,9 @@ func TestFileProjectRepository_Project_ListProjects_EmptyDir(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_ListProjects_Single(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:     "One Project",
-		Slug:     "one-project",
-		Location: filepath.Join(dir, "one-project"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "One Project", "one-project")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -93,16 +94,10 @@ func TestFileProjectRepository_Project_ListProjects_Single(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_ListProjects_Multiple(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
 	for i := 1; i <= 3; i++ {
-		dto := project.CreateProjectDto{
-			Name:     fmt.Sprintf("Project %d", i),
-			Slug:     fmt.Sprintf("project-%d", i),
-			Location: filepath.Join(dir, fmt.Sprintf("project-%d", i)),
-			CreatedAt: time.Now(),
-		}
+		dto := newTestDto(dir, fmt.Sprintf("Project %d", i), fmt.Sprintf("project-%d", i))
 		if _, err := repo.CreateProject(dto); err != nil {
 			t.Fatalf("CreateProject %d: %v", i, err)
 		}
@@ -131,8 +126,7 @@ func TestFileProjectRepository_Project_ListProjects_Multiple(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_ListProjects_SkipsNonDirEntries(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
 	// Create a non-directory file in the root
 	if err := os.WriteFile(filepath.Join(dir, "not-a-dir.txt"), []byte("ignore me"), 0o644); err != nil {
@@ -150,16 +144,10 @@ func TestFileProjectRepository_Project_ListProjects_SkipsNonDirEntries(t *testin
 }
 
 func TestFileProjectRepository_Project_ListProjects_SkipsBrokenProjects(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
 	// Create a valid project
-	dto := project.CreateProjectDto{
-		Name:     "Valid",
-		Slug:     "valid",
-		Location: filepath.Join(dir, "valid"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "Valid", "valid")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -184,15 +172,9 @@ func TestFileProjectRepository_Project_ListProjects_SkipsBrokenProjects(t *testi
 }
 
 func TestFileProjectRepository_Project_LookupProject_BySlug(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:     "Lookup Test",
-		Slug:     "lookup-test",
-		Location: filepath.Join(dir, "lookup-test"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "Lookup Test", "lookup-test")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -208,15 +190,9 @@ func TestFileProjectRepository_Project_LookupProject_BySlug(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_LookupProject_ByLowerName(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:     "Lookup Test",
-		Slug:     "lookup-test",
-		Location: filepath.Join(dir, "lookup-test"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "Lookup Test", "lookup-test")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -232,15 +208,9 @@ func TestFileProjectRepository_Project_LookupProject_ByLowerName(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_LookupProject_ByMixedCaseName(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:     "My Awesome Project",
-		Slug:     "my-awesome-project",
-		Location: filepath.Join(dir, "my-awesome-project"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "My Awesome Project", "my-awesome-project")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -256,8 +226,7 @@ func TestFileProjectRepository_Project_LookupProject_ByMixedCaseName(t *testing.
 }
 
 func TestFileProjectRepository_Project_LookupProject_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, _ := newTestRepo(t)
 
 	_, err := repo.LookupProject("nonexistent")
 	if err == nil {
@@ -266,22 +235,11 @@ func TestFileProjectRepository_Project_LookupProject_NotFound(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_RenameProject_Collision(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
 	// Create two projects
-	dto1 := project.CreateProjectDto{
-		Name:     "Alpha",
-		Slug:     "alpha",
-		Location: filepath.Join(dir, "alpha"),
-		CreatedAt: time.Now(),
-	}
-	dto2 := project.CreateProjectDto{
-		Name:     "Beta",
-		Slug:     "beta",
-		Location: filepath.Join(dir, "beta"),
-		CreatedAt: time.Now(),
-	}
+	dto1 := newTestDto(dir, "Alpha", "alpha")
+	dto2 := newTestDto(dir, "Beta", "beta")
 	if _, err := repo.CreateProject(dto1); err != nil {
 		t.Fatalf("CreateProject alpha: %v", err)
 	}
@@ -297,15 +255,9 @@ func TestFileProjectRepository_Project_RenameProject_Collision(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_RenameProject_SameSlug(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:    "old-name",
-		Slug:    "old-name",
-		Location: filepath.Join(dir, "old-name"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "old-name", "old-name")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -329,15 +281,9 @@ func TestFileProjectRepository_Project_RenameProject_SameSlug(t *testing.T) {
 }
 
 func TestFileProjectRepository_Project_RenameProject_DirMoved(t *testing.T) {
-	dir := t.TempDir()
-	repo := NewFileProjectRepository(dir)
+	repo, dir := newTestRepo(t)
 
-	dto := project.CreateProjectDto{
-		Name:    "Old Name",
-		Slug:    "old-name-123",
-		Location: filepath.Join(dir, "old-name-123"),
-		CreatedAt: time.Now(),
-	}
+	dto := newTestDto(dir, "Old Name", "old-name-123")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}

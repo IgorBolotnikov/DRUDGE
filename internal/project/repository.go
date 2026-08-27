@@ -3,9 +3,9 @@ package project
 import "time"
 
 type CreateProjectDto struct {
-	Name     string
-	Slug     string
-	Location string
+	Name      string
+	Slug      string
+	Location  string
 	CreatedAt time.Time
 }
 

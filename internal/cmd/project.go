@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
@@ -66,8 +65,9 @@ func projectDelete(args []string) error {
 		return err
 	}
 
-	repo := persistence.NewFileProjectRepository(filepath.Join(home, ".drudge", "projects"))
-	svc := project.NewProjectService(repo, nil)
+	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	log := common.NewLogger("")
+	svc := project.NewProjectService(repo, log)
 
 	proj, err := svc.LookupProject(lookup)
 	if err != nil {
@@ -76,23 +76,10 @@ func projectDelete(args []string) error {
 
 	name := proj.Name
 
-	force := false
-	for _, a := range args {
-		if a == "--force" || a == "-f" {
-			force = true
-		}
-	}
+	force := HasForceFlag(args)
 
-	if !force {
-		fmt.Printf("This will permanently delete project %q\nAre you sure? [y/N]: ", name)
-		var response string
-		if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
-			return fmt.Errorf("could not read confirmation: %w", err)
-		}
-		if response != "y" && response != "Y" {
-			fmt.Println("Aborted")
-			return nil
-		}
+	if err := ConfirmDeletion(fmt.Sprintf("project %q", name), force); err != nil {
+		return err
 	}
 
 	if err := repo.DeleteProject(proj.Slug); err != nil {
@@ -116,7 +103,7 @@ func projectRename(args []string) error {
 		return err
 	}
 
-	repo := persistence.NewFileProjectRepository(filepath.Join(home, ".drudge", "projects"))
+	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
 	log := common.NewLogger("")
 	svc := project.NewProjectService(repo, log)
 
@@ -124,14 +111,13 @@ func projectRename(args []string) error {
 }
 
 func projectList() error {
-	log := common.NewLogger("")
-
 	home, err := common.HomeDir()
 	if err != nil {
 		return err
 	}
 
-	repo := persistence.NewFileProjectRepository(filepath.Join(home, ".drudge", "projects"))
+	log := common.NewLogger("")
+	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
 	svc := project.NewProjectService(repo, log)
 
 	projects, err := svc.ListProjects()

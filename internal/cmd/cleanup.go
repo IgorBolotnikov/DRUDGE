@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"drudge/internal/common"
 )
@@ -13,12 +11,12 @@ var CleanupCmd = &Cmd{
 	Usage: "cleanup",
 	Desc:  "Cleanup DRUDGE from this computer",
 	Run: func(args []string) error {
-		home, err := os.UserHomeDir()
+		home, err := common.HomeDir()
 		if err != nil {
-			return fmt.Errorf("could not determine home directory: %w", err)
+			return err
 		}
 
-		drudgeDir := filepath.Join(home, ".drudge")
+		drudgeDir := common.DrudgeDir(home)
 
 		exists, err := common.Exists(drudgeDir)
 		if err != nil {
@@ -29,23 +27,10 @@ var CleanupCmd = &Cmd{
 			return nil
 		}
 
-		force := false
-		for _, a := range args {
-			if a == "--force" || a == "-f" {
-				force = true
-			}
-		}
+		force := HasForceFlag(args)
 
-		if !force {
-			fmt.Printf("This will permanently delete %s\nAre you sure? [y/N]: ", drudgeDir)
-			var response string
-			if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
-				return fmt.Errorf("could not read confirmation: %w", err)
-			}
-			if response != "y" && response != "Y" {
-				fmt.Println("Aborted")
-				return nil
-			}
+		if err := ConfirmDeletion(drudgeDir, force); err != nil {
+			return err
 		}
 
 		if err := common.RemoveAll(drudgeDir); err != nil {
