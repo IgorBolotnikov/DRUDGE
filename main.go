@@ -1,13 +1,23 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"drudge/internal/cmd"
+)
 
 func main() {
-	fmt.Println(`
- ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗
- ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝
- ██║  ██║██████╔╝██║   ██║██║  ██║██║  ███╗█████╗
- ██║  ██║██╔══██╗██║   ██║██║  ██║██║   ██║██╔══╝
- ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗
- ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝`)
+	cli := cmd.NewCLI()
+
+	cli.Register(
+		cmd.InitCmd,
+		cmd.SetupCmd,
+		cmd.CleanupCmd,
+	)
+
+	if err := cli.Run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
+	}
 }

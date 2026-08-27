@@ -3,10 +3,8 @@
 <!--toc:start-->
 
 - [DRUDGE](#drudge)
-  - [Positioning](#positioning)
   - [Main features](#main-features)
   - [Other improvements - idea dump](#other-improvements-idea-dump)
-  - [Architecture decisions](#architecture-decisions)
   <!--toc:end-->
 
 DRUDGE is a self-hosted control plane for coding agents.
