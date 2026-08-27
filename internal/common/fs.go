@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
@@ -73,4 +76,56 @@ func RemoveAll(path string) error {
 		return fmt.Errorf("could not remove %s: %w", path, err)
 	}
 	return nil
+}
+
+// FormatFrontMatter serializes metadata as a `---` delimited YAML-like block.
+// Keys are sorted alphabetically for reproducibility.
+func FormatFrontMatter(metadata map[string]string) string {
+	var buf strings.Builder
+	buf.WriteString("---\n")
+	keys := make([]string, 0, len(metadata))
+	for k := range metadata {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&buf, "%s: %s\n", k, metadata[k])
+	}
+	buf.WriteString("---\n")
+	return buf.String()
+}
+
+// WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
+func WriteFileWithFrontMatter(path string, metadata map[string]string, content string) error {
+	data := FormatFrontMatter(metadata) + content
+	return os.WriteFile(path, []byte(data), 0o644)
+}
+
+// HomeDir returns the current user's home directory.
+func HomeDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %w", err)
+	}
+	return home, nil
+}
+
+// SlugFrom returns a URL-safe slug from a given name.
+func SlugFrom(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
+const (
+	DotDrudgeDirName = ".drudge"
+	ProjectsDirName  = "projects"
+)
+
+// DrudgeDir returns the path to the user's .drudge home directory.
+func DrudgeDir(home string) string {
+	return filepath.Join(home, DotDrudgeDirName)
+}
+
+// ProjectsDir returns the path to the user's drudge projects directory.
+func ProjectsDir(home string) string {
+	return filepath.Join(DrudgeDir(home), ProjectsDirName)
 }

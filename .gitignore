@@ -4,4 +4,5 @@ drudge
 # ai agent stuff
 .claude
 .opencode
-
+AGENTS.md
+CLAUDE.md

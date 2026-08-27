@@ -1,4 +1,7 @@
-.PHONY: drg
+.PHONY: drg test
+
+test:
+	go test ./...
 
 %:
 	@:
