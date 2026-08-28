@@ -3,11 +3,11 @@ package cmd
 
 import (
 	"fmt"
+
+	"drudge/internal/theme"
 )
 
-var (
-	ErrNoProjectName = fmt.Errorf("project name is required, usage: drg project create <name>")
-)
+var ErrNoProjectName = fmt.Errorf("project name is required, usage: drg project create <name>")
 
 type Cmd struct {
 	Name  string
@@ -45,6 +45,7 @@ func (c *CLI) Run(args []string) error {
 }
 
 func (c *CLI) printHelp() {
+	fmt.Println("")
 	printProjectName()
 	fmt.Println("\nAvailable commands:")
 	for _, cmd := range c.Cmds {
@@ -53,13 +54,22 @@ func (c *CLI) printHelp() {
 }
 
 func printProjectName() {
-	fmt.Println(`
-  ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗
-  ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝
-  ██║  ██║██████╔╝██║   ██║██║  ██║██║  ███╗█████╗
-  ██║  ██║██╔══██╗██║   ██║██║  ██║██║   ██║██╔══╝
-  ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝`)
+	lines := []string{
+		"  ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗",
+		"  ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝",
+		"  ██║  ██║██████╔╝██║   ██║██║  ██║██║  ███╗█████╗",
+		"  ██║  ██║██╔══██╗██║   ██║██║  ██║██║   ██║██╔══╝",
+		"  ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗",
+		"  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝",
+	}
+	th, err := theme.Load("")
+	if err != nil {
+		th = theme.NewTheme("nord")
+	}
+	errColor := th.Color(theme.RoleError)
+	for _, line := range lines {
+		fmt.Println(errColor + line + th.Reset())
+	}
 }
 
 // HasForceFlag reports whether a slice of args contains --force or -f.

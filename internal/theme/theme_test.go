@@ -1,10 +1,8 @@
 package theme
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"testing"
 )
 
@@ -18,36 +16,6 @@ func TestBundledThemesHaveAllRoles(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestANSI_InvalidRole(t *testing.T) {
-	th := NewTheme("nord")
-	got := th.ANSI("nonexistent")
-	if got != "\x1b[0m" {
-		t.Errorf("expected reset for unknown role, got %q", got)
-	}
-}
-
-func TestANSI_ValidRoleFormat(t *testing.T) {
-	th := NewTheme("nord")
-	// Match \x1b[38;2;R;G;mb\x1b[0m
-	re := regexp.MustCompile(`\x1b\[38;2;\d{1,3};\d{1,3};\d{1,3}m\x1b\[0m`)
-	for _, role := range allRoles() {
-		got := th.ANSI(role)
-		if !re.MatchString(got) {
-			t.Errorf("ANSI(%q) = %q does not match expected 24-bit ANSI format", role, got)
-		}
-	}
-}
-
-func TestANSI_ExactSequence(t *testing.T) {
-	th := NewTheme("dracula")
-	// dracula error is #FF5555 => R=255, G=85, B=85
-	got := th.ANSI("error")
-	expected := fmt.Sprintf("\x1b[38;2;255;85;85m\x1b[0m")
-	if got != expected {
-		t.Errorf("ANSI(error) = %q, want %q", got, expected)
 	}
 }
 

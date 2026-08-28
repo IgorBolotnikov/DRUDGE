@@ -33,6 +33,9 @@ type Theme struct {
 // ansiReset is the ANSI reset sequence.
 const ansiReset = "\x1b[0m"
 
+// ansiColorPrefix is the ANSI 24-bit true color prefix.
+const ansiColorPrefix = "\x1b[38;2;%d;%d;%dm"
+
 // NewTheme creates a Theme from a bundled palette name.
 func NewTheme(name string) *Theme {
 	palette, ok := bundledPalettes[name]
@@ -44,14 +47,15 @@ func NewTheme(name string) *Theme {
 	}
 }
 
-// ANSI returns a 24-bit true color ANSI escape sequence for the given role.
-// Format: \x1b[38;2;R;G;mb\x1b[0m.
-func (t *Theme) ANSI(role string) string {
+// Color returns a 24-bit true color ANSI escape sequence for the given role.
+// Format: \x1b[38;2;R;G;mb.
+func (t *Theme) Color(role string) string {
 	hex, ok := t.colors[role]
 	if !ok {
-		return ansiReset
+		return ""
 	}
-	return hexToANSI(hex)
+	r, g, b := hexToRGB(hex)
+	return fmt.Sprintf(ansiColorPrefix, r, g, b)
 }
 
 // Reset returns the ANSI reset sequence.
@@ -74,13 +78,6 @@ func copyMap(m map[string]string) map[string]string {
 	out := make(map[string]string, len(m))
 	maps.Copy(out, m)
 	return out
-}
-
-// hexToANSI converts a "#rrggbb" hex string to a 24-bit true color ANSI
-// escape sequence: \x1b[38;2;R;G;mb\x1b[0m.
-func hexToANSI(hex string) string {
-	r, g, b := hexToRGB(hex)
-	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm\x1b[0m", r, g, b)
 }
 
 // hexToRGB parses a "#rrggbb" string and returns the red, green, and blue
