@@ -4,6 +4,10 @@ package theme
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
+	"regexp"
+
+	"drudge/internal/common"
 )
 
 // Canonical roles in the theme palette.
@@ -85,4 +89,73 @@ func hexToRGB(hex string) (int, int, int) {
 	var r, g, b int
 	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
 	return r, g, b
+}
+
+// themeConfigName is the name of the theme config file.
+const themeConfigName = "theme.json"
+
+// validHex checks whether s is a valid 24-bit hex color (#rrggbb).
+var hexPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// config represents the structure of theme file.
+type config struct {
+	Theme     string            `json:"theme"`
+	Overrides map[string]string `json:"overrides"`
+}
+
+func validHex(s string) bool {
+	return hexPattern.MatchString(s)
+}
+
+// Load constructs a Theme by loading the bundled palette for name, applying
+// overrides from theme file, validating all color values, and
+// returning the result. If name is empty, defaults to "nord".
+func Load(name string) (*Theme, error) {
+	if name == "" {
+		name = "nord"
+	}
+
+	palette, ok := bundledPalettes[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown theme %q", name)
+	}
+
+	home, err := common.HomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine home directory: %w", err)
+	}
+
+	cfgPath := filepath.Join(common.DrudgeDir(home), themeConfigName)
+	var cfg config
+
+	exists, statErr := common.Exists(cfgPath)
+	if statErr != nil {
+		return nil, fmt.Errorf("could not read theme config: %w", statErr)
+	}
+
+	if exists {
+		if err := common.ReadJSON(cfgPath, &cfg); err != nil {
+			return nil, fmt.Errorf("could not parse theme config: %w", err)
+		}
+	}
+
+	if cfg.Theme == "" {
+		cfg.Theme = "nord"
+	}
+
+	if cfg.Overrides == nil {
+		cfg.Overrides = map[string]string{}
+	}
+
+	merged := copyMap(palette)
+	logger := common.NewLogger("theme")
+	for role, color := range cfg.Overrides {
+		if !validHex(color) {
+			logger.Info("invalid hex color %q for role %q, falling back to palette default", color, role)
+			continue
+		}
+		merged[role] = color
+	}
+
+	return &Theme{colors: merged}, nil
 }

@@ -268,7 +268,7 @@ func TestFileProjectRepository_Project_RenameProject_SameSlug(t *testing.T) {
 
 	// Read updated project.json
 	var proj project.Project
-	if err := common.ReadJSON(filepath.Join(dir, "old-name", "project.json"), &proj); err != nil {
+	if err := common.ReadJSON(filepath.Join(dir, "old-name", ProjectConfigFile), &proj); err != nil {
 		t.Fatalf("ReadJSON: %v", err)
 	}
 
@@ -305,7 +305,7 @@ func TestFileProjectRepository_Project_RenameProject_DirMoved(t *testing.T) {
 	}
 
 	var proj project.Project
-	if err := common.ReadJSON(filepath.Join(dir, "new-name", "project.json"), &proj); err != nil {
+	if err := common.ReadJSON(filepath.Join(dir, "new-name", ProjectConfigFile), &proj); err != nil {
 		t.Fatalf("ReadJSON: %v", err)
 	}
 

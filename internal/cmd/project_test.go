@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
 )
 
@@ -19,7 +20,7 @@ func TestProjectInit_ProjectCreatedGlobally(t *testing.T) {
 	}
 
 	globalProjectDir := filepath.Join(common.ProjectsDir(home), "test-project")
-	projFile := filepath.Join(globalProjectDir, "project.json")
+	projFile := filepath.Join(globalProjectDir, persistence.ProjectConfigFile)
 
 	exists, err := os.Stat(projFile)
 	if err != nil {

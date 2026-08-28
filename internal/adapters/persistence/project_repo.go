@@ -10,7 +10,7 @@ import (
 	"drudge/internal/project"
 )
 
-const projectConfigFile = "project.json"
+const ProjectConfigFile = "project.json"
 
 type FileProjectRepository struct {
 	root string
@@ -33,7 +33,7 @@ func (r *FileProjectRepository) CreateProject(dto project.CreateProjectDto) (*pr
 		CreatedAt: dto.CreatedAt,
 	}
 
-	projectFile := filepath.Join(projectDir, projectConfigFile)
+	projectFile := filepath.Join(projectDir, ProjectConfigFile)
 	if err := common.WriteJSON(projectFile, proj); err != nil {
 		return nil, fmt.Errorf("could not write project file %s: %w", projectFile, err)
 	}
@@ -73,7 +73,7 @@ func (r *FileProjectRepository) LookupProject(slugOrName string) (*project.Proje
 			continue
 		}
 
-		projFile := filepath.Join(r.root, e.Name(), projectConfigFile)
+		projFile := filepath.Join(r.root, e.Name(), ProjectConfigFile)
 		_, err := os.Stat(projFile)
 		if err != nil {
 			continue
@@ -105,7 +105,7 @@ func (r *FileProjectRepository) RenameProject(slug string, newName string) error
 		}
 	}
 
-	projFile := filepath.Join(oldDir, "project.json")
+	projFile := filepath.Join(oldDir, ProjectConfigFile)
 
 	// Read current project data
 	var proj project.Project
@@ -148,7 +148,7 @@ func (r *FileProjectRepository) ListProjects() ([]*project.Project, error) {
 			continue
 		}
 
-		projFile := filepath.Join(r.root, d.Name(), "project.json")
+		projFile := filepath.Join(r.root, d.Name(), ProjectConfigFile)
 		_, err := os.Stat(projFile)
 		if err != nil {
 			continue
