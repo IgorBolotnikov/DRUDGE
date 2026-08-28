@@ -36,6 +36,9 @@ const ansiReset = "\x1b[0m"
 // ansiColorPrefix is the ANSI 24-bit true color prefix.
 const ansiColorPrefix = "\x1b[38;2;%d;%d;%dm"
 
+// defaultTheme is the fallback theme when none is configured.
+const defaultTheme = "nord"
+
 // NewTheme creates a Theme from a bundled palette name.
 func NewTheme(name string) *Theme {
 	palette, ok := bundledPalettes[name]
@@ -104,19 +107,10 @@ func validHex(s string) bool {
 	return hexPattern.MatchString(s)
 }
 
-// Load constructs a Theme by loading the bundled palette for name, applying
-// overrides from theme file, validating all color values, and
-// returning the result. If name is empty, defaults to "nord".
+// Load constructs a Theme by loading the bundled palette, applying overrides
+// from the theme file, validating all color values, and returning the result.
+// If name is empty, falls back to the theme in the config file, then defaultTheme.
 func Load(name string) (*Theme, error) {
-	if name == "" {
-		name = "nord"
-	}
-
-	palette, ok := bundledPalettes[name]
-	if !ok {
-		return nil, fmt.Errorf("unknown theme %q", name)
-	}
-
 	home, err := common.HomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
@@ -136,12 +130,21 @@ func Load(name string) (*Theme, error) {
 		}
 	}
 
-	if cfg.Theme == "" {
-		cfg.Theme = "nord"
-	}
-
 	if cfg.Overrides == nil {
 		cfg.Overrides = map[string]string{}
+	}
+
+	paletteName := name
+	if paletteName == "" && cfg.Theme != "" {
+		paletteName = cfg.Theme
+	}
+	if paletteName == "" {
+		paletteName = defaultTheme
+	}
+
+	palette, ok := bundledPalettes[paletteName]
+	if !ok {
+		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
 	merged := copyMap(palette)
@@ -155,4 +158,13 @@ func Load(name string) (*Theme, error) {
 	}
 
 	return &Theme{colors: merged}, nil
+}
+
+// MustLoad is like Load but panics on error.
+func MustLoad() *Theme {
+	th, err := Load("")
+	if err != nil {
+		panic(err)
+	}
+	return th
 }

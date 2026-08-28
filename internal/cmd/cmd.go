@@ -62,10 +62,7 @@ func printProjectName() {
 		"  ██████╔╝██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████╗",
 		"  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝",
 	}
-	th, err := theme.Load("")
-	if err != nil {
-		th = theme.NewTheme("nord")
-	}
+	th := theme.MustLoad()
 	errColor := th.Color(theme.RoleError)
 	for _, line := range lines {
 		fmt.Println(errColor + line + th.Reset())
