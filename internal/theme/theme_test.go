@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"drudge/internal/common"
 )
 
 func TestBundledThemesHaveAllRoles(t *testing.T) {
@@ -331,7 +333,7 @@ func setupTempHome(t *testing.T, content string) string {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, themeConfigName), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, ThemeConfigName), []byte(content), common.DefaultFilePerm); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 	}

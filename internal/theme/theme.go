@@ -39,6 +39,16 @@ const ansiColorPrefix = "\x1b[38;2;%d;%d;%dm"
 // defaultTheme is the fallback theme when none is configured.
 const defaultTheme = "nord"
 
+// DefaultTheme returns the name of the fallback theme.
+func DefaultTheme() string {
+	return defaultTheme
+}
+
+// ThemeSchemaRef returns the $schema reference path for theme.json.
+func ThemeSchemaRef() string {
+	return themeSchemaRef
+}
+
 // NewTheme creates a Theme from a bundled palette name.
 func NewTheme(name string) *Theme {
 	palette, ok := bundledPalettes[name]
@@ -91,8 +101,11 @@ func hexToRGB(hex string) (int, int, int) {
 	return r, g, b
 }
 
-// themeConfigName is the name of the theme config file.
-const themeConfigName = "theme.json"
+// ThemeConfigName is the name of the theme config file.
+const ThemeConfigName = "theme.json"
+
+// themeSchemaRef is the $schema reference path in theme.json.
+const themeSchemaRef = "./schema/theme.json"
 
 // validHex checks whether s is a valid 24-bit hex color (#rrggbb).
 var hexPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -116,7 +129,7 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
 	}
 
-	cfgPath := filepath.Join(common.DrudgeDir(home), themeConfigName)
+	cfgPath := filepath.Join(common.DrudgeDir(home), ThemeConfigName)
 	var cfg config
 
 	exists, statErr := common.Exists(cfgPath)

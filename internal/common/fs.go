@@ -36,7 +36,7 @@ func WriteJSON(path string, v any) error {
 	if err != nil {
 		return fmt.Errorf("could not marshal json for %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, DefaultFilePerm); err != nil {
 		return fmt.Errorf("could not write %s: %w", path, err)
 	}
 	return nil
@@ -98,7 +98,7 @@ func FormatFrontMatter(metadata map[string]string) string {
 // WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
 func WriteFileWithFrontMatter(path string, metadata map[string]string, content string) error {
 	data := FormatFrontMatter(metadata) + content
-	return os.WriteFile(path, []byte(data), 0o644)
+	return os.WriteFile(path, []byte(data), DefaultFilePerm)
 }
 
 // HomeDir returns the current user's home directory.
@@ -119,6 +119,8 @@ const (
 	DrudgeConfigName = "config.json"
 	DotDrudgeDirName = ".drudge"
 	ProjectsDirName  = "projects"
+	SchemaDirName    = "schema"
+	DefaultFilePerm  = 0o644
 )
 
 // DrudgeDir returns the path to the user's .drudge home directory.

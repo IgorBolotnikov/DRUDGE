@@ -129,7 +129,7 @@ func TestFileProjectRepository_Project_ListProjects_SkipsNonDirEntries(t *testin
 	repo, dir := newTestRepo(t)
 
 	// Create a non-directory file in the root
-	if err := os.WriteFile(filepath.Join(dir, "not-a-dir.txt"), []byte("ignore me"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "not-a-dir.txt"), []byte("ignore me"), common.DefaultFilePerm); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
