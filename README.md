@@ -1,4 +1,8 @@
-# DRUDGE
+<p align="center">
+  <picture>
+    <img src="assets/logo.svg" alt="DRUDGE" />
+  </picture>
+</p>
 
 <!--toc:start-->
 
