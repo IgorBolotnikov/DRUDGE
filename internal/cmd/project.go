@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
@@ -23,6 +24,8 @@ func runProject(args []string) error {
 	switch args[0] {
 	case "create":
 		return projectCreate(args[1:])
+	case "init":
+		return projectInit(args[1:])
 	case "delete":
 		return projectDelete(args[1:])
 	case "rename":
@@ -50,7 +53,49 @@ func projectCreate(args []string) error {
 	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
 	svc := project.NewProjectService(repo, log)
 
-	return svc.CreateProject(name)
+	_, err = svc.CreateProject(name)
+	return err
+}
+
+type projectConfig struct {
+	ProjectSlug string `json:"projectSlug"`
+}
+
+func projectInit(args []string) error {
+	if len(args) < 1 {
+		return ErrNoProjectName
+	}
+
+	name := args[0]
+
+	home, err := common.HomeDir()
+	if err != nil {
+		return err
+	}
+
+	log := common.NewLogger("")
+	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	svc := project.NewProjectService(repo, log)
+
+	proj, err := svc.CreateProject(name)
+	if err != nil {
+		return err
+	}
+
+	localDrudgeDir := common.DotDrudgeDirName
+	localConfigPath := filepath.Join(localDrudgeDir, common.DrudgeConfigName)
+
+	if err := common.EnsureDir(localDrudgeDir); err != nil {
+		return fmt.Errorf("could not create %s directory: %w", localDrudgeDir, err)
+	}
+
+	cfg := projectConfig{ProjectSlug: proj.Slug}
+	if err := common.WriteJSON(localConfigPath, cfg); err != nil {
+		return fmt.Errorf("could not write config: %w", err)
+	}
+
+	log.Info("Initialized project %s in %s", name, localDrudgeDir)
+	return nil
 }
 
 func projectDelete(args []string) error {

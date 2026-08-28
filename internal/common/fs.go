@@ -116,6 +116,7 @@ func SlugFrom(name string) string {
 }
 
 const (
+	DrudgeConfigName = "config.json"
 	DotDrudgeDirName = ".drudge"
 	ProjectsDirName  = "projects"
 )

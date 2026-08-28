@@ -17,15 +17,15 @@ func NewProjectService(repo ProjectRepository, log *common.Logger) *ProjectServi
 	return &ProjectService{repo: repo, log: log}
 }
 
-func (p *ProjectService) CreateProject(name string) error {
+func (p *ProjectService) CreateProject(name string) (*Project, error) {
 	if name == "" {
-		return fmt.Errorf("project name is required")
+		return nil, fmt.Errorf("project name is required")
 	}
 
 	slug := common.SlugFrom(name)
 	home, err := common.HomeDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	location := filepath.Join(common.ProjectsDir(home), slug)
 
@@ -36,13 +36,13 @@ func (p *ProjectService) CreateProject(name string) error {
 		CreatedAt: time.Now(),
 	}
 
-	_, err = p.repo.CreateProject(dto)
+	proj, err := p.repo.CreateProject(dto)
 	if err != nil {
-		return fmt.Errorf("could not create project %q: %w", name, err)
+		return nil, fmt.Errorf("could not create project %q: %w", name, err)
 	}
 
 	p.log.Info("Created project %s", name)
-	return nil
+	return proj, nil
 }
 
 func (p *ProjectService) ListProjects() ([]*Project, error) {

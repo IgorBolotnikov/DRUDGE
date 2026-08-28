@@ -19,7 +19,7 @@ var SetupCmd = &Cmd{
 
 		drudgeDir := common.DrudgeDir(home)
 		projectsDir := common.ProjectsDir(home)
-		configPath := filepath.Join(drudgeDir, "config.json")
+		configPath := filepath.Join(drudgeDir, common.DrudgeConfigName)
 
 		if err := common.EnsureDir(projectsDir); err != nil {
 			return err
