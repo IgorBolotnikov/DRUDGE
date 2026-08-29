@@ -22,7 +22,7 @@ func newTestDto(dir, name, slug string) project.CreateProjectDto {
 		Name:      name,
 		Slug:      slug,
 		Location:  filepath.Join(dir, slug),
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 }
 

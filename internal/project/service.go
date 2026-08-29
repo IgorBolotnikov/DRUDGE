@@ -33,7 +33,7 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 		Name:      name,
 		Slug:      slug,
 		Location:  location,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 
 	proj, err := p.repo.CreateProject(dto)
