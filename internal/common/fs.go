@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+const (
+	DrudgeConfigName = "config.json"
+	DotDrudgeDirName = ".drudge"
+	ProjectsDirName  = "projects"
+	SchemaDirName    = "schema"
+	DefaultFilePerm  = 0o644
+)
+
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
 func EnsureDir(path string) error {
 	if err := os.MkdirAll(path, 0o755); err != nil {
@@ -95,6 +103,43 @@ func FormatFrontMatter(metadata map[string]string) string {
 	return buf.String()
 }
 
+// ParseFrontMatter reads the front-matter block from the beginning of data
+// and returns the key-value pairs. Expects `---` delimited format.
+func ParseFrontMatter(data string) (map[string]string, string) {
+	result := make(map[string]string)
+
+	// Find first ---
+	_, after, ok := strings.Cut(data, "---")
+	if !ok {
+		return result, data
+	}
+
+	rest := strings.TrimSpace(after)
+	before, after, ok := strings.Cut(rest, "---")
+	if !ok {
+		return result, data
+	}
+
+	metaBlock := before
+	content := strings.TrimSpace(after)
+	separator := ": "
+
+	for line := range strings.SplitSeq(metaBlock, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if before, after, ok := strings.Cut(line, separator); ok {
+			key := before
+
+			val := after
+			result[key] = val
+		}
+	}
+
+	return result, content
+}
+
 // WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
 func WriteFileWithFrontMatter(path string, metadata map[string]string, content string) error {
 	data := FormatFrontMatter(metadata) + content
@@ -114,14 +159,6 @@ func HomeDir() (string, error) {
 func SlugFrom(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
-
-const (
-	DrudgeConfigName = "config.json"
-	DotDrudgeDirName = ".drudge"
-	ProjectsDirName  = "projects"
-	SchemaDirName    = "schema"
-	DefaultFilePerm  = 0o644
-)
 
 // DrudgeDir returns the path to the user's .drudge home directory.
 func DrudgeDir(home string) string {

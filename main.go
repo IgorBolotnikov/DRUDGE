@@ -15,6 +15,7 @@ func main() {
 		cmd.SetupCmd,
 		cmd.CleanupCmd,
 		cmd.ProjectCmd,
+		cmd.TaskCmd,
 	)
 
 	if err := cli.Run(os.Args[1:]); err != nil {

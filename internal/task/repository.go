@@ -15,7 +15,6 @@ type CreateTaskDto struct {
 	ProjectSlug  string // Slug of the project this task belongs to
 
 	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 type TaskRepository interface {

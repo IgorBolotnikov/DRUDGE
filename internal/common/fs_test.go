@@ -171,3 +171,74 @@ func TestProjectsDir_DerivedFromDrudgeDir(t *testing.T) {
 		t.Errorf("ProjectsDir should equal DrudgeDir(home) + /projects, got %q, want %q", got, want)
 	}
 }
+
+func TestParseFrontMatter_Basic(t *testing.T) {
+	data := "---\nid: abc123\ntitle: My Task\nstatus: todo\n---\nSome content here\n"
+	metadata, content := ParseFrontMatter(data)
+
+	if metadata["id"] != "abc123" {
+		t.Errorf("expected id=abc123, got %q", metadata["id"])
+	}
+	if metadata["title"] != "My Task" {
+		t.Errorf("expected title=My Task, got %q", metadata["title"])
+	}
+	if metadata["status"] != "todo" {
+		t.Errorf("expected status=todo, got %q", metadata["status"])
+	}
+	if content != "Some content here" {
+		t.Errorf("expected content 'Some content here', got %q", content)
+	}
+}
+
+func TestParseFrontMatter_Empty(t *testing.T) {
+	metadata, content := ParseFrontMatter("---\n---\n")
+	if len(metadata) != 0 {
+		t.Errorf("expected empty metadata, got %v", metadata)
+	}
+	if content != "" {
+		t.Errorf("expected empty content, got %q", content)
+	}
+}
+
+func TestParseFrontMatter_NoDelimiters(t *testing.T) {
+	metadata, content := ParseFrontMatter("just plain text\n")
+	if len(metadata) != 0 {
+		t.Errorf("expected empty metadata, got %v", metadata)
+	}
+	if content != "just plain text\n" {
+		t.Errorf("expected content unchanged, got %q", content)
+	}
+}
+
+func TestParseFrontMatter_RoundTrip(t *testing.T) {
+	original := map[string]string{
+		"id":           "uuid-123",
+		"title":        "Fix login bug",
+		"status":       "in-progress",
+		"project_slug": "my-project",
+		"created_at":   "2025-01-15T10:30:00Z",
+		"updated_at":   "2025-01-16T14:00:00Z",
+	}
+	body := "Description goes here\nWith multiple lines\n"
+
+	formatted := FormatFrontMatter(original)
+	roundtrip, content := ParseFrontMatter(formatted + body)
+
+	for k, v := range original {
+		if roundtrip[k] != v {
+			t.Errorf("roundtrip %s: expected %q, got %q", k, v, roundtrip[k])
+		}
+	}
+	if content != "Description goes here\nWith multiple lines" {
+		t.Errorf("content mismatch: expected 'Description goes here\\nWith multiple lines', got %q", content)
+	}
+}
+
+func TestParseFrontMatter_MultilineContent(t *testing.T) {
+	data := "---\ntitle: Task\n---\nLine 1\nLine 2\nLine 3\n"
+	_, content := ParseFrontMatter(data)
+	expected := "Line 1\nLine 2\nLine 3"
+	if content != expected {
+		t.Errorf("expected multiline content, got %q", content)
+	}
+}
