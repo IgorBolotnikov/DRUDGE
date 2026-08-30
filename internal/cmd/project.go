@@ -44,16 +44,11 @@ func projectCreate(args []string) error {
 
 	name := args[0]
 
-	home, err := common.HomeDir()
-	if err != nil {
-		return err
-	}
-
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	repo := persistence.NewFileProjectRepository("")
 	svc := project.NewProjectService(repo, log)
 
-	_, err = svc.CreateProject(name)
+	_, err := svc.CreateProject(name)
 	return err
 }
 
@@ -68,13 +63,8 @@ func projectInit(args []string) error {
 
 	name := args[0]
 
-	home, err := common.HomeDir()
-	if err != nil {
-		return err
-	}
-
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	repo := persistence.NewFileProjectRepository("")
 	svc := project.NewProjectService(repo, log)
 
 	proj, err := svc.CreateProject(name)
@@ -105,12 +95,7 @@ func projectDelete(args []string) error {
 
 	lookup := args[0]
 
-	home, err := common.HomeDir()
-	if err != nil {
-		return err
-	}
-
-	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	repo := persistence.NewFileProjectRepository("")
 	log := common.NewLogger("")
 	svc := project.NewProjectService(repo, log)
 
@@ -143,12 +128,7 @@ func projectRename(args []string) error {
 	oldName := args[0]
 	newName := args[1]
 
-	home, err := common.HomeDir()
-	if err != nil {
-		return err
-	}
-
-	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	repo := persistence.NewFileProjectRepository("")
 	log := common.NewLogger("")
 	svc := project.NewProjectService(repo, log)
 
@@ -156,13 +136,8 @@ func projectRename(args []string) error {
 }
 
 func projectList() error {
-	home, err := common.HomeDir()
-	if err != nil {
-		return err
-	}
-
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository(common.ProjectsDir(home))
+	repo := persistence.NewFileProjectRepository("")
 	svc := project.NewProjectService(repo, log)
 
 	projects, err := svc.ListProjects()

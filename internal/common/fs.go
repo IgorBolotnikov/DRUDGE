@@ -169,3 +169,16 @@ func DrudgeDir(home string) string {
 func ProjectsDir(home string) string {
 	return filepath.Join(DrudgeDir(home), ProjectsDirName)
 }
+
+// LocalConfigPath returns the path to the local drudge config file.
+func LocalConfigPath() string {
+	return filepath.Join(DotDrudgeDirName, DrudgeConfigName)
+}
+
+func ResolveProjectDir(slug string) (string, error) {
+	home, err := HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(ProjectsDir(home), slug), nil
+}

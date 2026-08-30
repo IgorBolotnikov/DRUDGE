@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"drudge/internal/common"
@@ -23,11 +22,14 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 	}
 
 	slug := common.SlugFrom(name)
-	home, err := common.HomeDir()
+	if p.projectExists(slug) {
+		return nil, fmt.Errorf("project %s already exists", slug)
+	}
+
+	location, err := common.ResolveProjectDir(slug)
 	if err != nil {
 		return nil, err
 	}
-	location := filepath.Join(common.ProjectsDir(home), slug)
 
 	dto := CreateProjectDto{
 		Name:      name,
@@ -50,7 +52,8 @@ func (p *ProjectService) ListProjects() ([]*Project, error) {
 }
 
 func (p *ProjectService) LookupProject(slugOrName string) (*Project, error) {
-	return p.repo.LookupProject(slugOrName)
+	slug := common.SlugFrom(slugOrName)
+	return p.repo.LookupProject(slug)
 }
 
 func (p *ProjectService) RenameProject(oldName string, newName string) error {
@@ -60,4 +63,8 @@ func (p *ProjectService) RenameProject(oldName string, newName string) error {
 	}
 
 	return p.repo.RenameProject(project.Slug, newName)
+}
+
+func (p *ProjectService) projectExists(slug string) bool {
+	return p.repo.ProjectExists(slug)
 }

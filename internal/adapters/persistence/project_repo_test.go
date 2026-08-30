@@ -189,42 +189,6 @@ func TestFileProjectRepository_Project_LookupProject_BySlug(t *testing.T) {
 	}
 }
 
-func TestFileProjectRepository_Project_LookupProject_ByLowerName(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	dto := newTestDto(dir, "Lookup Test", "lookup-test")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	proj, err := repo.LookupProject("lookup test")
-	if err != nil {
-		t.Fatalf("LookupProject: %v", err)
-	}
-
-	if proj.Slug != "lookup-test" {
-		t.Errorf("expected 'lookup-test', got %q", proj.Slug)
-	}
-}
-
-func TestFileProjectRepository_Project_LookupProject_ByMixedCaseName(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	dto := newTestDto(dir, "My Awesome Project", "my-awesome-project")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	proj, err := repo.LookupProject("my awesome project")
-	if err != nil {
-		t.Fatalf("LookupProject: %v", err)
-	}
-
-	if proj.Name != "My Awesome Project" {
-		t.Errorf("expected 'My Awesome Project', got %q", proj.Name)
-	}
-}
-
 func TestFileProjectRepository_Project_LookupProject_NotFound(t *testing.T) {
 	repo, _ := newTestRepo(t)
 

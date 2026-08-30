@@ -42,7 +42,7 @@ func runTask(args []string) error {
 	}
 }
 
-func parseFlag(args []string, flag string) (string, bool) {
+func parseFlagValue(args []string, flag string) (string, bool) {
 	for i := range args {
 		if args[i] == flag {
 			if i+1 >= len(args) {
@@ -59,18 +59,18 @@ func hasFlag(args []string, flag string) bool {
 }
 
 func taskNew(args []string) error {
-	title, hasTitle := parseFlag(args, "--title")
+	title, hasTitle := parseFlagValue(args, "--title")
 	if !hasTitle || title == "" {
 		return fmt.Errorf("--title is required")
 	}
 
-	description, hasDesc := parseFlag(args, "--description")
+	description, hasDesc := parseFlagValue(args, "--description")
 	if !hasDesc {
 		return fmt.Errorf("--description is required")
 	}
 
-	ticketID, _ := parseFlag(args, "--ticket")
-	status, hasStatus := parseFlag(args, "--status")
+	ticketID, _ := parseFlagValue(args, "--ticket")
+	status, hasStatus := parseFlagValue(args, "--status")
 	if !hasStatus {
 		status = task.StatusDraft
 	} else {
@@ -80,7 +80,7 @@ func taskNew(args []string) error {
 		}
 	}
 
-	configPath := filepath.Join(common.DotDrudgeDirName, common.DrudgeConfigName)
+	configPath := common.LocalConfigPath()
 
 	var cfg projectConfig
 	if err := common.ReadJSON(configPath, &cfg); err != nil {
@@ -119,8 +119,8 @@ func taskList(args []string) error {
 		return nil
 	}
 
-	statusFilter, hasStatus := parseFlag(args, "--status")
-	ticketFilter, hasTicket := parseFlag(args, "--ticket")
+	statusFilter, hasStatus := parseFlagValue(args, "--status")
+	ticketFilter, hasTicket := parseFlagValue(args, "--ticket")
 
 	if hasStatus {
 		valid := slices.Contains(validStatuses, statusFilter)

@@ -15,4 +15,5 @@ type ProjectRepository interface {
 	LookupProject(slug string) (*Project, error)
 	RenameProject(slug string, newName string) error
 	DeleteProject(slug string) error
+	ProjectExists(slug string) bool
 }

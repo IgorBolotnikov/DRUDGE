@@ -13,15 +13,18 @@ import (
 const ProjectConfigFile = "project.json"
 
 type FileProjectRepository struct {
-	root string
+	projectsDirPath string
 }
 
-func NewFileProjectRepository(root string) *FileProjectRepository {
-	return &FileProjectRepository{root: root}
+func NewFileProjectRepository(projectsDirPath string) *FileProjectRepository {
+	return &FileProjectRepository{projectsDirPath: projectsDirPath}
 }
 
 func (r *FileProjectRepository) CreateProject(dto project.CreateProjectDto) (*project.Project, error) {
-	projectDir := filepath.Join(r.root, dto.Slug)
+	projectDir, err := r.resolveProjectDir(dto.Slug)
+	if err != nil {
+		return nil, err
+	}
 	if err := common.EnsureDir(projectDir); err != nil {
 		return nil, fmt.Errorf("could not create directory %s: %w", projectDir, err)
 	}
@@ -33,16 +36,23 @@ func (r *FileProjectRepository) CreateProject(dto project.CreateProjectDto) (*pr
 		CreatedAt: dto.CreatedAt,
 	}
 
-	projectFile := filepath.Join(projectDir, ProjectConfigFile)
-	if err := common.WriteJSON(projectFile, proj); err != nil {
-		return nil, fmt.Errorf("could not write project file %s: %w", projectFile, err)
+	projFile, err := r.resolveProjectFile(dto.Slug)
+	if err != nil {
+		return nil, err
+	}
+	err = r.saveProject(projFile, proj)
+	if err != nil {
+		return nil, fmt.Errorf("could not write project file %s: %w", projFile, err)
 	}
 
 	return proj, nil
 }
 
 func (r *FileProjectRepository) DeleteProject(slug string) error {
-	projectDir := filepath.Join(r.root, slug)
+	projectDir, err := r.resolveProjectDir(slug)
+	if err != nil {
+		return err
+	}
 
 	exists, err := common.Exists(projectDir)
 	if err != nil {
@@ -60,10 +70,8 @@ func (r *FileProjectRepository) DeleteProject(slug string) error {
 	return nil
 }
 
-func (r *FileProjectRepository) LookupProject(slugOrName string) (*project.Project, error) {
-	slug := common.SlugFrom(slugOrName)
-
-	entries, err := os.ReadDir(r.root)
+func (r *FileProjectRepository) LookupProject(slug string) (*project.Project, error) {
+	entries, err := r.readProjectEntries()
 	if err != nil {
 		return nil, fmt.Errorf("could not list projects: %w", err)
 	}
@@ -72,72 +80,69 @@ func (r *FileProjectRepository) LookupProject(slugOrName string) (*project.Proje
 		if !e.IsDir() {
 			continue
 		}
-
-		projFile := filepath.Join(r.root, e.Name(), ProjectConfigFile)
-		_, err := os.Stat(projFile)
+		proj, err := r.readProjectFile(slug)
 		if err != nil {
 			continue
 		}
-
-		var proj project.Project
-		if err := common.ReadJSON(projFile, &proj); err != nil {
-			continue
-		}
-
-		if e.Name() == slug || common.SlugFrom(proj.Name) == slug {
-			return &proj, nil
+		if e.Name() == slug || proj.Name == slug {
+			return proj, nil
 		}
 	}
 
-	return nil, fmt.Errorf("project %q not found", slugOrName)
+	return nil, fmt.Errorf("project %q not found", slug)
 }
 
 func (r *FileProjectRepository) RenameProject(slug string, newName string) error {
 	newSlug := common.SlugFrom(newName)
-	oldDir := filepath.Join(r.root, slug)
-	newDir := filepath.Join(r.root, newSlug)
+	if slug == newSlug {
+		return nil
+	}
+	oldDir, err := r.resolveProjectDir(slug)
+	if err != nil {
+		return err
+	}
+	newDir, err := r.resolveProjectDir(newSlug)
+	if err != nil {
+		return err
+	}
 
-	if slug != newSlug {
-		if exists, err := common.Exists(filepath.Join(r.root, newSlug)); err != nil {
-			return err
-		} else if exists {
-			return fmt.Errorf("project with slug %q already exists, cannot rename", newSlug)
-		}
+	if exists, err := common.Exists(newDir); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("project with slug %q already exists, cannot rename", newSlug)
 	}
 
 	projFile := filepath.Join(oldDir, ProjectConfigFile)
 
-	// Read current project data
-	var proj project.Project
-	if err := common.ReadJSON(projFile, &proj); err != nil {
-		return fmt.Errorf("could not read project.json: %w", err)
+	proj, err := r.readProjectFile(slug)
+	if err != nil {
+		return fmt.Errorf("could not read project file: %w", err)
 	}
 
 	proj.Name = newName
 	proj.Slug = newSlug
 	proj.Location = newDir
 
-	// Write updated project.json
-	if err := common.WriteJSON(projFile, proj); err != nil {
-		return fmt.Errorf("could not write project.json: %w", err)
+	if err := r.saveProject(projFile, proj); err != nil {
+		return fmt.Errorf("could not write project file: %w", err)
 	}
 
-	// Move directory if slug changed
-	if slug != newSlug {
-		if err := os.Rename(oldDir, newDir); err != nil {
-			// Rollback: restore old slug in project.json
-			proj.Slug = slug
-			proj.Location = oldDir
-			common.WriteJSON(projFile, proj)
-			return fmt.Errorf("could not rename directory %s -> %s: %w", oldDir, newDir, err)
+	if err := os.Rename(oldDir, newDir); err != nil {
+		// Rollback: restore old slug in project file
+		proj.Slug = slug
+		proj.Location = oldDir
+		err := r.saveProject(projFile, proj)
+		if err != nil {
+			return err
 		}
+		return fmt.Errorf("could not rename directory %s -> %s: %w", oldDir, newDir, err)
 	}
 
 	return nil
 }
 
 func (r *FileProjectRepository) ListProjects() ([]*project.Project, error) {
-	entries, err := os.ReadDir(r.root)
+	entries, err := r.readProjectEntries()
 	if err != nil {
 		return nil, fmt.Errorf("could not list projects: %w", err)
 	}
@@ -147,20 +152,76 @@ func (r *FileProjectRepository) ListProjects() ([]*project.Project, error) {
 		if !d.IsDir() {
 			continue
 		}
-
-		projFile := filepath.Join(r.root, d.Name(), ProjectConfigFile)
-		_, err := os.Stat(projFile)
+		proj, err := r.readProjectFile(d.Name())
 		if err != nil {
 			continue
 		}
 
-		var proj project.Project
-		if err := common.ReadJSON(projFile, &proj); err != nil {
-			continue
-		}
-
-		projects = append(projects, &proj)
+		projects = append(projects, proj)
 	}
 
 	return projects, nil
+}
+
+func (r *FileProjectRepository) ProjectExists(slug string) bool {
+	_, err := r.readProjectFile(slug)
+	return err == nil
+}
+
+func (r *FileProjectRepository) readProjectEntries() ([]os.DirEntry, error) {
+	projDir, err := r.resolveProjectsDir()
+	if err != nil {
+		return []os.DirEntry{}, err
+	}
+
+	return os.ReadDir(projDir)
+}
+
+func (r *FileProjectRepository) readProjectFile(slug string) (*project.Project, error) {
+	projFile, err := r.resolveProjectFile(slug)
+	if err != nil {
+		return nil, err
+	}
+	_, err = os.Stat(projFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var proj project.Project
+	if err := common.ReadJSON(projFile, &proj); err != nil {
+		return nil, err
+	}
+	return &proj, nil
+}
+
+func (r *FileProjectRepository) resolveProjectsDir() (string, error) {
+	if r.projectsDirPath != "" {
+		return r.projectsDirPath, nil
+	}
+	home, err := common.HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return common.ProjectsDir(home), nil
+}
+
+func (r *FileProjectRepository) resolveProjectDir(slug string) (string, error) {
+	projectsDir, err := r.resolveProjectsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(projectsDir, slug), nil
+}
+
+func (r *FileProjectRepository) saveProject(path string, proj *project.Project) error {
+	return common.WriteJSON(path, proj)
+}
+
+func (r *FileProjectRepository) resolveProjectFile(slug string) (string, error) {
+	projDir, err := r.resolveProjectsDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(projDir, slug, ProjectConfigFile), nil
 }
