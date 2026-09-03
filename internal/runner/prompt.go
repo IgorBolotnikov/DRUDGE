@@ -7,33 +7,46 @@ import (
 	"drudge/internal/task"
 )
 
-// Placeholders a prompt template may use. Title and description are required
-// in every template, the ticket ID is optional.
+// Placeholders a prompt template may use.
 const (
 	placeholderTaskTitle       = "{{taskTitle}}"
 	placeholderTaskDescription = "{{taskDescription}}"
 	placeholderTicketID        = "{{ticketID}}"
+	// TODO: pass a defualt branch as an optional placeholder
+	placeholderDefaultBranch = "{{defaultBranch}}"
 )
 
-// requiredPlaceholders must be present in every prompt template, otherwise the
-// agent would never learn what it is supposed to work on.
+// requiredPlaceholders must be present in every prompt template.
 var requiredPlaceholders = []string{placeholderTaskTitle, placeholderTaskDescription}
 
-// defaultPromptTemplate is handed to an agent when no prompt file is configured.
 const defaultPromptTemplate = `Implement the following task end to end.
 
-Ticket ID: {{ticketID}}
+Ticket ID (if any): {{ticketID}}
 Title: {{taskTitle}}
 
 Description:
 {{taskDescription}}
 
-Work in the repository you were started in. Read the surrounding code before you change it and follow the conventions you find there. Keep the change scoped to this task, and leave unrelated problems you spot along the way alone.
+Work in the repository you were started in. Read the surrounding code before
+you change it and follow the conventions you find there. Keep the change
+scoped to this task.
 
-When you are done, make sure the project builds, all tests pass and the code is formatted. Commit your work on a new branch and leave the review to a human.`
+You are working in a fully autonomous session. You will not get any
+interactions from the user so use your best judgement when dealing with
+uncertainty or problems. At the same time don't go down the rabbit hole of
+fixing adjacent issues which don't directly block the ticket implementation.
+ and leave unrelated problems you spot along the way alone.
+
+Always follow established project code style and conventions.
+
+Before you finish, always run self-review of the code you wrote and cleanup
+any slop.
+
+When you are done, make sure the project builds, all tests pass and the code
+is formatted. Commit your work on a new branch and leave the review to a human.`
 
 // renderPrompt fills a prompt template in with a task's details. A template
-// missing a required placeholder is an error naming the placeholder.
+// missing a required placeholder is a hard error
 func renderPrompt(template string, taskToRun *task.Task) (string, error) {
 	for _, placeholder := range requiredPlaceholders {
 		if !strings.Contains(template, placeholder) {

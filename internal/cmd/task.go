@@ -27,7 +27,6 @@ const (
 	helpFlagShort = "-h"
 )
 
-// taskRunUsage is printed by the help flag and quoted in argument errors.
 const taskRunUsage = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 
 var validStatuses = []string{
@@ -116,6 +115,7 @@ func taskNew(args []string) error {
 }
 
 func taskList(args []string) error {
+	// TODO: make a util for printing out help text
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println("usage: drg task list [--status <status>] [--ticket <ticket>]")
 		fmt.Println()
@@ -213,8 +213,6 @@ func taskRun(args []string) error {
 	return runnerSvc.RunTask(localCfg.ProjectSlug, taskID, dryRun)
 }
 
-// parseTaskRunArgs pulls the single task ID and the dry run flag out of the
-// args. Anything else is an error, so a typo never gets silently ignored.
 func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {
 	var taskID string
 	dryRun := false
