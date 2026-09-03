@@ -7,13 +7,17 @@ import (
 	"drudge/internal/common"
 )
 
-const (
-	EnvDockerSbx = "docker-sbx"
-)
+type Env string
 
 const (
-	HarnessClaudeCode = "claude-code"
-	HarnessOpencode   = "opencode"
+	EnvDockerSbx Env = "docker-sbx"
+)
+
+type Harness string
+
+const (
+	HarnessClaudeCode Harness = "claude-code"
+	HarnessOpencode   Harness = "opencode"
 )
 
 const (
@@ -34,8 +38,8 @@ type GlobalConfig struct {
 }
 
 type RunnerConfig struct {
-	Env     string `json:"environment"`
-	Harness string `json:"harness"`
+	Env     Env     `json:"environment"`
+	Harness Harness `json:"harness"`
 }
 
 func Load() (*GlobalConfig, error) {
