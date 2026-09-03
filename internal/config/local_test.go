@@ -9,7 +9,7 @@ import (
 	"drudge/internal/common"
 )
 
-// setupLocalDir chdirs into a temp dir so the relative ./.drudge paths the
+// setupLocalDir chdirs into a temp dir so the relative drudge paths the
 // local config uses resolve inside it.
 func setupLocalDir(t *testing.T) string {
 	t.Helper()

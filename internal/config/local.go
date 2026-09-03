@@ -6,20 +6,18 @@ import (
 	"drudge/internal/common"
 )
 
-// LocalConfig links the current directory to a project and overrides runner
-// settings for that project only. Written by `drg project init`.
+// LocalConfig scoped per project and contains overrides of global config
 //
 // TODO: give it a $schema pointer. It can't reuse SchemaRef, because the file
-// lives outside ~/.drudge and needs its own resolution story.
+// lives outside the global dir and needs its own resolution logic
 type LocalConfig struct {
 	ProjectSlug          string `json:"projectSlug"`
-	PromptFile           string `json:"promptFile,omitempty"`           // File name under ./.drudge/prompts/
-	MaxConcurrentRunners int    `json:"maxConcurrentRunners,omitempty"` // Runners allowed on this project at once, zero means unset
+	PromptFile           string `json:"promptFile,omitempty"`
+	MaxConcurrentRunners int    `json:"maxConcurrentRunners,omitempty"`
 }
 
-// LoadLocal reads the local config from ./.drudge/config.json. A missing or
-// slug-less file is an error, since task commands have no project to work on
-// without it.
+// LoadLocal reads the local config from a config file. A missing or
+// slug-less file is an error.
 func LoadLocal() (*LocalConfig, error) {
 	path := common.LocalConfigPath()
 
@@ -28,6 +26,8 @@ func LoadLocal() (*LocalConfig, error) {
 		return nil, err
 	}
 	if !exists {
+		// TODO: don't hardcode the commands inject them in the string template
+		// otherwise it'll bite us in the arse when we want to change the commands
 		return nil, fmt.Errorf("no project initialized in current directory (%s not found), run `drg project init <name>` first", path)
 	}
 
@@ -46,7 +46,7 @@ func LoadLocal() (*LocalConfig, error) {
 	return &cfg, nil
 }
 
-// Save writes the config to ./.drudge/config.json, creating the .drudge
+// Save writes the config to local config file, creating the config dir
 // directory if needed.
 func (cfg *LocalConfig) Save() error {
 	if err := common.EnsureDir(common.DotDrudgeDirName); err != nil {
@@ -56,8 +56,8 @@ func (cfg *LocalConfig) Save() error {
 }
 
 // ResolvePromptFile returns the prompt file name to hand an agent, preferring
-// the local config over the global one. An empty result means the built-in
-// default prompt applies.
+// the local config over the global one and falling back to the build-in
+// default.
 func ResolvePromptFile(local *LocalConfig, global *GlobalConfig) string {
 	if local.PromptFile != "" {
 		return local.PromptFile

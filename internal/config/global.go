@@ -47,7 +47,7 @@ type GlobalConfig struct {
 type RunnerConfig struct {
 	Env                  Env     `json:"environment"`
 	Harness              Harness `json:"harness"`
-	PromptFile           string  `json:"promptFile,omitempty"`           // File name under ~/.drudge/prompts/, empty means the built-in default prompt
+	PromptFile           string  `json:"promptFile,omitempty"`
 	MaxConcurrentRunners int     `json:"maxConcurrentRunners,omitempty"` // Runners allowed on one project at once, zero means unset
 }
 
