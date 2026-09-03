@@ -11,11 +11,13 @@ import (
 )
 
 const (
-	DrudgeConfigName = "config.json"
+	GloablConfigName = "config.json"
+	LocalConfigName  = "config.json"
 	DotDrudgeDirName = ".drudge"
 	ProjectsDirName  = "projects"
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
+	ThemeConfigName  = "theme.json"
 )
 
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
@@ -172,7 +174,7 @@ func ProjectsDir(home string) string {
 
 // LocalConfigPath returns the path to the local drudge config file.
 func LocalConfigPath() string {
-	return filepath.Join(DotDrudgeDirName, DrudgeConfigName)
+	return filepath.Join(DotDrudgeDirName, LocalConfigName)
 }
 
 func ResolveProjectDir(slug string) (string, error) {
@@ -181,4 +183,14 @@ func ResolveProjectDir(slug string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(ProjectsDir(home), slug), nil
+}
+
+// ThemeConfigPath returns a path to a global theme config file
+func ThemeConfigPath(home string) string {
+	return filepath.Join(home, ThemeConfigName)
+}
+
+// GlobalConfigPath returns the path to the global drudge config file.
+func GlobalConfigPath(home string) string {
+	return filepath.Join(DrudgeDir(home), GloablConfigName)
 }

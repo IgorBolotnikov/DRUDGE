@@ -1,0 +1,85 @@
+// Package config holds all configs which DRUDGE creates
+package config
+
+import (
+	"fmt"
+
+	"drudge/internal/common"
+)
+
+const (
+	EnvDockerSbx = "docker-sbx"
+)
+
+const (
+	HarnessClaudeCode = "claude-code"
+	HarnessOpencode   = "opencode"
+)
+
+const (
+	defaultEnv     = EnvDockerSbx
+	defaultHarness = HarnessClaudeCode
+)
+
+// schemaRef is the $schema reference path in config.json.
+const schemaRef = "./schema/config.json"
+
+// SchemaRef returns the $schema reference path for config.json.
+func SchemaRef() string {
+	return schemaRef
+}
+
+type GlobalConfig struct {
+	Runner RunnerConfig `json:"runner"`
+}
+
+type RunnerConfig struct {
+	Env     string `json:"environment"`
+	Harness string `json:"harness"`
+}
+
+func Load() (*GlobalConfig, error) {
+	home, err := common.HomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine home directory: %w", err)
+	}
+
+	cfgPath := common.GlobalConfigPath(home)
+
+	exists, statErr := common.Exists(cfgPath)
+	if statErr != nil {
+		return DefaultConfig(), nil
+	}
+
+	var cfg GlobalConfig
+
+	if exists {
+		if err := common.ReadJSON(cfgPath, &cfg); err != nil {
+			return nil, fmt.Errorf("could not parse global config: %w", err)
+		}
+	}
+
+	defaultCfg := DefaultConfig()
+	return mergeConfigs(defaultCfg, &cfg), nil
+}
+
+// DefaultConfig returns the built-in default global config.
+func DefaultConfig() *GlobalConfig {
+	return &GlobalConfig{
+		Runner: RunnerConfig{
+			Env:     defaultEnv,
+			Harness: defaultHarness,
+		},
+	}
+}
+
+// Fill in all missing values of the loaded config with defalt values
+func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConfig {
+	if loadedCfg.Runner.Env == "" {
+		loadedCfg.Runner.Env = defaultCfg.Runner.Env
+	}
+	if loadedCfg.Runner.Harness == "" {
+		loadedCfg.Runner.Harness = defaultCfg.Runner.Harness
+	}
+	return loadedCfg
+}

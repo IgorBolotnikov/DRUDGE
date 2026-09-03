@@ -73,7 +73,7 @@ func projectInit(args []string) error {
 	}
 
 	localDrudgeDir := common.DotDrudgeDirName
-	localConfigPath := filepath.Join(localDrudgeDir, common.DrudgeConfigName)
+	localConfigPath := filepath.Join(localDrudgeDir, common.LocalConfigName)
 
 	if err := common.EnsureDir(localDrudgeDir); err != nil {
 		return fmt.Errorf("could not create %s directory: %w", localDrudgeDir, err)

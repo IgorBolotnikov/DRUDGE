@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/theme"
 )
 
@@ -21,18 +22,41 @@ var SetupCmd = &Cmd{
 
 		drudgeDir := common.DrudgeDir(home)
 		projectsDir := common.ProjectsDir(home)
-		configPath := filepath.Join(drudgeDir, common.DrudgeConfigName)
+		configPath := common.GlobalConfigPath(home)
 		schemaDir := filepath.Join(drudgeDir, common.SchemaDirName)
-		schemaPath := filepath.Join(schemaDir, theme.ThemeConfigName)
-		themePath := filepath.Join(drudgeDir, theme.ThemeConfigName)
+		themeSchemaPath := filepath.Join(schemaDir, common.ThemeConfigName)
+		configSchemaPath := filepath.Join(schemaDir, common.GloablConfigName)
+		themePath := filepath.Join(drudgeDir, common.ThemeConfigName)
 
 		if err := common.EnsureDir(projectsDir); err != nil {
 			return err
 		}
 
-		defaultConfig := map[string]any{}
+		if err := common.EnsureDir(schemaDir); err != nil {
+			return err
+		}
+		if err := os.WriteFile(themeSchemaPath, theme.Schema(), common.DefaultFilePerm); err != nil {
+			return fmt.Errorf("could not write schema: %w", err)
+		}
+		fmt.Printf("Created %s\n", themeSchemaPath)
+		if err := os.WriteFile(configSchemaPath, config.Schema(), common.DefaultFilePerm); err != nil {
+			return fmt.Errorf("could not write schema: %w", err)
+		}
+		fmt.Printf("Created %s\n", configSchemaPath)
 
-		wrote, err := common.WriteJSONIfNotExists(configPath, defaultConfig)
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		globalCfg := map[string]any{
+			"$schema": config.SchemaRef(),
+			"runner": map[string]any{
+				"environment": cfg.Runner.Env,
+				"harness":     cfg.Runner.Harness,
+			},
+		}
+
+		wrote, err := common.WriteJSONIfNotExists(configPath, globalCfg)
 		if err != nil {
 			return err
 		}
@@ -42,14 +66,7 @@ var SetupCmd = &Cmd{
 			fmt.Printf("Config already exists at %s, skipping\n", configPath)
 		}
 
-		if err := common.EnsureDir(schemaDir); err != nil {
-			return err
-		}
-		if err := os.WriteFile(schemaPath, theme.Schema(), common.DefaultFilePerm); err != nil {
-			return fmt.Errorf("could not write schema: %w", err)
-		}
-		fmt.Printf("Created %s\n", schemaPath)
-
+		// TODO: move to config/theme.go
 		themeCfg := map[string]any{
 			"$schema":   theme.ThemeSchemaRef(),
 			"theme":     theme.DefaultTheme(),

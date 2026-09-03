@@ -4,7 +4,6 @@ package theme
 import (
 	"fmt"
 	"maps"
-	"path/filepath"
 	"regexp"
 
 	"drudge/internal/common"
@@ -101,9 +100,6 @@ func hexToRGB(hex string) (int, int, int) {
 	return r, g, b
 }
 
-// ThemeConfigName is the name of the theme config file.
-const ThemeConfigName = "theme.json"
-
 // themeSchemaRef is the $schema reference path in theme.json.
 const themeSchemaRef = "./schema/theme.json"
 
@@ -129,7 +125,7 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
 	}
 
-	cfgPath := filepath.Join(common.DrudgeDir(home), ThemeConfigName)
+	cfgPath := common.ThemeConfigPath(home)
 	var cfg config
 
 	exists, statErr := common.Exists(cfgPath)

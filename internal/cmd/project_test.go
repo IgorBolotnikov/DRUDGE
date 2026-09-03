@@ -40,7 +40,7 @@ func TestProjectInit_LocalConfigCreated(t *testing.T) {
 		t.Fatalf("projectInit: %v", err)
 	}
 
-	configPath := filepath.Join(common.DrudgeDir(home), common.DrudgeConfigName)
+	configPath := filepath.Join(common.DrudgeDir(home), common.GloablConfigName)
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestProjectInit_SlugFromName(t *testing.T) {
 		t.Fatalf("projectInit: %v", err)
 	}
 
-	configPath := filepath.Join(common.DrudgeDir(home), common.DrudgeConfigName)
+	configPath := filepath.Join(common.DrudgeDir(home), common.GloablConfigName)
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("could not read config: %v", err)

@@ -129,7 +129,7 @@ func taskList(args []string) error {
 		}
 	}
 
-	configPath := filepath.Join(common.DotDrudgeDirName, common.DrudgeConfigName)
+	configPath := filepath.Join(common.DotDrudgeDirName, common.LocalConfigName)
 
 	var cfg projectConfig
 	if err := common.ReadJSON(configPath, &cfg); err != nil {

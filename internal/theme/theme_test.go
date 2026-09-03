@@ -2,7 +2,6 @@ package theme
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"drudge/internal/common"
@@ -329,11 +328,7 @@ func setupTempHome(t *testing.T, content string) string {
 	})
 
 	if content != "" {
-		dir := filepath.Join(home, ".drudge")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, ThemeConfigName), []byte(content), common.DefaultFilePerm); err != nil {
+		if err := os.WriteFile(common.ThemeConfigPath(home), []byte(content), common.DefaultFilePerm); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 	}
