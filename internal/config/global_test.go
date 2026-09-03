@@ -214,3 +214,59 @@ func TestMergeConfigs_FillsHarnessWhenEmpty(t *testing.T) {
 		t.Errorf("Env = %q, want %q (should be untouched)", merged.Runner.Env, "local")
 	}
 }
+
+func TestLoad_MissingMaxConcurrentRunners_FallsBackToDefault(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Runner: RunnerConfig{
+			Harness: HarnessOpencode,
+		},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Runner.MaxConcurrentRunners != defaultMaxConcurrentRunners {
+		t.Errorf("MaxConcurrentRunners = %d, want default %d", cfg.Runner.MaxConcurrentRunners, defaultMaxConcurrentRunners)
+	}
+}
+
+func TestLoad_RunnerOverrides_ReturnsLoadedValues(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Runner: RunnerConfig{
+			PromptFile:           "impl.md",
+			MaxConcurrentRunners: 7,
+		},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Runner.PromptFile != "impl.md" {
+		t.Errorf("PromptFile = %q, want %q", cfg.Runner.PromptFile, "impl.md")
+	}
+	if cfg.Runner.MaxConcurrentRunners != 7 {
+		t.Errorf("MaxConcurrentRunners = %d, want %d", cfg.Runner.MaxConcurrentRunners, 7)
+	}
+}
+
+func TestLoad_NegativeMaxConcurrentRunners_ReturnsError(t *testing.T) {
+	home := setupHome(t)
+	if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+		t.Fatalf("could not create drudge dir: %v", err)
+	}
+	raw := []byte(`{"runner": {"maxConcurrentRunners": -1}}`)
+	if err := os.WriteFile(common.GlobalConfigPath(home), raw, common.DefaultFilePerm); err != nil {
+		t.Fatalf("could not write config: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for a negative runner limit")
+	}
+}

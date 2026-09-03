@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/project"
 )
 
@@ -52,10 +52,6 @@ func projectCreate(args []string) error {
 	return err
 }
 
-type projectConfig struct {
-	ProjectSlug string `json:"projectSlug"`
-}
-
 func projectInit(args []string) error {
 	if len(args) < 1 {
 		return ErrNoProjectName
@@ -72,19 +68,12 @@ func projectInit(args []string) error {
 		return err
 	}
 
-	localDrudgeDir := common.DotDrudgeDirName
-	localConfigPath := filepath.Join(localDrudgeDir, common.LocalConfigName)
-
-	if err := common.EnsureDir(localDrudgeDir); err != nil {
-		return fmt.Errorf("could not create %s directory: %w", localDrudgeDir, err)
+	cfg := config.LocalConfig{ProjectSlug: proj.Slug}
+	if err := cfg.Save(); err != nil {
+		return err
 	}
 
-	cfg := projectConfig{ProjectSlug: proj.Slug}
-	if err := common.WriteJSON(localConfigPath, cfg); err != nil {
-		return fmt.Errorf("could not write config: %w", err)
-	}
-
-	log.Info("Initialized project %s in %s", name, localDrudgeDir)
+	log.Info("Initialized project %s in %s", name, common.DotDrudgeDirName)
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
+	"drudge/internal/config"
 )
 
 func TestProjectInit_ProjectCreatedGlobally(t *testing.T) {
@@ -47,7 +48,7 @@ func TestProjectInit_LocalConfigCreated(t *testing.T) {
 		t.Fatalf("could not read local config: %v", err)
 	}
 
-	var cfg projectConfig
+	var cfg config.LocalConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatalf("could not parse config: %v", err)
 	}
@@ -102,7 +103,7 @@ func TestProjectInit_SlugFromName(t *testing.T) {
 		t.Fatalf("could not read config: %v", err)
 	}
 
-	var cfg projectConfig
+	var cfg config.LocalConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatalf("could not parse config: %v", err)
 	}

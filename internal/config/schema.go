@@ -26,6 +26,16 @@ const schemaJSON = `{
           "type": "string",
           "enum": ["claude-code", "opencode"],
           "default": "claude-code"
+        },
+        "promptFile": {
+          "description": "File name of the prompt handed to an agent, resolved under ~/.drudge/prompts/. Omit to use the built-in default prompt.",
+          "type": "string"
+        },
+        "maxConcurrentRunners": {
+          "description": "How many runners may work on one project at once.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
         }
       },
       "additionalProperties": false
