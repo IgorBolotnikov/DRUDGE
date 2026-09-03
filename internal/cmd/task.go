@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/task"
 )
 
@@ -80,14 +80,9 @@ func taskNew(args []string) error {
 		}
 	}
 
-	configPath := common.LocalConfigPath()
-
-	var cfg projectConfig
-	if err := common.ReadJSON(configPath, &cfg); err != nil {
-		return fmt.Errorf("no project initialized in current directory (could not read %s): %w", configPath, err)
-	}
-	if cfg.ProjectSlug == "" {
-		return fmt.Errorf("project slug not found in config")
+	cfg, err := config.LoadLocal()
+	if err != nil {
+		return err
 	}
 
 	log := common.NewLogger("")
@@ -103,7 +98,7 @@ func taskNew(args []string) error {
 		CreatedAt:   time.Now().UTC(),
 	}
 
-	_, err := svc.CreateTask(dto)
+	_, err = svc.CreateTask(dto)
 	return err
 }
 
@@ -129,14 +124,9 @@ func taskList(args []string) error {
 		}
 	}
 
-	configPath := filepath.Join(common.DotDrudgeDirName, common.LocalConfigName)
-
-	var cfg projectConfig
-	if err := common.ReadJSON(configPath, &cfg); err != nil {
-		return fmt.Errorf("no project initialized in current directory (could not read %s): %w", configPath, err)
-	}
-	if cfg.ProjectSlug == "" {
-		return fmt.Errorf("project slug not found in config")
+	cfg, err := config.LoadLocal()
+	if err != nil {
+		return err
 	}
 
 	log := common.NewLogger("")

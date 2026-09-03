@@ -21,8 +21,15 @@ const (
 )
 
 const (
-	defaultEnv     = EnvDockerSbx
-	defaultHarness = HarnessClaudeCode
+	defaultEnv                  = EnvDockerSbx
+	defaultHarness              = HarnessClaudeCode
+	defaultMaxConcurrentRunners = 3
+)
+
+// JSON keys, named in error messages so they match what a user writes in a config file.
+const (
+	projectSlugKey          = "projectSlug"
+	maxConcurrentRunnersKey = "maxConcurrentRunners"
 )
 
 // schemaRef is the $schema reference path in config.json.
@@ -38,8 +45,10 @@ type GlobalConfig struct {
 }
 
 type RunnerConfig struct {
-	Env     Env     `json:"environment"`
-	Harness Harness `json:"harness"`
+	Env                  Env     `json:"environment"`
+	Harness              Harness `json:"harness"`
+	PromptFile           string  `json:"promptFile,omitempty"`           // File name under ~/.drudge/prompts/, empty means the built-in default prompt
+	MaxConcurrentRunners int     `json:"maxConcurrentRunners,omitempty"` // Runners allowed on one project at once, zero means unset
 }
 
 func Load() (*GlobalConfig, error) {
@@ -63,6 +72,10 @@ func Load() (*GlobalConfig, error) {
 		}
 	}
 
+	if err := validateMaxConcurrentRunners(cfg.Runner.MaxConcurrentRunners, cfgPath); err != nil {
+		return nil, err
+	}
+
 	defaultCfg := DefaultConfig()
 	return mergeConfigs(defaultCfg, &cfg), nil
 }
@@ -71,8 +84,9 @@ func Load() (*GlobalConfig, error) {
 func DefaultConfig() *GlobalConfig {
 	return &GlobalConfig{
 		Runner: RunnerConfig{
-			Env:     defaultEnv,
-			Harness: defaultHarness,
+			Env:                  defaultEnv,
+			Harness:              defaultHarness,
+			MaxConcurrentRunners: defaultMaxConcurrentRunners,
 		},
 	}
 }
@@ -85,5 +99,16 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 	if loadedCfg.Runner.Harness == "" {
 		loadedCfg.Runner.Harness = defaultCfg.Runner.Harness
 	}
+	if loadedCfg.Runner.MaxConcurrentRunners == 0 {
+		loadedCfg.Runner.MaxConcurrentRunners = defaultCfg.Runner.MaxConcurrentRunners
+	}
 	return loadedCfg
+}
+
+// validateMaxConcurrentRunners rejects a negative runner limit. Zero passes, since that is what an absent key unmarshals to.
+func validateMaxConcurrentRunners(value int, path string) error {
+	if value < 0 {
+		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, maxConcurrentRunnersKey, value)
+	}
+	return nil
 }
