@@ -36,8 +36,12 @@ func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Tas
 }
 
 func newTestService(tasks ...*task.Task) *RunnerService {
+	return newTestServiceWithConfigs(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), tasks...)
+}
+
+func newTestServiceWithConfigs(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks ...*task.Task) *RunnerService {
 	logger := common.NewLogger("")
-	return New(logger, config.DefaultConfig(), task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger))
+	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger))
 }
 
 func captureOutput(f func()) string {
@@ -138,5 +142,65 @@ func TestRunnerService_RunTask_WithoutDryRunIsNotImplemented(t *testing.T) {
 	err := service.RunTask(testProjectSlug, "task-1", false)
 	if err == nil {
 		t.Fatal("expected an error, spawning an agent is not implemented yet")
+	}
+}
+
+func TestRunnerService_RunTask_DryRunUsesConfiguredPromptFile(t *testing.T) {
+	const promptFileName = "impl.md"
+	setupPromptDirs(t)
+	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "custom prompt for {{taskTitle}}: {{taskDescription}}")
+
+	taskToRun := &task.Task{
+		ID:          "task-1",
+		Title:       "Fix login",
+		Description: "SSO is broken",
+		Status:      task.StatusTodo,
+		ProjectSlug: testProjectSlug,
+	}
+	service := newTestServiceWithConfigs(
+		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
+		config.DefaultConfig(),
+		taskToRun,
+	)
+
+	var err error
+	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, want := range []string{"custom prompt for Fix login: SSO is broken", promptFileName} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected dry run output to contain %q, got %q", want, out)
+		}
+	}
+}
+
+func TestRunnerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testing.T) {
+	const promptFileName = "impl.md"
+	setupPromptDirs(t)
+	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "nothing to substitute here")
+
+	service := newTestServiceWithConfigs(
+		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
+		config.DefaultConfig(),
+		&task.Task{
+			ID:          "task-1",
+			Title:       "Fix login",
+			Description: "SSO is broken",
+			Status:      task.StatusTodo,
+			ProjectSlug: testProjectSlug,
+		},
+	)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, "task-1", true) })
+	if err == nil {
+		t.Fatal("expected an error for a prompt file without the required placeholders")
+	}
+	for _, want := range []string{promptFileName, placeholderTaskTitle} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to name %s, got %q", want, err)
+		}
 	}
 }

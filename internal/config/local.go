@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"drudge/internal/common"
 )
@@ -39,6 +40,9 @@ func LoadLocal() (*LocalConfig, error) {
 	if cfg.ProjectSlug == "" {
 		return nil, fmt.Errorf("%s is missing %q", path, projectSlugKey)
 	}
+	if err := validatePromptFile(cfg.PromptFile, path); err != nil {
+		return nil, err
+	}
 	if err := validateMaxConcurrentRunners(cfg.MaxConcurrentRunners, path); err != nil {
 		return nil, err
 	}
@@ -55,17 +59,23 @@ func (cfg *LocalConfig) Save() error {
 	return common.WriteJSON(common.LocalConfigPath(), cfg)
 }
 
-// ResolvePromptFile returns the prompt file name to hand an agent, preferring
-// the local config over the global one and falling back to the build-in
-// default.
-func ResolvePromptFile(local *LocalConfig, global *GlobalConfig) string {
+// ResolvePromptPath returns the path of the prompt file to hand an agent,
+// preferring the local config over the global one. A local prompt file lives
+// in the prompts directory of the local drudge dir, a global one in the
+// prompts directory of the drudge home directory. An empty path means neither
+// config names a prompt file and the built-in default applies.
+func ResolvePromptPath(local *LocalConfig, global *GlobalConfig) (string, error) {
 	if local.PromptFile != "" {
-		return local.PromptFile
+		return filepath.Join(common.LocalPromptsDir(), local.PromptFile), nil
 	}
 	if global.Runner.PromptFile != "" {
-		return global.Runner.PromptFile
+		home, err := common.HomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(common.PromptsDir(home), global.Runner.PromptFile), nil
 	}
-	return ""
+	return "", nil
 }
 
 // ResolveMaxConcurrentRunners returns how many runners may work on one

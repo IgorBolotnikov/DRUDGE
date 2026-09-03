@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -80,6 +81,18 @@ func TestLoadLocal(t *testing.T) {
 			name:      "invalid json",
 			writeFile: true,
 			raw:       `{not json`,
+			wantErr:   true,
+		},
+		{
+			name:      "prompt file in a subdirectory",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "promptFile": "sub/impl.md"}`,
+			wantErr:   true,
+		},
+		{
+			name:      "prompt file escaping the prompts directory",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "promptFile": "../impl.md"}`,
 			wantErr:   true,
 		},
 		{
@@ -179,7 +192,9 @@ func TestSave_OmitsUnsetOverrides(t *testing.T) {
 	}
 }
 
-func TestResolvePromptFile(t *testing.T) {
+func TestResolvePromptPath(t *testing.T) {
+	home := setupHome(t)
+
 	tests := []struct {
 		name   string
 		local  *LocalConfig
@@ -190,13 +205,13 @@ func TestResolvePromptFile(t *testing.T) {
 			name:   "local wins over global",
 			local:  &LocalConfig{PromptFile: "local.md"},
 			global: &GlobalConfig{Runner: RunnerConfig{PromptFile: "global.md"}},
-			want:   "local.md",
+			want:   filepath.Join(common.LocalPromptsDir(), "local.md"),
 		},
 		{
 			name:   "falls back to global",
 			local:  &LocalConfig{},
 			global: &GlobalConfig{Runner: RunnerConfig{PromptFile: "global.md"}},
-			want:   "global.md",
+			want:   filepath.Join(common.PromptsDir(home), "global.md"),
 		},
 		{
 			name:   "neither set",
@@ -208,9 +223,12 @@ func TestResolvePromptFile(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := ResolvePromptFile(test.local, test.global)
+			got, err := ResolvePromptPath(test.local, test.global)
+			if err != nil {
+				t.Fatalf("ResolvePromptPath: %v", err)
+			}
 			if got != test.want {
-				t.Errorf("ResolvePromptFile = %q, want %q", got, test.want)
+				t.Errorf("ResolvePromptPath = %q, want %q", got, test.want)
 			}
 		})
 	}

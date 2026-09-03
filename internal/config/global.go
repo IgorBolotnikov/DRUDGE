@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"drudge/internal/common"
 )
@@ -29,6 +30,7 @@ const (
 // JSON keys, named in error messages so they match what a user writes in a config file.
 const (
 	projectSlugKey          = "projectSlug"
+	promptFileKey           = "promptFile"
 	maxConcurrentRunnersKey = "maxConcurrentRunners"
 )
 
@@ -72,6 +74,9 @@ func Load() (*GlobalConfig, error) {
 		}
 	}
 
+	if err := validatePromptFile(cfg.Runner.PromptFile, cfgPath); err != nil {
+		return nil, err
+	}
 	if err := validateMaxConcurrentRunners(cfg.Runner.MaxConcurrentRunners, cfgPath); err != nil {
 		return nil, err
 	}
@@ -103,6 +108,18 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 		loadedCfg.Runner.MaxConcurrentRunners = defaultCfg.Runner.MaxConcurrentRunners
 	}
 	return loadedCfg
+}
+
+// validatePromptFile rejects a prompt file that is anything but a bare file
+// name. An empty value passes, since that is what an absent key unmarshals to.
+func validatePromptFile(value string, path string) error {
+	if value == "" {
+		return nil
+	}
+	if value == "." || value == ".." || value != filepath.Base(value) {
+		return fmt.Errorf("%s has %s = %q, it must be a bare file name, prompt files are read from the prompts directory next to the config file", path, promptFileKey, value)
+	}
+	return nil
 }
 
 // validateMaxConcurrentRunners rejects a negative runner limit. Zero passes, since that is what an absent key unmarshals to.

@@ -15,6 +15,7 @@ const (
 	LocalConfigName  = "config.json"
 	DotDrudgeDirName = ".drudge"
 	ProjectsDirName  = "projects"
+	PromptsDirName   = "prompts"
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
 	ThemeConfigName  = "theme.json"
@@ -170,6 +171,18 @@ func DrudgeDir(home string) string {
 // ProjectsDir returns the path to the user's drudge projects directory.
 func ProjectsDir(home string) string {
 	return filepath.Join(DrudgeDir(home), ProjectsDirName)
+}
+
+// LocalPromptsDir returns the path to the prompts directory of the local
+// drudge dir.
+func LocalPromptsDir() string {
+	return filepath.Join(DotDrudgeDirName, PromptsDirName)
+}
+
+// PromptsDir returns the path to the prompts directory of the user's drudge
+// home directory.
+func PromptsDir(home string) string {
+	return filepath.Join(DrudgeDir(home), PromptsDirName)
 }
 
 // LocalConfigPath returns the path to the local drudge config file.

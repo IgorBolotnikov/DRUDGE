@@ -208,7 +208,7 @@ func taskRun(args []string) error {
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	taskSvc := task.NewTaskService(repo, log)
-	runnerSvc := runner.New(log, globalCfg, taskSvc)
+	runnerSvc := runner.New(log, localCfg, globalCfg, taskSvc)
 
 	return runnerSvc.RunTask(localCfg.ProjectSlug, taskID, dryRun)
 }

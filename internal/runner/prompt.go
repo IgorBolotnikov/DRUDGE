@@ -2,10 +2,16 @@ package runner
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/task"
 )
+
+// promptSourceDefault names the built-in template in error messages.
+const promptSourceDefault = "built-in default prompt"
 
 // Placeholders a prompt template may use.
 const (
@@ -60,4 +66,42 @@ func renderPrompt(template string, taskToRun *task.Task) (string, error) {
 		placeholderTicketID, taskToRun.TicketID,
 	)
 	return replacer.Replace(template), nil
+}
+
+// resolvePromptTemplate returns the prompt template to hand an agent, along
+// with a description of where it came from for error messages. A prompt file
+// named in either config wins over the built-in default.
+func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfig) (string, string, error) {
+	path, err := config.ResolvePromptPath(local, global)
+	if err != nil {
+		return "", "", err
+	}
+	if path == "" {
+		return defaultPromptTemplate, promptSourceDefault, nil
+	}
+
+	template, err := loadPromptTemplate(path)
+	if err != nil {
+		return "", "", err
+	}
+	return template, path, nil
+}
+
+// loadPromptTemplate reads a prompt template from path. A configured prompt
+// file that isn't there is a hard error, because falling back to the default
+// would hide the typo.
+func loadPromptTemplate(path string) (string, error) {
+	exists, err := common.Exists(path)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", fmt.Errorf("prompt file %s does not exist", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("could not read prompt file %s: %w", path, err)
+	}
+	return string(data), nil
 }

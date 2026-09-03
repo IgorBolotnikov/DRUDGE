@@ -10,16 +10,18 @@ import (
 )
 
 type RunnerService struct {
-	logger *common.Logger
-	cfg    *config.GlobalConfig
-	tasks  *task.TaskService
+	logger    *common.Logger
+	localCfg  *config.LocalConfig
+	globalCfg *config.GlobalConfig
+	tasks     *task.TaskService
 }
 
-func New(logger *common.Logger, cfg *config.GlobalConfig, tasks *task.TaskService) *RunnerService {
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService) *RunnerService {
 	return &RunnerService{
-		logger: logger,
-		cfg:    cfg,
-		tasks:  tasks,
+		logger:    logger,
+		localCfg:  localCfg,
+		globalCfg: globalCfg,
+		tasks:     tasks,
 	}
 }
 
@@ -35,13 +37,18 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskID, taskToRun.Status, task.StatusTodo)
 	}
 
-	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun)
+	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
 	if err != nil {
 		return err
 	}
 
+	prompt, err := renderPrompt(promptTemplate, taskToRun)
+	if err != nil {
+		return fmt.Errorf("%s: %w", promptSource, err)
+	}
+
 	if dryRun {
-		service.logger.Info("Prompt for task [%s] %s:\n\n%s", taskToRun.ID, taskToRun.Title, prompt)
+		service.logger.Info("Prompt for task [%s] %s (from %s):\n\n%s", taskToRun.ID, taskToRun.Title, promptSource, prompt)
 		return nil
 	}
 
@@ -52,10 +59,10 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 }
 
 func (service *RunnerService) pickRunnerCommand(runnerID string, prompt string) string {
-	name := formatRunnerName(runnerID, service.cfg.Runner.Harness)
-	switch service.cfg.Runner.Env {
+	name := formatRunnerName(runnerID, service.globalCfg.Runner.Harness)
+	switch service.globalCfg.Runner.Env {
 	case config.EnvDockerSbx:
-		switch service.cfg.Runner.Harness {
+		switch service.globalCfg.Runner.Harness {
 		case config.HarnessClaudeCode:
 			return fmt.Sprintf("sbx run --name %s -p %s", name, prompt)
 		case config.HarnessOpencode:

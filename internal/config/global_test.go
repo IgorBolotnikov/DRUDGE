@@ -270,3 +270,28 @@ func TestLoad_NegativeMaxConcurrentRunners_ReturnsError(t *testing.T) {
 		t.Fatal("expected error for a negative runner limit")
 	}
 }
+
+func TestLoad_PromptFileOutsidePromptsDir_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name       string
+		promptFile string
+	}{
+		{name: "subdirectory", promptFile: "sub/impl.md"},
+		{name: "parent directory", promptFile: "../impl.md"},
+		{name: "absolute path", promptFile: "/etc/impl.md"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			writeConfig(t, home, GlobalConfig{
+				Runner: RunnerConfig{PromptFile: test.promptFile},
+			})
+
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("expected an error for prompt file %q", test.promptFile)
+			}
+		})
+	}
+}
