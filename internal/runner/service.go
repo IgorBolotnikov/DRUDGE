@@ -9,37 +9,46 @@ import (
 	"drudge/internal/task"
 )
 
-// TODO: add a new command `drg task run [task ID] which should run the Runner.RunTask()`
-
 type RunnerService struct {
 	logger *common.Logger
 	cfg    *config.GlobalConfig
+	tasks  *task.TaskService
 }
 
-func New(logger *common.Logger, cfg *config.GlobalConfig) *RunnerService {
+func New(logger *common.Logger, cfg *config.GlobalConfig, tasks *task.TaskService) *RunnerService {
 	return &RunnerService{
 		logger: logger,
 		cfg:    cfg,
+		tasks:  tasks,
 	}
 }
 
-// RunTask runs a task until completion
-func (service *RunnerService) RunTask(taskID task.TaskID) {
-	// We need a mapping of commands which we should run in a subprocess
-	// For each combination of env and harness
-	// Step by step how the task is run
-	// - change the task status to "in-progress"
-	// - Load the task description into memory
-	// - Load the special task implementation prompt (should be configurable in GlobalConfig)
-	// - Create a worktree from default branch (configured in GlobalConfig)
-	//   into local .drudge/worktrees/ dir.
-	//   Name of the worktree should be `wt-[task-id]`
-	//   cd into a worktree and checkout into a new
-	//   branch `feat/[ticket ID if exists + /][slug-from-task-title]`
-	prompt := "Implement the task"
-	runnerID := "1"
-	// run this command
-	command := service.pickRunnerCommand(runnerID, prompt)
+// RunTask hands one task to an agent. In dry run mode it only resolves and
+// prints what the agent would be given, and writes nothing.
+func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dryRun bool) error {
+	taskToRun, err := service.tasks.GetTask(projectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	if taskToRun.Status != task.StatusTodo {
+		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskID, taskToRun.Status, task.StatusTodo)
+	}
+
+	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun)
+	if err != nil {
+		return err
+	}
+
+	if dryRun {
+		service.logger.Info("Prompt for task [%s] %s:\n\n%s", taskToRun.ID, taskToRun.Title, prompt)
+		return nil
+	}
+
+	// TODO: before an agent is spawned, create a worktree for the task from the
+	// default branch under the local worktrees dir, named wt-<task-id>, and
+	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
+	return fmt.Errorf("spawning an agent is not implemented yet, pass --dry-run to preview the prompt")
 }
 
 func (service *RunnerService) pickRunnerCommand(runnerID string, prompt string) string {

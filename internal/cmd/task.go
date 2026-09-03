@@ -9,6 +9,7 @@ import (
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
 	"drudge/internal/config"
+	"drudge/internal/runner"
 	"drudge/internal/task"
 )
 
@@ -18,6 +19,16 @@ var TaskCmd = &Cmd{
 	Desc:  "Task management commands",
 	Run:   runTask,
 }
+
+// CLI flag names.
+const (
+	dryRunFlag    = "--dry-run"
+	helpFlag      = "--help"
+	helpFlagShort = "-h"
+)
+
+// taskRunUsage is printed by the help flag and quoted in argument errors.
+const taskRunUsage = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 
 var validStatuses = []string{
 	task.StatusDraft,
@@ -37,6 +48,8 @@ func runTask(args []string) error {
 		return taskNew(args[1:])
 	case "list":
 		return taskList(args[1:])
+	case "run":
+		return taskRun(args[1:])
 	default:
 		return fmt.Errorf("unknown task subcommand: %s", args[0])
 	}
@@ -103,7 +116,7 @@ func taskNew(args []string) error {
 }
 
 func taskList(args []string) error {
-	if hasFlag(args, "--help") || hasFlag(args, "-h") {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println("usage: drg task list [--status <status>] [--ticket <ticket>]")
 		fmt.Println()
 		fmt.Println("List tasks in the current project.")
@@ -164,6 +177,66 @@ func taskList(args []string) error {
 	}
 
 	return nil
+}
+
+func taskRun(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(taskRunUsage)
+		fmt.Println()
+		fmt.Println("Hand a task in todo status to a coding agent.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Printf("  %s  Print the prompt the agent would get and stop\n", dryRunFlag)
+		return nil
+	}
+
+	taskID, dryRun, err := parseTaskRunArgs(args)
+	if err != nil {
+		return err
+	}
+
+	localCfg, err := config.LoadLocal()
+	if err != nil {
+		return err
+	}
+
+	globalCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	log := common.NewLogger("")
+	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
+	taskSvc := task.NewTaskService(repo, log)
+	runnerSvc := runner.New(log, globalCfg, taskSvc)
+
+	return runnerSvc.RunTask(localCfg.ProjectSlug, taskID, dryRun)
+}
+
+// parseTaskRunArgs pulls the single task ID and the dry run flag out of the
+// args. Anything else is an error, so a typo never gets silently ignored.
+func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {
+	var taskID string
+	dryRun := false
+
+	for _, arg := range args {
+		switch {
+		case arg == dryRunFlag:
+			dryRun = true
+		case strings.HasPrefix(arg, "-"):
+			return "", false, fmt.Errorf("unknown flag %q, %s", arg, taskRunUsage)
+		case taskID == "":
+			taskID = arg
+		default:
+			return "", false, fmt.Errorf("unexpected argument %q, drg task run takes a single task ID", arg)
+		}
+	}
+
+	if taskID == "" {
+		return "", false, fmt.Errorf("task ID is required, %s", taskRunUsage)
+	}
+
+	return task.TaskID(taskID), dryRun, nil
 }
 
 func filterTasks(tasks []*task.Task, statusFilter string, hasStatus bool, ticketFilter string, hasTicket bool) []*task.Task {
