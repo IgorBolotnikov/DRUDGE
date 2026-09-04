@@ -38,8 +38,7 @@ var validStatuses = []string{
 	task.StatusDone,
 }
 
-// taskDeps holds the dependency graph a task subcommand works with. The
-// local config comes along because callers read the project slug off it.
+// taskDeps holds the dependency graph a task subcommand works with.
 type taskDeps struct {
 	localCfg *config.LocalConfig
 	log      *common.Logger
