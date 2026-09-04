@@ -49,3 +49,15 @@ func (t *TaskService) ListTasks(projectSlug string) ([]*Task, error) {
 func (t *TaskService) GetTask(projectSlug string, id TaskID) (*Task, error) {
 	return t.repo.GetTask(projectSlug, id)
 }
+
+func (t *TaskService) UpdateTask(projectSlug string, taskToUpdate *Task) error {
+	if taskToUpdate.ID == "" {
+		return fmt.Errorf("task id is required to update a task")
+	}
+
+	if err := t.repo.UpdateTask(projectSlug, taskToUpdate); err != nil {
+		return fmt.Errorf("could not update task %s: %w", taskToUpdate.ID, err)
+	}
+
+	return nil
+}

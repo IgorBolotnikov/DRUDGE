@@ -66,3 +66,17 @@ func formatArgv(argv []string) string {
 	}
 	return strings.Join(quoted, " ")
 }
+
+// parseSessionID picks the session id a runner reports out of its output. The
+// runner prints it on its last line, so anything it logged before is skipped.
+// An empty result means the runner reported no session at all.
+func parseSessionID(output string) string {
+	lines := strings.Split(output, "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		line := strings.TrimSpace(lines[index])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}

@@ -12,6 +12,7 @@ type mockRepo struct {
 	createTaskFn func(CreateTaskDto) (*Task, error)
 	listTasksFn  func(string) ([]*Task, error)
 	getTaskFn    func(string, TaskID) (*Task, error)
+	updateTaskFn func(string, *Task) error
 }
 
 func (m *mockRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -33,6 +34,64 @@ func (m *mockRepo) GetTask(projectSlug string, id TaskID) (*Task, error) {
 		return m.getTaskFn(projectSlug, id)
 	}
 	return nil, nil
+}
+
+func (m *mockRepo) UpdateTask(projectSlug string, taskToUpdate *Task) error {
+	if m.updateTaskFn != nil {
+		return m.updateTaskFn(projectSlug, taskToUpdate)
+	}
+	return nil
+}
+
+func TestTaskService_UpdateTask(t *testing.T) {
+	cases := []struct {
+		name       string
+		taskToSave *Task
+		repoErr    error
+		wantErr    bool
+		wantCall   bool
+	}{
+		{
+			name:       "saves the task",
+			taskToSave: &Task{ID: "task-1", Title: "Fix login", Status: StatusInProgress},
+			wantCall:   true,
+		},
+		{
+			name:       "refuses a task without an id",
+			taskToSave: &Task{Title: "Fix login"},
+			wantErr:    true,
+		},
+		{
+			name:       "surfaces a repository error",
+			taskToSave: &Task{ID: "task-1", Title: "Fix login"},
+			repoErr:    errors.New("disk is on fire"),
+			wantErr:    true,
+			wantCall:   true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			called := false
+			repo := &mockRepo{updateTaskFn: func(projectSlug string, taskToUpdate *Task) error {
+				called = true
+				return testCase.repoErr
+			}}
+			svc := NewTaskService(repo, common.NewLogger(""))
+
+			err := svc.UpdateTask("test", testCase.taskToSave)
+
+			if testCase.wantErr && err == nil {
+				t.Fatal("expected an error")
+			}
+			if !testCase.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if called != testCase.wantCall {
+				t.Errorf("expected the repository to be called: %v, got %v", testCase.wantCall, called)
+			}
+		})
+	}
 }
 
 func TestTaskService_CreateTask_MissingTitle(t *testing.T) {

@@ -3,6 +3,7 @@ package runner
 
 import (
 	"fmt"
+	"time"
 
 	"drudge/internal/common"
 	"drudge/internal/config"
@@ -70,7 +71,32 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	return fmt.Errorf("spawning an agent is not implemented yet, pass --dry-run to preview the prompt")
+	output, err := service.commands.Run(argv)
+	if err != nil {
+		return fmt.Errorf("could not start runner %s for task %s: %w", runnerName, taskID, err)
+	}
+
+	// TODO: add a command that pings a task's runner session to tell whether it
+	// is still alive, and frees the runner slot when it is not.
+	sessionID := parseSessionID(output)
+	if sessionID == "" {
+		service.logger.Error("Runner %s printed no session id, task %s will be recorded without one and cannot be checked for liveness", runnerName, taskID)
+	}
+
+	taskToRun.Status = task.StatusInProgress
+	taskToRun.StartedAt = time.Now().UTC()
+	taskToRun.RunnerID = runnerID
+	taskToRun.RunnerSessionID = sessionID
+
+	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
+		return fmt.Errorf("runner %s is already working on task %s, but the task could not be marked as %q: %w", runnerName, taskID, task.StatusInProgress, err)
+	}
+
+	service.logger.Info("Runner %s is working on task [%s] %s", runnerName, taskToRun.ID, taskToRun.Title)
+	if sessionID != "" {
+		service.logger.Info("Session: %s", sessionID)
+	}
+	return nil
 }
 
 // allocateRunnerID picks the lowest free runner slot of a project's pool. A

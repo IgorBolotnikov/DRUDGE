@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"drudge/internal/common"
 	"drudge/internal/config"
@@ -36,13 +38,26 @@ func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Tas
 	return nil, fmt.Errorf("task %q not found", id)
 }
 
+func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {
+	for index, candidate := range repo.tasks {
+		if candidate.ID == taskToUpdate.ID {
+			taskToUpdate.UpdatedAt = time.Now().UTC()
+			repo.tasks[index] = taskToUpdate
+			return nil
+		}
+	}
+	return fmt.Errorf("task %q not found", taskToUpdate.ID)
+}
+
 type fakeCommandRunner struct {
-	argv []string
+	argv   []string
+	output string
+	err    error
 }
 
 func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
 	runner.argv = argv
-	return "", nil
+	return runner.output, runner.err
 }
 
 func newTestService(tasks ...*task.Task) *RunnerService {
@@ -140,18 +155,104 @@ func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_WithoutDryRunIsNotImplemented(t *testing.T) {
-	service := newTestService(&task.Task{
+func TestRunnerService_RunTask_SpawnsAndRecordsTheRunner(t *testing.T) {
+	cases := []struct {
+		name          string
+		output        string
+		wantSessionID string
+	}{
+		{name: "single line of output", output: "sess-abc123", wantSessionID: "sess-abc123"},
+		{name: "session on the last line", output: "starting sandbox\nsess-abc123", wantSessionID: "sess-abc123"},
+		{name: "trailing blank lines are skipped", output: "sess-abc123\n\n  \n", wantSessionID: "sess-abc123"},
+		{name: "no session reported", output: "  \n\n"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			taskToRun := &task.Task{
+				ID:          "task-1",
+				Title:       "Fix login",
+				Description: "SSO is broken",
+				Status:      task.StatusTodo,
+				ProjectSlug: testProjectSlug,
+			}
+			logger := common.NewLogger("")
+			globalCfg := config.DefaultConfig()
+			commands := &fakeCommandRunner{output: testCase.output}
+			service := New(
+				logger,
+				&config.LocalConfig{ProjectSlug: testProjectSlug},
+				globalCfg,
+				task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
+				commands,
+			)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if commands.argv == nil {
+				t.Fatal("expected the runner command to be run")
+			}
+			if commands.argv[0] != sbxBinary {
+				t.Errorf("expected the argv to start with %q, got %v", sbxBinary, commands.argv)
+			}
+			for _, want := range []string{sbxDetachedFlag, formatRunnerName(1, globalCfg.Runner.Harness)} {
+				if !slices.Contains(commands.argv, want) {
+					t.Errorf("expected the argv to contain %q, got %v", want, commands.argv)
+				}
+			}
+			if !strings.Contains(commands.argv[len(commands.argv)-1], taskToRun.Title) {
+				t.Errorf("expected the rendered prompt as the last argument, got %v", commands.argv)
+			}
+
+			if taskToRun.Status != task.StatusInProgress {
+				t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
+			}
+			if taskToRun.RunnerID != 1 {
+				t.Errorf("expected runner 1, got %d", taskToRun.RunnerID)
+			}
+			if taskToRun.RunnerSessionID != testCase.wantSessionID {
+				t.Errorf("expected session %q, got %q", testCase.wantSessionID, taskToRun.RunnerSessionID)
+			}
+			if taskToRun.StartedAt.IsZero() {
+				t.Error("expected started at to be stamped")
+			}
+		})
+	}
+}
+
+func TestRunnerService_RunTask_SpawnFailureLeavesTheTaskAlone(t *testing.T) {
+	taskToRun := &task.Task{
 		ID:          "task-1",
 		Title:       "Fix login",
 		Description: "SSO is broken",
 		Status:      task.StatusTodo,
 		ProjectSlug: testProjectSlug,
-	})
+	}
+	logger := common.NewLogger("")
+	commands := &fakeCommandRunner{err: fmt.Errorf("sbx: no such binary")}
+	service := New(
+		logger,
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
+		commands,
+	)
 
-	err := service.RunTask(testProjectSlug, "task-1", false)
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
 	if err == nil {
-		t.Fatal("expected an error, spawning an agent is not implemented yet")
+		t.Fatal("expected the spawn failure to surface")
+	}
+
+	if taskToRun.Status != task.StatusTodo {
+		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+	}
+	if taskToRun.RunnerID != 0 {
+		t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
 	}
 }
 

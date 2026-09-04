@@ -21,4 +21,5 @@ type TaskRepository interface {
 	CreateTask(dto CreateTaskDto) (*Task, error)
 	ListTasks(projectSlug string) ([]*Task, error)
 	GetTask(projectSlug string, id TaskID) (*Task, error)
+	UpdateTask(projectSlug string, taskToUpdate *Task) error
 }

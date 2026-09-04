@@ -25,6 +25,8 @@ const (
 	metaKeyProjectSlug     = "project_slug"
 	metaKeyRunnerID        = "runner_id"
 	metaKeyRunnerSessionID = "runner_session_id"
+	metaKeyStartedAt       = "started_at"
+	metaKeyFinishedAt      = "finished_at"
 	metaKeyCreatedAt       = "created_at"
 	metaKeyUpdatedAt       = "updated_at"
 )
@@ -104,6 +106,12 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.RunnerSessionID != "" {
 		metadata[metaKeyRunnerSessionID] = taskToWrite.RunnerSessionID
 	}
+	if !taskToWrite.StartedAt.IsZero() {
+		metadata[metaKeyStartedAt] = taskToWrite.StartedAt.Format(time.RFC3339)
+	}
+	if !taskToWrite.FinishedAt.IsZero() {
+		metadata[metaKeyFinishedAt] = taskToWrite.FinishedAt.Format(time.RFC3339)
+	}
 	if !taskToWrite.UpdatedAt.IsZero() {
 		metadata[metaKeyUpdatedAt] = taskToWrite.UpdatedAt.Format(time.RFC3339)
 	}
@@ -146,6 +154,12 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if runnerSessionID, ok := metadata[metaKeyRunnerSessionID]; ok {
 		t.RunnerSessionID = runnerSessionID
+	}
+	if startedAt, ok := metadata[metaKeyStartedAt]; ok {
+		t.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+	}
+	if finishedAt, ok := metadata[metaKeyFinishedAt]; ok {
+		t.FinishedAt, _ = time.Parse(time.RFC3339, finishedAt)
 	}
 	if createdAt, ok := metadata[metaKeyCreatedAt]; ok {
 		t.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -193,12 +207,14 @@ func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error)
 	return tasks, nil
 }
 
-func (r *FileTaskRepository) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
+// findTaskFile scans the project's tasks directory for the file holding a
+// task and returns both the task and the path it was read from.
+func (r *FileTaskRepository) findTaskFile(id task.TaskID) (*task.Task, string, error) {
 	tasksDir := r.taskDir()
 
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
-		return nil, fmt.Errorf("could not list tasks directory: %w", err)
+		return nil, "", fmt.Errorf("could not list tasks directory: %w", err)
 	}
 
 	for _, e := range entries {
@@ -209,15 +225,40 @@ func (r *FileTaskRepository) GetTask(projectSlug string, id task.TaskID) (*task.
 			continue
 		}
 
-		t, err := r.parseTaskFromFile(filepath.Join(tasksDir, e.Name()))
+		path := filepath.Join(tasksDir, e.Name())
+		t, err := r.parseTaskFromFile(path)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		if t.ID == id {
-			return t, nil
+			return t, path, nil
 		}
 	}
 
-	return nil, fmt.Errorf("task %q not found", id)
+	return nil, "", fmt.Errorf("task %q not found", id)
+}
+
+func (r *FileTaskRepository) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
+	found, _, err := r.findTaskFile(id)
+	if err != nil {
+		return nil, err
+	}
+	return found, nil
+}
+
+// UpdateTask rewrites the file of an existing task and stamps it as updated.
+func (r *FileTaskRepository) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {
+	_, path, err := r.findTaskFile(taskToUpdate.ID)
+	if err != nil {
+		return err
+	}
+
+	taskToUpdate.UpdatedAt = time.Now().UTC()
+
+	if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(taskToUpdate), taskToUpdate.Description); err != nil {
+		return fmt.Errorf("could not write task file %s: %w", path, err)
+	}
+
+	return nil
 }

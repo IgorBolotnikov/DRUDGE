@@ -544,3 +544,132 @@ func TestFileTaskRepository_ListTasks_ReportsUnparsableTaskFile(t *testing.T) {
 		t.Fatal("expected a task file that cannot be parsed to surface as an error")
 	}
 }
+
+func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:       "Fix login bug",
+		Description: "Users can't login with SSO",
+		Status:      task.StatusTodo,
+		ProjectSlug: "test-project",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	created.Status = task.StatusInProgress
+	created.StartedAt = startedAt
+	created.RunnerID = 2
+	created.RunnerSessionID = "sess-abc123"
+
+	if err := repo.UpdateTask("test-project", created); err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+
+	if created.UpdatedAt.IsZero() {
+		t.Error("expected UpdateTask to stamp updated_at on the task")
+	}
+
+	reread, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	if reread.Status != task.StatusInProgress {
+		t.Errorf("expected status %q, got %q", task.StatusInProgress, reread.Status)
+	}
+	if reread.RunnerID != 2 {
+		t.Errorf("expected runner id 2, got %d", reread.RunnerID)
+	}
+	if reread.RunnerSessionID != "sess-abc123" {
+		t.Errorf("expected runner session id 'sess-abc123', got %q", reread.RunnerSessionID)
+	}
+	if !reread.StartedAt.Equal(startedAt) {
+		t.Errorf("expected started at %v, got %v", startedAt, reread.StartedAt)
+	}
+	if reread.UpdatedAt.IsZero() {
+		t.Error("expected updated_at to be written to the file")
+	}
+	if reread.Description != created.Description {
+		t.Errorf("expected the description to survive the update, got %q", reread.Description)
+	}
+}
+
+func TestFileTaskRepository_UpdateTask_UnknownTask(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	tasksDir := filepath.Join(common.ProjectsDir(home), "test-project", TasksDirName)
+	if err := common.EnsureDir(tasksDir); err != nil {
+		t.Fatalf("ensure tasks dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	err := repo.UpdateTask("test-project", &task.Task{ID: "nope", Title: "Ghost"})
+	if err == nil {
+		t.Fatal("expected an error for a task that does not exist")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("expected the error to name the task id, got %q", err)
+	}
+}
+
+func TestTaskFrontMatter_TimestampsRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	cases := []struct {
+		name       string
+		startedAt  time.Time
+		finishedAt time.Time
+	}{
+		{name: "never started"},
+		{name: "started", startedAt: now},
+		{name: "started and finished", startedAt: now.Add(-time.Hour), finishedAt: now},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusDone,
+				ProjectSlug: "test-project",
+				StartedAt:   testCase.startedAt,
+				FinishedAt:  testCase.finishedAt,
+				CreatedAt:   now,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !read.StartedAt.Equal(written.StartedAt) {
+				t.Errorf("expected started at %v, got %v", written.StartedAt, read.StartedAt)
+			}
+			if !read.FinishedAt.Equal(written.FinishedAt) {
+				t.Errorf("expected finished at %v, got %v", written.FinishedAt, read.FinishedAt)
+			}
+		})
+	}
+}
