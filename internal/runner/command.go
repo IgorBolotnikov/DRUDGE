@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -68,12 +69,12 @@ func formatArgv(argv []string) string {
 }
 
 // parseSessionID picks the session id a runner reports out of its output. The
-// runner prints it on its last line, so anything it logged before is skipped.
-// An empty result means the runner reported no session at all.
+// runner prints it on its last line. An empty result means the runner reported
+// no session.
 func parseSessionID(output string) string {
 	lines := strings.Split(output, "\n")
-	for index := len(lines) - 1; index >= 0; index-- {
-		line := strings.TrimSpace(lines[index])
+	for _, line := range slices.Backward(lines) {
+		line := strings.TrimSpace(line)
 		if line != "" {
 			return line
 		}

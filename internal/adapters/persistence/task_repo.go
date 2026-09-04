@@ -209,7 +209,7 @@ func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error)
 
 // findTaskFile scans the project's tasks directory for the file holding a
 // task and returns both the task and the path it was read from.
-func (r *FileTaskRepository) findTaskFile(id task.TaskID) (*task.Task, string, error) {
+func (r *FileTaskRepository) findTaskFile(id task.TaskID) (task *task.Task, path string, err error) {
 	tasksDir := r.taskDir()
 
 	entries, err := os.ReadDir(tasksDir)
