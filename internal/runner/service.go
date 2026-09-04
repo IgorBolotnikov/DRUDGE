@@ -14,14 +14,16 @@ type RunnerService struct {
 	localCfg  *config.LocalConfig
 	globalCfg *config.GlobalConfig
 	tasks     *task.TaskService
+	commands  CommandRunner
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService) *RunnerService {
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, commands CommandRunner) *RunnerService {
 	return &RunnerService{
 		logger:    logger,
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
 		tasks:     tasks,
+		commands:  commands,
 	}
 }
 
@@ -53,9 +55,15 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	}
 	runnerName := formatRunnerName(runnerID, service.globalCfg.Runner.Harness)
 
+	argv, err := service.pickRunnerCommand(runnerID, prompt)
+	if err != nil {
+		return err
+	}
+
 	if dryRun {
 		service.logger.Info("Runner %d (%s) for task [%s] %s", runnerID, runnerName, taskToRun.ID, taskToRun.Title)
 		service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
+		service.logger.Info("Command:\n\n%s", formatArgv(argv))
 		return nil
 	}
 
@@ -95,28 +103,4 @@ func occupiedRunnerIDs(tasks []*task.Task) map[int]bool {
 		}
 	}
 	return occupied
-}
-
-func (service *RunnerService) pickRunnerCommand(runnerID int, prompt string) string {
-	name := formatRunnerName(runnerID, service.globalCfg.Runner.Harness)
-	switch service.globalCfg.Runner.Env {
-	case config.EnvDockerSbx:
-		switch service.globalCfg.Runner.Harness {
-		case config.HarnessClaudeCode:
-			return fmt.Sprintf("sbx run --name %s -p %s", name, prompt)
-		case config.HarnessOpencode:
-			return fmt.Sprintf("sbx run --name %s -p %s", name, prompt)
-		}
-	}
-	return ""
-}
-
-func formatRunnerName(runnerID int, harness config.Harness) string {
-	switch harness {
-	case config.HarnessClaudeCode:
-		return fmt.Sprintf("drudge-claude-%d", runnerID)
-	case config.HarnessOpencode:
-		return fmt.Sprintf("drudge-opencode-%d", runnerID)
-	}
-	return fmt.Sprintf("drudge-unknown-%d", runnerID)
 }

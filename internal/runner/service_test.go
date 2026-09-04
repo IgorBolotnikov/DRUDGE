@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,13 +36,24 @@ func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Tas
 	return nil, fmt.Errorf("task %q not found", id)
 }
 
+// fakeCommandRunner records the argv it was handed instead of starting a
+// process, so tests can assert on the command without an sbx install.
+type fakeCommandRunner struct {
+	argv []string
+}
+
+func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
+	runner.argv = argv
+	return "", nil
+}
+
 func newTestService(tasks ...*task.Task) *RunnerService {
 	return newTestServiceWithConfigs(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), tasks...)
 }
 
 func newTestServiceWithConfigs(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks ...*task.Task) *RunnerService {
 	logger := common.NewLogger("")
-	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger))
+	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), &fakeCommandRunner{})
 }
 
 func captureOutput(f func()) string {
@@ -331,5 +343,41 @@ func TestRunnerService_RunTask_DryRunFailsWhenPoolIsFull(t *testing.T) {
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
 	if err == nil {
 		t.Fatal("expected an error when every runner of the project is busy")
+	}
+}
+
+func TestRunnerService_RunTask_DryRunPrintsCommandWithoutRunningIt(t *testing.T) {
+	taskToRun := &task.Task{
+		ID:          "task-1",
+		Title:       "Fix login",
+		Description: "SSO is broken",
+		Status:      task.StatusTodo,
+		ProjectSlug: testProjectSlug,
+	}
+	logger := common.NewLogger("")
+	globalCfg := config.DefaultConfig()
+	commands := &fakeCommandRunner{}
+	service := New(
+		logger,
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		globalCfg,
+		task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
+		commands,
+	)
+
+	var err error
+	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, want := range []string{sbxBinary, sbxDetachedFlag, formatRunnerName(1, globalCfg.Runner.Harness)} {
+		if !strings.Contains(out, strconv.Quote(want)) {
+			t.Errorf("expected dry run output to contain the argument %q, got %q", want, out)
+		}
+	}
+
+	if commands.argv != nil {
+		t.Errorf("expected a dry run not to run anything, got argv %v", commands.argv)
 	}
 }

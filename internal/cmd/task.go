@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"drudge/internal/adapters/exec"
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
 	"drudge/internal/config"
@@ -208,7 +209,7 @@ func taskRun(args []string) error {
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	taskSvc := task.NewTaskService(repo, log)
-	runnerSvc := runner.New(log, localCfg, globalCfg, taskSvc)
+	runnerSvc := runner.New(log, localCfg, globalCfg, taskSvc, exec.NewCommandRunner())
 
 	return runnerSvc.RunTask(localCfg.ProjectSlug, taskID, dryRun)
 }
