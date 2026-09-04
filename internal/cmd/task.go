@@ -38,6 +38,41 @@ var validStatuses = []string{
 	task.StatusDone,
 }
 
+// taskDeps holds the dependency graph a task subcommand works with. The
+// local config comes along because callers read the project slug off it.
+type taskDeps struct {
+	localCfg *config.LocalConfig
+	log      *common.Logger
+	tasks    *task.TaskService
+	runner   *runner.RunnerService
+}
+
+// newTaskDeps wires up what a task subcommand needs to reach a project's
+// tasks and the runners working on them.
+func newTaskDeps() (*taskDeps, error) {
+	localCfg, err := config.LoadLocal()
+	if err != nil {
+		return nil, err
+	}
+
+	globalCfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	log := common.NewLogger("")
+	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
+	tasks := task.NewTaskService(repo, log)
+	cmdRunner := exec.NewCommandRunner()
+
+	return &taskDeps{
+		localCfg: localCfg,
+		log:      log,
+		tasks:    tasks,
+		runner:   runner.New(log, localCfg, globalCfg, tasks, cmdRunner),
+	}, nil
+}
+
 func runTask(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: drg task <subcommand>")
@@ -196,23 +231,12 @@ func taskRun(args []string) error {
 		return err
 	}
 
-	localCfg, err := config.LoadLocal()
+	deps, err := newTaskDeps()
 	if err != nil {
 		return err
 	}
 
-	globalCfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	log := common.NewLogger("")
-	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	taskSvc := task.NewTaskService(repo, log)
-	cmdRunner := exec.NewCommandRunner()
-	runnerSvc := runner.New(log, localCfg, globalCfg, taskSvc, cmdRunner)
-
-	return runnerSvc.RunTask(localCfg.ProjectSlug, taskID, dryRun)
+	return deps.runner.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
 }
 
 func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {
