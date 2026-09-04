@@ -20,6 +20,10 @@ const (
 	sbxNameFlag      = "--name"
 	sbxDetachedFlag  = "--detached"
 	sbxPromptFlag    = "-p"
+
+	sbxHarnessClaude    = "claude"
+	sbxHarnessOpencod   = "opencode"
+	sbxCommandSeparator = "--"
 )
 
 // Runner name prefixes.
@@ -37,11 +41,18 @@ func (service *RunnerService) pickRunnerCommand(runnerID int, prompt string) ([]
 
 	switch env {
 	case config.EnvDockerSbx:
+		var sbxHarness string
 		switch harness {
 		case config.HarnessClaudeCode:
-			return []string{sbxBinary, sbxRunSubcommand, sbxNameFlag, name, sbxDetachedFlag, sbxPromptFlag, prompt}, nil
+			sbxHarness = sbxHarnessClaude
 		case config.HarnessOpencode:
-			return []string{sbxBinary, sbxRunSubcommand, sbxNameFlag, name, sbxDetachedFlag, sbxPromptFlag, prompt}, nil
+			sbxHarness = sbxHarnessOpencod
+		}
+
+		if sbxHarness != "" {
+			mainCommand := []string{sbxBinary, sbxRunSubcommand, sbxHarness, sbxNameFlag, name, sbxDetachedFlag}
+			agentCommand := []string{sbxCommandSeparator, sbxPromptFlag, prompt}
+			return slices.Concat(mainCommand, agentCommand), nil
 		}
 	}
 

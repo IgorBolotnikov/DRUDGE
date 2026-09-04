@@ -31,7 +31,7 @@ func TestPickRunnerCommand(t *testing.T) {
 			env:      config.EnvDockerSbx,
 			harness:  config.HarnessOpencode,
 			runnerID: 2,
-			want:     []string{"sbx", "run", "opencode", "--name", "drudge-opencode-2", "--detached", "--", "-p", prompt},
+			want:     []string{"sbx", "run", "--name", "drudge-opencode-2", "--detached", "-p", prompt},
 		},
 		{
 			name:            "unknown harness is an error",
