@@ -71,7 +71,7 @@ func renderPrompt(template string, taskToRun *task.Task) (string, error) {
 // resolvePromptTemplate returns the prompt template to hand an agent, along
 // with a description of where it came from for error messages. A prompt file
 // named in either config wins over the built-in default.
-func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfig) (string, string, error) {
+func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfig) (template string, source string, err error) {
 	path, err := config.ResolvePromptPath(local, global)
 	if err != nil {
 		return "", "", err
@@ -80,16 +80,14 @@ func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfi
 		return defaultPromptTemplate, promptSourceDefault, nil
 	}
 
-	template, err := loadPromptTemplate(path)
+	templ, err := loadPromptTemplate(path)
 	if err != nil {
 		return "", "", err
 	}
-	return template, path, nil
+	return templ, path, nil
 }
 
-// loadPromptTemplate reads a prompt template from path. A configured prompt
-// file that isn't there is a hard error, because falling back to the default
-// would hide the typo.
+// loadPromptTemplate reads a prompt template from path.
 func loadPromptTemplate(path string) (string, error) {
 	exists, err := common.Exists(path)
 	if err != nil {
