@@ -36,8 +36,6 @@ func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Tas
 	return nil, fmt.Errorf("task %q not found", id)
 }
 
-// fakeCommandRunner records the argv it was handed instead of starting a
-// process, so tests can assert on the command without an sbx install.
 type fakeCommandRunner struct {
 	argv []string
 }

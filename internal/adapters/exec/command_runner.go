@@ -15,9 +15,7 @@ func NewCommandRunner() *CommandRunner {
 	return &CommandRunner{}
 }
 
-// Run executes argv as a process and returns its stdout. No shell is involved,
-// so an argument containing spaces, quotes or newlines reaches the command as
-// written.
+// Run executes argv as a process and returns its stdout.
 func (runner *CommandRunner) Run(argv []string) (string, error) {
 	if len(argv) == 0 {
 		return "", fmt.Errorf("cannot run an empty command")
