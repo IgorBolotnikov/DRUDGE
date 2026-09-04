@@ -29,6 +29,9 @@ type Task struct {
 	ParentTaskID TaskID // ID of the parent task, if any
 	ProjectSlug  string // Slug of the project this task belongs to
 
+	RunnerID        int    // Runner slot this task was spawned on, zero means none
+	RunnerSessionID string // Session the runner reported when it was spawned
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

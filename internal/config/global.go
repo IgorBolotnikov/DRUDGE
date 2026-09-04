@@ -29,9 +29,10 @@ const (
 
 // JSON keys, named in error messages so they match what a user writes in a config file.
 const (
-	projectSlugKey          = "projectSlug"
-	promptFileKey           = "promptFile"
-	maxConcurrentRunnersKey = "maxConcurrentRunners"
+	projectSlugKey = "projectSlug"
+	promptFileKey  = "promptFile"
+	// MaxConcurrentRunnersKey is exported so the runner can name it when a project's pool is full.
+	MaxConcurrentRunnersKey = "maxConcurrentRunners"
 )
 
 // schemaRef is the $schema reference path in config.json.
@@ -125,7 +126,7 @@ func validatePromptFile(value string, path string) error {
 // validateMaxConcurrentRunners rejects a negative runner limit. Zero passes, since that is what an absent key unmarshals to.
 func validateMaxConcurrentRunners(value int, path string) error {
 	if value < 0 {
-		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, maxConcurrentRunnersKey, value)
+		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, MaxConcurrentRunnersKey, value)
 	}
 	return nil
 }

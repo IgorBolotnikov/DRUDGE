@@ -3,6 +3,7 @@ package persistence
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -429,5 +430,117 @@ func TestFileTaskRepository_GetTask_ParsesTimestamps(t *testing.T) {
 	}
 	if !found.UpdatedAt.IsZero() {
 		t.Errorf("expected updated_at to be zero, got %v", found.UpdatedAt)
+	}
+}
+
+func TestTaskFrontMatter_RunnerFieldsRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	cases := []struct {
+		name                string
+		runnerID            int
+		runnerSessionID     string
+		wantRunnerKeyInFile bool
+	}{
+		{name: "no runner assigned yet"},
+		{
+			name:                "runner slot and session",
+			runnerID:            2,
+			runnerSessionID:     "sess-abc123",
+			wantRunnerKeyInFile: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:              "task-1",
+				Title:           "Round Trip",
+				Description:     "Body stays put",
+				Status:          task.StatusInProgress,
+				ProjectSlug:     "test-project",
+				RunnerID:        testCase.runnerID,
+				RunnerSessionID: testCase.runnerSessionID,
+				CreatedAt:       time.Now().UTC(),
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if read.RunnerID != written.RunnerID {
+				t.Errorf("expected runner id %d, got %d", written.RunnerID, read.RunnerID)
+			}
+			if read.RunnerSessionID != written.RunnerSessionID {
+				t.Errorf("expected runner session id %q, got %q", written.RunnerSessionID, read.RunnerSessionID)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			hasRunnerKey := strings.Contains(string(data), metaKeyRunnerID)
+			if hasRunnerKey != testCase.wantRunnerKeyInFile {
+				t.Errorf("expected %s in the file: %v, got %v", metaKeyRunnerID, testCase.wantRunnerKeyInFile, hasRunnerKey)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_ParseTaskFromFile_RejectsNonNumericRunnerID(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	path := filepath.Join(home, "task.md")
+	metadata := map[string]string{
+		metaKeyID:       "task-1",
+		metaKeyTitle:    "Broken Runner",
+		metaKeyStatus:   string(task.StatusInProgress),
+		metaKeyRunnerID: "not-a-number",
+	}
+	if err := common.WriteFileWithFrontMatter(path, metadata, "Body"); err != nil {
+		t.Fatalf("WriteFileWithFrontMatter: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	_, err := repo.parseTaskFromFile(path)
+	if err == nil {
+		t.Fatal("expected an error for a non-numeric runner id")
+	}
+	if !strings.Contains(err.Error(), metaKeyRunnerID) {
+		t.Errorf("expected the error to name %s, got %q", metaKeyRunnerID, err)
+	}
+}
+
+func TestFileTaskRepository_ListTasks_ReportsUnparsableTaskFile(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	tasksDir := filepath.Join(common.ProjectsDir(home), "test-project", TasksDirName)
+	if err := common.EnsureDir(tasksDir); err != nil {
+		t.Fatalf("ensure tasks dir: %v", err)
+	}
+
+	metadata := map[string]string{
+		metaKeyID:       "task-1",
+		metaKeyTitle:    "Broken Runner",
+		metaKeyStatus:   string(task.StatusInProgress),
+		metaKeyRunnerID: "not-a-number",
+	}
+	if err := common.WriteFileWithFrontMatter(filepath.Join(tasksDir, "task-1 Broken Runner.md"), metadata, "Body"); err != nil {
+		t.Fatalf("WriteFileWithFrontMatter: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	if _, err := repo.ListTasks("test-project"); err == nil {
+		t.Fatal("expected a task file that cannot be parsed to surface as an error")
 	}
 }

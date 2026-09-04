@@ -204,3 +204,132 @@ func TestRunnerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testi
 		}
 	}
 }
+
+func TestRunnerService_AllocateRunnerID(t *testing.T) {
+	inProgressOn := func(runnerID int) *task.Task {
+		return &task.Task{
+			ID:          task.TaskID(fmt.Sprintf("busy-%d", runnerID)),
+			Status:      task.StatusInProgress,
+			RunnerID:    runnerID,
+			ProjectSlug: testProjectSlug,
+		}
+	}
+
+	cases := []struct {
+		name    string
+		limit   int
+		tasks   []*task.Task
+		wantID  int
+		wantErr bool
+	}{
+		{name: "empty pool takes the first slot", limit: 3, wantID: 1},
+		{name: "takes the next free slot", limit: 3, tasks: []*task.Task{inProgressOn(1)}, wantID: 2},
+		{name: "fills a gap left in the middle", limit: 3, tasks: []*task.Task{inProgressOn(1), inProgressOn(3)}, wantID: 2},
+		{
+			name:  "ignores tasks that are not in progress",
+			limit: 3,
+			tasks: []*task.Task{
+				{ID: "done", Status: task.StatusDone, RunnerID: 1, ProjectSlug: testProjectSlug},
+				{ID: "fucked-up", Status: task.StatusFuckedUp, RunnerID: 2, ProjectSlug: testProjectSlug},
+			},
+			wantID: 1,
+		},
+		{
+			name:    "fails when every slot is taken",
+			limit:   2,
+			tasks:   []*task.Task{inProgressOn(1), inProgressOn(2)},
+			wantErr: true,
+		},
+		{
+			name:    "ignores slots above the limit but still fails when full",
+			limit:   1,
+			tasks:   []*task.Task{inProgressOn(1), inProgressOn(7)},
+			wantErr: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := newTestServiceWithConfigs(
+				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: testCase.limit},
+				config.DefaultConfig(),
+				testCase.tasks...,
+			)
+
+			runnerID, err := service.allocateRunnerID(testProjectSlug)
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got runner %d", runnerID)
+				}
+				if !strings.Contains(err.Error(), config.MaxConcurrentRunnersKey) {
+					t.Errorf("expected the error to name the config key, got %q", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if runnerID != testCase.wantID {
+				t.Errorf("expected runner %d, got %d", testCase.wantID, runnerID)
+			}
+		})
+	}
+}
+
+func TestRunnerService_RunTask_DryRunPrintsRunner(t *testing.T) {
+	taskToRun := &task.Task{
+		ID:          "task-1",
+		Title:       "Fix login",
+		Description: "SSO is broken",
+		Status:      task.StatusTodo,
+		ProjectSlug: testProjectSlug,
+	}
+	busy := &task.Task{
+		ID:          "task-0",
+		Title:       "Already running",
+		Status:      task.StatusInProgress,
+		RunnerID:    1,
+		ProjectSlug: testProjectSlug,
+	}
+	service := newTestService(taskToRun, busy)
+
+	var err error
+	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, formatRunnerName(2, config.DefaultConfig().Runner.Harness)) {
+		t.Errorf("expected dry run output to name the allocated runner, got %q", out)
+	}
+}
+
+func TestRunnerService_RunTask_DryRunFailsWhenPoolIsFull(t *testing.T) {
+	taskToRun := &task.Task{
+		ID:          "task-1",
+		Title:       "Fix login",
+		Description: "SSO is broken",
+		Status:      task.StatusTodo,
+		ProjectSlug: testProjectSlug,
+	}
+	busy := &task.Task{
+		ID:          "task-0",
+		Title:       "Already running",
+		Status:      task.StatusInProgress,
+		RunnerID:    1,
+		ProjectSlug: testProjectSlug,
+	}
+	service := newTestServiceWithConfigs(
+		&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: 1},
+		config.DefaultConfig(),
+		taskToRun,
+		busy,
+	)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err == nil {
+		t.Fatal("expected an error when every runner of the project is busy")
+	}
+}
