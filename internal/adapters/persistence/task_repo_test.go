@@ -336,7 +336,7 @@ func TestFileTaskRepository_ListTasks_SkipsNonMdFiles(t *testing.T) {
 	}
 }
 
-func TestFileTaskRepository_FindTask_Found(t *testing.T) {
+func TestFileTaskRepository_GetTask_Found(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -361,7 +361,7 @@ func TestFileTaskRepository_FindTask_Found(t *testing.T) {
 		t.Fatalf("CreateTask: %v", err)
 	}
 
-	found, err := repo.FindTask("test-project", string(created.ID))
+	found, err := repo.GetTask("test-project", created.ID)
 	if err != nil {
 		t.Fatalf("FindTask: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestFileTaskRepository_FindTask_Found(t *testing.T) {
 	}
 }
 
-func TestFileTaskRepository_FindTask_NotFound(t *testing.T) {
+func TestFileTaskRepository_GetTask_NotFound(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -391,13 +391,13 @@ func TestFileTaskRepository_FindTask_NotFound(t *testing.T) {
 
 	repo := NewFileTaskRepository("test-project")
 
-	_, err := repo.FindTask("test-project", "nonexistent-id")
+	_, err := repo.GetTask("test-project", task.TaskID("nonexistent-id"))
 	if err == nil {
 		t.Fatal("expected error for nonexistent task")
 	}
 }
 
-func TestFileTaskRepository_FindTask_ParsesTimestamps(t *testing.T) {
+func TestFileTaskRepository_GetTask_ParsesTimestamps(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -421,7 +421,7 @@ func TestFileTaskRepository_FindTask_ParsesTimestamps(t *testing.T) {
 		t.Fatalf("CreateTask: %v", err)
 	}
 
-	found, err := repo.FindTask("test-project", string(created.ID))
+	found, err := repo.GetTask("test-project", created.ID)
 	if err != nil {
 		t.Fatalf("FindTask: %v", err)
 	}
@@ -581,7 +581,7 @@ func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
 		t.Error("expected UpdateTask to stamp updated_at on the task")
 	}
 
-	reread, err := repo.FindTask("test-project", string(created.ID))
+	reread, err := repo.GetTask("test-project", created.ID)
 	if err != nil {
 		t.Fatalf("FindTask: %v", err)
 	}
@@ -808,5 +808,46 @@ func TestFileTaskRepository_FindTask_RefusesAnEmptyID(t *testing.T) {
 	repo := NewFileTaskRepository("test-project")
 	if _, err := repo.FindTask("test-project", ""); !errors.Is(err, task.ErrNoTaskID) {
 		t.Fatalf("expected %v, got %v", task.ErrNoTaskID, err)
+	}
+}
+
+func TestFileTaskRepository_GetTask_TakesFullIDsOnly(t *testing.T) {
+	const login = task.TaskID("006684e3-dbe9-4316-8aba-8a67a8f01f8f")
+
+	// GetTask serves callers that already hold an id, so it matches the whole
+	// id and nothing else. Resolving what a user typed is FindTask's job.
+	cases := []struct {
+		name    string
+		id      task.TaskID
+		wantErr bool
+	}{
+		{name: "the full id", id: login},
+		{name: "the prefix a listing prints", id: "006684e3", wantErr: true},
+		{name: "the full id in uppercase", id: "006684E3-DBE9-4316-8ABA-8A67A8F01F8F", wantErr: true},
+		{name: "an empty id", id: "", wantErr: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, cleanup := setupTaskTestHome(t)
+			defer cleanup()
+			writeTaskFile(t, home, login, "Fix login")
+
+			repo := NewFileTaskRepository("test-project")
+			found, err := repo.GetTask("test-project", testCase.id)
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for id %q", testCase.id)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if found.ID != login {
+				t.Errorf("expected task %q, got %q", login, found.ID)
+			}
+		})
 	}
 }

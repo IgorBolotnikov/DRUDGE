@@ -11,6 +11,7 @@ import (
 type mockRepo struct {
 	createTaskFn func(CreateTaskDto) (*Task, error)
 	listTasksFn  func(string) ([]*Task, error)
+	getTaskFn    func(string, TaskID) (*Task, error)
 	findTaskFn   func(string, string) (*Task, error)
 	updateTaskFn func(string, *Task) error
 }
@@ -25,6 +26,13 @@ func (m *mockRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
 func (m *mockRepo) ListTasks(projectSlug string) ([]*Task, error) {
 	if m.listTasksFn != nil {
 		return m.listTasksFn(projectSlug)
+	}
+	return nil, nil
+}
+
+func (m *mockRepo) GetTask(projectSlug string, id TaskID) (*Task, error) {
+	if m.getTaskFn != nil {
+		return m.getTaskFn(projectSlug, id)
 	}
 	return nil, nil
 }

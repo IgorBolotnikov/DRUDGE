@@ -39,6 +39,15 @@ func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*task.Task, error) {
 	return repo.tasks, nil
 }
 
+func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
+	for _, candidate := range repo.tasks {
+		if candidate.ID == id {
+			return candidate, nil
+		}
+	}
+	return nil, fmt.Errorf("task %q not found", id)
+}
+
 func (repo *fakeTaskRepo) FindTask(projectSlug string, fullOrPartialID string) (*task.Task, error) {
 	for _, candidate := range repo.tasks {
 		if strings.HasPrefix(string(candidate.ID), fullOrPartialID) {

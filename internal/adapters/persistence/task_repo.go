@@ -238,9 +238,50 @@ func describeTaskFile(tasksDir string, name string) taskFile {
 	}
 }
 
+// taskFiles reads the project's task files off its directory entries. Names
+// carry the id and title, so a lookup costs one directory read and opens only
+// the file it settles on.
+func (r *FileTaskRepository) taskFiles() ([]taskFile, error) {
+	tasksDir := r.taskDir()
+
+	entries, err := os.ReadDir(tasksDir)
+	if err != nil {
+		return nil, fmt.Errorf("could not list tasks directory: %w", err)
+	}
+
+	files := make([]taskFile, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), taskFileExtension) {
+			continue
+		}
+		files = append(files, describeTaskFile(tasksDir, entry.Name()))
+	}
+	return files, nil
+}
+
+// exactTaskFile picks the file of the task carrying exactly this id. Callers
+// on this path already hold a task id, so nothing about it is guessed.
+func (r *FileTaskRepository) exactTaskFile(id task.TaskID) (taskFile, error) {
+	if id == "" {
+		return taskFile{}, task.ErrNoTaskID
+	}
+
+	files, err := r.taskFiles()
+	if err != nil {
+		return taskFile{}, err
+	}
+
+	for _, candidate := range files {
+		if candidate.id == id {
+			return candidate, nil
+		}
+	}
+	return taskFile{}, task.NotFoundError(string(id))
+}
+
 // findTaskFile picks the task file named by a full id or by a prefix of one.
-// It reads directory entries only, so a lookup costs one directory read no
-// matter how many tasks a project holds. An exact id wins over a prefix.
+// An id matching a file exactly wins over one that is only a prefix, and the
+// match ignores case, since a user types this id off a listing.
 func (r *FileTaskRepository) findTaskFile(fullOrPartialID string) (taskFile, error) {
 	// Every id starts with an empty prefix, so an empty search would match
 	// whatever task happened to come first.
@@ -248,24 +289,16 @@ func (r *FileTaskRepository) findTaskFile(fullOrPartialID string) (taskFile, err
 		return taskFile{}, task.ErrNoTaskID
 	}
 
-	tasksDir := r.taskDir()
-
-	entries, err := os.ReadDir(tasksDir)
+	files, err := r.taskFiles()
 	if err != nil {
-		return taskFile{}, fmt.Errorf("could not list tasks directory: %w", err)
+		return taskFile{}, err
 	}
 
 	wanted := strings.ToLower(fullOrPartialID)
 	var matches []taskFile
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), taskFileExtension) {
-			continue
-		}
-
-		candidate := describeTaskFile(tasksDir, entry.Name())
+	for _, candidate := range files {
 		candidateID := strings.ToLower(string(candidate.id))
-
 		if candidateID == wanted {
 			return candidate, nil
 		}
@@ -293,20 +326,15 @@ func taskIDMatches(matches []taskFile) []task.IDMatch {
 	return reported
 }
 
-// FindTask reads the task named by a full id or by a prefix of one.
-func (r *FileTaskRepository) FindTask(projectSlug string, fullOrPartialID string) (*task.Task, error) {
-	found, err := r.findTaskFile(fullOrPartialID)
-	if err != nil {
-		return nil, err
-	}
-
+// readTaskFile parses the task a file holds.
+func (r *FileTaskRepository) readTaskFile(found taskFile) (*task.Task, error) {
 	parsed, err := r.parseTaskFromFile(found.path)
 	if err != nil {
 		return nil, err
 	}
 
-	// The file name is what the search matched on, and the front matter is
-	// what drudge works from. A file renamed by hand puts the two out of step,
+	// The file name is what a lookup matches on, and the front matter is what
+	// drudge works from. A file renamed by hand puts the two out of step,
 	// which would hand back a task the caller never asked for.
 	if parsed.ID != found.id {
 		return nil, fmt.Errorf("task file %s holds task %s, rename it back or fix its id", found.path, parsed.ID)
@@ -314,9 +342,27 @@ func (r *FileTaskRepository) FindTask(projectSlug string, fullOrPartialID string
 	return parsed, nil
 }
 
+// GetTask reads the task carrying exactly this id.
+func (r *FileTaskRepository) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
+	found, err := r.exactTaskFile(id)
+	if err != nil {
+		return nil, err
+	}
+	return r.readTaskFile(found)
+}
+
+// FindTask reads the task named by a full id or by a prefix of one.
+func (r *FileTaskRepository) FindTask(projectSlug string, fullOrPartialID string) (*task.Task, error) {
+	found, err := r.findTaskFile(fullOrPartialID)
+	if err != nil {
+		return nil, err
+	}
+	return r.readTaskFile(found)
+}
+
 // UpdateTask rewrites the file of an existing task and stamps it as updated.
 func (r *FileTaskRepository) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {
-	found, err := r.findTaskFile(string(taskToUpdate.ID))
+	found, err := r.exactTaskFile(taskToUpdate.ID)
 	if err != nil {
 		return err
 	}
