@@ -21,6 +21,10 @@ const (
 	// project, under the default harness.
 	testSandbox      = "drudge-claude-test-project-1"
 	testSandboxSlot2 = "drudge-claude-test-project-2"
+
+	// runWorkspace stands in for the workspace a run happens in, so a table
+	// can name that path before the test has one.
+	runWorkspace = "{{workspace}}"
 )
 
 type fakeTaskRepo struct {
@@ -56,11 +60,13 @@ func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task
 }
 
 // fakeCommandRunner answers a fixed script of calls and remembers what it was
-// asked to run, in order.
+// asked to run, in order. It swaps its workspace into the runWorkspace
+// placeholder of every output it hands back.
 type fakeCommandRunner struct {
-	calls   [][]string
-	outputs []string
-	errs    []error
+	workspace string
+	calls     [][]string
+	outputs   []string
+	errs      []error
 }
 
 func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
@@ -69,7 +75,7 @@ func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
 
 	var output string
 	if index < len(runner.outputs) {
-		output = runner.outputs[index]
+		output = inWorkspace(runner.outputs[index], runner.workspace)
 	}
 	var err error
 	if index < len(runner.errs) {
@@ -156,13 +162,38 @@ func busyTask(runnerID int) *task.Task {
 	}
 }
 
+// inWorkspace swaps a workspace into the runWorkspace placeholder of a value.
+func inWorkspace(value, workspace string) string {
+	return strings.ReplaceAll(value, runWorkspace, workspace)
+}
+
 // sandboxListingWith renders the `sbx ls --json` output for a listing that
-// holds exactly the named sandboxes.
+// holds exactly the named sandboxes, each mounted on the workspace of the run.
 func sandboxListingWith(names ...string) string {
 	entries := make([]string, 0, len(names))
 	for _, name := range names {
-		entries = append(entries, fmt.Sprintf(`{"name":%q}`, name))
+		entries = append(entries, sandboxEntry(name, runWorkspace))
 	}
+	return sandboxListingOf(entries...)
+}
+
+// sandboxListingMountedOn renders a listing holding one sandbox with the given
+// mounts, so a test can point it away from the workspace of the run.
+func sandboxListingMountedOn(name string, mounts ...string) string {
+	return sandboxListingOf(sandboxEntry(name, mounts...))
+}
+
+// sandboxEntry renders one sandbox of a listing.
+func sandboxEntry(name string, mounts ...string) string {
+	quoted := make([]string, 0, len(mounts))
+	for _, mount := range mounts {
+		quoted = append(quoted, fmt.Sprintf("%q", mount))
+	}
+	return fmt.Sprintf(`{"name":%q,"workspaces":[%s]}`, name, strings.Join(quoted, ","))
+}
+
+// sandboxListingOf wraps rendered sandbox entries in a listing.
+func sandboxListingOf(entries ...string) string {
 	return fmt.Sprintf(`{"sandboxes":[%s]}`, strings.Join(entries, ","))
 }
 
@@ -225,9 +256,9 @@ func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
 }
 
 func TestRunnerService_RunTask_RecordsTheRunnerOnTheTask(t *testing.T) {
-	setupWorkspace(t)
+	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -271,9 +302,9 @@ func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setupWorkspace(t)
+			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{outputs: []string{testCase.listing}}
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{testCase.listing}}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
@@ -289,10 +320,71 @@ func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T
 	}
 }
 
+func TestRunnerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing.T) {
+	const otherRepo = "/some/other/repo"
+
+	cases := []struct {
+		name    string
+		mounts  []string
+		wantErr bool
+	}{
+		{name: "the workspace of the run", mounts: []string{runWorkspace}},
+		{name: "a trailing slash is the same path", mounts: []string{runWorkspace + "/"}},
+		{name: "a read-only mount of the workspace", mounts: []string{runWorkspace + ":ro"}},
+		{name: "the workspace among several mounts", mounts: []string{otherRepo, runWorkspace}},
+		{name: "another repository", mounts: []string{otherRepo}, wantErr: true},
+		{name: "another repository mounted read-only", mounts: []string{otherRepo + ":ro"}, wantErr: true},
+		{name: "several mounts, none of them the workspace", mounts: []string{otherRepo, "/yet/another"}, wantErr: true},
+		{name: "a path the workspace is only a prefix of", mounts: []string{runWorkspace + "-old"}, wantErr: true},
+		{name: "no workspace at all", wantErr: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{
+				workspace: workspace,
+				outputs:   []string{sandboxListingMountedOn(testSandbox, testCase.mounts...)},
+			}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("expected the workspace mismatch to surface")
+				}
+				for _, want := range append([]string{testSandbox, workspace}, testCase.mounts...) {
+					named := inWorkspace(want, workspace)
+					if !strings.Contains(err.Error(), named) {
+						t.Errorf("expected the error to name %q, got %q", named, err)
+					}
+				}
+				if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+					t.Errorf("expected nothing to run past the listing, got %v", got)
+				}
+				if taskToRun.Status != task.StatusTodo {
+					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+				}
+				if taskToRun.RunnerID != 0 {
+					t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestRunnerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -354,7 +446,7 @@ func TestRunnerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{outputs: testCase.outputs, errs: testCase.errs}
+			commands := &fakeCommandRunner{workspace: workspace, outputs: testCase.outputs, errs: testCase.errs}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
@@ -420,9 +512,9 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setupWorkspace(t)
+			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{outputs: []string{sandboxListingWith()}}
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(
 				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: testCase.limit},
 				config.DefaultConfig(),

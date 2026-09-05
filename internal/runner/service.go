@@ -77,7 +77,7 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(plan, runnerName); err != nil {
+	if err := service.ensureSandbox(plan, runnerName, workspace); err != nil {
 		return err
 	}
 
@@ -105,19 +105,20 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 }
 
 // ensureSandbox creates the runner's sandbox unless it already exists.
-// Creating one that is already there fails, so the listing decides.
-func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName string) error {
+// Creating one that is already there fails, so the listing decides. An
+// existing sandbox is only reused when it holds the workspace of this run.
+func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName, workspace string) error {
 	listing, err := service.commands.Run(plan.inspect)
 	if err != nil {
 		return fmt.Errorf("could not list the sandboxes to look for %s: %w", runnerName, err)
 	}
 
-	exists, err := sandboxExists(listing, runnerName)
+	existing, err := findSandbox(listing, runnerName)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
+	if existing != nil {
+		return checkSandboxWorkspace(existing, workspace)
 	}
 
 	if _, err := service.commands.Run(plan.create); err != nil {

@@ -3,6 +3,7 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -53,6 +54,10 @@ const (
 // unknownProjectSlug stands in for a project slug that normalizes to nothing.
 const unknownProjectSlug = "unknown"
 
+// mountOptionSeparator splits a workspace mount from its options, as in the
+// ":ro" a read-only mount carries.
+const mountOptionSeparator = ":"
+
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
 
@@ -70,7 +75,8 @@ type sandboxListing struct {
 
 // sandbox is one entry of a sandbox listing.
 type sandbox struct {
-	Name string `json:"name"`
+	Name       string   `json:"name"`
+	Workspaces []string `json:"workspaces"`
 }
 
 // pickRunnerCommand builds the commands that put an agent to work on the
@@ -133,19 +139,51 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
-// sandboxExists reports whether a sandbox listing names the given sandbox.
-func sandboxExists(listing string, name string) (bool, error) {
+// findSandbox picks the named sandbox out of a sandbox listing. A nil result
+// means the listing does not hold it.
+func findSandbox(listing string, name string) (*sandbox, error) {
 	var parsed sandboxListing
 	if err := json.Unmarshal([]byte(listing), &parsed); err != nil {
-		return false, fmt.Errorf("could not parse the sandbox listing: %w", err)
+		return nil, fmt.Errorf("could not parse the sandbox listing: %w", err)
 	}
 
 	for _, candidate := range parsed.Sandboxes {
 		if candidate.Name == name {
-			return true, nil
+			return &candidate, nil
 		}
 	}
-	return false, nil
+	return nil, nil
+}
+
+// checkSandboxWorkspace guards against an agent editing the wrong repository.
+// A sandbox carrying this runner's name can still be mounted somewhere else,
+// so the name alone is not enough to reuse it.
+func checkSandboxWorkspace(existing *sandbox, workspace string) error {
+	workspacePath := filepath.Clean(workspace)
+	for _, mount := range existing.Workspaces {
+		if mountPath(mount) == workspacePath {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"sandbox %s is mounted on %s, but this project lives in %s, delete that sandbox so DRUDGE can recreate it on the right workspace",
+		existing.Name, formatMounts(existing.Workspaces), workspace,
+	)
+}
+
+// mountPath is the path a workspace mount points at, cleaned so that a
+// trailing slash does not read as a different path.
+func mountPath(mount string) string {
+	path, _, _ := strings.Cut(mount, mountOptionSeparator)
+	return filepath.Clean(path)
+}
+
+// formatMounts renders a sandbox's workspace mounts for an error message.
+func formatMounts(mounts []string) string {
+	if len(mounts) == 0 {
+		return "no workspace"
+	}
+	return strings.Join(mounts, ", ")
 }
 
 // formatRunnerName names the sandbox a runner slot works in.

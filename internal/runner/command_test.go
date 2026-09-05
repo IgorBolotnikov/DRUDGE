@@ -10,13 +10,13 @@ import (
 	"drudge/internal/config"
 )
 
-// runTaskFor drives a run to completion against the given sandbox listing and
-// returns the commands it issued.
-func runTaskFor(t *testing.T, localCfg *config.LocalConfig, listing string) *fakeCommandRunner {
+// runTaskFor drives a run to completion in a workspace against a given
+// sandbox listing, and returns the commands it issued.
+func runTaskFor(t *testing.T, localCfg *config.LocalConfig, workspace, listing string) *fakeCommandRunner {
 	t.Helper()
 	taskToRun := todoTask()
 	taskToRun.ProjectSlug = localCfg.ProjectSlug
-	commands := &fakeCommandRunner{outputs: []string{listing}}
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{listing}}
 	service := newTestServiceWith(localCfg, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -29,7 +29,7 @@ func runTaskFor(t *testing.T, localCfg *config.LocalConfig, listing string) *fak
 
 func TestRunnerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 	workspace := setupWorkspace(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith())
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith())
 
 	wantInspect := []string{"sbx", "ls", "--json"}
 	if got := commands.call(sbxLsSubcommand); !slices.Equal(got, wantInspect) {
@@ -92,7 +92,7 @@ func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
 
 func TestRunnerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
 	workspace := setupWorkspace(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith(testSandbox))
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith(testSandbox))
 
 	start := commands.call(sbxExecSubcommand)
 	launcher := start[len(start)-1]
@@ -127,7 +127,7 @@ func TestRunnerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T)
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspaceNamed(t, testCase.dirName)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith(testSandbox))
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith(testSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			launcher := start[len(start)-1]
@@ -161,8 +161,8 @@ func TestRunnerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setupWorkspace(t)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, sandboxListingWith(testCase.wantSandbox))
+			workspace := setupWorkspace(t)
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, workspace, sandboxListingWith(testCase.wantSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			if !slices.Contains(start, testCase.wantSandbox) {
