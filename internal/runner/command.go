@@ -62,9 +62,7 @@ func (service *RunnerService) pickRunnerCommand(projectSlug string, runnerID int
 	return nil, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the runner settings in the config", harness, env)
 }
 
-// formatRunnerName names the sandbox a runner slot works in. The project is
-// part of the name, so drudge running in two repositories claims two different
-// sandboxes for the same slot.
+// formatRunnerName names the sandbox a runner slot works in.
 func formatRunnerName(projectSlug string, runnerID int, harness config.Harness) string {
 	prefix := unknownRunnerPrefix
 	switch harness {
@@ -73,16 +71,13 @@ func formatRunnerName(projectSlug string, runnerID int, harness config.Harness) 
 	case config.HarnessOpencode:
 		prefix = opencodeRunnerPrefix
 	}
-	return fmt.Sprintf("%s-%s-%d", prefix, sandboxNameSlug(projectSlug), runnerID)
+	return fmt.Sprintf("%s-%s-%d", prefix, normaliseNameSlug(projectSlug), runnerID)
 }
 
-// sandboxNameSlug folds a project slug into the characters sbx accepts in a
-// sandbox name: lowercase letters, numbers, hyphens and periods. Anything else
-// becomes a hyphen, and runs of hyphens collapse into one. The harness prefix
-// in front of the slug covers the rest of what sbx asks for, since it makes
-// every name start with a letter, run past two characters, and differ from the
-// reserved name "default".
-func sandboxNameSlug(projectSlug string) string {
+// normaliseNameSlug normalizes the runner name to include only:
+// lowercase letters, numbers, hyphens and periods. Anything else
+// becomes a hyphen, and multiple consecutive hyphens collapse into one.
+func normaliseNameSlug(projectSlug string) string {
 	var name strings.Builder
 	afterSeparator := false
 

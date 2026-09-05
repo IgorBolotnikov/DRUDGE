@@ -120,7 +120,7 @@ func TestFormatRunnerName(t *testing.T) {
 	}
 }
 
-func TestSandboxNameSlug(t *testing.T) {
+func TestNormaliseNameSlug(t *testing.T) {
 	cases := []struct {
 		name        string
 		projectSlug string
@@ -139,7 +139,7 @@ func TestSandboxNameSlug(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := sandboxNameSlug(testCase.projectSlug)
+			got := normaliseNameSlug(testCase.projectSlug)
 			if got != testCase.want {
 				t.Errorf("expected slug %q, got %q", testCase.want, got)
 			}
