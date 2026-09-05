@@ -53,11 +53,14 @@ const (
 // unknownProjectSlug stands in for a project slug that normalizes to nothing.
 const unknownProjectSlug = "unknown"
 
+// All the sandbox code here is relared to a sigle environment: `docker sbx`.
+// TODO: move it to its own package
+
 // sandboxPlan is the ordered set of commands that puts a runner to work.
 type sandboxPlan struct {
 	inspect []string // lists sandboxes so drudge can tell whether this runner's exists
-	create  []string // creates it, run only when inspect says it is missing
-	start   []string // starts the agent on the prompt, always run
+	create  []string // creates the sandbox, runs only when it does not exist yet
+	start   []string // starts the agent and passes the prompt, always runs
 }
 
 // sandboxListing is what `sbx ls --json` reports.
@@ -96,15 +99,15 @@ func (service *RunnerService) pickRunnerCommand(projectSlug string, runnerID int
 // so every path in it is absolute. The prompt is read from a file to keep an
 // arbitrarily long, arbitrarily quoted prompt out of the command line.
 //
-// Permission prompts are bypassed because a headless agent stalling on a tool
-// approval looks exactly like one that is stuck. The sandbox is the security
+// Permission prompts are explicitly bypassed so that an agent does not stall
+// because it waits for a tool call approval. The sandbox is the security
 // boundary here.
 //
-// The exit file is written last and is the only sentinel of a finished run.
+// The exit file is written last and is the only marker of a finished run.
 func formatLauncher(workspace, runDir string) string {
 	agentCommand := strings.Join([]string{
 		claudeBinary,
-		claudePromptFlag, `"$(cat ` + shellQuote(common.RunPromptPath(runDir)) + `)"`,
+		claudePromptFlag, catPrompt(runDir),
 		claudeOutputFormatFlag, claudeStreamJSONFormat,
 		claudeVerboseFlag,
 		claudePermissionFlag, claudeBypassPermissions,
@@ -118,6 +121,11 @@ func formatLauncher(workspace, runDir string) string {
 		shellQuote(common.RunStderrPath(runDir)),
 		shellQuote(common.RunExitPath(runDir)),
 	)
+}
+
+// catPrompts returns a cat command reading a quoted and escaped prompt.
+func catPrompt(runDir string) string {
+	return `"$(cat ` + shellQuote(common.RunPromptPath(runDir)) + `)"`
 }
 
 // shellQuote wraps a value in single quotes so a shell reads it literally.

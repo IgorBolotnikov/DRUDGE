@@ -169,7 +169,8 @@ func ParseFrontMatter(data string) (map[string]string, string) {
 
 // WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
 func WriteFileWithFrontMatter(path string, metadata map[string]string, content string) error {
-	return WriteFile(path, FormatFrontMatter(metadata)+content)
+	data := FormatFrontMatter(metadata) + content
+	return WriteFile(path, data)
 }
 
 // HomeDir returns the current user's home directory.
@@ -181,8 +182,7 @@ func HomeDir() (string, error) {
 	return home, nil
 }
 
-// WorkDir returns the directory drudge was invoked from. For a task command
-// that is the workspace of the project being worked on.
+// WorkDir returns the directory drudge was invoked from.
 func WorkDir() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -219,8 +219,7 @@ func PromptsDir(home string) string {
 }
 
 // LocalRunsDir returns the path to the runs directory of the local drudge
-// dir, where every task the project has handed to an agent keeps its run
-// directory.
+// dir, where every task run artifacts are stored.
 func LocalRunsDir() string {
 	return filepath.Join(DotDrudgeDirName, RunsDirName)
 }
@@ -231,8 +230,7 @@ func LocalRunDir(taskID string) string {
 }
 
 // RunDir returns the absolute path to one task's run directory inside a
-// workspace. An agent needs it absolute, because it runs from the workspace
-// root inside its sandbox.
+// workspace.
 func RunDir(workspace string, taskID string) string {
 	return filepath.Join(workspace, LocalRunDir(taskID))
 }
