@@ -4,15 +4,15 @@ package config
 const schemaJSON = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DRUDGE Global Configuration",
-  "description": "Configures global DRUDGE settings, such as the runner environment and harness.",
+  "description": "Configures global DRUDGE settings, such as the Drudger environment and harness.",
   "type": "object",
   "properties": {
     "$schema": {
       "type": "string",
       "description": "JSON schema reference for configuration validation"
     },
-    "runner": {
-      "description": "Settings for the runner DRUDGE uses to execute tasks.",
+    "drudger": {
+      "description": "Settings for the Drudgers that execute tasks.",
       "type": "object",
       "properties": {
         "environment": {
@@ -31,8 +31,8 @@ const schemaJSON = `{
           "description": "File name of the prompt handed to an agent, resolved under ~/.drudge/prompts/. Omit to use the built-in default prompt.",
           "type": "string"
         },
-        "maxConcurrentRunners": {
-          "description": "How many runners may work on one project at once.",
+        "maxConcurrentDrudgers": {
+          "description": "How many Drudgers may work on one project at once.",
           "type": "integer",
           "minimum": 1,
           "default": 3

@@ -38,7 +38,3 @@ Two questions with two homes, and they never overlap:
 
 - **Is the Drudger usable?** Answered by the Drudger record.
 - **How is the work going?** Answered by the Session's run directory.
-
-## A note on the code
-
-The code still says `Runner` where this document says `Drudger` — `RunnerService`, `RunnerID`, `formatRunnerName`, `internal/runner`, and the `maxConcurrentRunners` config key. The rename is pending. New code and new docs use the words above.

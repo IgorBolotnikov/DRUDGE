@@ -1,5 +1,5 @@
-// Package runner contains an actual agent runner which implements tasks
-package runner
+// Package drudger hands tasks to agents working in sandboxes
+package drudger
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"drudge/internal/task"
 )
 
-type RunnerService struct {
+type DrudgerService struct {
 	logger    *common.Logger
 	localCfg  *config.LocalConfig
 	globalCfg *config.GlobalConfig
@@ -18,8 +18,8 @@ type RunnerService struct {
 	commands  CommandRunner
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, commands CommandRunner) *RunnerService {
-	return &RunnerService{
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, commands CommandRunner) *DrudgerService {
+	return &DrudgerService{
 		logger:    logger,
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
@@ -30,7 +30,7 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and
 // prints what the agent would be given, and writes nothing.
-func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
+func (service *DrudgerService) RunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
 	taskToRun, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
 		return err
@@ -53,11 +53,11 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 		return fmt.Errorf("%s: %w", promptSource, err)
 	}
 
-	runnerID, err := service.allocateRunnerID(projectSlug)
+	drudgerSlot, err := service.allocateDrudgerSlot(projectSlug)
 	if err != nil {
 		return err
 	}
-	runnerName := formatRunnerName(projectSlug, runnerID, service.globalCfg.Runner.Harness)
+	drudgerName := formatDrudgerName(projectSlug, drudgerSlot, service.globalCfg.Drudger.Harness)
 
 	workspace, err := common.WorkDir()
 	if err != nil {
@@ -65,13 +65,13 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 	}
 	runDir := common.RunDir(workspace, string(taskID))
 
-	plan, err := service.pickRunnerCommand(projectSlug, runnerID, workspace, runDir)
+	plan, err := service.pickDrudgerCommand(projectSlug, drudgerSlot, workspace, runDir)
 	if err != nil {
 		return err
 	}
 
 	if dryRun {
-		service.logger.Info("Runner %d (%s) for task [%s] %s", runnerID, runnerName, taskToRun.ID, taskToRun.Title)
+		service.logger.Info("Drudger %d (%s) for task [%s] %s", drudgerSlot, drudgerName, taskToRun.ID, taskToRun.Title)
 		service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
 		service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect), formatArgv(plan.create), formatArgv(plan.start))
 		return nil
@@ -80,7 +80,7 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(plan, runnerName, workspace); err != nil {
+	if err := service.ensureSandbox(plan, drudgerName, workspace); err != nil {
 		return err
 	}
 
@@ -88,22 +88,22 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 		return err
 	}
 
-	// TODO: add a command that pings a task's runner session to tell whether it
-	// is still alive, and frees the runner slot when it is not.
+	// TODO: add a command that pings a task's Session to tell whether it
+	// is still alive, and frees the Drudger slot when it is not.
 	if _, err := service.commands.Run(plan.start); err != nil {
-		return fmt.Errorf("could not start runner %s for task %s: %w", runnerName, taskID, err)
+		return fmt.Errorf("could not start Drudger %s for task %s: %w", drudgerName, taskID, err)
 	}
 
 	taskToRun.Status = task.StatusInProgress
 	taskToRun.StartedAt = time.Now().UTC()
-	taskToRun.RunnerID = runnerID
-	taskToRun.RunnerSessionID = service.launchedSessionID(runDir)
+	taskToRun.DrudgerSlot = drudgerSlot
+	taskToRun.SessionID = service.launchedSessionID(runDir)
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
-		return fmt.Errorf("runner %s is already working on task %s, but the task could not be marked as %q: %w", runnerName, taskID, task.StatusInProgress, err)
+		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", drudgerName, taskID, task.StatusInProgress, err)
 	}
 
-	service.logger.Info("Runner %s is working on task [%s] %s", runnerName, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Drudger %s is working on task [%s] %s", drudgerName, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Run directory: %s", runDir)
 	return nil
 }
@@ -112,7 +112,7 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 // agent takes a moment to start up, so the stream is usually still empty at
 // this point and an empty id is the normal answer. Reading the run directory
 // later is what fills it in.
-func (service *RunnerService) launchedSessionID(runDir string) string {
+func (service *DrudgerService) launchedSessionID(runDir string) string {
 	sessionID, err := readSessionID(runDir)
 	if err != nil {
 		service.logger.Error("%v, the task is recorded without a session id", err)
@@ -120,16 +120,16 @@ func (service *RunnerService) launchedSessionID(runDir string) string {
 	return sessionID
 }
 
-// ensureSandbox creates the runner's sandbox unless it already exists.
+// ensureSandbox creates the Drudger's sandbox unless it already exists.
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds the workspace of this run.
-func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName, workspace string) error {
+func (service *DrudgerService) ensureSandbox(plan sandboxPlan, drudgerName, workspace string) error {
 	listing, err := service.commands.Run(plan.inspect)
 	if err != nil {
-		return fmt.Errorf("could not list the sandboxes to look for %s: %w", runnerName, err)
+		return fmt.Errorf("could not list the sandboxes to look for %s: %w", drudgerName, err)
 	}
 
-	existing, err := findSandbox(listing, runnerName)
+	existing, err := findSandbox(listing, drudgerName)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName, worksp
 	}
 
 	if _, err := service.commands.Run(plan.create); err != nil {
-		return fmt.Errorf("could not create sandbox %s: %w", runnerName, err)
+		return fmt.Errorf("could not create sandbox %s: %w", drudgerName, err)
 	}
 	return nil
 }
@@ -154,17 +154,17 @@ func writeRunPrompt(runDir string, prompt string) error {
 	return common.WriteFile(common.RunPromptPath(runDir), prompt)
 }
 
-// allocateRunnerID picks the lowest free runner slot of a project's pool. A
+// allocateDrudgerSlot picks the lowest free Drudger slot of a project's pool. A
 // slot is taken for as long as the task holding it is in progress, so the pool
 // is recomputed from the project's tasks on every run.
-func (service *RunnerService) allocateRunnerID(projectSlug string) (int, error) {
+func (service *DrudgerService) allocateDrudgerSlot(projectSlug string) (int, error) {
 	tasks, err := service.tasks.ListTasks(projectSlug)
 	if err != nil {
-		return 0, fmt.Errorf("could not read the project's tasks to work out which runners are busy: %w", err)
+		return 0, fmt.Errorf("could not read the project's tasks to work out which Drudgers are busy: %w", err)
 	}
 
-	occupied := occupiedRunnerIDs(tasks)
-	limit := config.ResolveMaxConcurrentRunners(service.localCfg, service.globalCfg)
+	occupied := occupiedDrudgerSlots(tasks)
+	limit := config.ResolveMaxConcurrentDrudgers(service.localCfg, service.globalCfg)
 
 	for candidate := 1; candidate <= limit; candidate++ {
 		if !occupied[candidate] {
@@ -172,15 +172,15 @@ func (service *RunnerService) allocateRunnerID(projectSlug string) (int, error) 
 		}
 	}
 
-	return 0, fmt.Errorf("all %d runners of project %s are busy with %q tasks, wait for one to finish or raise %s in the config", limit, projectSlug, task.StatusInProgress, config.MaxConcurrentRunnersKey)
+	return 0, fmt.Errorf("all %d Drudgers of project %s are busy with %q tasks, wait for one to finish or raise %s in the config", limit, projectSlug, task.StatusInProgress, config.MaxConcurrentDrudgersKey)
 }
 
-// occupiedRunnerIDs collects the runner slots held by in-progress tasks.
-func occupiedRunnerIDs(tasks []*task.Task) map[int]bool {
+// occupiedDrudgerSlots collects the Drudger slots held by in-progress tasks.
+func occupiedDrudgerSlots(tasks []*task.Task) map[int]bool {
 	occupied := make(map[int]bool)
 	for _, candidate := range tasks {
-		if candidate.Status == task.StatusInProgress && candidate.RunnerID > 0 {
-			occupied[candidate.RunnerID] = true
+		if candidate.Status == task.StatusInProgress && candidate.DrudgerSlot > 0 {
+			occupied[candidate.DrudgerSlot] = true
 		}
 	}
 	return occupied

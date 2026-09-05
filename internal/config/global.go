@@ -22,17 +22,17 @@ const (
 )
 
 const (
-	defaultEnv                  = EnvDockerSbx
-	defaultHarness              = HarnessClaudeCode
-	defaultMaxConcurrentRunners = 3
+	defaultEnv                   = EnvDockerSbx
+	defaultHarness               = HarnessClaudeCode
+	defaultMaxConcurrentDrudgers = 3
 )
 
 // JSON keys, named in error messages so they match what a user writes in a config file.
 const (
 	projectSlugKey = "projectSlug"
 	promptFileKey  = "promptFile"
-	// MaxConcurrentRunnersKey is exported so the runner can name it when a project's pool is full.
-	MaxConcurrentRunnersKey = "maxConcurrentRunners"
+	// MaxConcurrentDrudgersKey is exported so the drudger package can name it when a project's pool is full.
+	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
 )
 
 // schemaRef is the $schema reference path in config.json.
@@ -44,14 +44,14 @@ func SchemaRef() string {
 }
 
 type GlobalConfig struct {
-	Runner RunnerConfig `json:"runner"`
+	Drudger DrudgerConfig `json:"drudger"`
 }
 
-type RunnerConfig struct {
-	Env                  Env     `json:"environment"`
-	Harness              Harness `json:"harness"`
-	PromptFile           string  `json:"promptFile,omitempty"`
-	MaxConcurrentRunners int     `json:"maxConcurrentRunners,omitempty"` // Runners allowed on one project at once, zero means unset
+type DrudgerConfig struct {
+	Env                   Env     `json:"environment"`
+	Harness               Harness `json:"harness"`
+	PromptFile            string  `json:"promptFile,omitempty"`
+	MaxConcurrentDrudgers int     `json:"maxConcurrentDrudgers,omitempty"` // Drudgers allowed on one project at once, zero means unset
 }
 
 func Load() (*GlobalConfig, error) {
@@ -75,10 +75,10 @@ func Load() (*GlobalConfig, error) {
 		}
 	}
 
-	if err := validatePromptFile(cfg.Runner.PromptFile, cfgPath); err != nil {
+	if err := validatePromptFile(cfg.Drudger.PromptFile, cfgPath); err != nil {
 		return nil, err
 	}
-	if err := validateMaxConcurrentRunners(cfg.Runner.MaxConcurrentRunners, cfgPath); err != nil {
+	if err := validateMaxConcurrentDrudgers(cfg.Drudger.MaxConcurrentDrudgers, cfgPath); err != nil {
 		return nil, err
 	}
 
@@ -89,24 +89,24 @@ func Load() (*GlobalConfig, error) {
 // DefaultConfig returns the built-in default global config.
 func DefaultConfig() *GlobalConfig {
 	return &GlobalConfig{
-		Runner: RunnerConfig{
-			Env:                  defaultEnv,
-			Harness:              defaultHarness,
-			MaxConcurrentRunners: defaultMaxConcurrentRunners,
+		Drudger: DrudgerConfig{
+			Env:                   defaultEnv,
+			Harness:               defaultHarness,
+			MaxConcurrentDrudgers: defaultMaxConcurrentDrudgers,
 		},
 	}
 }
 
 // Fill in all missing values of the loaded config with defalt values
 func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConfig {
-	if loadedCfg.Runner.Env == "" {
-		loadedCfg.Runner.Env = defaultCfg.Runner.Env
+	if loadedCfg.Drudger.Env == "" {
+		loadedCfg.Drudger.Env = defaultCfg.Drudger.Env
 	}
-	if loadedCfg.Runner.Harness == "" {
-		loadedCfg.Runner.Harness = defaultCfg.Runner.Harness
+	if loadedCfg.Drudger.Harness == "" {
+		loadedCfg.Drudger.Harness = defaultCfg.Drudger.Harness
 	}
-	if loadedCfg.Runner.MaxConcurrentRunners == 0 {
-		loadedCfg.Runner.MaxConcurrentRunners = defaultCfg.Runner.MaxConcurrentRunners
+	if loadedCfg.Drudger.MaxConcurrentDrudgers == 0 {
+		loadedCfg.Drudger.MaxConcurrentDrudgers = defaultCfg.Drudger.MaxConcurrentDrudgers
 	}
 	return loadedCfg
 }
@@ -123,10 +123,10 @@ func validatePromptFile(value string, path string) error {
 	return nil
 }
 
-// validateMaxConcurrentRunners rejects a negative runner limit. Zero passes, since that is what an absent key unmarshals to.
-func validateMaxConcurrentRunners(value int, path string) error {
+// validateMaxConcurrentDrudgers rejects a negative Drudger limit. Zero passes, since that is what an absent key unmarshals to.
+func validateMaxConcurrentDrudgers(value int, path string) error {
 	if value < 0 {
-		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, MaxConcurrentRunnersKey, value)
+		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, MaxConcurrentDrudgersKey, value)
 	}
 	return nil
 }

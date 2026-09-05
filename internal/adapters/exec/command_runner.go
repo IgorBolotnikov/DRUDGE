@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// CommandRunner is the os/exec backed implementation of the runner's
+// CommandRunner is the os/exec backed implementation of the drudger's
 // CommandRunner port.
 type CommandRunner struct{}
 

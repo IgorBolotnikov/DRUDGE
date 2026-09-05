@@ -1,4 +1,4 @@
-package runner
+package drudger
 
 import (
 	"encoding/json"
@@ -44,11 +44,11 @@ const (
 	claudeBypassPermissions = "bypassPermissions"
 )
 
-// Runner name prefixes.
+// Drudger name prefixes.
 const (
-	claudeCodeRunnerPrefix = "drudge-claude"
-	opencodeRunnerPrefix   = "drudge-opencode"
-	unknownRunnerPrefix    = "drudge-unknown"
+	claudeCodeDrudgerPrefix = "drudge-claude"
+	opencodeDrudgerPrefix   = "drudge-opencode"
+	unknownDrudgerPrefix    = "drudge-unknown"
 )
 
 // unknownProjectSlug stands in for a project slug that normalizes to nothing.
@@ -57,9 +57,9 @@ const unknownProjectSlug = "unknown"
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
 
-// sandboxPlan is the ordered set of commands that puts a runner to work.
+// sandboxPlan is the ordered set of commands that puts a Drudger to work.
 type sandboxPlan struct {
-	inspect []string // lists sandboxes so drudge can tell whether this runner's exists
+	inspect []string // lists sandboxes so drudge can tell whether this Drudger's sandbox exists
 	create  []string // creates the sandbox, runs only when it does not exist yet
 	start   []string // starts the agent and passes the prompt, always runs
 }
@@ -75,12 +75,12 @@ type sandbox struct {
 	Workspaces []string `json:"workspaces"`
 }
 
-// pickRunnerCommand builds the commands that put an agent to work on the
+// pickDrudgerCommand builds the commands that put an agent to work on the
 // prompt sitting in the run directory.
-func (service *RunnerService) pickRunnerCommand(projectSlug string, runnerID int, workspace, runDir string) (sandboxPlan, error) {
-	env := service.globalCfg.Runner.Env
-	harness := service.globalCfg.Runner.Harness
-	name := formatRunnerName(projectSlug, runnerID, harness)
+func (service *DrudgerService) pickDrudgerCommand(projectSlug string, drudgerSlot int, workspace, runDir string) (sandboxPlan, error) {
+	env := service.globalCfg.Drudger.Env
+	harness := service.globalCfg.Drudger.Harness
+	name := formatDrudgerName(projectSlug, drudgerSlot, harness)
 
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
 		return sandboxPlan{
@@ -93,7 +93,7 @@ func (service *RunnerService) pickRunnerCommand(projectSlug string, runnerID int
 		}, nil
 	}
 
-	return sandboxPlan{}, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the runner settings in the config", harness, env)
+	return sandboxPlan{}, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the Drudger settings in the config", harness, env)
 }
 
 // formatLauncher renders the shell script that runs the agent in a sandbox.
@@ -173,19 +173,19 @@ func formatMounts(mounts []string) string {
 	return strings.Join(mounts, ", ")
 }
 
-// formatRunnerName names the sandbox a runner slot works in.
-func formatRunnerName(projectSlug string, runnerID int, harness config.Harness) string {
-	prefix := unknownRunnerPrefix
+// formatDrudgerName names the sandbox a Drudger slot works in.
+func formatDrudgerName(projectSlug string, drudgerSlot int, harness config.Harness) string {
+	prefix := unknownDrudgerPrefix
 	switch harness {
 	case config.HarnessClaudeCode:
-		prefix = claudeCodeRunnerPrefix
+		prefix = claudeCodeDrudgerPrefix
 	case config.HarnessOpencode:
-		prefix = opencodeRunnerPrefix
+		prefix = opencodeDrudgerPrefix
 	}
-	return fmt.Sprintf("%s-%s-%d", prefix, normaliseNameSlug(projectSlug), runnerID)
+	return fmt.Sprintf("%s-%s-%d", prefix, normaliseNameSlug(projectSlug), drudgerSlot)
 }
 
-// normaliseNameSlug normalizes the runner name to include only:
+// normaliseNameSlug normalizes the Drudger name to include only:
 // lowercase letters, numbers, hyphens and periods. Anything else
 // becomes a hyphen, and multiple consecutive hyphens collapse into one.
 func normaliseNameSlug(projectSlug string) string {

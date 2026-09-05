@@ -29,8 +29,8 @@ type Task struct {
 	ParentTaskID TaskID // ID of the parent task, if any
 	ProjectSlug  string // Slug of the project this task belongs to
 
-	RunnerID        int    // Runner slot this task was spawned on, zero means none
-	RunnerSessionID string // Resumable agent session of the run, empty until the agent reports it
+	DrudgerSlot int    // Drudger slot this task was spawned on, zero means none
+	SessionID   string // Resumable agent session of the run, empty until the agent reports it
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

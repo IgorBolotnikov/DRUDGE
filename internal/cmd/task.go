@@ -10,7 +10,7 @@ import (
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
 	"drudge/internal/config"
-	"drudge/internal/runner"
+	"drudge/internal/drudger"
 	"drudge/internal/task"
 )
 
@@ -43,11 +43,11 @@ type taskDeps struct {
 	localCfg *config.LocalConfig
 	log      *common.Logger
 	tasks    *task.TaskService
-	runner   *runner.RunnerService
+	drudger  *drudger.DrudgerService
 }
 
 // newTaskDeps wires up what a task subcommand needs to reach a project's
-// tasks and the runners working on them.
+// tasks and the Drudgers working on them.
 func newTaskDeps() (*taskDeps, error) {
 	localCfg, err := config.LoadLocal()
 	if err != nil {
@@ -68,7 +68,7 @@ func newTaskDeps() (*taskDeps, error) {
 		localCfg: localCfg,
 		log:      log,
 		tasks:    tasks,
-		runner:   runner.New(log, localCfg, globalCfg, tasks, cmdRunner),
+		drudger:  drudger.New(log, localCfg, globalCfg, tasks, cmdRunner),
 	}, nil
 }
 
@@ -235,7 +235,7 @@ func taskRun(args []string) error {
 		return err
 	}
 
-	return deps.runner.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
+	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
 }
 
 func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {

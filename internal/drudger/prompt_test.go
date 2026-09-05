@@ -1,4 +1,4 @@
-package runner
+package drudger
 
 import (
 	"os"
@@ -232,7 +232,7 @@ func TestResolvePromptTemplate(t *testing.T) {
 			}
 
 			local := &config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: testCase.localPromptFile}
-			global := &config.GlobalConfig{Runner: config.RunnerConfig{PromptFile: testCase.globalPromptFile}}
+			global := &config.GlobalConfig{Drudger: config.DrudgerConfig{PromptFile: testCase.globalPromptFile}}
 
 			got, source, err := resolvePromptTemplate(local, global)
 

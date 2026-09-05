@@ -38,13 +38,13 @@ func writeLocalConfig(t *testing.T, raw string) {
 
 func TestLoadLocal(t *testing.T) {
 	tests := []struct {
-		name        string
-		raw         string
-		writeFile   bool
-		wantErr     bool
-		wantSlug    string
-		wantPrompt  string
-		wantRunners int
+		name         string
+		raw          string
+		writeFile    bool
+		wantErr      bool
+		wantSlug     string
+		wantPrompt   string
+		wantDrudgers int
 	}{
 		{
 			name:      "no file",
@@ -58,12 +58,12 @@ func TestLoadLocal(t *testing.T) {
 			wantSlug:  "test-project",
 		},
 		{
-			name:        "all fields",
-			writeFile:   true,
-			raw:         `{"projectSlug": "test-project", "promptFile": "impl.md", "maxConcurrentRunners": 5}`,
-			wantSlug:    "test-project",
-			wantPrompt:  "impl.md",
-			wantRunners: 5,
+			name:         "all fields",
+			writeFile:    true,
+			raw:          `{"projectSlug": "test-project", "promptFile": "impl.md", "maxConcurrentDrudgers": 5}`,
+			wantSlug:     "test-project",
+			wantPrompt:   "impl.md",
+			wantDrudgers: 5,
 		},
 		{
 			name:      "missing slug",
@@ -96,9 +96,9 @@ func TestLoadLocal(t *testing.T) {
 			wantErr:   true,
 		},
 		{
-			name:      "negative runner limit",
+			name:      "negative Drudger limit",
 			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "maxConcurrentRunners": -1}`,
+			raw:       `{"projectSlug": "test-project", "maxConcurrentDrudgers": -1}`,
 			wantErr:   true,
 		},
 	}
@@ -127,8 +127,8 @@ func TestLoadLocal(t *testing.T) {
 			if cfg.PromptFile != test.wantPrompt {
 				t.Errorf("PromptFile = %q, want %q", cfg.PromptFile, test.wantPrompt)
 			}
-			if cfg.MaxConcurrentRunners != test.wantRunners {
-				t.Errorf("MaxConcurrentRunners = %d, want %d", cfg.MaxConcurrentRunners, test.wantRunners)
+			if cfg.MaxConcurrentDrudgers != test.wantDrudgers {
+				t.Errorf("MaxConcurrentDrudgers = %d, want %d", cfg.MaxConcurrentDrudgers, test.wantDrudgers)
 			}
 		})
 	}
@@ -150,9 +150,9 @@ func TestSave_RoundTrips(t *testing.T) {
 	setupLocalDir(t)
 
 	cfg := LocalConfig{
-		ProjectSlug:          "test-project",
-		PromptFile:           "impl.md",
-		MaxConcurrentRunners: 5,
+		ProjectSlug:           "test-project",
+		PromptFile:            "impl.md",
+		MaxConcurrentDrudgers: 5,
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -204,13 +204,13 @@ func TestResolvePromptPath(t *testing.T) {
 		{
 			name:   "local wins over global",
 			local:  &LocalConfig{PromptFile: "local.md"},
-			global: &GlobalConfig{Runner: RunnerConfig{PromptFile: "global.md"}},
+			global: &GlobalConfig{Drudger: DrudgerConfig{PromptFile: "global.md"}},
 			want:   filepath.Join(common.LocalPromptsDir(), "local.md"),
 		},
 		{
 			name:   "falls back to global",
 			local:  &LocalConfig{},
-			global: &GlobalConfig{Runner: RunnerConfig{PromptFile: "global.md"}},
+			global: &GlobalConfig{Drudger: DrudgerConfig{PromptFile: "global.md"}},
 			want:   filepath.Join(common.PromptsDir(home), "global.md"),
 		},
 		{
@@ -234,7 +234,7 @@ func TestResolvePromptPath(t *testing.T) {
 	}
 }
 
-func TestResolveMaxConcurrentRunners(t *testing.T) {
+func TestResolveMaxConcurrentDrudgers(t *testing.T) {
 	tests := []struct {
 		name   string
 		local  *LocalConfig
@@ -243,29 +243,29 @@ func TestResolveMaxConcurrentRunners(t *testing.T) {
 	}{
 		{
 			name:   "local wins over global",
-			local:  &LocalConfig{MaxConcurrentRunners: 5},
-			global: &GlobalConfig{Runner: RunnerConfig{MaxConcurrentRunners: 7}},
+			local:  &LocalConfig{MaxConcurrentDrudgers: 5},
+			global: &GlobalConfig{Drudger: DrudgerConfig{MaxConcurrentDrudgers: 7}},
 			want:   5,
 		},
 		{
 			name:   "falls back to global",
 			local:  &LocalConfig{},
-			global: &GlobalConfig{Runner: RunnerConfig{MaxConcurrentRunners: 7}},
+			global: &GlobalConfig{Drudger: DrudgerConfig{MaxConcurrentDrudgers: 7}},
 			want:   7,
 		},
 		{
 			name:   "falls back to default",
 			local:  &LocalConfig{},
 			global: &GlobalConfig{},
-			want:   defaultMaxConcurrentRunners,
+			want:   defaultMaxConcurrentDrudgers,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := ResolveMaxConcurrentRunners(test.local, test.global)
+			got := ResolveMaxConcurrentDrudgers(test.local, test.global)
 			if got != test.want {
-				t.Errorf("ResolveMaxConcurrentRunners = %d, want %d", got, test.want)
+				t.Errorf("ResolveMaxConcurrentDrudgers = %d, want %d", got, test.want)
 			}
 		})
 	}

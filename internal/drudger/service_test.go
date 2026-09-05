@@ -1,4 +1,4 @@
-package runner
+package drudger
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 const (
 	testProjectSlug = "test-project"
 
-	// The sandbox drudge names for the first two runner slots of the test
+	// The sandbox drudge names for the first two Drudger slots of the test
 	// project, under the default harness.
 	testSandbox      = "drudge-claude-test-project-1"
 	testSandboxSlot2 = "drudge-claude-test-project-2"
@@ -113,11 +113,11 @@ func (runner *fakeCommandRunner) call(subcommand string) []string {
 	return nil
 }
 
-func newTestService(tasks ...*task.Task) *RunnerService {
+func newTestService(tasks ...*task.Task) *DrudgerService {
 	return newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, tasks...)
 }
 
-func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *RunnerService {
+func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *DrudgerService {
 	logger := common.NewLogger("")
 	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), commands)
 }
@@ -160,13 +160,13 @@ func todoTask() *task.Task {
 	}
 }
 
-// busyTask holds a runner slot so the next run has to allocate another one.
-func busyTask(runnerID int) *task.Task {
+// busyTask holds a Drudger slot so the next run has to allocate another one.
+func busyTask(drudgerSlot int) *task.Task {
 	return &task.Task{
-		ID:          task.TaskID(fmt.Sprintf("busy-%d", runnerID)),
+		ID:          task.TaskID(fmt.Sprintf("busy-%d", drudgerSlot)),
 		Title:       "Already running",
 		Status:      task.StatusInProgress,
-		RunnerID:    runnerID,
+		DrudgerSlot: drudgerSlot,
 		ProjectSlug: testProjectSlug,
 	}
 }
@@ -217,7 +217,7 @@ func captureOutput(f func()) string {
 	return string(out)
 }
 
-func TestRunnerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
+func TestDrudgerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
 	cases := []struct {
 		name    string
 		status  task.TaskStatus
@@ -255,7 +255,7 @@ func TestRunnerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
+func TestDrudgerService_RunTask_UnknownTask(t *testing.T) {
 	service := newTestService()
 
 	err := service.RunTask(testProjectSlug, "nope", true)
@@ -264,7 +264,7 @@ func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_RecordsTheRunnerOnTheTask(t *testing.T) {
+func TestDrudgerService_RunTask_RecordsTheDrudgerOnTheTask(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
@@ -279,20 +279,20 @@ func TestRunnerService_RunTask_RecordsTheRunnerOnTheTask(t *testing.T) {
 	if taskToRun.Status != task.StatusInProgress {
 		t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
 	}
-	if taskToRun.RunnerID != 1 {
-		t.Errorf("expected runner 1, got %d", taskToRun.RunnerID)
+	if taskToRun.DrudgerSlot != 1 {
+		t.Errorf("expected Drudger 1, got %d", taskToRun.DrudgerSlot)
 	}
 	if taskToRun.StartedAt.IsZero() {
 		t.Error("expected started at to be stamped")
 	}
 	// The session id only exists once the agent has written its init event, so
 	// a task is recorded without one.
-	if taskToRun.RunnerSessionID != "" {
-		t.Errorf("expected no session id to be recorded, got %q", taskToRun.RunnerSessionID)
+	if taskToRun.SessionID != "" {
+		t.Errorf("expected no session id to be recorded, got %q", taskToRun.SessionID)
 	}
 }
 
-func TestRunnerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing.T) {
+func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing.T) {
 	cases := []struct {
 		name string
 		// lines stand for what the agent has written to its stream by the time
@@ -328,8 +328,8 @@ func TestRunnerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing.
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if taskToRun.RunnerSessionID != testCase.want {
-				t.Errorf("expected session id %q, got %q", testCase.want, taskToRun.RunnerSessionID)
+			if taskToRun.SessionID != testCase.want {
+				t.Errorf("expected session id %q, got %q", testCase.want, taskToRun.SessionID)
 			}
 			if taskToRun.Status != task.StatusInProgress {
 				t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
@@ -338,7 +338,7 @@ func TestRunnerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing.
 	}
 }
 
-func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
+func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
 	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
 	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand}
 
@@ -351,8 +351,8 @@ func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T
 		{name: "a listing without the key", listing: `{}`, want: createThenStart},
 		{name: "another project's sandbox", listing: sandboxListingWith("drudge-claude-other-project-1"), want: createThenStart},
 		{name: "another slot of this project", listing: sandboxListingWith(testSandboxSlot2), want: createThenStart},
-		{name: "this runner's sandbox", listing: sandboxListingWith(testSandbox), want: startOnly},
-		{name: "this runner's sandbox among others", listing: sandboxListingWith("drudge-claude-other-project-1", testSandbox), want: startOnly},
+		{name: "this Drudger's sandbox", listing: sandboxListingWith(testSandbox), want: startOnly},
+		{name: "this Drudger's sandbox among others", listing: sandboxListingWith("drudge-claude-other-project-1", testSandbox), want: startOnly},
 	}
 
 	for _, testCase := range cases {
@@ -375,7 +375,7 @@ func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T
 	}
 }
 
-func TestRunnerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing.T) {
+func TestDrudgerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing.T) {
 	const otherRepo = "/some/other/repo"
 
 	cases := []struct {
@@ -421,8 +421,8 @@ func TestRunnerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing
 				if taskToRun.Status != task.StatusTodo {
 					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
 				}
-				if taskToRun.RunnerID != 0 {
-					t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
+				if taskToRun.DrudgerSlot != 0 {
+					t.Errorf("expected no Drudger to be recorded, got %d", taskToRun.DrudgerSlot)
 				}
 				return
 			}
@@ -434,7 +434,7 @@ func TestRunnerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing
 	}
 }
 
-func TestRunnerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
+func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
@@ -458,7 +458,7 @@ func TestRunnerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
+func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 	spawnErr := fmt.Errorf("sbx: no such binary")
 
 	cases := []struct {
@@ -514,8 +514,8 @@ func TestRunnerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			if taskToRun.Status != task.StatusTodo {
 				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
 			}
-			if taskToRun.RunnerID != 0 {
-				t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
+			if taskToRun.DrudgerSlot != 0 {
+				t.Errorf("expected no Drudger to be recorded, got %d", taskToRun.DrudgerSlot)
 			}
 
 			exists, err := common.Exists(common.RunDir(workspace, string(taskToRun.ID)))
@@ -529,7 +529,7 @@ func TestRunnerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
+func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) {
 	cases := []struct {
 		name    string
 		limit   int
@@ -544,8 +544,8 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 			name:  "ignores tasks that are not in progress",
 			limit: 3,
 			busy: []*task.Task{
-				{ID: "done", Status: task.StatusDone, RunnerID: 1, ProjectSlug: testProjectSlug},
-				{ID: "fucked-up", Status: task.StatusFuckedUp, RunnerID: 2, ProjectSlug: testProjectSlug},
+				{ID: "done", Status: task.StatusDone, DrudgerSlot: 1, ProjectSlug: testProjectSlug},
+				{ID: "fucked-up", Status: task.StatusFuckedUp, DrudgerSlot: 2, ProjectSlug: testProjectSlug},
 			},
 			wantID: 1,
 		},
@@ -569,7 +569,7 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(
-				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: testCase.limit},
+				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
 				config.DefaultConfig(),
 				commands,
 				append([]*task.Task{taskToRun}, testCase.busy...)...,
@@ -580,9 +580,9 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got runner %d", taskToRun.RunnerID)
+					t.Fatalf("expected an error, got Drudger %d", taskToRun.DrudgerSlot)
 				}
-				if !strings.Contains(err.Error(), config.MaxConcurrentRunnersKey) {
+				if !strings.Contains(err.Error(), config.MaxConcurrentDrudgersKey) {
 					t.Errorf("expected the error to name the config key, got %q", err)
 				}
 				return
@@ -591,8 +591,8 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if taskToRun.RunnerID != testCase.wantID {
-				t.Errorf("expected runner %d, got %d", testCase.wantID, taskToRun.RunnerID)
+			if taskToRun.DrudgerSlot != testCase.wantID {
+				t.Errorf("expected Drudger %d, got %d", testCase.wantID, taskToRun.DrudgerSlot)
 			}
 			wantSandbox := fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, testCase.wantID)
 			if create := commands.call(sbxCreateSubcommand); !slices.Contains(create, wantSandbox) {
@@ -602,7 +602,7 @@ func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
+func TestDrudgerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 	const promptFileName = "impl.md"
 	setupWorkspace(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "custom prompt for {{taskTitle}}: {{taskDescription}}")
@@ -628,7 +628,7 @@ func TestRunnerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testing.T) {
+func TestDrudgerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testing.T) {
 	const promptFileName = "impl.md"
 	setupWorkspace(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "nothing to substitute here")

@@ -434,36 +434,36 @@ func TestFileTaskRepository_GetTask_ParsesTimestamps(t *testing.T) {
 	}
 }
 
-func TestTaskFrontMatter_RunnerFieldsRoundTrip(t *testing.T) {
+func TestTaskFrontMatter_DrudgerSlotAndSessionRoundTrip(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
 	cases := []struct {
-		name                string
-		runnerID            int
-		runnerSessionID     string
-		wantRunnerKeyInFile bool
+		name                     string
+		drudgerSlot              int
+		sessionID                string
+		wantDrudgerSlotKeyInFile bool
 	}{
-		{name: "no runner assigned yet"},
+		{name: "no Drudger assigned yet"},
 		{
-			name:                "runner slot and session",
-			runnerID:            2,
-			runnerSessionID:     "sess-abc123",
-			wantRunnerKeyInFile: true,
+			name:                     "Drudger slot and session",
+			drudgerSlot:              2,
+			sessionID:                "sess-abc123",
+			wantDrudgerSlotKeyInFile: true,
 		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			written := &task.Task{
-				ID:              "task-1",
-				Title:           "Round Trip",
-				Description:     "Body stays put",
-				Status:          task.StatusInProgress,
-				ProjectSlug:     "test-project",
-				RunnerID:        testCase.runnerID,
-				RunnerSessionID: testCase.runnerSessionID,
-				CreatedAt:       time.Now().UTC(),
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusInProgress,
+				ProjectSlug: "test-project",
+				DrudgerSlot: testCase.drudgerSlot,
+				SessionID:   testCase.sessionID,
+				CreatedAt:   time.Now().UTC(),
 			}
 
 			path := filepath.Join(home, "task.md")
@@ -477,35 +477,35 @@ func TestTaskFrontMatter_RunnerFieldsRoundTrip(t *testing.T) {
 				t.Fatalf("parseTaskFromFile: %v", err)
 			}
 
-			if read.RunnerID != written.RunnerID {
-				t.Errorf("expected runner id %d, got %d", written.RunnerID, read.RunnerID)
+			if read.DrudgerSlot != written.DrudgerSlot {
+				t.Errorf("expected Drudger id %d, got %d", written.DrudgerSlot, read.DrudgerSlot)
 			}
-			if read.RunnerSessionID != written.RunnerSessionID {
-				t.Errorf("expected runner session id %q, got %q", written.RunnerSessionID, read.RunnerSessionID)
+			if read.SessionID != written.SessionID {
+				t.Errorf("expected Drudger session id %q, got %q", written.SessionID, read.SessionID)
 			}
 
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("ReadFile: %v", err)
 			}
-			hasRunnerKey := strings.Contains(string(data), metaKeyRunnerID)
-			if hasRunnerKey != testCase.wantRunnerKeyInFile {
-				t.Errorf("expected %s in the file: %v, got %v", metaKeyRunnerID, testCase.wantRunnerKeyInFile, hasRunnerKey)
+			hasDrudgerSlotKey := strings.Contains(string(data), metaKeyDrudgerSlot)
+			if hasDrudgerSlotKey != testCase.wantDrudgerSlotKeyInFile {
+				t.Errorf("expected %s in the file: %v, got %v", metaKeyDrudgerSlot, testCase.wantDrudgerSlotKeyInFile, hasDrudgerSlotKey)
 			}
 		})
 	}
 }
 
-func TestFileTaskRepository_ParseTaskFromFile_RejectsNonNumericRunnerID(t *testing.T) {
+func TestFileTaskRepository_ParseTaskFromFile_RejectsNonNumericDrudgerSlot(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
 	path := filepath.Join(home, "task.md")
 	metadata := map[string]string{
-		metaKeyID:       "task-1",
-		metaKeyTitle:    "Broken Runner",
-		metaKeyStatus:   string(task.StatusInProgress),
-		metaKeyRunnerID: "not-a-number",
+		metaKeyID:          "task-1",
+		metaKeyTitle:       "Broken Drudger",
+		metaKeyStatus:      string(task.StatusInProgress),
+		metaKeyDrudgerSlot: "not-a-number",
 	}
 	if err := common.WriteFileWithFrontMatter(path, metadata, "Body"); err != nil {
 		t.Fatalf("WriteFileWithFrontMatter: %v", err)
@@ -514,10 +514,10 @@ func TestFileTaskRepository_ParseTaskFromFile_RejectsNonNumericRunnerID(t *testi
 	repo := NewFileTaskRepository("test-project")
 	_, err := repo.parseTaskFromFile(path)
 	if err == nil {
-		t.Fatal("expected an error for a non-numeric runner id")
+		t.Fatal("expected an error for a non-numeric Drudger id")
 	}
-	if !strings.Contains(err.Error(), metaKeyRunnerID) {
-		t.Errorf("expected the error to name %s, got %q", metaKeyRunnerID, err)
+	if !strings.Contains(err.Error(), metaKeyDrudgerSlot) {
+		t.Errorf("expected the error to name %s, got %q", metaKeyDrudgerSlot, err)
 	}
 }
 
@@ -531,12 +531,12 @@ func TestFileTaskRepository_ListTasks_ReportsUnparsableTaskFile(t *testing.T) {
 	}
 
 	metadata := map[string]string{
-		metaKeyID:       "task-1",
-		metaKeyTitle:    "Broken Runner",
-		metaKeyStatus:   string(task.StatusInProgress),
-		metaKeyRunnerID: "not-a-number",
+		metaKeyID:          "task-1",
+		metaKeyTitle:       "Broken Drudger",
+		metaKeyStatus:      string(task.StatusInProgress),
+		metaKeyDrudgerSlot: "not-a-number",
 	}
-	if err := common.WriteFileWithFrontMatter(filepath.Join(tasksDir, "task-1 Broken Runner.md"), metadata, "Body"); err != nil {
+	if err := common.WriteFileWithFrontMatter(filepath.Join(tasksDir, "task-1 Broken Drudger.md"), metadata, "Body"); err != nil {
 		t.Fatalf("WriteFileWithFrontMatter: %v", err)
 	}
 
@@ -546,7 +546,7 @@ func TestFileTaskRepository_ListTasks_ReportsUnparsableTaskFile(t *testing.T) {
 	}
 }
 
-func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
+func TestFileTaskRepository_UpdateTask_PersistsDrudgerSlotAndSession(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -570,8 +570,8 @@ func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
 	startedAt := time.Now().UTC().Truncate(time.Second)
 	created.Status = task.StatusInProgress
 	created.StartedAt = startedAt
-	created.RunnerID = 2
-	created.RunnerSessionID = "sess-abc123"
+	created.DrudgerSlot = 2
+	created.SessionID = "sess-abc123"
 
 	if err := repo.UpdateTask("test-project", created); err != nil {
 		t.Fatalf("UpdateTask: %v", err)
@@ -589,11 +589,11 @@ func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
 	if reread.Status != task.StatusInProgress {
 		t.Errorf("expected status %q, got %q", task.StatusInProgress, reread.Status)
 	}
-	if reread.RunnerID != 2 {
-		t.Errorf("expected runner id 2, got %d", reread.RunnerID)
+	if reread.DrudgerSlot != 2 {
+		t.Errorf("expected Drudger id 2, got %d", reread.DrudgerSlot)
 	}
-	if reread.RunnerSessionID != "sess-abc123" {
-		t.Errorf("expected runner session id 'sess-abc123', got %q", reread.RunnerSessionID)
+	if reread.SessionID != "sess-abc123" {
+		t.Errorf("expected Drudger session id 'sess-abc123', got %q", reread.SessionID)
 	}
 	if !reread.StartedAt.Equal(startedAt) {
 		t.Errorf("expected started at %v, got %v", startedAt, reread.StartedAt)

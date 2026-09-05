@@ -1,4 +1,4 @@
-package runner
+package drudger
 
 import (
 	"slices"
@@ -27,7 +27,7 @@ func runTaskFor(t *testing.T, localCfg *config.LocalConfig, workspace, listing s
 	return commands
 }
 
-func TestRunnerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
+func TestDrudgerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 	workspace := setupWorkspace(t)
 	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith())
 
@@ -51,7 +51,7 @@ func TestRunnerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
+func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 	cases := []struct {
 		name            string
 		env             config.Env
@@ -61,7 +61,7 @@ func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
 		{name: "opencode is not wired up yet", env: config.EnvDockerSbx, harness: config.HarnessOpencode, wantErrContains: "opencode"},
 		{name: "unknown harness", env: config.EnvDockerSbx, harness: config.Harness("codex"), wantErrContains: "codex"},
 		{name: "unknown environment", env: config.Env("bare-metal"), harness: config.HarnessClaudeCode, wantErrContains: "bare-metal"},
-		{name: "empty runner settings", wantErrContains: "runner settings"},
+		{name: "empty Drudger settings", wantErrContains: "Drudger settings"},
 	}
 
 	for _, testCase := range cases {
@@ -70,7 +70,7 @@ func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
 			commands := &fakeCommandRunner{}
 			service := newTestServiceWith(
 				&config.LocalConfig{ProjectSlug: testProjectSlug},
-				&config.GlobalConfig{Runner: config.RunnerConfig{Env: testCase.env, Harness: testCase.harness}},
+				&config.GlobalConfig{Drudger: config.DrudgerConfig{Env: testCase.env, Harness: testCase.harness}},
 				commands,
 				todoTask(),
 			)
@@ -90,7 +90,7 @@ func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
+func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
 	workspace := setupWorkspace(t)
 	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith(testSandbox))
 
@@ -115,7 +115,7 @@ func TestRunnerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testin
 	}
 }
 
-func TestRunnerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T) {
+func TestDrudgerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T) {
 	cases := []struct {
 		name    string
 		dirName string
@@ -142,7 +142,7 @@ func TestRunnerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T)
 	}
 }
 
-func TestRunnerService_RunTask_NamesASandboxPerProject(t *testing.T) {
+func TestDrudgerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 	cases := []struct {
 		name        string
 		projectSlug string
@@ -175,7 +175,7 @@ func TestRunnerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *testing.T) {
+func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
 	taskToRun.TicketID = "PROJ-123"

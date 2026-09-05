@@ -35,18 +35,18 @@ func TestLoad_NoFile_ReturnsDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.Env != defaultEnv {
-		t.Errorf("Env = %q, want %q", cfg.Runner.Env, defaultEnv)
+	if cfg.Drudger.Env != defaultEnv {
+		t.Errorf("Env = %q, want %q", cfg.Drudger.Env, defaultEnv)
 	}
-	if cfg.Runner.Harness != defaultHarness {
-		t.Errorf("Harness = %q, want %q", cfg.Runner.Harness, defaultHarness)
+	if cfg.Drudger.Harness != defaultHarness {
+		t.Errorf("Harness = %q, want %q", cfg.Drudger.Harness, defaultHarness)
 	}
 }
 
 func TestLoad_FullConfig_ReturnsLoadedValues(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Env:     "local",
 			Harness: HarnessOpencode,
 		},
@@ -57,18 +57,18 @@ func TestLoad_FullConfig_ReturnsLoadedValues(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.Env != "local" {
-		t.Errorf("Env = %q, want %q", cfg.Runner.Env, "local")
+	if cfg.Drudger.Env != "local" {
+		t.Errorf("Env = %q, want %q", cfg.Drudger.Env, "local")
 	}
-	if cfg.Runner.Harness != HarnessOpencode {
-		t.Errorf("Harness = %q, want %q", cfg.Runner.Harness, HarnessOpencode)
+	if cfg.Drudger.Harness != HarnessOpencode {
+		t.Errorf("Harness = %q, want %q", cfg.Drudger.Harness, HarnessOpencode)
 	}
 }
 
 func TestLoad_MissingEnv_FallsBackToDefault(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Harness: HarnessOpencode,
 		},
 	})
@@ -78,18 +78,18 @@ func TestLoad_MissingEnv_FallsBackToDefault(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.Env != defaultEnv {
-		t.Errorf("Env = %q, want default %q", cfg.Runner.Env, defaultEnv)
+	if cfg.Drudger.Env != defaultEnv {
+		t.Errorf("Env = %q, want default %q", cfg.Drudger.Env, defaultEnv)
 	}
-	if cfg.Runner.Harness != HarnessOpencode {
-		t.Errorf("Harness = %q, want %q", cfg.Runner.Harness, HarnessOpencode)
+	if cfg.Drudger.Harness != HarnessOpencode {
+		t.Errorf("Harness = %q, want %q", cfg.Drudger.Harness, HarnessOpencode)
 	}
 }
 
 func TestLoad_MissingHarness_FallsBackToDefault(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Env: "local",
 		},
 	})
@@ -99,11 +99,11 @@ func TestLoad_MissingHarness_FallsBackToDefault(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.Env != "local" {
-		t.Errorf("Env = %q, want %q (should be untouched)", cfg.Runner.Env, "local")
+	if cfg.Drudger.Env != "local" {
+		t.Errorf("Env = %q, want %q (should be untouched)", cfg.Drudger.Env, "local")
 	}
-	if cfg.Runner.Harness != defaultHarness {
-		t.Errorf("Harness = %q, want default %q", cfg.Runner.Harness, defaultHarness)
+	if cfg.Drudger.Harness != defaultHarness {
+		t.Errorf("Harness = %q, want default %q", cfg.Drudger.Harness, defaultHarness)
 	}
 }
 
@@ -116,11 +116,11 @@ func TestLoad_EmptyFile_ReturnsDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.Env != defaultEnv {
-		t.Errorf("Env = %q, want %q", cfg.Runner.Env, defaultEnv)
+	if cfg.Drudger.Env != defaultEnv {
+		t.Errorf("Env = %q, want %q", cfg.Drudger.Env, defaultEnv)
 	}
-	if cfg.Runner.Harness != defaultHarness {
-		t.Errorf("Harness = %q, want %q", cfg.Runner.Harness, defaultHarness)
+	if cfg.Drudger.Harness != defaultHarness {
+		t.Errorf("Harness = %q, want %q", cfg.Drudger.Harness, defaultHarness)
 	}
 }
 
@@ -142,18 +142,18 @@ func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Runner.Env != EnvDockerSbx {
-		t.Errorf("Env = %q, want %q", cfg.Runner.Env, EnvDockerSbx)
+	if cfg.Drudger.Env != EnvDockerSbx {
+		t.Errorf("Env = %q, want %q", cfg.Drudger.Env, EnvDockerSbx)
 	}
-	if cfg.Runner.Harness != HarnessClaudeCode {
-		t.Errorf("Harness = %q, want %q", cfg.Runner.Harness, HarnessClaudeCode)
+	if cfg.Drudger.Harness != HarnessClaudeCode {
+		t.Errorf("Harness = %q, want %q", cfg.Drudger.Harness, HarnessClaudeCode)
 	}
 }
 
 func TestMergeConfigs_KeepsLoadedValuesWhenSet(t *testing.T) {
 	defaultCfg := DefaultConfig()
 	loadedCfg := &GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Env:     "local",
 			Harness: HarnessOpencode,
 		},
@@ -161,26 +161,26 @@ func TestMergeConfigs_KeepsLoadedValuesWhenSet(t *testing.T) {
 
 	merged := mergeConfigs(defaultCfg, loadedCfg)
 
-	if merged.Runner.Env != "local" {
-		t.Errorf("Env = %q, want %q", merged.Runner.Env, "local")
+	if merged.Drudger.Env != "local" {
+		t.Errorf("Env = %q, want %q", merged.Drudger.Env, "local")
 	}
-	if merged.Runner.Harness != HarnessOpencode {
-		t.Errorf("Harness = %q, want %q", merged.Runner.Harness, HarnessOpencode)
+	if merged.Drudger.Harness != HarnessOpencode {
+		t.Errorf("Harness = %q, want %q", merged.Drudger.Harness, HarnessOpencode)
 	}
 }
 
 func TestMergeConfigs_FillsEnvWhenEmpty(t *testing.T) {
 	defaultCfg := DefaultConfig()
 	loadedCfg := &GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Harness: HarnessOpencode,
 		},
 	}
 
 	merged := mergeConfigs(defaultCfg, loadedCfg)
 
-	if merged.Runner.Env != defaultCfg.Runner.Env {
-		t.Errorf("Env = %q, want default %q", merged.Runner.Env, defaultCfg.Runner.Env)
+	if merged.Drudger.Env != defaultCfg.Drudger.Env {
+		t.Errorf("Env = %q, want default %q", merged.Drudger.Env, defaultCfg.Drudger.Env)
 	}
 }
 
@@ -200,25 +200,25 @@ func TestSchemaRef(t *testing.T) {
 func TestMergeConfigs_FillsHarnessWhenEmpty(t *testing.T) {
 	defaultCfg := DefaultConfig()
 	loadedCfg := &GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Env: "local",
 		},
 	}
 
 	merged := mergeConfigs(defaultCfg, loadedCfg)
 
-	if merged.Runner.Harness != defaultCfg.Runner.Harness {
-		t.Errorf("Harness = %q, want default %q", merged.Runner.Harness, defaultCfg.Runner.Harness)
+	if merged.Drudger.Harness != defaultCfg.Drudger.Harness {
+		t.Errorf("Harness = %q, want default %q", merged.Drudger.Harness, defaultCfg.Drudger.Harness)
 	}
-	if merged.Runner.Env != "local" {
-		t.Errorf("Env = %q, want %q (should be untouched)", merged.Runner.Env, "local")
+	if merged.Drudger.Env != "local" {
+		t.Errorf("Env = %q, want %q (should be untouched)", merged.Drudger.Env, "local")
 	}
 }
 
-func TestLoad_MissingMaxConcurrentRunners_FallsBackToDefault(t *testing.T) {
+func TestLoad_MissingMaxConcurrentDrudgers_FallsBackToDefault(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
-		Runner: RunnerConfig{
+		Drudger: DrudgerConfig{
 			Harness: HarnessOpencode,
 		},
 	})
@@ -228,17 +228,17 @@ func TestLoad_MissingMaxConcurrentRunners_FallsBackToDefault(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.MaxConcurrentRunners != defaultMaxConcurrentRunners {
-		t.Errorf("MaxConcurrentRunners = %d, want default %d", cfg.Runner.MaxConcurrentRunners, defaultMaxConcurrentRunners)
+	if cfg.Drudger.MaxConcurrentDrudgers != defaultMaxConcurrentDrudgers {
+		t.Errorf("MaxConcurrentDrudgers = %d, want default %d", cfg.Drudger.MaxConcurrentDrudgers, defaultMaxConcurrentDrudgers)
 	}
 }
 
-func TestLoad_RunnerOverrides_ReturnsLoadedValues(t *testing.T) {
+func TestLoad_DrudgerOverrides_ReturnsLoadedValues(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
-		Runner: RunnerConfig{
-			PromptFile:           "impl.md",
-			MaxConcurrentRunners: 7,
+		Drudger: DrudgerConfig{
+			PromptFile:            "impl.md",
+			MaxConcurrentDrudgers: 7,
 		},
 	})
 
@@ -247,27 +247,27 @@ func TestLoad_RunnerOverrides_ReturnsLoadedValues(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.Runner.PromptFile != "impl.md" {
-		t.Errorf("PromptFile = %q, want %q", cfg.Runner.PromptFile, "impl.md")
+	if cfg.Drudger.PromptFile != "impl.md" {
+		t.Errorf("PromptFile = %q, want %q", cfg.Drudger.PromptFile, "impl.md")
 	}
-	if cfg.Runner.MaxConcurrentRunners != 7 {
-		t.Errorf("MaxConcurrentRunners = %d, want %d", cfg.Runner.MaxConcurrentRunners, 7)
+	if cfg.Drudger.MaxConcurrentDrudgers != 7 {
+		t.Errorf("MaxConcurrentDrudgers = %d, want %d", cfg.Drudger.MaxConcurrentDrudgers, 7)
 	}
 }
 
-func TestLoad_NegativeMaxConcurrentRunners_ReturnsError(t *testing.T) {
+func TestLoad_NegativeMaxConcurrentDrudgers_ReturnsError(t *testing.T) {
 	home := setupHome(t)
 	if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
 		t.Fatalf("could not create drudge dir: %v", err)
 	}
-	raw := []byte(`{"runner": {"maxConcurrentRunners": -1}}`)
+	raw := []byte(`{"drudger": {"maxConcurrentDrudgers": -1}}`)
 	if err := os.WriteFile(common.GlobalConfigPath(home), raw, common.DefaultFilePerm); err != nil {
 		t.Fatalf("could not write config: %v", err)
 	}
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("expected error for a negative runner limit")
+		t.Fatal("expected error for a negative Drudger limit")
 	}
 }
 
@@ -285,7 +285,7 @@ func TestLoad_PromptFileOutsidePromptsDir_ReturnsError(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			home := setupHome(t)
 			writeConfig(t, home, GlobalConfig{
-				Runner: RunnerConfig{PromptFile: test.promptFile},
+				Drudger: DrudgerConfig{PromptFile: test.promptFile},
 			})
 
 			_, err := Load()

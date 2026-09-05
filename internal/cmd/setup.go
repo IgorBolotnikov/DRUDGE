@@ -50,9 +50,9 @@ var SetupCmd = &Cmd{
 		}
 		globalCfg := map[string]any{
 			"$schema": config.SchemaRef(),
-			"runner": map[string]any{
-				"environment": cfg.Runner.Env,
-				"harness":     cfg.Runner.Harness,
+			"drudger": map[string]any{
+				"environment": cfg.Drudger.Env,
+				"harness":     cfg.Drudger.Harness,
 			},
 		}
 

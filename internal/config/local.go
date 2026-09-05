@@ -12,9 +12,9 @@ import (
 // TODO: give it a $schema pointer. It can't reuse SchemaRef, because the file
 // lives outside the global dir and needs its own resolution logic
 type LocalConfig struct {
-	ProjectSlug          string `json:"projectSlug"`
-	PromptFile           string `json:"promptFile,omitempty"`
-	MaxConcurrentRunners int    `json:"maxConcurrentRunners,omitempty"`
+	ProjectSlug           string `json:"projectSlug"`
+	PromptFile            string `json:"promptFile,omitempty"`
+	MaxConcurrentDrudgers int    `json:"maxConcurrentDrudgers,omitempty"`
 }
 
 // LoadLocal reads the local config from a config file. A missing or
@@ -43,7 +43,7 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validatePromptFile(cfg.PromptFile, path); err != nil {
 		return nil, err
 	}
-	if err := validateMaxConcurrentRunners(cfg.MaxConcurrentRunners, path); err != nil {
+	if err := validateMaxConcurrentDrudgers(cfg.MaxConcurrentDrudgers, path); err != nil {
 		return nil, err
 	}
 
@@ -68,25 +68,25 @@ func ResolvePromptPath(local *LocalConfig, global *GlobalConfig) (string, error)
 	if local.PromptFile != "" {
 		return filepath.Join(common.LocalPromptsDir(), local.PromptFile), nil
 	}
-	if global.Runner.PromptFile != "" {
+	if global.Drudger.PromptFile != "" {
 		home, err := common.HomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(common.PromptsDir(home), global.Runner.PromptFile), nil
+		return filepath.Join(common.PromptsDir(home), global.Drudger.PromptFile), nil
 	}
 	return "", nil
 }
 
-// ResolveMaxConcurrentRunners returns how many runners may work on one
+// ResolveMaxConcurrentDrudgers returns how many Drudgers may work on one
 // project at once, preferring the local config over the global one and
 // falling back to the built-in default.
-func ResolveMaxConcurrentRunners(local *LocalConfig, global *GlobalConfig) int {
-	if local.MaxConcurrentRunners > 0 {
-		return local.MaxConcurrentRunners
+func ResolveMaxConcurrentDrudgers(local *LocalConfig, global *GlobalConfig) int {
+	if local.MaxConcurrentDrudgers > 0 {
+		return local.MaxConcurrentDrudgers
 	}
-	if global.Runner.MaxConcurrentRunners > 0 {
-		return global.Runner.MaxConcurrentRunners
+	if global.Drudger.MaxConcurrentDrudgers > 0 {
+		return global.Drudger.MaxConcurrentDrudgers
 	}
-	return defaultMaxConcurrentRunners
+	return defaultMaxConcurrentDrudgers
 }

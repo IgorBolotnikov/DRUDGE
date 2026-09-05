@@ -25,17 +25,17 @@ const (
 
 // Front matter keys of a task file.
 const (
-	metaKeyID              = "id"
-	metaKeyTitle           = "title"
-	metaKeyStatus          = "status"
-	metaKeyTicketID        = "ticket_id"
-	metaKeyProjectSlug     = "project_slug"
-	metaKeyRunnerID        = "runner_id"
-	metaKeyRunnerSessionID = "runner_session_id"
-	metaKeyStartedAt       = "started_at"
-	metaKeyFinishedAt      = "finished_at"
-	metaKeyCreatedAt       = "created_at"
-	metaKeyUpdatedAt       = "updated_at"
+	metaKeyID          = "id"
+	metaKeyTitle       = "title"
+	metaKeyStatus      = "status"
+	metaKeyTicketID    = "ticket_id"
+	metaKeyProjectSlug = "project_slug"
+	metaKeyDrudgerSlot = "drudger_slot"
+	metaKeySessionID   = "session_id"
+	metaKeyStartedAt   = "started_at"
+	metaKeyFinishedAt  = "finished_at"
+	metaKeyCreatedAt   = "created_at"
+	metaKeyUpdatedAt   = "updated_at"
 )
 
 type FileTaskRepository struct {
@@ -106,11 +106,11 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.TicketID != "" {
 		metadata[metaKeyTicketID] = taskToWrite.TicketID
 	}
-	if taskToWrite.RunnerID != 0 {
-		metadata[metaKeyRunnerID] = strconv.Itoa(taskToWrite.RunnerID)
+	if taskToWrite.DrudgerSlot != 0 {
+		metadata[metaKeyDrudgerSlot] = strconv.Itoa(taskToWrite.DrudgerSlot)
 	}
-	if taskToWrite.RunnerSessionID != "" {
-		metadata[metaKeyRunnerSessionID] = taskToWrite.RunnerSessionID
+	if taskToWrite.SessionID != "" {
+		metadata[metaKeySessionID] = taskToWrite.SessionID
 	}
 	if !taskToWrite.StartedAt.IsZero() {
 		metadata[metaKeyStartedAt] = taskToWrite.StartedAt.Format(time.RFC3339)
@@ -151,15 +151,15 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	if projectSlug, ok := metadata[metaKeyProjectSlug]; ok {
 		t.ProjectSlug = projectSlug
 	}
-	if runnerID, ok := metadata[metaKeyRunnerID]; ok {
-		parsed, err := strconv.Atoi(runnerID)
+	if drudgerSlot, ok := metadata[metaKeyDrudgerSlot]; ok {
+		parsed, err := strconv.Atoi(drudgerSlot)
 		if err != nil {
-			return nil, fmt.Errorf("task file %s has %s = %q, it must be a whole number", path, metaKeyRunnerID, runnerID)
+			return nil, fmt.Errorf("task file %s has %s = %q, it must be a whole number", path, metaKeyDrudgerSlot, drudgerSlot)
 		}
-		t.RunnerID = parsed
+		t.DrudgerSlot = parsed
 	}
-	if runnerSessionID, ok := metadata[metaKeyRunnerSessionID]; ok {
-		t.RunnerSessionID = runnerSessionID
+	if sessionID, ok := metadata[metaKeySessionID]; ok {
+		t.SessionID = sessionID
 	}
 	if startedAt, ok := metadata[metaKeyStartedAt]; ok {
 		t.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
