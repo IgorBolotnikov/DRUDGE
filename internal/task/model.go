@@ -30,7 +30,7 @@ type Task struct {
 	ProjectSlug  string // Slug of the project this task belongs to
 
 	RunnerID        int    // Runner slot this task was spawned on, zero means none
-	RunnerSessionID string // Session the runner reported when it was spawned
+	RunnerSessionID string // Resumable agent session of the run, empty until the agent reports it
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

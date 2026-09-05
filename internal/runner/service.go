@@ -94,6 +94,7 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	taskToRun.Status = task.StatusInProgress
 	taskToRun.StartedAt = time.Now().UTC()
 	taskToRun.RunnerID = runnerID
+	taskToRun.RunnerSessionID = service.launchedSessionID(runDir)
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
 		return fmt.Errorf("runner %s is already working on task %s, but the task could not be marked as %q: %w", runnerName, taskID, task.StatusInProgress, err)
@@ -102,6 +103,18 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	service.logger.Info("Runner %s is working on task [%s] %s", runnerName, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Run directory: %s", runDir)
 	return nil
+}
+
+// launchedSessionID reads the session id the agent has written so far. An
+// agent takes a moment to start up, so the stream is usually still empty at
+// this point and an empty id is the normal answer. Reading the run directory
+// later is what fills it in.
+func (service *RunnerService) launchedSessionID(runDir string) string {
+	sessionID, err := readSessionID(runDir)
+	if err != nil {
+		service.logger.Error("%v, the task is recorded without a session id", err)
+	}
+	return sessionID
 }
 
 // ensureSandbox creates the runner's sandbox unless it already exists.

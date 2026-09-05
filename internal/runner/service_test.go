@@ -283,6 +283,52 @@ func TestRunnerService_RunTask_RecordsTheRunnerOnTheTask(t *testing.T) {
 	}
 }
 
+func TestRunnerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing.T) {
+	cases := []struct {
+		name string
+		// lines stand for what the agent has written to its stream by the time
+		// the launch returns. Nothing there is the usual case, since an agent
+		// takes a moment to start up.
+		lines []string
+		want  string
+	}{
+		{name: "the agent has not started writing yet"},
+		{name: "the agent has written its init event", lines: []string{initEvent}, want: sampleSessionID},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			// The agent writes the stream from inside a sandbox. No test
+			// starts one, so the test writes the stream itself.
+			if testCase.lines != nil {
+				runDir := common.RunDir(workspace, string(taskToRun.ID))
+				if err := common.EnsureDir(runDir); err != nil {
+					t.Fatalf("could not create the run directory: %v", err)
+				}
+				writeStream(t, runDir, testCase.lines...)
+			}
+
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if taskToRun.RunnerSessionID != testCase.want {
+				t.Errorf("expected session id %q, got %q", testCase.want, taskToRun.RunnerSessionID)
+			}
+			if taskToRun.Status != task.StatusInProgress {
+				t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
+			}
+		})
+	}
+}
+
 func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
 	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
 	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand}
