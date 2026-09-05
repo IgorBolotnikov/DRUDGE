@@ -24,14 +24,14 @@ func TestPickRunnerCommand(t *testing.T) {
 			env:      config.EnvDockerSbx,
 			harness:  config.HarnessClaudeCode,
 			runnerID: 1,
-			want:     []string{"sbx", "run", "claude", "--name", "drudge-claude-1", "--detached", "--", "-p", prompt},
+			want:     []string{"sbx", "run", "claude", "--name", "drudge-claude-test-project-1", "--detached", "--", "-p", prompt},
 		},
 		{
 			name:     "sbx with opencode",
 			env:      config.EnvDockerSbx,
 			harness:  config.HarnessOpencode,
 			runnerID: 2,
-			want:     []string{"sbx", "run", "opencode", "--name", "drudge-opencode-2", "--detached", "--", "-p", prompt},
+			want:     []string{"sbx", "run", "opencode", "--name", "drudge-opencode-test-project-2", "--detached", "--", "-p", prompt},
 		},
 		{
 			name:            "unknown harness is an error",
@@ -61,7 +61,7 @@ func TestPickRunnerCommand(t *testing.T) {
 				&config.GlobalConfig{Runner: config.RunnerConfig{Env: testCase.env, Harness: testCase.harness}},
 			)
 
-			argv, err := service.pickRunnerCommand(testCase.runnerID, prompt)
+			argv, err := service.pickRunnerCommand(testProjectSlug, testCase.runnerID, prompt)
 
 			if testCase.wantErrContains != "" {
 				if err == nil {
@@ -85,21 +85,63 @@ func TestPickRunnerCommand(t *testing.T) {
 
 func TestFormatRunnerName(t *testing.T) {
 	cases := []struct {
-		name     string
-		harness  config.Harness
-		runnerID int
-		want     string
+		name        string
+		projectSlug string
+		harness     config.Harness
+		runnerID    int
+		want        string
 	}{
-		{name: "claude code", harness: config.HarnessClaudeCode, runnerID: 1, want: "drudge-claude-1"},
-		{name: "opencode", harness: config.HarnessOpencode, runnerID: 12, want: "drudge-opencode-12"},
-		{name: "unknown harness", harness: config.Harness("codex"), runnerID: 3, want: "drudge-unknown-3"},
+		{name: "claude code", projectSlug: "drudge", harness: config.HarnessClaudeCode, runnerID: 1, want: "drudge-claude-drudge-1"},
+		{name: "opencode", projectSlug: "drudge", harness: config.HarnessOpencode, runnerID: 12, want: "drudge-opencode-drudge-12"},
+		{name: "unknown harness", projectSlug: "drudge", harness: config.Harness("codex"), runnerID: 3, want: "drudge-unknown-drudge-3"},
+		{
+			name:        "two projects get two names for the same slot",
+			projectSlug: "other-project",
+			harness:     config.HarnessClaudeCode,
+			runnerID:    1,
+			want:        "drudge-claude-other-project-1",
+		},
+		{
+			name:        "a slug sbx would reject is normalized",
+			projectSlug: "My_Project!",
+			harness:     config.HarnessClaudeCode,
+			runnerID:    1,
+			want:        "drudge-claude-my-project-1",
+		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := formatRunnerName(testCase.runnerID, testCase.harness)
+			got := formatRunnerName(testCase.projectSlug, testCase.runnerID, testCase.harness)
 			if got != testCase.want {
 				t.Errorf("expected runner name %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestSandboxNameSlug(t *testing.T) {
+	cases := []struct {
+		name        string
+		projectSlug string
+		want        string
+	}{
+		{name: "a plain slug is left alone", projectSlug: "drudge", want: "drudge"},
+		{name: "hyphens and periods survive", projectSlug: "drudge-api.v2", want: "drudge-api.v2"},
+		{name: "upper case is folded down", projectSlug: "My Project", want: "my-project"},
+		{name: "underscores become hyphens", projectSlug: "my_project", want: "my-project"},
+		{name: "runs of rejected characters collapse", projectSlug: "my // project", want: "my-project"},
+		{name: "separators are trimmed off the ends", projectSlug: "  .drudge- ", want: "drudge"},
+		{name: "non-ascii is folded into separators", projectSlug: "проект-drudge", want: "drudge"},
+		{name: "a slug with nothing usable falls back", projectSlug: "!!!", want: unknownProjectSlug},
+		{name: "an empty slug falls back", projectSlug: "", want: unknownProjectSlug},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := sandboxNameSlug(testCase.projectSlug)
+			if got != testCase.want {
+				t.Errorf("expected slug %q, got %q", testCase.want, got)
 			}
 		})
 	}

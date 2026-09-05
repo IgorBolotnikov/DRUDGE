@@ -54,9 +54,9 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	if err != nil {
 		return err
 	}
-	runnerName := formatRunnerName(runnerID, service.globalCfg.Runner.Harness)
+	runnerName := formatRunnerName(projectSlug, runnerID, service.globalCfg.Runner.Harness)
 
-	argv, err := service.pickRunnerCommand(runnerID, prompt)
+	argv, err := service.pickRunnerCommand(projectSlug, runnerID, prompt)
 	if err != nil {
 		return err
 	}

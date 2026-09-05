@@ -33,11 +33,14 @@ const (
 	unknownRunnerPrefix    = "drudge-unknown"
 )
 
+// unknownProjectSlug stands in for a project slug that normalizes to nothing.
+const unknownProjectSlug = "unknown"
+
 // pickRunnerCommand builds the argv that starts an agent on a prompt.
-func (service *RunnerService) pickRunnerCommand(runnerID int, prompt string) ([]string, error) {
+func (service *RunnerService) pickRunnerCommand(projectSlug string, runnerID int, prompt string) ([]string, error) {
 	env := service.globalCfg.Runner.Env
 	harness := service.globalCfg.Runner.Harness
-	name := formatRunnerName(runnerID, harness)
+	name := formatRunnerName(projectSlug, runnerID, harness)
 
 	switch env {
 	case config.EnvDockerSbx:
@@ -59,7 +62,10 @@ func (service *RunnerService) pickRunnerCommand(runnerID int, prompt string) ([]
 	return nil, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the runner settings in the config", harness, env)
 }
 
-func formatRunnerName(runnerID int, harness config.Harness) string {
+// formatRunnerName names the sandbox a runner slot works in. The project is
+// part of the name, so drudge running in two repositories claims two different
+// sandboxes for the same slot.
+func formatRunnerName(projectSlug string, runnerID int, harness config.Harness) string {
 	prefix := unknownRunnerPrefix
 	switch harness {
 	case config.HarnessClaudeCode:
@@ -67,7 +73,36 @@ func formatRunnerName(runnerID int, harness config.Harness) string {
 	case config.HarnessOpencode:
 		prefix = opencodeRunnerPrefix
 	}
-	return fmt.Sprintf("%s-%d", prefix, runnerID)
+	return fmt.Sprintf("%s-%s-%d", prefix, sandboxNameSlug(projectSlug), runnerID)
+}
+
+// sandboxNameSlug folds a project slug into the characters sbx accepts in a
+// sandbox name: lowercase letters, numbers, hyphens and periods. Anything else
+// becomes a hyphen, and runs of hyphens collapse into one. The harness prefix
+// in front of the slug covers the rest of what sbx asks for, since it makes
+// every name start with a letter, run past two characters, and differ from the
+// reserved name "default".
+func sandboxNameSlug(projectSlug string) string {
+	var name strings.Builder
+	afterSeparator := false
+
+	for _, char := range strings.ToLower(projectSlug) {
+		if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '.' {
+			name.WriteRune(char)
+			afterSeparator = false
+			continue
+		}
+		if !afterSeparator {
+			name.WriteByte('-')
+			afterSeparator = true
+		}
+	}
+
+	slug := strings.Trim(name.String(), "-.")
+	if slug == "" {
+		return unknownProjectSlug
+	}
+	return slug
 }
 
 // formatArgv renders an argv for display.

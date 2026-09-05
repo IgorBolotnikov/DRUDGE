@@ -199,7 +199,7 @@ func TestRunnerService_RunTask_SpawnsAndRecordsTheRunner(t *testing.T) {
 			if commands.argv[0] != sbxBinary {
 				t.Errorf("expected the argv to start with %q, got %v", sbxBinary, commands.argv)
 			}
-			for _, want := range []string{sbxDetachedFlag, formatRunnerName(1, globalCfg.Runner.Harness)} {
+			for _, want := range []string{sbxDetachedFlag, formatRunnerName(testProjectSlug, 1, globalCfg.Runner.Harness)} {
 				if !slices.Contains(commands.argv, want) {
 					t.Errorf("expected the argv to contain %q, got %v", want, commands.argv)
 				}
@@ -411,7 +411,7 @@ func TestRunnerService_RunTask_DryRunPrintsRunner(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(out, formatRunnerName(2, config.DefaultConfig().Runner.Harness)) {
+	if !strings.Contains(out, formatRunnerName(testProjectSlug, 2, config.DefaultConfig().Runner.Harness)) {
 		t.Errorf("expected dry run output to name the allocated runner, got %q", out)
 	}
 }
@@ -470,7 +470,7 @@ func TestRunnerService_RunTask_DryRunPrintsCommandWithoutRunningIt(t *testing.T)
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, want := range []string{sbxBinary, sbxDetachedFlag, formatRunnerName(1, globalCfg.Runner.Harness)} {
+	for _, want := range []string{sbxBinary, sbxDetachedFlag, formatRunnerName(testProjectSlug, 1, globalCfg.Runner.Harness)} {
 		if !strings.Contains(out, strconv.Quote(want)) {
 			t.Errorf("expected dry run output to contain the argument %q, got %q", want, out)
 		}
@@ -478,5 +478,47 @@ func TestRunnerService_RunTask_DryRunPrintsCommandWithoutRunningIt(t *testing.T)
 
 	if commands.argv != nil {
 		t.Errorf("expected a dry run not to run anything, got argv %v", commands.argv)
+	}
+}
+
+func TestRunnerService_RunTask_DryRunNamesASandboxPerProject(t *testing.T) {
+	dryRunPreview := func(t *testing.T, projectSlug string) string {
+		t.Helper()
+		taskToRun := &task.Task{
+			ID:          "task-1",
+			Title:       "Fix login",
+			Description: "SSO is broken",
+			Status:      task.StatusTodo,
+			ProjectSlug: projectSlug,
+		}
+		service := newTestServiceWithConfigs(
+			&config.LocalConfig{ProjectSlug: projectSlug},
+			config.DefaultConfig(),
+			taskToRun,
+		)
+
+		var err error
+		out := captureOutput(func() { err = service.RunTask(projectSlug, taskToRun.ID, true) })
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return out
+	}
+
+	cases := []struct {
+		projectSlug string
+		wantName    string
+	}{
+		{projectSlug: "first-project", wantName: "drudge-claude-first-project-1"},
+		{projectSlug: "second-project", wantName: "drudge-claude-second-project-1"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.projectSlug, func(t *testing.T) {
+			out := dryRunPreview(t, testCase.projectSlug)
+			if !strings.Contains(out, testCase.wantName) {
+				t.Errorf("expected the dry run preview to name sandbox %q, got %q", testCase.wantName, out)
+			}
+		})
 	}
 }
