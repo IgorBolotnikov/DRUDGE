@@ -2,7 +2,6 @@ package task
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 type mockRepo struct {
 	createTaskFn func(CreateTaskDto) (*Task, error)
 	listTasksFn  func(string) ([]*Task, error)
-	getTaskFn    func(string, TaskID) (*Task, error)
+	findTaskFn   func(string, string) (*Task, error)
 	updateTaskFn func(string, *Task) error
 }
 
@@ -30,9 +29,9 @@ func (m *mockRepo) ListTasks(projectSlug string) ([]*Task, error) {
 	return nil, nil
 }
 
-func (m *mockRepo) GetTask(projectSlug string, id TaskID) (*Task, error) {
-	if m.getTaskFn != nil {
-		return m.getTaskFn(projectSlug, id)
+func (m *mockRepo) FindTask(projectSlug string, fullOrPartialID string) (*Task, error) {
+	if m.findTaskFn != nil {
+		return m.findTaskFn(projectSlug, fullOrPartialID)
 	}
 	return nil, nil
 }
@@ -253,85 +252,66 @@ func TestTaskService_ListTasks_ForwardsToRepo(t *testing.T) {
 	}
 }
 
-// Tasks whose ids overlap, so a prefix can be unambiguous, ambiguous, or an
-// exact id that is also the prefix of a longer one.
-func idResolutionTasks() []*Task {
-	return []*Task{
-		{ID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", Title: "Fix login"},
-		{ID: "00668f11-1111-4316-8aba-8a67a8f01f8f", Title: "Fix logout"},
-		{ID: "abcd1234-2222-4316-8aba-8a67a8f01f8f", Title: "Ship it"},
-		{ID: "abcd", Title: "Short id"},
-	}
-}
-
-func TestTaskService_GetTask_ResolvesFullAndPartialIDs(t *testing.T) {
+func TestTaskService_GetTask_HandsTheIDToTheRepository(t *testing.T) {
+	// Resolving a full id or a prefix is the repository's job. The service
+	// passes on whatever the caller typed and returns what comes back.
 	cases := []struct {
-		name    string
-		id      TaskID
-		wantID  TaskID
-		wantErr string
+		name string
+		id   TaskID
 	}{
-		{name: "a full id", id: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
-		{name: "the prefix a listing prints", id: "006684e3", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
-		{name: "a prefix matching nothing", id: "9", wantErr: "not found"},
-		{name: "a prefix of a single task", id: "abcd1", wantID: "abcd1234-2222-4316-8aba-8a67a8f01f8f"},
-		{name: "an exact id that is also a prefix", id: "abcd", wantID: "abcd"},
-		{name: "an uppercase prefix", id: "006684E3", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
-		{name: "a prefix matching several tasks", id: "00668", wantErr: "matches 2 tasks"},
-		{name: "an unknown id", id: "deadbeef", wantErr: "not found"},
-		{name: "an empty id", id: "", wantErr: "task id is required"},
+		{name: "a full id", id: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
+		{name: "the prefix a listing prints", id: "006684e3"},
+		{name: "a couple of characters", id: "00"},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			tasks := idResolutionTasks()
-			repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return tasks, nil }}
+			found := &Task{ID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", Title: "Fix login"}
+			var asked string
+			repo := &mockRepo{findTaskFn: func(_ string, id string) (*Task, error) {
+				asked = id
+				return found, nil
+			}}
 			service := NewTaskService(repo, common.NewLogger(""))
 
-			found, err := service.GetTask("demo", testCase.id)
-
-			if testCase.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected an error for id %q", testCase.id)
-				}
-				if !strings.Contains(err.Error(), testCase.wantErr) {
-					t.Errorf("expected error to mention %q, got %q", testCase.wantErr, err)
-				}
-				return
-			}
+			got, err := service.GetTask("demo", testCase.id)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if found.ID != testCase.wantID {
-				t.Errorf("expected task %q, got %q", testCase.wantID, found.ID)
+			if asked != string(testCase.id) {
+				t.Errorf("expected the repository to be asked for %q, got %q", testCase.id, asked)
+			}
+			if got != found {
+				t.Errorf("expected the task the repository found, got %v", got)
 			}
 		})
 	}
 }
 
-func TestTaskService_GetTask_AmbiguousIDNamesEveryMatch(t *testing.T) {
-	tasks := idResolutionTasks()
-	repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return tasks, nil }}
+func TestTaskService_GetTask_RefusesAnEmptyID(t *testing.T) {
+	called := false
+	repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
+		called = true
+		return nil, nil
+	}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
-	_, err := service.GetTask("demo", "00668")
-	if err == nil {
-		t.Fatal("expected an error for an ambiguous id")
+	_, err := service.GetTask("demo", "")
+	if !errors.Is(err, ErrNoTaskID) {
+		t.Fatalf("expected %v, got %v", ErrNoTaskID, err)
 	}
-	// A user picks the right task off this message, so both ids and both
-	// titles have to be in it.
-	for _, want := range []string{"006684e3-dbe9-4316-8aba-8a67a8f01f8f", "00668f11-1111-4316-8aba-8a67a8f01f8f", "Fix login", "Fix logout"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("expected error to name %q, got %q", want, err)
-		}
+	if called {
+		t.Error("expected no lookup for an empty id")
 	}
 }
 
-func TestTaskService_GetTask_ReadFailure(t *testing.T) {
-	repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return nil, errors.New("disk on fire") }}
+func TestTaskService_GetTask_SurfacesTheLookupFailure(t *testing.T) {
+	repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
+		return nil, errors.New("disk on fire")
+	}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
 	if _, err := service.GetTask("demo", "006684e3"); err == nil {
-		t.Fatal("expected the read failure to surface")
+		t.Fatal("expected the lookup failure to surface")
 	}
 }

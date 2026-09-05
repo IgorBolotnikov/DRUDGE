@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -335,7 +336,7 @@ func TestFileTaskRepository_ListTasks_SkipsNonMdFiles(t *testing.T) {
 	}
 }
 
-func TestFileTaskRepository_GetTask_Found(t *testing.T) {
+func TestFileTaskRepository_FindTask_Found(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -360,9 +361,9 @@ func TestFileTaskRepository_GetTask_Found(t *testing.T) {
 		t.Fatalf("CreateTask: %v", err)
 	}
 
-	found, err := repo.GetTask("test-project", created.ID)
+	found, err := repo.FindTask("test-project", string(created.ID))
 	if err != nil {
-		t.Fatalf("GetTask: %v", err)
+		t.Fatalf("FindTask: %v", err)
 	}
 
 	if found.ID != created.ID {
@@ -379,7 +380,7 @@ func TestFileTaskRepository_GetTask_Found(t *testing.T) {
 	}
 }
 
-func TestFileTaskRepository_GetTask_NotFound(t *testing.T) {
+func TestFileTaskRepository_FindTask_NotFound(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -390,13 +391,13 @@ func TestFileTaskRepository_GetTask_NotFound(t *testing.T) {
 
 	repo := NewFileTaskRepository("test-project")
 
-	_, err := repo.GetTask("test-project", task.TaskID("nonexistent-id"))
+	_, err := repo.FindTask("test-project", "nonexistent-id")
 	if err == nil {
 		t.Fatal("expected error for nonexistent task")
 	}
 }
 
-func TestFileTaskRepository_GetTask_ParsesTimestamps(t *testing.T) {
+func TestFileTaskRepository_FindTask_ParsesTimestamps(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()
 
@@ -420,9 +421,9 @@ func TestFileTaskRepository_GetTask_ParsesTimestamps(t *testing.T) {
 		t.Fatalf("CreateTask: %v", err)
 	}
 
-	found, err := repo.GetTask("test-project", created.ID)
+	found, err := repo.FindTask("test-project", string(created.ID))
 	if err != nil {
-		t.Fatalf("GetTask: %v", err)
+		t.Fatalf("FindTask: %v", err)
 	}
 
 	if !found.CreatedAt.Equal(now.Truncate(time.Second)) {
@@ -580,9 +581,9 @@ func TestFileTaskRepository_UpdateTask_PersistsRunnerFields(t *testing.T) {
 		t.Error("expected UpdateTask to stamp updated_at on the task")
 	}
 
-	reread, err := repo.GetTask("test-project", created.ID)
+	reread, err := repo.FindTask("test-project", string(created.ID))
 	if err != nil {
-		t.Fatalf("GetTask: %v", err)
+		t.Fatalf("FindTask: %v", err)
 	}
 
 	if reread.Status != task.StatusInProgress {
@@ -671,5 +672,141 @@ func TestTaskFrontMatter_TimestampsRoundTrip(t *testing.T) {
 				t.Errorf("expected finished at %v, got %v", written.FinishedAt, read.FinishedAt)
 			}
 		})
+	}
+}
+
+// writeTaskFile puts a task file with a chosen id in the project, so a test
+// can pick ids that overlap. CreateTask generates random ones.
+func writeTaskFile(t *testing.T, home string, id task.TaskID, title string) {
+	t.Helper()
+	tasksDir := filepath.Join(common.ProjectsDir(home), "test-project", TasksDirName)
+	if err := common.EnsureDir(tasksDir); err != nil {
+		t.Fatalf("ensure tasks dir: %v", err)
+	}
+
+	written := &task.Task{
+		ID:          id,
+		Title:       title,
+		Status:      task.StatusTodo,
+		ProjectSlug: "test-project",
+		CreatedAt:   time.Now().UTC(),
+	}
+	path := filepath.Join(tasksDir, taskFileName(id, title))
+	if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), ""); err != nil {
+		t.Fatalf("write task file: %v", err)
+	}
+}
+
+func TestFileTaskRepository_FindTask_ResolvesFullAndPartialIDs(t *testing.T) {
+	const (
+		login  = task.TaskID("006684e3-dbe9-4316-8aba-8a67a8f01f8f")
+		logout = task.TaskID("00668f11-1111-4316-8aba-8a67a8f01f8f")
+		ship   = task.TaskID("abcd1234-2222-4316-8aba-8a67a8f01f8f")
+		short  = task.TaskID("abcd")
+	)
+
+	cases := []struct {
+		name    string
+		id      string
+		wantID  task.TaskID
+		wantErr string
+	}{
+		{name: "a full id", id: string(login), wantID: login},
+		{name: "the prefix a listing prints", id: "006684e3", wantID: login},
+		{name: "a prefix naming a single task", id: "abcd1", wantID: ship},
+		{name: "an exact id that is also a prefix", id: "abcd", wantID: short},
+		{name: "an uppercase prefix", id: "006684E3", wantID: login},
+		{name: "a prefix matching several tasks", id: "00668", wantErr: "matches 2 tasks"},
+		{name: "a prefix matching nothing", id: "9", wantErr: "not found"},
+		{name: "an unknown id", id: "deadbeef", wantErr: "not found"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, cleanup := setupTaskTestHome(t)
+			defer cleanup()
+
+			writeTaskFile(t, home, login, "Fix login")
+			writeTaskFile(t, home, logout, "Fix logout")
+			writeTaskFile(t, home, ship, "Ship it")
+			writeTaskFile(t, home, short, "Short id")
+
+			repo := NewFileTaskRepository("test-project")
+			found, err := repo.FindTask("test-project", testCase.id)
+
+			if testCase.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected an error for id %q", testCase.id)
+				}
+				if !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Errorf("expected error to mention %q, got %q", testCase.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if found.ID != testCase.wantID {
+				t.Errorf("expected task %q, got %q", testCase.wantID, found.ID)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_FindTask_AmbiguousIDNamesEveryMatch(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	writeTaskFile(t, home, "006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Fix login")
+	writeTaskFile(t, home, "00668f11-1111-4316-8aba-8a67a8f01f8f", "Fix logout")
+
+	repo := NewFileTaskRepository("test-project")
+	_, err := repo.FindTask("test-project", "00668")
+	if err == nil {
+		t.Fatal("expected an error for an ambiguous id")
+	}
+
+	// A user picks the right task off this message, so every match has to be
+	// named in full.
+	for _, want := range []string{
+		"006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Fix login",
+		"00668f11-1111-4316-8aba-8a67a8f01f8f", "Fix logout",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to name %q, got %q", want, err)
+		}
+	}
+}
+
+func TestFileTaskRepository_FindTask_RefusesAFileHoldingAnotherTask(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	writeTaskFile(t, home, "006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Fix login")
+
+	// A file renamed by hand puts the name and the front matter out of step.
+	tasksDir := filepath.Join(common.ProjectsDir(home), "test-project", TasksDirName)
+	old := filepath.Join(tasksDir, taskFileName("006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Fix login"))
+	renamed := filepath.Join(tasksDir, taskFileName("99999999-0000-4000-8000-000000000000", "Fix login"))
+	if err := os.Rename(old, renamed); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	if _, err := repo.FindTask("test-project", "99999999"); err == nil {
+		t.Fatal("expected an error for a file whose name disagrees with its front matter")
+	}
+}
+
+func TestFileTaskRepository_FindTask_RefusesAnEmptyID(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	// One task in the project, so an unguarded prefix search would match it.
+	writeTaskFile(t, home, "006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Fix login")
+
+	repo := NewFileTaskRepository("test-project")
+	if _, err := repo.FindTask("test-project", ""); !errors.Is(err, task.ErrNoTaskID) {
+		t.Fatalf("expected %v, got %v", task.ErrNoTaskID, err)
 	}
 }

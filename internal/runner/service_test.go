@@ -39,13 +39,13 @@ func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*task.Task, error) {
 	return repo.tasks, nil
 }
 
-func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
+func (repo *fakeTaskRepo) FindTask(projectSlug string, fullOrPartialID string) (*task.Task, error) {
 	for _, candidate := range repo.tasks {
-		if candidate.ID == id {
+		if strings.HasPrefix(string(candidate.ID), fullOrPartialID) {
 			return candidate, nil
 		}
 	}
-	return nil, fmt.Errorf("task %q not found", id)
+	return nil, fmt.Errorf("task %q not found", fullOrPartialID)
 }
 
 func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {

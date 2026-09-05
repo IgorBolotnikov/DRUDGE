@@ -20,6 +20,9 @@ type CreateTaskDto struct {
 type TaskRepository interface {
 	CreateTask(dto CreateTaskDto) (*Task, error)
 	ListTasks(projectSlug string) ([]*Task, error)
-	GetTask(projectSlug string, id TaskID) (*Task, error)
+	// FindTask looks up the task named by a full id or by a prefix of one.
+	// An implementation searches for the match instead of handing back every
+	// task, and reports an ambiguous prefix with AmbiguousIDError.
+	FindTask(projectSlug string, fullOrPartialID string) (*Task, error)
 	UpdateTask(projectSlug string, taskToUpdate *Task) error
 }

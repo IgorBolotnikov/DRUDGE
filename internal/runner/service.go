@@ -35,9 +35,8 @@ func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskI
 	if err != nil {
 		return err
 	}
-	// The caller may have named the task by a prefix of its id. Everything
-	// below works off the full id, so a run directory keeps the same name
-	// however the task was named.
+	// The caller may have named the task by a prefix of its ID, which we should
+	// not rely on in our internal logic.
 	taskID := taskToRun.ID
 
 	if taskToRun.Status != task.StatusTodo {
