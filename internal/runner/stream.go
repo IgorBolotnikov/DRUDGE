@@ -12,6 +12,8 @@ import (
 	"drudge/internal/common"
 )
 
+// TODO: this whole file has to be revisited after a live testing
+
 // Event types and subtypes an agent writes to its stream.
 const (
 	streamEventSystem = "system"
