@@ -2,10 +2,16 @@ package task
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"drudge/internal/common"
 )
+
+// ShortIDLength is how many leading characters of a task id the interfaces
+// print. Whatever a listing shows, a user types back at drudge, so a prefix
+// this long has to be enough to name a task.
+const ShortIDLength = 8
 
 type TaskService struct {
 	repo TaskRepository
@@ -46,8 +52,54 @@ func (t *TaskService) ListTasks(projectSlug string) ([]*Task, error) {
 	return t.repo.ListTasks(projectSlug)
 }
 
+// GetTask finds one task by its full id, or by any prefix of an id that names
+// a single task. Listings print shortened ids, so a prefix is what a user has
+// in front of them.
 func (t *TaskService) GetTask(projectSlug string, id TaskID) (*Task, error) {
-	return t.repo.GetTask(projectSlug, id)
+	tasks, err := t.repo.ListTasks(projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the project's tasks to look for task %s: %w", id, err)
+	}
+	return matchTaskID(tasks, id)
+}
+
+// matchTaskID picks the one task an id or an id prefix names. An id that
+// matches a task exactly wins, even when it is also the prefix of a longer
+// one. Several matches are an error naming all of them, so a user can pick.
+func matchTaskID(tasks []*Task, id TaskID) (*Task, error) {
+	if id == "" {
+		return nil, fmt.Errorf("task id is required")
+	}
+	wanted := strings.ToLower(string(id))
+
+	var matches []*Task
+	for _, candidate := range tasks {
+		candidateID := strings.ToLower(string(candidate.ID))
+		if candidateID == wanted {
+			return candidate, nil
+		}
+		if strings.HasPrefix(candidateID, wanted) {
+			matches = append(matches, candidate)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("task %q not found", id)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("task id %q matches %d tasks, add more characters to pick one:\n%s", id, len(matches), formatTaskCandidates(matches))
+	}
+}
+
+// formatTaskCandidates lists the tasks an ambiguous id prefix matched.
+func formatTaskCandidates(matches []*Task) string {
+	lines := make([]string, 0, len(matches))
+	for _, candidate := range matches {
+		lines = append(lines, fmt.Sprintf("  %s  %s", candidate.ID, candidate.Title))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (t *TaskService) UpdateTask(projectSlug string, taskToUpdate *Task) error {

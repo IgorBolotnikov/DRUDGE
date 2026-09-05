@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,20 +253,85 @@ func TestTaskService_ListTasks_ForwardsToRepo(t *testing.T) {
 	}
 }
 
-func TestTaskService_GetTask_ForwardsToRepo(t *testing.T) {
-	expected := &Task{ID: "abc123", Title: "Get Me"}
-	repo := &mockRepo{
-		getTaskFn: func(string, TaskID) (*Task, error) {
-			return expected, nil
-		},
+// Tasks whose ids overlap, so a prefix can be unambiguous, ambiguous, or an
+// exact id that is also the prefix of a longer one.
+func idResolutionTasks() []*Task {
+	return []*Task{
+		{ID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", Title: "Fix login"},
+		{ID: "00668f11-1111-4316-8aba-8a67a8f01f8f", Title: "Fix logout"},
+		{ID: "abcd1234-2222-4316-8aba-8a67a8f01f8f", Title: "Ship it"},
+		{ID: "abcd", Title: "Short id"},
 	}
-	svc := NewTaskService(repo, common.NewLogger(""))
+}
 
-	result, err := svc.GetTask("test", "abc123")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestTaskService_GetTask_ResolvesFullAndPartialIDs(t *testing.T) {
+	cases := []struct {
+		name    string
+		id      TaskID
+		wantID  TaskID
+		wantErr string
+	}{
+		{name: "a full id", id: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
+		{name: "the prefix a listing prints", id: "006684e3", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
+		{name: "a prefix matching nothing", id: "9", wantErr: "not found"},
+		{name: "a prefix of a single task", id: "abcd1", wantID: "abcd1234-2222-4316-8aba-8a67a8f01f8f"},
+		{name: "an exact id that is also a prefix", id: "abcd", wantID: "abcd"},
+		{name: "an uppercase prefix", id: "006684E3", wantID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f"},
+		{name: "a prefix matching several tasks", id: "00668", wantErr: "matches 2 tasks"},
+		{name: "an unknown id", id: "deadbeef", wantErr: "not found"},
+		{name: "an empty id", id: "", wantErr: "task id is required"},
 	}
-	if result.ID != expected.ID {
-		t.Errorf("expected ID %s, got %s", expected.ID, result.ID)
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tasks := idResolutionTasks()
+			repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return tasks, nil }}
+			service := NewTaskService(repo, common.NewLogger(""))
+
+			found, err := service.GetTask("demo", testCase.id)
+
+			if testCase.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected an error for id %q", testCase.id)
+				}
+				if !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Errorf("expected error to mention %q, got %q", testCase.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if found.ID != testCase.wantID {
+				t.Errorf("expected task %q, got %q", testCase.wantID, found.ID)
+			}
+		})
+	}
+}
+
+func TestTaskService_GetTask_AmbiguousIDNamesEveryMatch(t *testing.T) {
+	tasks := idResolutionTasks()
+	repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return tasks, nil }}
+	service := NewTaskService(repo, common.NewLogger(""))
+
+	_, err := service.GetTask("demo", "00668")
+	if err == nil {
+		t.Fatal("expected an error for an ambiguous id")
+	}
+	// A user picks the right task off this message, so both ids and both
+	// titles have to be in it.
+	for _, want := range []string{"006684e3-dbe9-4316-8aba-8a67a8f01f8f", "00668f11-1111-4316-8aba-8a67a8f01f8f", "Fix login", "Fix logout"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to name %q, got %q", want, err)
+		}
+	}
+}
+
+func TestTaskService_GetTask_ReadFailure(t *testing.T) {
+	repo := &mockRepo{listTasksFn: func(string) ([]*Task, error) { return nil, errors.New("disk on fire") }}
+	service := NewTaskService(repo, common.NewLogger(""))
+
+	if _, err := service.GetTask("demo", "006684e3"); err == nil {
+		t.Fatal("expected the read failure to surface")
 	}
 }

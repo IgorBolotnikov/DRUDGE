@@ -30,11 +30,15 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and
 // prints what the agent would be given, and writes nothing.
-func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dryRun bool) error {
-	taskToRun, err := service.tasks.GetTask(projectSlug, taskID)
+func (service *RunnerService) RunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
+	taskToRun, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
 		return err
 	}
+	// The caller may have named the task by a prefix of its id. Everything
+	// below works off the full id, so a run directory keeps the same name
+	// however the task was named.
+	taskID := taskToRun.ID
 
 	if taskToRun.Status != task.StatusTodo {
 		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskID, taskToRun.Status, task.StatusTodo)

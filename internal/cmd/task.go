@@ -201,8 +201,8 @@ func taskList(args []string) error {
 	maxTitleLen := 40
 	for _, t := range tasks {
 		id := string(t.ID)
-		if len(id) > 8 {
-			id = id[:8]
+		if len(id) > task.ShortIDLength {
+			id = id[:task.ShortIDLength]
 		}
 		title := t.Title
 		if len(title) > maxTitleLen {
