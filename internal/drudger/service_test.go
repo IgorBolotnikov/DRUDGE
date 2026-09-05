@@ -113,13 +113,77 @@ func (runner *fakeCommandRunner) call(subcommand string) []string {
 	return nil
 }
 
-func newTestService(tasks ...*task.Task) *DrudgerService {
+// fakeDrudgerRepo keeps a project's Drudgers in memory. It hands out copies
+// the way the file adapter hands out freshly parsed records, so a caller that
+// changes what it reads changes nothing until it stores the result.
+type fakeDrudgerRepo struct {
+	drudgers []*Drudger
+}
+
+func (repo *fakeDrudgerRepo) ListDrudgers(projectSlug string) ([]*Drudger, error) {
+	return copyDrudgers(repo.drudgers), nil
+}
+
+func (repo *fakeDrudgerRepo) UpdateDrudgers(projectSlug string, change func([]*Drudger) ([]*Drudger, error)) error {
+	updated, err := change(copyDrudgers(repo.drudgers))
+	if err != nil {
+		return err
+	}
+	repo.drudgers = updated
+	return nil
+}
+
+// holderOf returns the Drudger occupied by a task, or nil when none is.
+func (repo *fakeDrudgerRepo) holderOf(taskID task.TaskID) *Drudger {
+	for _, candidate := range repo.drudgers {
+		if candidate.TaskID == taskID {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// atSlot returns the Drudger of a slot, or nil when the slot has none.
+func (repo *fakeDrudgerRepo) atSlot(slot int) *Drudger {
+	for _, candidate := range repo.drudgers {
+		if candidate.Slot == slot {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func copyDrudgers(drudgers []*Drudger) []*Drudger {
+	copied := make([]*Drudger, 0, len(drudgers))
+	for _, candidate := range drudgers {
+		duplicate := *candidate
+		copied = append(copied, &duplicate)
+	}
+	return copied
+}
+
+// testService is the service under test together with the fakes behind it, so
+// a test can assert on what a run recorded.
+type testService struct {
+	*DrudgerService
+	drudgers *fakeDrudgerRepo
+}
+
+func newTestService(tasks ...*task.Task) *testService {
 	return newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, tasks...)
 }
 
-func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *DrudgerService {
+func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *testService {
+	return newTestServiceWithPool(localCfg, globalCfg, commands, nil, tasks...)
+}
+
+func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
 	logger := common.NewLogger("")
-	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), commands)
+	drudgers := &fakeDrudgerRepo{drudgers: pool}
+	return &testService{
+		DrudgerService: New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), drudgers, commands),
+		drudgers:       drudgers,
+	}
 }
 
 // setupWorkspace moves the test into a temp workspace and returns its path.
@@ -160,14 +224,41 @@ func todoTask() *task.Task {
 	}
 }
 
-// busyTask holds a Drudger slot so the next run has to allocate another one.
-func busyTask(drudgerSlot int) *task.Task {
-	return &task.Task{
-		ID:          task.TaskID(fmt.Sprintf("busy-%d", drudgerSlot)),
-		Title:       "Already running",
-		Status:      task.StatusInProgress,
-		DrudgerSlot: drudgerSlot,
-		ProjectSlug: testProjectSlug,
+// busyDrudger occupies a slot so the next run has to allocate another one.
+func busyDrudger(slot int) *Drudger {
+	return &Drudger{
+		Slot:    slot,
+		Sandbox: testSandboxOfSlot(slot),
+		TaskID:  busyTaskID(slot),
+	}
+}
+
+// idleDrudger is a Drudger that exists and holds no task.
+func idleDrudger(slot int) *Drudger {
+	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot)}
+}
+
+// busyTaskID names the task occupying a busy Drudger.
+func busyTaskID(slot int) task.TaskID {
+	return task.TaskID(fmt.Sprintf("busy-%d", slot))
+}
+
+// testSandboxOfSlot names the sandbox of any slot, the way the consts at the
+// top of this file name the first two.
+func testSandboxOfSlot(slot int) string {
+	return fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, slot)
+}
+
+// finishSession writes the exit file the launcher writes last, which is how
+// drudge tells that a Session is over and its Drudger is free again.
+func finishSession(t *testing.T, workspace string, taskID task.TaskID) {
+	t.Helper()
+	runDir := common.RunDir(workspace, string(taskID))
+	if err := common.EnsureDir(runDir); err != nil {
+		t.Fatalf("could not create the run directory: %v", err)
+	}
+	if err := common.WriteFile(common.RunExitPath(runDir), "0\n"); err != nil {
+		t.Fatalf("could not write the exit file: %v", err)
 	}
 }
 
@@ -264,7 +355,7 @@ func TestDrudgerService_RunTask_UnknownTask(t *testing.T) {
 	}
 }
 
-func TestDrudgerService_RunTask_RecordsTheDrudgerOnTheTask(t *testing.T) {
+func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
@@ -279,11 +370,22 @@ func TestDrudgerService_RunTask_RecordsTheDrudgerOnTheTask(t *testing.T) {
 	if taskToRun.Status != task.StatusInProgress {
 		t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
 	}
-	if taskToRun.DrudgerSlot != 1 {
-		t.Errorf("expected Drudger 1, got %d", taskToRun.DrudgerSlot)
-	}
 	if taskToRun.StartedAt.IsZero() {
 		t.Error("expected started at to be stamped")
+	}
+
+	claimed := service.drudgers.holderOf(taskToRun.ID)
+	if claimed == nil {
+		t.Fatalf("expected a Drudger to hold the task, got pool %v", service.drudgers.drudgers)
+	}
+	if claimed.Slot != 1 {
+		t.Errorf("expected Drudger 1, got %d", claimed.Slot)
+	}
+	if claimed.Sandbox != testSandbox {
+		t.Errorf("expected sandbox %q, got %q", testSandbox, claimed.Sandbox)
+	}
+	if claimed.LastChecked.IsZero() {
+		t.Error("expected last checked to be stamped")
 	}
 	// The session id only exists once the agent has written its init event, so
 	// a task is recorded without one.
@@ -421,8 +523,8 @@ func TestDrudgerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testin
 				if taskToRun.Status != task.StatusTodo {
 					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
 				}
-				if taskToRun.DrudgerSlot != 0 {
-					t.Errorf("expected no Drudger to be recorded, got %d", taskToRun.DrudgerSlot)
+				if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+					t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
 				}
 				return
 			}
@@ -514,8 +616,10 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			if taskToRun.Status != task.StatusTodo {
 				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
 			}
-			if taskToRun.DrudgerSlot != 0 {
-				t.Errorf("expected no Drudger to be recorded, got %d", taskToRun.DrudgerSlot)
+			// A run that never got the agent up hands its slot back, so a
+			// failure never costs the pool a Drudger.
+			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+				t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
 			}
 
 			exists, err := common.Exists(common.RunDir(workspace, string(taskToRun.ID)))
@@ -531,34 +635,43 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) {
 	cases := []struct {
-		name    string
-		limit   int
-		busy    []*task.Task
-		wantID  int
-		wantErr bool
+		name  string
+		limit int
+		pool  []*Drudger
+		// finished names the tasks whose Session has written its exit file, so
+		// the Drudgers holding them are free again.
+		finished []task.TaskID
+		wantSlot int
+		wantErr  bool
 	}{
-		{name: "empty pool takes the first slot", limit: 3, wantID: 1},
-		{name: "takes the next free slot", limit: 3, busy: []*task.Task{busyTask(1)}, wantID: 2},
-		{name: "fills a gap left in the middle", limit: 3, busy: []*task.Task{busyTask(1), busyTask(3)}, wantID: 2},
+		{name: "empty pool takes the first slot", limit: 3, wantSlot: 1},
+		{name: "takes the next free slot", limit: 3, pool: []*Drudger{busyDrudger(1)}, wantSlot: 2},
+		{name: "fills a gap left in the middle", limit: 3, pool: []*Drudger{busyDrudger(1), busyDrudger(3)}, wantSlot: 2},
+		{name: "reuses a Drudger nobody is working in", limit: 3, pool: []*Drudger{idleDrudger(1)}, wantSlot: 1},
 		{
-			name:  "ignores tasks that are not in progress",
+			name:     "reclaims a Drudger whose Session has finished",
+			limit:    3,
+			pool:     []*Drudger{busyDrudger(1), busyDrudger(2)},
+			finished: []task.TaskID{busyTaskID(1)},
+			wantSlot: 1,
+		},
+		{
+			name:  "leaves a Drudger whose Session is still running",
 			limit: 3,
-			busy: []*task.Task{
-				{ID: "done", Status: task.StatusDone, DrudgerSlot: 1, ProjectSlug: testProjectSlug},
-				{ID: "fucked-up", Status: task.StatusFuckedUp, DrudgerSlot: 2, ProjectSlug: testProjectSlug},
-			},
-			wantID: 1,
+			pool:  []*Drudger{busyDrudger(1), busyDrudger(2)},
+			// No exit file anywhere, so both Sessions are still going.
+			wantSlot: 3,
 		},
 		{
 			name:    "fails when every slot is taken",
 			limit:   2,
-			busy:    []*task.Task{busyTask(1), busyTask(2)},
+			pool:    []*Drudger{busyDrudger(1), busyDrudger(2)},
 			wantErr: true,
 		},
 		{
 			name:    "ignores slots above the limit but still fails when full",
 			limit:   1,
-			busy:    []*task.Task{busyTask(1), busyTask(7)},
+			pool:    []*Drudger{busyDrudger(1), busyDrudger(7)},
 			wantErr: true,
 		},
 	}
@@ -567,12 +680,17 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
+			for _, finishedTask := range testCase.finished {
+				finishSession(t, workspace, finishedTask)
+			}
+
 			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(
+			service := newTestServiceWithPool(
 				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
 				config.DefaultConfig(),
 				commands,
-				append([]*task.Task{taskToRun}, testCase.busy...)...,
+				testCase.pool,
+				taskToRun,
 			)
 
 			var err error
@@ -580,7 +698,7 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got Drudger %d", taskToRun.DrudgerSlot)
+					t.Fatal("expected an error, the pool should have been full")
 				}
 				if !strings.Contains(err.Error(), config.MaxConcurrentDrudgersKey) {
 					t.Errorf("expected the error to name the config key, got %q", err)
@@ -591,14 +709,86 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if taskToRun.DrudgerSlot != testCase.wantID {
-				t.Errorf("expected Drudger %d, got %d", testCase.wantID, taskToRun.DrudgerSlot)
+			claimed := service.drudgers.holderOf(taskToRun.ID)
+			if claimed == nil {
+				t.Fatalf("expected a Drudger to hold the task, got pool %v", service.drudgers.drudgers)
 			}
-			wantSandbox := fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, testCase.wantID)
+			if claimed.Slot != testCase.wantSlot {
+				t.Errorf("expected Drudger %d, got %d", testCase.wantSlot, claimed.Slot)
+			}
+
+			wantSandbox := testSandboxOfSlot(testCase.wantSlot)
 			if create := commands.call(sbxCreateSubcommand); !slices.Contains(create, wantSandbox) {
 				t.Errorf("expected the create call to name sandbox %q, got %v", wantSandbox, create)
 			}
 		})
+	}
+}
+
+func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
+	// A Drudger that already exists keeps the name its sandbox was created
+	// under, so changing the harness setting cannot silently rename a
+	// container that is already on disk.
+	const namedByAnEarlierHarness = "drudge-opencode-test-project-1"
+
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(namedByAnEarlierHarness)}}
+	service := newTestServiceWithPool(
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		commands,
+		[]*Drudger{{Slot: 1, Sandbox: namedByAnEarlierHarness}},
+		taskToRun,
+	)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand}) {
+		t.Errorf("expected the stored sandbox to be reused, got %v", got)
+	}
+	if start := commands.call(sbxExecSubcommand); !slices.Contains(start, namedByAnEarlierHarness) {
+		t.Errorf("expected the start call to name sandbox %q, got %v", namedByAnEarlierHarness, start)
+	}
+	if claimed := service.drudgers.atSlot(1); claimed.Sandbox != namedByAnEarlierHarness {
+		t.Errorf("expected the stored sandbox name to survive the run, got %q", claimed.Sandbox)
+	}
+}
+
+func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace}
+	service := newTestServiceWithPool(
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		commands,
+		[]*Drudger{busyDrudger(1)},
+		taskToRun,
+	)
+
+	var err error
+	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// A dry run still says which Drudger the real run would take.
+	if !strings.Contains(out, testSandboxSlot2) {
+		t.Errorf("expected the dry run to name sandbox %q, got %q", testSandboxSlot2, out)
+	}
+	if len(service.drudgers.drudgers) != 1 {
+		t.Errorf("expected the pool to be left alone, got %v", service.drudgers.drudgers)
+	}
+	if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+		t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
+	}
+	if len(commands.calls) != 0 {
+		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
 	}
 }
 

@@ -62,13 +62,14 @@ func newTaskDeps() (*taskDeps, error) {
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	tasks := task.NewTaskService(repo, log)
+	drudgers := persistence.NewFileDrudgerRepository("")
 	cmdRunner := exec.NewCommandRunner()
 
 	return &taskDeps{
 		localCfg: localCfg,
 		log:      log,
 		tasks:    tasks,
-		drudger:  drudger.New(log, localCfg, globalCfg, tasks, cmdRunner),
+		drudger:  drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner),
 	}, nil
 }
 

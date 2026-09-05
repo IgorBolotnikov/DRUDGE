@@ -15,15 +15,17 @@ type DrudgerService struct {
 	localCfg  *config.LocalConfig
 	globalCfg *config.GlobalConfig
 	tasks     *task.TaskService
+	drudgers  DrudgerRepository
 	commands  CommandRunner
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, commands CommandRunner) *DrudgerService {
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {
 	return &DrudgerService{
 		logger:    logger,
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
 		tasks:     tasks,
+		drudgers:  drudgers,
 		commands:  commands,
 	}
 }
@@ -53,34 +55,39 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return fmt.Errorf("%s: %w", promptSource, err)
 	}
 
-	drudgerSlot, err := service.allocateDrudgerSlot(projectSlug)
-	if err != nil {
-		return err
-	}
-	drudgerName := formatDrudgerName(projectSlug, drudgerSlot, service.globalCfg.Drudger.Harness)
-
 	workspace, err := common.WorkDir()
 	if err != nil {
 		return fmt.Errorf("could not work out where to run task %s: %w", taskID, err)
 	}
 	runDir := common.RunDir(workspace, string(taskID))
 
-	plan, err := service.pickDrudgerCommand(projectSlug, drudgerSlot, workspace, runDir)
+	if dryRun {
+		return service.describeRun(projectSlug, taskToRun, workspace, runDir, prompt, promptSource)
+	}
+
+	claimed, err := service.claimDrudger(projectSlug, taskID, workspace)
 	if err != nil {
 		return err
 	}
 
-	if dryRun {
-		service.logger.Info("Drudger %d (%s) for task [%s] %s", drudgerSlot, drudgerName, taskToRun.ID, taskToRun.Title)
-		service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
-		service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect), formatArgv(plan.create), formatArgv(plan.start))
-		return nil
+	// Every way out of here before the agent is up has to hand the slot back,
+	// or a failed run costs the pool a Drudger until someone notices.
+	launched := false
+	defer func() {
+		if !launched {
+			service.releaseDrudger(projectSlug, claimed.Slot, taskID)
+		}
+	}()
+
+	plan, err := service.pickDrudgerCommand(claimed.Sandbox, workspace, runDir)
+	if err != nil {
+		return err
 	}
 
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(plan, drudgerName, workspace); err != nil {
+	if err := service.ensureSandbox(plan, claimed.Sandbox, workspace); err != nil {
 		return err
 	}
 
@@ -91,20 +98,40 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	// TODO: add a command that pings a task's Session to tell whether it
 	// is still alive, and frees the Drudger slot when it is not.
 	if _, err := service.commands.Run(plan.start); err != nil {
-		return fmt.Errorf("could not start Drudger %s for task %s: %w", drudgerName, taskID, err)
+		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
 	}
+	launched = true
 
 	taskToRun.Status = task.StatusInProgress
 	taskToRun.StartedAt = time.Now().UTC()
-	taskToRun.DrudgerSlot = drudgerSlot
 	taskToRun.SessionID = service.launchedSessionID(runDir)
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
-		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", drudgerName, taskID, task.StatusInProgress, err)
+		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", claimed.Sandbox, taskID, task.StatusInProgress, err)
 	}
 
-	service.logger.Info("Drudger %s is working on task [%s] %s", drudgerName, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Run directory: %s", runDir)
+	return nil
+}
+
+// describeRun prints what a run would hand the agent. It claims no Drudger and
+// writes nothing. The Drudger it names is the one a run would pick right now,
+// and nothing holds it until a real run takes it.
+func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, workspace, runDir, prompt, promptSource string) error {
+	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, workspace)
+	if err != nil {
+		return err
+	}
+
+	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, workspace, runDir)
+	if err != nil {
+		return err
+	}
+
+	service.logger.Info("Drudger %d (%s) for task [%s] %s", wouldUse.Slot, wouldUse.Sandbox, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
+	service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect), formatArgv(plan.create), formatArgv(plan.start))
 	return nil
 }
 
@@ -152,36 +179,4 @@ func writeRunPrompt(runDir string, prompt string) error {
 		return err
 	}
 	return common.WriteFile(common.RunPromptPath(runDir), prompt)
-}
-
-// allocateDrudgerSlot picks the lowest free Drudger slot of a project's pool. A
-// slot is taken for as long as the task holding it is in progress, so the pool
-// is recomputed from the project's tasks on every run.
-func (service *DrudgerService) allocateDrudgerSlot(projectSlug string) (int, error) {
-	tasks, err := service.tasks.ListTasks(projectSlug)
-	if err != nil {
-		return 0, fmt.Errorf("could not read the project's tasks to work out which Drudgers are busy: %w", err)
-	}
-
-	occupied := occupiedDrudgerSlots(tasks)
-	limit := config.ResolveMaxConcurrentDrudgers(service.localCfg, service.globalCfg)
-
-	for candidate := 1; candidate <= limit; candidate++ {
-		if !occupied[candidate] {
-			return candidate, nil
-		}
-	}
-
-	return 0, fmt.Errorf("all %d Drudgers of project %s are busy with %q tasks, wait for one to finish or raise %s in the config", limit, projectSlug, task.StatusInProgress, config.MaxConcurrentDrudgersKey)
-}
-
-// occupiedDrudgerSlots collects the Drudger slots held by in-progress tasks.
-func occupiedDrudgerSlots(tasks []*task.Task) map[int]bool {
-	occupied := make(map[int]bool)
-	for _, candidate := range tasks {
-		if candidate.Status == task.StatusInProgress && candidate.DrudgerSlot > 0 {
-			occupied[candidate.DrudgerSlot] = true
-		}
-	}
-	return occupied
 }

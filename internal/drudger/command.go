@@ -76,18 +76,19 @@ type sandbox struct {
 }
 
 // pickDrudgerCommand builds the commands that put an agent to work on the
-// prompt sitting in the run directory.
-func (service *DrudgerService) pickDrudgerCommand(projectSlug string, drudgerSlot int, workspace, runDir string) (sandboxPlan, error) {
+// prompt sitting in the run directory. The sandbox name comes from the Drudger
+// that was claimed, so a Drudger keeps the name it was created under even if
+// the harness setting changes later.
+func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace, runDir string) (sandboxPlan, error) {
 	env := service.globalCfg.Drudger.Env
 	harness := service.globalCfg.Drudger.Harness
-	name := formatDrudgerName(projectSlug, drudgerSlot, harness)
 
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
 		return sandboxPlan{
 			inspect: []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag},
-			create:  []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, name},
+			create:  []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, sandboxName},
 			start: []string{
-				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, name,
+				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
 				shellBinary, shellCommandFlag, formatLauncher(workspace, runDir),
 			},
 		}, nil
