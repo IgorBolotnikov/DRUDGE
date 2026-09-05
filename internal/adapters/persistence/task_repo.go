@@ -238,9 +238,7 @@ func describeTaskFile(tasksDir string, name string) taskFile {
 	}
 }
 
-// taskFiles reads the project's task files off its directory entries. Names
-// carry the id and title, so a lookup costs one directory read and opens only
-// the file it settles on.
+// taskFiles reads the project's task files off its directory entries.
 func (r *FileTaskRepository) taskFiles() ([]taskFile, error) {
 	tasksDir := r.taskDir()
 
@@ -259,8 +257,7 @@ func (r *FileTaskRepository) taskFiles() ([]taskFile, error) {
 	return files, nil
 }
 
-// exactTaskFile picks the file of the task carrying exactly this id. Callers
-// on this path already hold a task id, so nothing about it is guessed.
+// exactTaskFile picks the file of the task carrying exactly this id.
 func (r *FileTaskRepository) exactTaskFile(id task.TaskID) (taskFile, error) {
 	if id == "" {
 		return taskFile{}, task.ErrNoTaskID
@@ -281,10 +278,9 @@ func (r *FileTaskRepository) exactTaskFile(id task.TaskID) (taskFile, error) {
 
 // findTaskFile picks the task file named by a full id or by a prefix of one.
 // An id matching a file exactly wins over one that is only a prefix, and the
-// match ignores case, since a user types this id off a listing.
+// match ignores case.
 func (r *FileTaskRepository) findTaskFile(fullOrPartialID string) (taskFile, error) {
-	// Every id starts with an empty prefix, so an empty search would match
-	// whatever task happened to come first.
+	// Catchall query is a hard erorr.
 	if fullOrPartialID == "" {
 		return taskFile{}, task.ErrNoTaskID
 	}
@@ -334,8 +330,8 @@ func (r *FileTaskRepository) readTaskFile(found taskFile) (*task.Task, error) {
 	}
 
 	// The file name is what a lookup matches on, and the front matter is what
-	// drudge works from. A file renamed by hand puts the two out of step,
-	// which would hand back a task the caller never asked for.
+	// drudge works from. A file renamed by hand creates ID inconsistency
+	// and is a hard error due to invalid data.
 	if parsed.ID != found.id {
 		return nil, fmt.Errorf("task file %s holds task %s, rename it back or fix its id", found.path, parsed.ID)
 	}
