@@ -54,10 +54,6 @@ const (
 // unknownProjectSlug stands in for a project slug that normalizes to nothing.
 const unknownProjectSlug = "unknown"
 
-// mountOptionSeparator splits a workspace mount from its options, as in the
-// ":ro" a read-only mount carries.
-const mountOptionSeparator = ":"
-
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
 
@@ -159,7 +155,7 @@ func findSandbox(listing string, name string) (*sandbox, error) {
 func checkSandboxWorkspace(existing *sandbox, workspace string) error {
 	workspacePath := filepath.Clean(workspace)
 	for _, mount := range existing.Workspaces {
-		if mountPath(mount) == workspacePath {
+		if filepath.Clean(mount) == workspacePath {
 			return nil
 		}
 	}
@@ -167,13 +163,6 @@ func checkSandboxWorkspace(existing *sandbox, workspace string) error {
 		"sandbox %s is mounted on %s, but this project lives in %s, delete that sandbox so DRUDGE can recreate it on the right workspace",
 		existing.Name, formatMounts(existing.Workspaces), workspace,
 	)
-}
-
-// mountPath is the path a workspace mount points at, cleaned so that a
-// trailing slash does not read as a different path.
-func mountPath(mount string) string {
-	path, _, _ := strings.Cut(mount, mountOptionSeparator)
-	return filepath.Clean(path)
 }
 
 // formatMounts renders a sandbox's workspace mounts for an error message.

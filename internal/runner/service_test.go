@@ -330,10 +330,8 @@ func TestRunnerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing
 	}{
 		{name: "the workspace of the run", mounts: []string{runWorkspace}},
 		{name: "a trailing slash is the same path", mounts: []string{runWorkspace + "/"}},
-		{name: "a read-only mount of the workspace", mounts: []string{runWorkspace + ":ro"}},
 		{name: "the workspace among several mounts", mounts: []string{otherRepo, runWorkspace}},
 		{name: "another repository", mounts: []string{otherRepo}, wantErr: true},
-		{name: "another repository mounted read-only", mounts: []string{otherRepo + ":ro"}, wantErr: true},
 		{name: "several mounts, none of them the workspace", mounts: []string{otherRepo, "/yet/another"}, wantErr: true},
 		{name: "a path the workspace is only a prefix of", mounts: []string{runWorkspace + "-old"}, wantErr: true},
 		{name: "no workspace at all", wantErr: true},
