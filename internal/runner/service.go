@@ -105,8 +105,8 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 }
 
 // ensureSandbox creates the runner's sandbox unless it already exists.
-// Creating one that is already there fails, so the listing decides. An
-// existing sandbox is only reused when it holds the workspace of this run.
+// Creating one that is already there fails, so the listing decides there.
+// An existing sandbox is only reused when it holds the workspace of this run.
 func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName, workspace string) error {
 	listing, err := service.commands.Run(plan.inspect)
 	if err != nil {

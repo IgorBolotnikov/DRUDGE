@@ -156,8 +156,6 @@ func findSandbox(listing string, name string) (*sandbox, error) {
 }
 
 // checkSandboxWorkspace guards against an agent editing the wrong repository.
-// A sandbox carrying this runner's name can still be mounted somewhere else,
-// so the name alone is not enough to reuse it.
 func checkSandboxWorkspace(existing *sandbox, workspace string) error {
 	workspacePath := filepath.Clean(workspace)
 	for _, mount := range existing.Workspaces {
