@@ -149,7 +149,7 @@ func writePromptFile(t *testing.T, dir string, name string, content string) {
 	if err := common.EnsureDir(dir); err != nil {
 		t.Fatalf("could not create prompts dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), common.DefaultFilePerm); err != nil {
+	if err := common.WriteFile(filepath.Join(dir, name), content); err != nil {
 		t.Fatalf("could not write prompt file: %v", err)
 	}
 }

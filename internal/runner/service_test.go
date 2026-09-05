@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,14 @@ import (
 	"drudge/internal/task"
 )
 
-const testProjectSlug = "test-project"
+const (
+	testProjectSlug = "test-project"
+
+	// The sandbox drudge names for the first two runner slots of the test
+	// project, under the default harness.
+	testSandbox      = "drudge-claude-test-project-1"
+	testSandboxSlot2 = "drudge-claude-test-project-2"
+)
 
 type fakeTaskRepo struct {
 	tasks []*task.Task
@@ -49,24 +55,115 @@ func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task
 	return fmt.Errorf("task %q not found", taskToUpdate.ID)
 }
 
+// fakeCommandRunner answers a fixed script of calls and remembers what it was
+// asked to run, in order.
 type fakeCommandRunner struct {
-	argv   []string
-	output string
-	err    error
+	calls   [][]string
+	outputs []string
+	errs    []error
 }
 
 func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
-	runner.argv = argv
-	return runner.output, runner.err
+	index := len(runner.calls)
+	runner.calls = append(runner.calls, argv)
+
+	var output string
+	if index < len(runner.outputs) {
+		output = runner.outputs[index]
+	}
+	var err error
+	if index < len(runner.errs) {
+		err = runner.errs[index]
+	}
+	return output, err
+}
+
+// subcommands names the sbx subcommand of every call, in order, so a test can
+// assert on the shape of a run without repeating whole argvs.
+func (runner *fakeCommandRunner) subcommands() []string {
+	names := make([]string, 0, len(runner.calls))
+	for _, argv := range runner.calls {
+		names = append(names, argv[1])
+	}
+	return names
+}
+
+// call returns the first call to an sbx subcommand, or nil if it never came.
+func (runner *fakeCommandRunner) call(subcommand string) []string {
+	for _, argv := range runner.calls {
+		if argv[1] == subcommand {
+			return argv
+		}
+	}
+	return nil
 }
 
 func newTestService(tasks ...*task.Task) *RunnerService {
-	return newTestServiceWithConfigs(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), tasks...)
+	return newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, tasks...)
 }
 
-func newTestServiceWithConfigs(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks ...*task.Task) *RunnerService {
+func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *RunnerService {
 	logger := common.NewLogger("")
-	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), &fakeCommandRunner{})
+	return New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), commands)
+}
+
+// setupWorkspace moves the test into a temp workspace and returns its path.
+func setupWorkspace(t *testing.T) string {
+	return setupWorkspaceNamed(t, "")
+}
+
+// setupWorkspaceNamed moves the test into a named directory of a temp
+// workspace, so a test can pick a path a shell would choke on unquoted.
+func setupWorkspaceNamed(t *testing.T, name string) string {
+	t.Helper()
+	setupPromptDirs(t)
+
+	if name != "" {
+		if err := common.EnsureDir(name); err != nil {
+			t.Fatalf("could not create the workspace directory: %v", err)
+		}
+		if err := os.Chdir(name); err != nil {
+			t.Fatalf("Chdir: %v", err)
+		}
+	}
+
+	workspace, err := common.WorkDir()
+	if err != nil {
+		t.Fatalf("could not resolve the workspace: %v", err)
+	}
+	return workspace
+}
+
+// todoTask is the task every run test hands to an agent.
+func todoTask() *task.Task {
+	return &task.Task{
+		ID:          "task-1",
+		Title:       "Fix login",
+		Description: "SSO is broken",
+		Status:      task.StatusTodo,
+		ProjectSlug: testProjectSlug,
+	}
+}
+
+// busyTask holds a runner slot so the next run has to allocate another one.
+func busyTask(runnerID int) *task.Task {
+	return &task.Task{
+		ID:          task.TaskID(fmt.Sprintf("busy-%d", runnerID)),
+		Title:       "Already running",
+		Status:      task.StatusInProgress,
+		RunnerID:    runnerID,
+		ProjectSlug: testProjectSlug,
+	}
+}
+
+// sandboxListingWith renders the `sbx ls --json` output for a listing that
+// holds exactly the named sandboxes.
+func sandboxListingWith(names ...string) string {
+	entries := make([]string, 0, len(names))
+	for _, name := range names {
+		entries = append(entries, fmt.Sprintf(`{"name":%q}`, name))
+	}
+	return fmt.Sprintf(`{"sandboxes":[%s]}`, strings.Join(entries, ","))
 }
 
 func captureOutput(f func()) string {
@@ -80,7 +177,7 @@ func captureOutput(f func()) string {
 	return string(out)
 }
 
-func TestRunnerService_RunTask_DryRunStatusGuard(t *testing.T) {
+func TestRunnerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
 	cases := []struct {
 		name    string
 		status  task.TaskStatus
@@ -95,16 +192,12 @@ func TestRunnerService_RunTask_DryRunStatusGuard(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := newTestService(&task.Task{
-				ID:          "task-1",
-				Title:       "Fix login",
-				Description: "SSO is broken",
-				Status:      testCase.status,
-				ProjectSlug: testProjectSlug,
-			})
+			taskToRun := todoTask()
+			taskToRun.Status = testCase.status
+			service := newTestService(taskToRun)
 
 			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, "task-1", true) })
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
 
 			if testCase.wantErr {
 				if err == nil {
@@ -122,30 +215,6 @@ func TestRunnerService_RunTask_DryRunStatusGuard(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_DryRunPrintsPrompt(t *testing.T) {
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		TicketID:    "PROJ-123",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	service := newTestService(taskToRun)
-
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected dry run output to contain %q, got %q", want, out)
-		}
-	}
-}
-
 func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
 	service := newTestService()
 
@@ -155,37 +224,57 @@ func TestRunnerService_RunTask_UnknownTask(t *testing.T) {
 	}
 }
 
-func TestRunnerService_RunTask_SpawnsAndRecordsTheRunner(t *testing.T) {
+func TestRunnerService_RunTask_RecordsTheRunnerOnTheTask(t *testing.T) {
+	setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if taskToRun.Status != task.StatusInProgress {
+		t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
+	}
+	if taskToRun.RunnerID != 1 {
+		t.Errorf("expected runner 1, got %d", taskToRun.RunnerID)
+	}
+	if taskToRun.StartedAt.IsZero() {
+		t.Error("expected started at to be stamped")
+	}
+	// The session id only exists once the agent has written its init event, so
+	// a task is recorded without one.
+	if taskToRun.RunnerSessionID != "" {
+		t.Errorf("expected no session id to be recorded, got %q", taskToRun.RunnerSessionID)
+	}
+}
+
+func TestRunnerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
+	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
+	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand}
+
 	cases := []struct {
-		name          string
-		output        string
-		wantSessionID string
+		name    string
+		listing string
+		want    []string
 	}{
-		{name: "single line of output", output: "sess-abc123", wantSessionID: "sess-abc123"},
-		{name: "session on the last line", output: "starting sandbox\nsess-abc123", wantSessionID: "sess-abc123"},
-		{name: "trailing blank lines are skipped", output: "sess-abc123\n\n  \n", wantSessionID: "sess-abc123"},
-		{name: "no session reported", output: "  \n\n"},
+		{name: "an empty listing", listing: sandboxListingWith(), want: createThenStart},
+		{name: "a listing without the key", listing: `{}`, want: createThenStart},
+		{name: "another project's sandbox", listing: sandboxListingWith("drudge-claude-other-project-1"), want: createThenStart},
+		{name: "another slot of this project", listing: sandboxListingWith(testSandboxSlot2), want: createThenStart},
+		{name: "this runner's sandbox", listing: sandboxListingWith(testSandbox), want: startOnly},
+		{name: "this runner's sandbox among others", listing: sandboxListingWith("drudge-claude-other-project-1", testSandbox), want: startOnly},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			taskToRun := &task.Task{
-				ID:          "task-1",
-				Title:       "Fix login",
-				Description: "SSO is broken",
-				Status:      task.StatusTodo,
-				ProjectSlug: testProjectSlug,
-			}
-			logger := common.NewLogger("")
-			globalCfg := config.DefaultConfig()
-			commands := &fakeCommandRunner{output: testCase.output}
-			service := New(
-				logger,
-				&config.LocalConfig{ProjectSlug: testProjectSlug},
-				globalCfg,
-				task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
-				commands,
-			)
+			setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{outputs: []string{testCase.listing}}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -193,84 +282,191 @@ func TestRunnerService_RunTask_SpawnsAndRecordsTheRunner(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if commands.argv == nil {
-				t.Fatal("expected the runner command to be run")
-			}
-			if commands.argv[0] != sbxBinary {
-				t.Errorf("expected the argv to start with %q, got %v", sbxBinary, commands.argv)
-			}
-			for _, want := range []string{sbxDetachedFlag, formatRunnerName(testProjectSlug, 1, globalCfg.Runner.Harness)} {
-				if !slices.Contains(commands.argv, want) {
-					t.Errorf("expected the argv to contain %q, got %v", want, commands.argv)
-				}
-			}
-			if !strings.Contains(commands.argv[len(commands.argv)-1], taskToRun.Title) {
-				t.Errorf("expected the rendered prompt as the last argument, got %v", commands.argv)
-			}
-
-			if taskToRun.Status != task.StatusInProgress {
-				t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
-			}
-			if taskToRun.RunnerID != 1 {
-				t.Errorf("expected runner 1, got %d", taskToRun.RunnerID)
-			}
-			if taskToRun.RunnerSessionID != testCase.wantSessionID {
-				t.Errorf("expected session %q, got %q", testCase.wantSessionID, taskToRun.RunnerSessionID)
-			}
-			if taskToRun.StartedAt.IsZero() {
-				t.Error("expected started at to be stamped")
+			if got := commands.subcommands(); !slices.Equal(got, testCase.want) {
+				t.Errorf("expected sbx calls %v, got %v", testCase.want, got)
 			}
 		})
 	}
 }
 
-func TestRunnerService_RunTask_SpawnFailureLeavesTheTaskAlone(t *testing.T) {
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	logger := common.NewLogger("")
-	commands := &fakeCommandRunner{err: fmt.Errorf("sbx: no such binary")}
-	service := New(
-		logger,
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
-		task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
-		commands,
-	)
+func TestRunnerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
-	if err == nil {
-		t.Fatal("expected the spawn failure to surface")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if taskToRun.Status != task.StatusTodo {
-		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+	runDir := common.RunDir(workspace, string(taskToRun.ID))
+	prompt, err := common.ReadFile(common.RunPromptPath(runDir))
+	if err != nil {
+		t.Fatalf("expected the prompt to be written to the run directory: %v", err)
 	}
-	if taskToRun.RunnerID != 0 {
-		t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
+	for _, want := range []string{taskToRun.Title, taskToRun.Description} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("expected the prompt file to contain %q, got %q", want, prompt)
+		}
 	}
 }
 
-func TestRunnerService_RunTask_DryRunUsesConfiguredPromptFile(t *testing.T) {
+func TestRunnerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
+	spawnErr := fmt.Errorf("sbx: no such binary")
+
+	cases := []struct {
+		name string
+		// A run directory survives only a failure that happens after the
+		// sandbox is known to be up. Anything earlier leaves nothing behind.
+		outputs    []string
+		errs       []error
+		wantRuns   int
+		wantRunDir bool
+	}{
+		{
+			name:     "the listing fails",
+			errs:     []error{spawnErr},
+			wantRuns: 1,
+		},
+		{
+			name:     "the listing cannot be parsed",
+			outputs:  []string{"sbx: command not found"},
+			wantRuns: 1,
+		},
+		{
+			name:     "creating the sandbox fails",
+			outputs:  []string{sandboxListingWith()},
+			errs:     []error{nil, spawnErr},
+			wantRuns: 2,
+		},
+		{
+			name:       "starting the agent fails",
+			outputs:    []string{sandboxListingWith(testSandbox)},
+			errs:       []error{nil, spawnErr},
+			wantRuns:   2,
+			wantRunDir: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{outputs: testCase.outputs, errs: testCase.errs}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			if err == nil {
+				t.Fatal("expected the failure to surface")
+			}
+
+			if len(commands.calls) != testCase.wantRuns {
+				t.Errorf("expected %d sbx calls, got %v", testCase.wantRuns, commands.subcommands())
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+			if taskToRun.RunnerID != 0 {
+				t.Errorf("expected no runner to be recorded, got %d", taskToRun.RunnerID)
+			}
+
+			exists, err := common.Exists(common.RunDir(workspace, string(taskToRun.ID)))
+			if err != nil {
+				t.Fatalf("could not check the run directory: %v", err)
+			}
+			if exists != testCase.wantRunDir {
+				t.Errorf("expected the run directory to exist %t, got %t", testCase.wantRunDir, exists)
+			}
+		})
+	}
+}
+
+func TestRunnerService_RunTask_AllocatesTheLowestFreeRunnerSlot(t *testing.T) {
+	cases := []struct {
+		name    string
+		limit   int
+		busy    []*task.Task
+		wantID  int
+		wantErr bool
+	}{
+		{name: "empty pool takes the first slot", limit: 3, wantID: 1},
+		{name: "takes the next free slot", limit: 3, busy: []*task.Task{busyTask(1)}, wantID: 2},
+		{name: "fills a gap left in the middle", limit: 3, busy: []*task.Task{busyTask(1), busyTask(3)}, wantID: 2},
+		{
+			name:  "ignores tasks that are not in progress",
+			limit: 3,
+			busy: []*task.Task{
+				{ID: "done", Status: task.StatusDone, RunnerID: 1, ProjectSlug: testProjectSlug},
+				{ID: "fucked-up", Status: task.StatusFuckedUp, RunnerID: 2, ProjectSlug: testProjectSlug},
+			},
+			wantID: 1,
+		},
+		{
+			name:    "fails when every slot is taken",
+			limit:   2,
+			busy:    []*task.Task{busyTask(1), busyTask(2)},
+			wantErr: true,
+		},
+		{
+			name:    "ignores slots above the limit but still fails when full",
+			limit:   1,
+			busy:    []*task.Task{busyTask(1), busyTask(7)},
+			wantErr: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(
+				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: testCase.limit},
+				config.DefaultConfig(),
+				commands,
+				append([]*task.Task{taskToRun}, testCase.busy...)...,
+			)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got runner %d", taskToRun.RunnerID)
+				}
+				if !strings.Contains(err.Error(), config.MaxConcurrentRunnersKey) {
+					t.Errorf("expected the error to name the config key, got %q", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if taskToRun.RunnerID != testCase.wantID {
+				t.Errorf("expected runner %d, got %d", testCase.wantID, taskToRun.RunnerID)
+			}
+			wantSandbox := fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, testCase.wantID)
+			if create := commands.call(sbxCreateSubcommand); !slices.Contains(create, wantSandbox) {
+				t.Errorf("expected the create call to name sandbox %q, got %v", wantSandbox, create)
+			}
+		})
+	}
+}
+
+func TestRunnerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 	const promptFileName = "impl.md"
-	setupPromptDirs(t)
+	setupWorkspace(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "custom prompt for {{taskTitle}}: {{taskDescription}}")
 
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	service := newTestServiceWithConfigs(
+	taskToRun := todoTask()
+	service := newTestServiceWith(
 		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
 		config.DefaultConfig(),
+		&fakeCommandRunner{},
 		taskToRun,
 	)
 
@@ -289,19 +485,14 @@ func TestRunnerService_RunTask_DryRunUsesConfiguredPromptFile(t *testing.T) {
 
 func TestRunnerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testing.T) {
 	const promptFileName = "impl.md"
-	setupPromptDirs(t)
+	setupWorkspace(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "nothing to substitute here")
 
-	service := newTestServiceWithConfigs(
+	service := newTestServiceWith(
 		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
 		config.DefaultConfig(),
-		&task.Task{
-			ID:          "task-1",
-			Title:       "Fix login",
-			Description: "SSO is broken",
-			Status:      task.StatusTodo,
-			ProjectSlug: testProjectSlug,
-		},
+		&fakeCommandRunner{},
+		todoTask(),
 	)
 
 	var err error
@@ -313,212 +504,5 @@ func TestRunnerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testi
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected error to name %s, got %q", want, err)
 		}
-	}
-}
-
-func TestRunnerService_AllocateRunnerID(t *testing.T) {
-	inProgressOn := func(runnerID int) *task.Task {
-		return &task.Task{
-			ID:          task.TaskID(fmt.Sprintf("busy-%d", runnerID)),
-			Status:      task.StatusInProgress,
-			RunnerID:    runnerID,
-			ProjectSlug: testProjectSlug,
-		}
-	}
-
-	cases := []struct {
-		name    string
-		limit   int
-		tasks   []*task.Task
-		wantID  int
-		wantErr bool
-	}{
-		{name: "empty pool takes the first slot", limit: 3, wantID: 1},
-		{name: "takes the next free slot", limit: 3, tasks: []*task.Task{inProgressOn(1)}, wantID: 2},
-		{name: "fills a gap left in the middle", limit: 3, tasks: []*task.Task{inProgressOn(1), inProgressOn(3)}, wantID: 2},
-		{
-			name:  "ignores tasks that are not in progress",
-			limit: 3,
-			tasks: []*task.Task{
-				{ID: "done", Status: task.StatusDone, RunnerID: 1, ProjectSlug: testProjectSlug},
-				{ID: "fucked-up", Status: task.StatusFuckedUp, RunnerID: 2, ProjectSlug: testProjectSlug},
-			},
-			wantID: 1,
-		},
-		{
-			name:    "fails when every slot is taken",
-			limit:   2,
-			tasks:   []*task.Task{inProgressOn(1), inProgressOn(2)},
-			wantErr: true,
-		},
-		{
-			name:    "ignores slots above the limit but still fails when full",
-			limit:   1,
-			tasks:   []*task.Task{inProgressOn(1), inProgressOn(7)},
-			wantErr: true,
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			service := newTestServiceWithConfigs(
-				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: testCase.limit},
-				config.DefaultConfig(),
-				testCase.tasks...,
-			)
-
-			runnerID, err := service.allocateRunnerID(testProjectSlug)
-
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error, got runner %d", runnerID)
-				}
-				if !strings.Contains(err.Error(), config.MaxConcurrentRunnersKey) {
-					t.Errorf("expected the error to name the config key, got %q", err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if runnerID != testCase.wantID {
-				t.Errorf("expected runner %d, got %d", testCase.wantID, runnerID)
-			}
-		})
-	}
-}
-
-func TestRunnerService_RunTask_DryRunPrintsRunner(t *testing.T) {
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	busy := &task.Task{
-		ID:          "task-0",
-		Title:       "Already running",
-		Status:      task.StatusInProgress,
-		RunnerID:    1,
-		ProjectSlug: testProjectSlug,
-	}
-	service := newTestService(taskToRun, busy)
-
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !strings.Contains(out, formatRunnerName(testProjectSlug, 2, config.DefaultConfig().Runner.Harness)) {
-		t.Errorf("expected dry run output to name the allocated runner, got %q", out)
-	}
-}
-
-func TestRunnerService_RunTask_DryRunFailsWhenPoolIsFull(t *testing.T) {
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	busy := &task.Task{
-		ID:          "task-0",
-		Title:       "Already running",
-		Status:      task.StatusInProgress,
-		RunnerID:    1,
-		ProjectSlug: testProjectSlug,
-	}
-	service := newTestServiceWithConfigs(
-		&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentRunners: 1},
-		config.DefaultConfig(),
-		taskToRun,
-		busy,
-	)
-
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err == nil {
-		t.Fatal("expected an error when every runner of the project is busy")
-	}
-}
-
-func TestRunnerService_RunTask_DryRunPrintsCommandWithoutRunningIt(t *testing.T) {
-	taskToRun := &task.Task{
-		ID:          "task-1",
-		Title:       "Fix login",
-		Description: "SSO is broken",
-		Status:      task.StatusTodo,
-		ProjectSlug: testProjectSlug,
-	}
-	logger := common.NewLogger("")
-	globalCfg := config.DefaultConfig()
-	commands := &fakeCommandRunner{}
-	service := New(
-		logger,
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		globalCfg,
-		task.NewTaskService(&fakeTaskRepo{tasks: []*task.Task{taskToRun}}, logger),
-		commands,
-	)
-
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	for _, want := range []string{sbxBinary, sbxDetachedFlag, formatRunnerName(testProjectSlug, 1, globalCfg.Runner.Harness)} {
-		if !strings.Contains(out, strconv.Quote(want)) {
-			t.Errorf("expected dry run output to contain the argument %q, got %q", want, out)
-		}
-	}
-
-	if commands.argv != nil {
-		t.Errorf("expected a dry run not to run anything, got argv %v", commands.argv)
-	}
-}
-
-func TestRunnerService_RunTask_DryRunNamesASandboxPerProject(t *testing.T) {
-	dryRunPreview := func(t *testing.T, projectSlug string) string {
-		t.Helper()
-		taskToRun := &task.Task{
-			ID:          "task-1",
-			Title:       "Fix login",
-			Description: "SSO is broken",
-			Status:      task.StatusTodo,
-			ProjectSlug: projectSlug,
-		}
-		service := newTestServiceWithConfigs(
-			&config.LocalConfig{ProjectSlug: projectSlug},
-			config.DefaultConfig(),
-			taskToRun,
-		)
-
-		var err error
-		out := captureOutput(func() { err = service.RunTask(projectSlug, taskToRun.ID, true) })
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		return out
-	}
-
-	cases := []struct {
-		projectSlug string
-		wantName    string
-	}{
-		{projectSlug: "first-project", wantName: "drudge-claude-first-project-1"},
-		{projectSlug: "second-project", wantName: "drudge-claude-second-project-1"},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.projectSlug, func(t *testing.T) {
-			out := dryRunPreview(t, testCase.projectSlug)
-			if !strings.Contains(out, testCase.wantName) {
-				t.Errorf("expected the dry run preview to name sandbox %q, got %q", testCase.wantName, out)
-			}
-		})
 	}
 }

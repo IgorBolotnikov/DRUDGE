@@ -2,172 +2,210 @@ package runner
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"drudge/internal/common"
 	"drudge/internal/config"
 )
 
-func TestPickRunnerCommand(t *testing.T) {
-	const prompt = "implement it\nplease"
+// runTaskFor drives a run to completion against the given sandbox listing and
+// returns the commands it issued.
+func runTaskFor(t *testing.T, localCfg *config.LocalConfig, listing string) *fakeCommandRunner {
+	t.Helper()
+	taskToRun := todoTask()
+	taskToRun.ProjectSlug = localCfg.ProjectSlug
+	commands := &fakeCommandRunner{outputs: []string{listing}}
+	service := newTestServiceWith(localCfg, config.DefaultConfig(), commands, taskToRun)
 
+	var err error
+	captureOutput(func() { err = service.RunTask(localCfg.ProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return commands
+}
+
+func TestRunnerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
+	workspace := setupWorkspace(t)
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith())
+
+	wantInspect := []string{"sbx", "ls", "--json"}
+	if got := commands.call(sbxLsSubcommand); !slices.Equal(got, wantInspect) {
+		t.Errorf("expected inspect %v, got %v", wantInspect, got)
+	}
+
+	wantCreate := []string{"sbx", "create", "claude", workspace, "--name", testSandbox}
+	if got := commands.call(sbxCreateSubcommand); !slices.Equal(got, wantCreate) {
+		t.Errorf("expected create %v, got %v", wantCreate, got)
+	}
+
+	start := commands.call(sbxExecSubcommand)
+	wantStartPrefix := []string{"sbx", "exec", "-d", testSandbox, "sh", "-c"}
+	if len(start) != len(wantStartPrefix)+1 {
+		t.Fatalf("expected the launcher as the last argument of start, got %v", start)
+	}
+	if got := start[:len(wantStartPrefix)]; !slices.Equal(got, wantStartPrefix) {
+		t.Errorf("expected start to begin with %v, got %v", wantStartPrefix, got)
+	}
+}
+
+func TestRunnerService_RunTask_UnsupportedRunnerSettings(t *testing.T) {
 	cases := []struct {
 		name            string
 		env             config.Env
 		harness         config.Harness
-		runnerID        int
-		want            []string
 		wantErrContains string
 	}{
-		{
-			name:     "sbx with claude code",
-			env:      config.EnvDockerSbx,
-			harness:  config.HarnessClaudeCode,
-			runnerID: 1,
-			want:     []string{"sbx", "run", "claude", "--name", "drudge-claude-test-project-1", "--detached", "--", "-p", prompt},
-		},
-		{
-			name:     "sbx with opencode",
-			env:      config.EnvDockerSbx,
-			harness:  config.HarnessOpencode,
-			runnerID: 2,
-			want:     []string{"sbx", "run", "opencode", "--name", "drudge-opencode-test-project-2", "--detached", "--", "-p", prompt},
-		},
-		{
-			name:            "unknown harness is an error",
-			env:             config.EnvDockerSbx,
-			harness:         config.Harness("codex"),
-			runnerID:        1,
-			wantErrContains: "codex",
-		},
-		{
-			name:            "unknown environment is an error",
-			env:             config.Env("bare-metal"),
-			harness:         config.HarnessClaudeCode,
-			runnerID:        1,
-			wantErrContains: "bare-metal",
-		},
-		{
-			name:            "empty runner settings are an error",
-			runnerID:        1,
-			wantErrContains: "runner settings",
-		},
+		{name: "opencode is not wired up yet", env: config.EnvDockerSbx, harness: config.HarnessOpencode, wantErrContains: "opencode"},
+		{name: "unknown harness", env: config.EnvDockerSbx, harness: config.Harness("codex"), wantErrContains: "codex"},
+		{name: "unknown environment", env: config.Env("bare-metal"), harness: config.HarnessClaudeCode, wantErrContains: "bare-metal"},
+		{name: "empty runner settings", wantErrContains: "runner settings"},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := newTestServiceWithConfigs(
+			setupWorkspace(t)
+			commands := &fakeCommandRunner{}
+			service := newTestServiceWith(
 				&config.LocalConfig{ProjectSlug: testProjectSlug},
 				&config.GlobalConfig{Runner: config.RunnerConfig{Env: testCase.env, Harness: testCase.harness}},
+				commands,
+				todoTask(),
 			)
 
-			argv, err := service.pickRunnerCommand(testProjectSlug, testCase.runnerID, prompt)
-
-			if testCase.wantErrContains != "" {
-				if err == nil {
-					t.Fatalf("expected an error naming %s, got argv %v", testCase.wantErrContains, argv)
-				}
-				if !strings.Contains(err.Error(), testCase.wantErrContains) {
-					t.Errorf("expected error to name %s, got %q", testCase.wantErrContains, err)
-				}
-				return
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, "task-1", false) })
+			if err == nil {
+				t.Fatalf("expected an error naming %s", testCase.wantErrContains)
 			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if !strings.Contains(err.Error(), testCase.wantErrContains) {
+				t.Errorf("expected error to name %s, got %q", testCase.wantErrContains, err)
 			}
-			if !slices.Equal(argv, testCase.want) {
-				t.Errorf("expected argv %v, got %v", testCase.want, argv)
+			if commands.calls != nil {
+				t.Errorf("expected nothing to be run, got %v", commands.subcommands())
 			}
 		})
 	}
 }
 
-func TestFormatRunnerName(t *testing.T) {
+func TestRunnerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
+	workspace := setupWorkspace(t)
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith(testSandbox))
+
+	start := commands.call(sbxExecSubcommand)
+	launcher := start[len(start)-1]
+	runDir := common.RunDir(workspace, "task-1")
+
+	want := []string{
+		"cd '" + workspace + "' || exit 1",
+		`claude -p "$(cat '` + runDir + `/prompt.txt')"`,
+		"--output-format stream-json",
+		"--verbose",
+		"--permission-mode bypassPermissions",
+		"> '" + runDir + "/stream.jsonl'",
+		"2> '" + runDir + "/stderr.log'",
+		"echo $? > '" + runDir + "/exit'",
+	}
+	for _, fragment := range want {
+		if !strings.Contains(launcher, fragment) {
+			t.Errorf("expected the launcher to contain %q, got %q", fragment, launcher)
+		}
+	}
+}
+
+func TestRunnerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T) {
+	cases := []struct {
+		name    string
+		dirName string
+	}{
+		{name: "a space in the path", dirName: "my repo"},
+		{name: "a single quote in the path", dirName: "igor's repo"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspaceNamed(t, testCase.dirName)
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, sandboxListingWith(testSandbox))
+
+			start := commands.call(sbxExecSubcommand)
+			launcher := start[len(start)-1]
+
+			// A shell must read the path back whole. Single quotes do that for
+			// everything but a single quote, which has to be broken out.
+			quoted := "'" + strings.ReplaceAll(workspace, "'", `'\''`) + "'"
+			if !strings.Contains(launcher, "cd "+quoted+" || exit 1") {
+				t.Errorf("expected the launcher to cd to %s, got %q", quoted, launcher)
+			}
+		})
+	}
+}
+
+func TestRunnerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 	cases := []struct {
 		name        string
 		projectSlug string
-		harness     config.Harness
-		runnerID    int
-		want        string
+		wantSandbox string
 	}{
-		{name: "claude code", projectSlug: "drudge", harness: config.HarnessClaudeCode, runnerID: 1, want: "drudge-claude-drudge-1"},
-		{name: "opencode", projectSlug: "drudge", harness: config.HarnessOpencode, runnerID: 12, want: "drudge-opencode-drudge-12"},
-		{name: "unknown harness", projectSlug: "drudge", harness: config.Harness("codex"), runnerID: 3, want: "drudge-unknown-drudge-3"},
-		{
-			name:        "two projects get two names for the same slot",
-			projectSlug: "other-project",
-			harness:     config.HarnessClaudeCode,
-			runnerID:    1,
-			want:        "drudge-claude-other-project-1",
-		},
-		{
-			name:        "a slug sbx would reject is normalized",
-			projectSlug: "My_Project!",
-			harness:     config.HarnessClaudeCode,
-			runnerID:    1,
-			want:        "drudge-claude-my-project-1",
-		},
+		{name: "a plain slug is left alone", projectSlug: "drudge", wantSandbox: "drudge-claude-drudge-1"},
+		{name: "two projects get two names for the same slot", projectSlug: "other-project", wantSandbox: "drudge-claude-other-project-1"},
+		{name: "hyphens and periods survive", projectSlug: "drudge-api.v2", wantSandbox: "drudge-claude-drudge-api.v2-1"},
+		{name: "upper case is folded down", projectSlug: "My Project", wantSandbox: "drudge-claude-my-project-1"},
+		{name: "underscores sbx rejects become hyphens", projectSlug: "my_project", wantSandbox: "drudge-claude-my-project-1"},
+		{name: "runs of rejected characters collapse", projectSlug: "my // project", wantSandbox: "drudge-claude-my-project-1"},
+		{name: "separators are trimmed off the ends", projectSlug: "  .drudge- ", wantSandbox: "drudge-claude-drudge-1"},
+		{name: "non-ascii is folded into separators", projectSlug: "проект-drudge", wantSandbox: "drudge-claude-drudge-1"},
+		{name: "a slug with nothing usable falls back", projectSlug: "!!!", wantSandbox: "drudge-claude-unknown-1"},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := formatRunnerName(testCase.projectSlug, testCase.runnerID, testCase.harness)
-			if got != testCase.want {
-				t.Errorf("expected runner name %q, got %q", testCase.want, got)
+			setupWorkspace(t)
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, sandboxListingWith(testCase.wantSandbox))
+
+			start := commands.call(sbxExecSubcommand)
+			if !slices.Contains(start, testCase.wantSandbox) {
+				t.Errorf("expected the start call to name sandbox %q, got %v", testCase.wantSandbox, start)
+			}
+			if commands.call(sbxCreateSubcommand) != nil {
+				t.Errorf("expected the listed sandbox to be reused, got %v", commands.subcommands())
 			}
 		})
 	}
 }
 
-func TestNormaliseNameSlug(t *testing.T) {
-	cases := []struct {
-		name        string
-		projectSlug string
-		want        string
-	}{
-		{name: "a plain slug is left alone", projectSlug: "drudge", want: "drudge"},
-		{name: "hyphens and periods survive", projectSlug: "drudge-api.v2", want: "drudge-api.v2"},
-		{name: "upper case is folded down", projectSlug: "My Project", want: "my-project"},
-		{name: "underscores become hyphens", projectSlug: "my_project", want: "my-project"},
-		{name: "runs of rejected characters collapse", projectSlug: "my // project", want: "my-project"},
-		{name: "separators are trimmed off the ends", projectSlug: "  .drudge- ", want: "drudge"},
-		{name: "non-ascii is folded into separators", projectSlug: "проект-drudge", want: "drudge"},
-		{name: "a slug with nothing usable falls back", projectSlug: "!!!", want: unknownProjectSlug},
-		{name: "an empty slug falls back", projectSlug: "", want: unknownProjectSlug},
+func TestRunnerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	taskToRun.TicketID = "PROJ-123"
+	commands := &fakeCommandRunner{}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			got := normaliseNameSlug(testCase.projectSlug)
-			if got != testCase.want {
-				t.Errorf("expected slug %q, got %q", testCase.want, got)
-			}
-		})
-	}
-}
-
-func TestFormatArgv(t *testing.T) {
-	cases := []struct {
-		name string
-		argv []string
-		want string
-	}{
-		{name: "empty argv", argv: nil, want: ""},
-		{name: "quotes every element", argv: []string{"sbx", "run"}, want: `"sbx" "run"`},
-		{
-			name: "keeps a multi line argument on one line",
-			argv: []string{"sbx", "-p", "first\nsecond"},
-			want: `"sbx" "-p" "first\nsecond"`,
-		},
+	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID, testSandbox} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected the preview to contain %q, got %q", want, out)
+		}
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			got := formatArgv(testCase.argv)
-			if got != testCase.want {
-				t.Errorf("expected %s, got %s", testCase.want, got)
-			}
-		})
+	// Every argument is printed quoted, so a launcher full of newlines stays
+	// on one line of the preview.
+	for _, argument := range []string{sbxBinary, sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxDetachedFlag, workspace} {
+		if !strings.Contains(out, strconv.Quote(argument)) {
+			t.Errorf("expected the preview to contain the argument %q, got %q", argument, out)
+		}
+	}
+
+	if commands.calls != nil {
+		t.Errorf("expected a dry run not to run anything, got %v", commands.subcommands())
+	}
+	if exists, err := common.Exists(common.LocalRunsDir()); err != nil || exists {
+		t.Errorf("expected a dry run not to write a run directory, exists %t (%v)", exists, err)
 	}
 }

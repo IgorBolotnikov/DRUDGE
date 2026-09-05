@@ -56,7 +56,13 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	}
 	runnerName := formatRunnerName(projectSlug, runnerID, service.globalCfg.Runner.Harness)
 
-	argv, err := service.pickRunnerCommand(projectSlug, runnerID, prompt)
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return fmt.Errorf("could not work out where to run task %s: %w", taskID, err)
+	}
+	runDir := common.RunDir(workspace, string(taskID))
+
+	plan, err := service.pickRunnerCommand(projectSlug, runnerID, workspace, runDir)
 	if err != nil {
 		return err
 	}
@@ -64,39 +70,71 @@ func (service *RunnerService) RunTask(projectSlug string, taskID task.TaskID, dr
 	if dryRun {
 		service.logger.Info("Runner %d (%s) for task [%s] %s", runnerID, runnerName, taskToRun.ID, taskToRun.Title)
 		service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
-		service.logger.Info("Command:\n\n%s", formatArgv(argv))
+		service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect), formatArgv(plan.create), formatArgv(plan.start))
 		return nil
 	}
 
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	output, err := service.commands.Run(argv)
-	if err != nil {
-		return fmt.Errorf("could not start runner %s for task %s: %w", runnerName, taskID, err)
+	if err := service.ensureSandbox(plan, runnerName); err != nil {
+		return err
+	}
+
+	if err := writeRunPrompt(runDir, prompt); err != nil {
+		return err
 	}
 
 	// TODO: add a command that pings a task's runner session to tell whether it
 	// is still alive, and frees the runner slot when it is not.
-	sessionID := parseSessionID(output)
-	if sessionID == "" {
-		service.logger.Error("Runner %s printed no session id, task %s will be recorded without one and cannot be checked for liveness", runnerName, taskID)
+	if _, err := service.commands.Run(plan.start); err != nil {
+		return fmt.Errorf("could not start runner %s for task %s: %w", runnerName, taskID, err)
 	}
 
 	taskToRun.Status = task.StatusInProgress
 	taskToRun.StartedAt = time.Now().UTC()
 	taskToRun.RunnerID = runnerID
-	taskToRun.RunnerSessionID = sessionID
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
 		return fmt.Errorf("runner %s is already working on task %s, but the task could not be marked as %q: %w", runnerName, taskID, task.StatusInProgress, err)
 	}
 
 	service.logger.Info("Runner %s is working on task [%s] %s", runnerName, taskToRun.ID, taskToRun.Title)
-	if sessionID != "" {
-		service.logger.Info("Session: %s", sessionID)
+	service.logger.Info("Run directory: %s", runDir)
+	return nil
+}
+
+// ensureSandbox creates the runner's sandbox unless it already exists.
+// Creating one that is already there fails, so the listing decides.
+func (service *RunnerService) ensureSandbox(plan sandboxPlan, runnerName string) error {
+	listing, err := service.commands.Run(plan.inspect)
+	if err != nil {
+		return fmt.Errorf("could not list the sandboxes to look for %s: %w", runnerName, err)
+	}
+
+	exists, err := sandboxExists(listing, runnerName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	if _, err := service.commands.Run(plan.create); err != nil {
+		return fmt.Errorf("could not create sandbox %s: %w", runnerName, err)
 	}
 	return nil
+}
+
+// writeRunPrompt puts the rendered prompt in the run directory, where the
+// agent reads it from inside its sandbox. It runs last, once the sandbox is
+// known to be there, so a launch that never gets that far leaves no run
+// directory for the status command to find.
+func writeRunPrompt(runDir string, prompt string) error {
+	if err := common.EnsureDir(runDir); err != nil {
+		return err
+	}
+	return common.WriteFile(common.RunPromptPath(runDir), prompt)
 }
 
 // allocateRunnerID picks the lowest free runner slot of a project's pool. A

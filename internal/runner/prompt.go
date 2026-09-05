@@ -2,7 +2,6 @@ package runner
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"drudge/internal/common"
@@ -97,9 +96,5 @@ func loadPromptTemplate(path string) (string, error) {
 		return "", fmt.Errorf("prompt file %s does not exist", path)
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("could not read prompt file %s: %w", path, err)
-	}
-	return string(data), nil
+	return common.ReadFile(path)
 }

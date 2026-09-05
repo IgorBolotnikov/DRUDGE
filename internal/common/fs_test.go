@@ -242,3 +242,121 @@ func TestParseFrontMatter_MultilineContent(t *testing.T) {
 		t.Errorf("expected multiline content, got %q", content)
 	}
 }
+
+func TestWriteFileAndReadFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "plain text", content: "hello"},
+		{name: "several lines", content: "first\nsecond\n"},
+		{name: "quotes and dollars survive", content: `a "quoted" $value and an 'apostrophe'`},
+		{name: "empty content", content: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "file.txt")
+
+			if err := WriteFile(path, tt.content); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+
+			got, err := ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if got != tt.content {
+				t.Errorf("read back %q, want %q", got, tt.content)
+			}
+		})
+	}
+}
+
+func TestWriteFile_Overwrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file.txt")
+
+	if err := WriteFile(path, "first"); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := WriteFile(path, "second"); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got != "second" {
+		t.Errorf("expected the second write to win, got %q", got)
+	}
+}
+
+func TestReadFile_MissingFileNamesIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nope.txt")
+
+	_, err := ReadFile(path)
+	if err == nil {
+		t.Fatal("expected an error for a missing file")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("expected the error to name %s, got %q", path, err)
+	}
+}
+
+func TestWorkDir(t *testing.T) {
+	dir := t.TempDir()
+
+	origCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(origCwd) })
+
+	got, err := WorkDir()
+	if err != nil {
+		t.Fatalf("WorkDir: %v", err)
+	}
+
+	// A temp dir can sit behind a symlink, so compare what the OS resolves.
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	if got != want {
+		t.Errorf("expected working directory %q, got %q", want, got)
+	}
+}
+
+func TestRunDirPaths(t *testing.T) {
+	const (
+		workspace = "/home/dev/drudge"
+		taskID    = "task-1"
+	)
+	runDir := RunDir(workspace, taskID)
+
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{name: "run directory", got: runDir, want: workspace + "/.drudge/runs/task-1"},
+		{name: "prompt", got: RunPromptPath(runDir), want: workspace + "/.drudge/runs/task-1/prompt.txt"},
+		{name: "stream", got: RunStreamPath(runDir), want: workspace + "/.drudge/runs/task-1/stream.jsonl"},
+		{name: "stderr", got: RunStderrPath(runDir), want: workspace + "/.drudge/runs/task-1/stderr.log"},
+		{name: "exit", got: RunExitPath(runDir), want: workspace + "/.drudge/runs/task-1/exit"},
+		{name: "runs directory is local", got: LocalRunsDir(), want: ".drudge/runs"},
+		{name: "local run directory", got: LocalRunDir(taskID), want: ".drudge/runs/task-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("expected %q, got %q", tt.want, tt.got)
+			}
+		})
+	}
+}

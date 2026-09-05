@@ -16,9 +16,19 @@ const (
 	DotDrudgeDirName = ".drudge"
 	ProjectsDirName  = "projects"
 	PromptsDirName   = "prompts"
+	RunsDirName      = "runs"
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
 	ThemeConfigName  = "theme.json"
+)
+
+// Files of a task's run directory. The agent writes all of them but the
+// prompt, which drudge renders before the agent starts.
+const (
+	RunPromptName = "prompt.txt"
+	RunStreamName = "stream.jsonl"
+	RunStderrName = "stderr.log"
+	RunExitName   = "exit"
 )
 
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
@@ -41,16 +51,30 @@ func Exists(path string) (bool, error) {
 	return false, fmt.Errorf("could not check %s: %w", path, err)
 }
 
+// WriteFile writes content to path as a plain text file.
+func WriteFile(path string, content string) error {
+	if err := os.WriteFile(path, []byte(content), DefaultFilePerm); err != nil {
+		return fmt.Errorf("could not write %s: %w", path, err)
+	}
+	return nil
+}
+
+// ReadFile reads path as plain text.
+func ReadFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("could not read %s: %w", path, err)
+	}
+	return string(data), nil
+}
+
 // WriteJSON marshals v as indented JSON and writes it to path.
 func WriteJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("could not marshal json for %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, data, DefaultFilePerm); err != nil {
-		return fmt.Errorf("could not write %s: %w", path, err)
-	}
-	return nil
+	return WriteFile(path, string(data))
 }
 
 // WriteJSONIfNotExists writes v as JSON to path only if path doesn't already
@@ -145,8 +169,7 @@ func ParseFrontMatter(data string) (map[string]string, string) {
 
 // WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
 func WriteFileWithFrontMatter(path string, metadata map[string]string, content string) error {
-	data := FormatFrontMatter(metadata) + content
-	return os.WriteFile(path, []byte(data), DefaultFilePerm)
+	return WriteFile(path, FormatFrontMatter(metadata)+content)
 }
 
 // HomeDir returns the current user's home directory.
@@ -156,6 +179,16 @@ func HomeDir() (string, error) {
 		return "", fmt.Errorf("could not determine home directory: %w", err)
 	}
 	return home, nil
+}
+
+// WorkDir returns the directory drudge was invoked from. For a task command
+// that is the workspace of the project being worked on.
+func WorkDir() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("could not determine the current directory: %w", err)
+	}
+	return dir, nil
 }
 
 // SlugFrom returns a URL-safe slug from a given name.
@@ -183,6 +216,46 @@ func LocalPromptsDir() string {
 // home directory.
 func PromptsDir(home string) string {
 	return filepath.Join(DrudgeDir(home), PromptsDirName)
+}
+
+// LocalRunsDir returns the path to the runs directory of the local drudge
+// dir, where every task the project has handed to an agent keeps its run
+// directory.
+func LocalRunsDir() string {
+	return filepath.Join(DotDrudgeDirName, RunsDirName)
+}
+
+// LocalRunDir returns the path to one task's run directory.
+func LocalRunDir(taskID string) string {
+	return filepath.Join(LocalRunsDir(), taskID)
+}
+
+// RunDir returns the absolute path to one task's run directory inside a
+// workspace. An agent needs it absolute, because it runs from the workspace
+// root inside its sandbox.
+func RunDir(workspace string, taskID string) string {
+	return filepath.Join(workspace, LocalRunDir(taskID))
+}
+
+// RunPromptPath returns the path to the prompt file of a run directory.
+func RunPromptPath(runDir string) string {
+	return filepath.Join(runDir, RunPromptName)
+}
+
+// RunStreamPath returns the path to the event stream of a run directory.
+func RunStreamPath(runDir string) string {
+	return filepath.Join(runDir, RunStreamName)
+}
+
+// RunStderrPath returns the path to the agent stderr log of a run directory.
+func RunStderrPath(runDir string) string {
+	return filepath.Join(runDir, RunStderrName)
+}
+
+// RunExitPath returns the path to the exit code file of a run directory. It
+// exists only once the agent has finished.
+func RunExitPath(runDir string) string {
+	return filepath.Join(runDir, RunExitName)
 }
 
 // LocalConfigPath returns the path to the local drudge config file.
