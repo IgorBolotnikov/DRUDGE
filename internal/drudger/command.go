@@ -15,7 +15,7 @@ import (
 type CommandRunner interface {
 	// Run waits for a command to finish and hands back what it wrote to
 	// stdout and to stderr. Writing to stderr is not a failure on its own:
-	// sbx reports its daemon there on calls that succeed.
+	// that may be where the sandbox prints its results.
 	Run(argv []string) (stdout string, stderr string, err error)
 	// Start runs the command and returns immediately.
 	Start(argv []string) error

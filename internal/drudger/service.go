@@ -12,6 +12,10 @@ import (
 	"drudge/internal/task"
 )
 
+// TODO: Now dridger logis is couples with sbx quirks. At some point I need to
+// move it inside an adapter. But for that we need another sandbox to compare
+// with. And for that we need a reason for another sandbox.
+
 // sbxDaemonRetryDelay is how long DRUDGE waits before giving the sbx daemon a
 // second chance to come up.
 const sbxDaemonRetryDelay = 2 * time.Second
@@ -202,10 +206,10 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 }
 
 // listSandboxes lists the sandboxes, coping with an sbx daemon that is not up
-// yet. Listing changes nothing, so it is safe to repeat and gets one more
-// attempt. No other sbx command is repeated, because creating a sandbox that
-// already exists fails, and a blanket retry would turn one clear error into a
-// second confusing one.
+// yet.
+// TODO: This method is OK for now while I'm still trying to make everything
+// work. But when I inevitably do, I need to move out all the sbx quirks into
+// an adapter, because service and sbx are now a bit too close to each other.
 func (service *DrudgerService) listSandboxes(inspect []string, sandboxName string) (string, error) {
 	listing, stderr, err := service.runSbx(inspect)
 
@@ -226,7 +230,7 @@ func (service *DrudgerService) listSandboxes(inspect []string, sandboxName strin
 }
 
 // runSbx runs one sbx command and says when the call had to bring the sandbox
-// daemon up, so a launch that pauses for a second explains itself.
+// daemon up to explain the relay in running the command.
 func (service *DrudgerService) runSbx(argv []string) (string, string, error) {
 	stdout, stderr, err := service.commands.Run(argv)
 	if daemonJustStarted(stderr) {

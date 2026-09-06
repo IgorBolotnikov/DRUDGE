@@ -16,9 +16,9 @@ func NewCommandRunner() *CommandRunner {
 }
 
 // Run executes argv as a process and returns what it wrote to stdout and to
-// stderr. A command can write to stderr and still succeed, so stderr comes
+// stderr. A command can write to stderr and still succeed, meaning stderr comes
 // back on both paths and the caller decides what it means.
-func (runner *CommandRunner) Run(argv []string) (string, string, error) {
+func (runner *CommandRunner) Run(argv []string) (stdout string, stderr string, err error) {
 	if len(argv) == 0 {
 		return "", "", fmt.Errorf("cannot run an empty command")
 	}
@@ -28,8 +28,8 @@ func (runner *CommandRunner) Run(argv []string) (string, string, error) {
 	var stderrBuffer strings.Builder
 	command.Stderr = &stderrBuffer
 
-	stdout, err := command.Output()
-	stderr := strings.TrimSpace(stderrBuffer.String())
+	stdoutBytes, err := command.Output()
+	stderr = strings.TrimSpace(stderrBuffer.String())
 	if err != nil {
 		if stderr != "" {
 			return "", stderr, fmt.Errorf("command %s failed: %w: %s", argv[0], err, stderr)
@@ -37,7 +37,7 @@ func (runner *CommandRunner) Run(argv []string) (string, string, error) {
 		return "", stderr, fmt.Errorf("command %s failed: %w", argv[0], err)
 	}
 
-	return string(stdout), stderr, nil
+	return string(stdoutBytes), stderr, nil
 }
 
 // Start spawns argv and returns as soon as it is running. An agent runs for
