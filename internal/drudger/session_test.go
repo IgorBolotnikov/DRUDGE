@@ -9,22 +9,19 @@ import (
 	"drudge/internal/task"
 )
 
-// More sample terminal events, each breaking exactly one of the rules that
-// make a finished run a success.
 const (
 	erroredResultEvent = `{"type":"result","subtype":"success","is_error":true,"num_turns":2,"duration_ms":4000,"total_cost_usd":0.02,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","result":"Could not build"}`
 	cutOffResultEvent  = `{"type":"result","subtype":"error_max_turns","is_error":false,"num_turns":50,"duration_ms":900000,"total_cost_usd":1.5,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","result":"Ran out of turns"}`
 )
 
-// noExitFile stands for a run directory the agent has not finished in, since
-// an exit file always holds something.
+// noExitFile stands for a run directory there the agent has not finished work.
 const noExitFile = ""
 
 func TestReadSessionReport(t *testing.T) {
 	cases := []struct {
 		name string
 		// stream holds the event lines the agent has written. A nil stream
-		// stands for a run directory with no stream file in it at all.
+		// stands for a run directory with no stream file in it.
 		stream []string
 		// exit is what the exit file holds, or noExitFile when the run has not
 		// finished.
@@ -32,7 +29,7 @@ func TestReadSessionReport(t *testing.T) {
 		// since is how long after the last write drudge looks at the run.
 		since time.Duration
 
-		want          SessionVerdict
+		want          SessionStatus
 		wantExitCode  int
 		wantSessionID string
 		wantResult    bool
@@ -42,41 +39,41 @@ func TestReadSessionReport(t *testing.T) {
 			name:          "an agent still writing events",
 			stream:        []string{initEvent, assistantEvent},
 			exit:          noExitFile,
-			want:          VerdictWorking,
+			want:          StatusWorking,
 			wantSessionID: sampleSessionID,
 		},
 		{
 			name:   "an agent that has not written anything yet",
 			exit:   noExitFile,
-			want:   VerdictWorking,
+			want:   StatusWorking,
 			stream: nil,
 		},
 		{
 			name:   "an event stream that is still empty",
 			stream: []string{},
 			exit:   noExitFile,
-			want:   VerdictWorking,
+			want:   StatusWorking,
 		},
 		{
 			name:          "an agent that has gone quiet",
 			stream:        []string{initEvent},
 			exit:          noExitFile,
 			since:         sessionStaleAfter + time.Minute,
-			want:          VerdictNeedsBabysitting,
+			want:          StatusNeedsBabysitting,
 			wantSessionID: sampleSessionID,
 		},
 		{
 			name:   "a launch that never produced an event",
 			exit:   noExitFile,
 			since:  sessionStaleAfter + time.Minute,
-			want:   VerdictNeedsBabysitting,
+			want:   StatusNeedsBabysitting,
 			stream: nil,
 		},
 		{
 			name:          "an agent that exited non-zero",
 			stream:        []string{initEvent},
 			exit:          "1\n",
-			want:          VerdictFuckedUp,
+			want:          StatusFuckedUp,
 			wantExitCode:  1,
 			wantSessionID: sampleSessionID,
 		},
@@ -84,7 +81,7 @@ func TestReadSessionReport(t *testing.T) {
 			name:          "a terminal event flagged as an error",
 			stream:        []string{initEvent, erroredResultEvent},
 			exit:          "0\n",
-			want:          VerdictFuckedUp,
+			want:          StatusFuckedUp,
 			wantSessionID: sampleSessionID,
 			wantResult:    true,
 		},
@@ -92,7 +89,7 @@ func TestReadSessionReport(t *testing.T) {
 			name:          "a terminal event that did not succeed",
 			stream:        []string{initEvent, cutOffResultEvent},
 			exit:          "0\n",
-			want:          VerdictFuckedUp,
+			want:          StatusFuckedUp,
 			wantSessionID: sampleSessionID,
 			wantResult:    true,
 		},
@@ -100,14 +97,14 @@ func TestReadSessionReport(t *testing.T) {
 			name:          "an agent that exited cleanly without a terminal event",
 			stream:        []string{initEvent},
 			exit:          "0\n",
-			want:          VerdictFuckedUp,
+			want:          StatusFuckedUp,
 			wantSessionID: sampleSessionID,
 		},
 		{
 			name:          "a run that finished the work",
 			stream:        []string{initEvent, assistantEvent, resultEvent},
 			exit:          "0\n",
-			want:          VerdictGotShitDone,
+			want:          StatusGotShitDone,
 			wantSessionID: sampleSessionID,
 			wantResult:    true,
 		},
@@ -133,7 +130,7 @@ func TestReadSessionReport(t *testing.T) {
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got verdict %q", report.Verdict)
+					t.Fatalf("expected an error, got status %q", report.Status)
 				}
 				return
 			}
@@ -141,8 +138,8 @@ func TestReadSessionReport(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if report.Verdict != testCase.want {
-				t.Errorf("expected verdict %q, got %q", testCase.want, report.Verdict)
+			if report.Status != testCase.want {
+				t.Errorf("expected status %q, got %q", testCase.want, report.Status)
 			}
 			if report.ExitCode != testCase.wantExitCode {
 				t.Errorf("expected exit code %d, got %d", testCase.wantExitCode, report.ExitCode)
@@ -202,12 +199,12 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 		// status is what the task carries when drudge is asked about it.
 		status task.TaskStatus
 		// stream holds the event lines of the task's run. A nil stream stands
-		// for a task with no run directory at all.
+		// for a task with no run directory.
 		stream []string
 		exit   string
 
 		requestedID task.TaskID
-		want        SessionVerdict
+		want        SessionStatus
 		wantErr     bool
 	}{
 		{
@@ -215,14 +212,14 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 			status: task.StatusInProgress,
 			stream: []string{initEvent, assistantEvent},
 			exit:   noExitFile,
-			want:   VerdictWorking,
+			want:   StatusWorking,
 		},
 		{
 			name:   "a task whose agent finished the work",
 			status: task.StatusInProgress,
 			stream: []string{initEvent, resultEvent},
 			exit:   "0\n",
-			want:   VerdictGotShitDone,
+			want:   StatusGotShitDone,
 		},
 		{
 			name:        "a task named by a prefix of its id",
@@ -230,7 +227,7 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 			stream:      []string{initEvent},
 			exit:        noExitFile,
 			requestedID: "task",
-			want:        VerdictWorking,
+			want:        StatusWorking,
 		},
 		{
 			name:    "a task that was never run",
@@ -278,8 +275,8 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 			if session.Task.ID != tracked.ID {
 				t.Errorf("expected task %q, got %q", tracked.ID, session.Task.ID)
 			}
-			if session.Report.Verdict != testCase.want {
-				t.Errorf("expected verdict %q, got %q", testCase.want, session.Report.Verdict)
+			if session.Report.Status != testCase.want {
+				t.Errorf("expected status %q, got %q", testCase.want, session.Report.Status)
 			}
 		})
 	}

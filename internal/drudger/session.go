@@ -13,37 +13,37 @@ import (
 	"drudge/internal/task"
 )
 
-// SessionVerdict is how the work of one Session is going. It answers a
+// SessionStatus is how the work of one Session is going. It answers a
 // different question from the Task's own status and from the Drudger's health,
-// so it is its own type and never mixed with either.
-type SessionVerdict string
+// hence its own type.
+type SessionStatus string
 
 const (
-	// VerdictWorking means the agent is still running and still writing.
-	VerdictWorking SessionVerdict = "working"
-	// VerdictNeedsBabysitting means the agent is still running but has gone
+	// StatusWorking means the agent is still running and still doing something.
+	StatusWorking SessionStatus = "working"
+	// StatusNeedsBabysitting means the agent is still running but has gone
 	// quiet for long enough to be worth a look.
-	VerdictNeedsBabysitting SessionVerdict = "needs babysitting"
-	// VerdictFuckedUp means the agent stopped without doing the work.
-	VerdictFuckedUp SessionVerdict = "fucked up"
-	// VerdictGotShitDone means the agent finished the work it was given.
-	VerdictGotShitDone SessionVerdict = "got shit done"
+	StatusNeedsBabysitting SessionStatus = "needs babysitting"
+	// StatusFuckedUp means the agent stopped without doing or finishing the work.
+	StatusFuckedUp SessionStatus = "fucked up"
+	// StatusGotShitDone means the agent finished the work it was given.
+	StatusGotShitDone SessionStatus = "got shit done"
 )
 
 // sessionStaleAfter is how long a running Session may write nothing before
-// drudge says it needs babysitting. A single tool call can take minutes on its
-// own, so a tighter threshold would cry wolf on healthy runs. Complete silence
-// this long has nothing normal behind it.
+// drudge says it needs babysitting. Note that a single tool call can take
+// minutes on its own.
+// TODO: move it to the config
 const sessionStaleAfter = 5 * time.Minute
 
-// errNoRunDirectory reports a task that has no run directory, so there is no
-// Session to say anything about.
+// errNoRunDirectory reports a task that has no run directory,
+// and therefore no Session to check.
 var errNoRunDirectory = errors.New("no run directory")
 
 // SessionReport is what the run directory of a task says about the last
 // Session that worked on it.
 type SessionReport struct {
-	Verdict   SessionVerdict
+	Status    SessionStatus
 	RunDir    string         // where the files of the run live
 	SessionID string         // resumable agent session, empty until the agent reports it
 	LastWrite time.Time      // when the Session last produced output
@@ -63,7 +63,7 @@ type SessionResult struct {
 
 // Finished reports whether the Session has stopped, whatever it left behind.
 func (report SessionReport) Finished() bool {
-	return report.Verdict == VerdictFuckedUp || report.Verdict == VerdictGotShitDone
+	return report.Status == StatusFuckedUp || report.Status == StatusGotShitDone
 }
 
 // TaskSession pairs a task with what its run directory says about the last
@@ -73,9 +73,7 @@ type TaskSession struct {
 	Report SessionReport
 }
 
-// SessionStatus tells how the last Session of a task is going. The workspace
-// is a live bind mount into the sandbox, so the answer comes out of ordinary
-// file reads and no sandbox command is involved.
+// SessionStatus tells how the last Session of a task is going.
 func (service *DrudgerService) SessionStatus(projectSlug string, requestedID task.TaskID) (*TaskSession, error) {
 	tracked, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
@@ -98,8 +96,6 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 	return &TaskSession{Task: tracked, Report: report}, nil
 }
 
-// readSessionReport works out how a Session is going from the files its run
-// directory holds.
 func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 	present, err := common.Exists(runDir)
 	if err != nil {
@@ -129,20 +125,18 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 		return SessionReport{}, err
 	}
 	if !finished {
-		report.Verdict = verdictOfRunning(report.LastWrite, now)
+		report.Status = statusOfRunning(report.LastWrite, now)
 		return report, nil
 	}
 
 	if report.ExitCode, err = readExitCode(runDir); err != nil {
 		return SessionReport{}, err
 	}
-	report.Verdict = verdictOfFinished(report.ExitCode, report.Result)
+	report.Status = statusOfFinished(report.ExitCode, report.Result)
 	return report, nil
 }
 
-// sessionFinished reports whether a Session has stopped. The launcher writes
-// the exit file once the agent is gone, so its presence is the only marker of
-// a finished run.
+// sessionFinished reports whether a Session has stopped.
 func sessionFinished(runDir string) (bool, error) {
 	finished, err := common.Exists(common.RunExitPath(runDir))
 	if err != nil {
@@ -151,32 +145,26 @@ func sessionFinished(runDir string) (bool, error) {
 	return finished, nil
 }
 
-// verdictOfRunning judges a Session that has not written its exit file. An
-// agent appends to its event stream as it works, so a stream that stopped
-// growing is the only sign of trouble drudge can see from outside.
-func verdictOfRunning(lastWrite time.Time, now time.Time) SessionVerdict {
+// statusOfRunning judges a Session that has not written its exit file.
+func statusOfRunning(lastWrite time.Time, now time.Time) SessionStatus {
 	if now.Sub(lastWrite) > sessionStaleAfter {
-		return VerdictNeedsBabysitting
+		return StatusNeedsBabysitting
 	}
-	return VerdictWorking
+	return StatusWorking
 }
 
-// verdictOfFinished judges a Session that has stopped. Only an agent that
-// exited cleanly and said so on its terminal event got the work done.
-func verdictOfFinished(exitCode int, result *SessionResult) SessionVerdict {
+// statusOfFinished judges a Session that has stopped.
+func statusOfFinished(exitCode int, result *SessionResult) SessionStatus {
 	if exitCode != 0 {
-		return VerdictFuckedUp
+		return StatusFuckedUp
 	}
 	if result == nil || result.IsError || result.Subtype != streamSubtypeSuccess {
-		return VerdictFuckedUp
+		return StatusFuckedUp
 	}
-	return VerdictGotShitDone
+	return StatusGotShitDone
 }
 
-// readLastWrite says when the Session last produced output. The event stream
-// is the heartbeat, since the agent appends to it as it works. Until the agent
-// writes its first event there is no stream, and the run directory stands in,
-// because drudge creates it right before the launch.
+// readLastWrite reports when the Session last produced output.
 func readLastWrite(runDir string) (time.Time, error) {
 	stream, err := os.Stat(common.RunStreamPath(runDir))
 	if err == nil {
@@ -209,7 +197,7 @@ func readExitCode(runDir string) (int, error) {
 }
 
 // sessionResultOf keeps the parts of a terminal event drudge reports on. A nil
-// event means the agent has not written one yet, and a nil result says so.
+// event means the agent has not written one yet.
 func sessionResultOf(terminal *streamEvent) *SessionResult {
 	if terminal == nil {
 		return nil

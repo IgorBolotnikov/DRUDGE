@@ -59,7 +59,7 @@ func runTask(args []string) error {
 	case "run":
 		return taskRun(args[1:])
 	case "status":
-		return taskStatus(args[1:])
+		return taskSessionStatus(args[1:])
 	default:
 		return fmt.Errorf("unknown task subcommand %q, %s", args[0], taskUsage)
 	}
@@ -210,16 +210,16 @@ func taskRun(args []string) error {
 	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
 }
 
-// taskStatus reports how the last Session of a task is going.
-func taskStatus(args []string) error {
+// taskSessionStatus reports how the last Session of a task is going.
+func taskSessionStatus(args []string) error {
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println(taskStatusUsage)
 		fmt.Println()
-		fmt.Println("Tell whether the agent working on a task is working, stuck or has fallen over.")
+		fmt.Println("Tell whether the agent working on a task is working, stuck or has .")
 		return nil
 	}
 
-	taskID, err := parseTaskStatusArgs(args)
+	taskID, err := parseTaskSessionStatusArgs(args)
 	if err != nil {
 		return err
 	}
@@ -238,7 +238,7 @@ func taskStatus(args []string) error {
 	return nil
 }
 
-func parseTaskStatusArgs(args []string) (task.TaskID, error) {
+func parseTaskSessionStatusArgs(args []string) (task.TaskID, error) {
 	var taskID string
 
 	for _, arg := range args {

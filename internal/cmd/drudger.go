@@ -179,8 +179,7 @@ func formatHealth(health drudger.Health) string {
 	}
 }
 
-// formatAgo renders roughly how long ago a moment was, at the precision a
-// reader skimming a listing needs.
+// formatAgo renders roughly how long ago a moment was.
 func formatAgo(moment time.Time, now time.Time) string {
 	if moment.IsZero() {
 		return neverLabel

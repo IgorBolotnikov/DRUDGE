@@ -81,7 +81,7 @@ func TestParseTaskRunArgs(t *testing.T) {
 	}
 }
 
-func TestParseTaskStatusArgs(t *testing.T) {
+func TestParseTaskSessionStatusArgs(t *testing.T) {
 	cases := []struct {
 		name       string
 		args       []string
@@ -112,7 +112,7 @@ func TestParseTaskStatusArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			taskID, err := parseTaskStatusArgs(testCase.args)
+			taskID, err := parseTaskSessionStatusArgs(testCase.args)
 
 			if testCase.wantErr {
 				if err == nil {
