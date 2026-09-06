@@ -116,11 +116,6 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 }
 
 // warnAboveLimit names the Drudgers whose slot is above the configured limit.
-// Lowering the limit leaves them in place and keeps allocation capped, so the
-// pool works with fewer Drudgers than it holds.
-//
-// Nothing is deleted here. One of those Drudgers may have an agent working in
-// it right now, and removing one is a deliberate act of its own.
 func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug string, limit int) {
 	above := make([]*Drudger, 0, len(drudgers))
 	for _, candidate := range drudgers {
@@ -141,7 +136,7 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 	}
 
 	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, config.MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
-	service.logger.Info("They are left alone and no task is handed to them. Raise %s to put them back to work, or remove their sandboxes if you are done with them.", config.MaxConcurrentDrudgersKey)
+	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or remove their sandboxes if you are done with them.", config.MaxConcurrentDrudgersKey)
 }
 
 // reclaimFinished frees every Drudger whose Session has finished. A Session is
