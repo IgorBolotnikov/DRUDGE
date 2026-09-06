@@ -37,23 +37,46 @@ func TestDrudgerList(t *testing.T) {
 					Slot:        1,
 					Sandbox:     "drudge-claude-test-project-1",
 					TaskID:      occupiedTaskID,
+					Health:      drudger.HealthUsable,
 					LastChecked: time.Now().UTC(),
 				},
 			},
 			wantLines: []string{
 				"Drudgers (2):",
 				"SLOT",
-				"1", "drudge-claude-test-project-1", "a1b2c3d4", "just now",
-				"2", "drudge-claude-test-project-2", "idle", "never",
+				"1", "drudge-claude-test-project-1", "a1b2c3d4", "ok", "just now",
+				"2", "drudge-claude-test-project-2", "idle", "unchecked", "never",
 			},
 			// The task id is shortened the way the other listings shorten it.
 			wantAbsent: []string{occupiedTaskID},
 		},
 		{
+			name: "a broken sandbox stands out",
+			pool: []*drudger.Drudger{
+				{
+					Slot:        1,
+					Sandbox:     "drudge-claude-test-project-1",
+					Health:      drudger.HealthGone,
+					LastChecked: time.Now().UTC(),
+				},
+				{
+					Slot:        2,
+					Sandbox:     "drudge-claude-test-project-2",
+					Health:      drudger.HealthMisplaced,
+					LastChecked: time.Now().UTC(),
+				},
+			},
+			wantLines: []string{
+				"HEALTH",
+				"1", "drudge-claude-test-project-1", "SANDBOX GONE",
+				"2", "drudge-claude-test-project-2", "WRONG WORKSPACE",
+			},
+		},
+		{
 			name:       "no Drudgers yet",
 			pool:       nil,
 			wantLines:  []string{"has no Drudgers"},
-			wantAbsent: []string{"SLOT", "SANDBOX"},
+			wantAbsent: []string{"SLOT", "SANDBOX", "HEALTH"},
 		},
 	}
 
@@ -110,6 +133,29 @@ func TestRunDrudger_BadArgs(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			if err := runDrudger(testCase.args); err == nil {
 				t.Fatalf("expected an error for args %v", testCase.args)
+			}
+		})
+	}
+}
+
+func TestFormatHealth(t *testing.T) {
+	cases := []struct {
+		name   string
+		health drudger.Health
+		want   string
+	}{
+		{name: "never looked", health: drudger.HealthUnknown, want: "unchecked"},
+		{name: "the sandbox is fine", health: drudger.HealthUsable, want: "ok"},
+		{name: "the sandbox is not there", health: drudger.HealthGone, want: "SANDBOX GONE"},
+		{name: "the sandbox holds another repository", health: drudger.HealthMisplaced, want: "WRONG WORKSPACE"},
+		{name: "a value this build does not know", health: "hand-edited", want: "hand-edited"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := formatHealth(testCase.health)
+			if got != testCase.want {
+				t.Errorf("expected %q, got %q", testCase.want, got)
 			}
 		})
 	}

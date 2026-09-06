@@ -37,6 +37,7 @@ type storedDrudger struct {
 	Slot        int       `json:"slot"`
 	Sandbox     string    `json:"sandbox"`
 	Task        string    `json:"task,omitempty"`
+	Health      string    `json:"health,omitempty"`
 	LastChecked time.Time `json:"lastChecked"`
 }
 
@@ -114,6 +115,7 @@ func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 			Slot:        entry.Slot,
 			Sandbox:     entry.Sandbox,
 			TaskID:      task.TaskID(entry.Task),
+			Health:      drudger.Health(entry.Health),
 			LastChecked: entry.LastChecked,
 		})
 	}
@@ -129,6 +131,7 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 			Slot:        entry.Slot,
 			Sandbox:     entry.Sandbox,
 			Task:        string(entry.TaskID),
+			Health:      string(entry.Health),
 			LastChecked: entry.LastChecked,
 		})
 	}

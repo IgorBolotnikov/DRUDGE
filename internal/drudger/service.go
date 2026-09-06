@@ -105,7 +105,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(plan, drudger.Sandbox, workspace); err != nil {
+	if err := service.ensureSandbox(projectSlug, drudger, plan, workspace); err != nil {
 		return err
 	}
 
@@ -165,23 +165,35 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 // ensureSandbox creates the Drudger's sandbox unless it already exists.
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds the workspace of this run.
-func (service *DrudgerService) ensureSandbox(plan sandboxPlan, drudgerName, workspace string) error {
+//
+// What the listing says about the sandbox is recorded as the Drudger's health,
+// so a broken sandbox shows up in the Drudger listing. A failure before the
+// listing is read records nothing, because nothing was learned.
+func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, workspace string) error {
 	listing, err := service.commands.Run(plan.inspect)
 	if err != nil {
-		return fmt.Errorf("could not list the sandboxes to look for %s: %w", drudgerName, err)
+		return fmt.Errorf("could not list the sandboxes to look for %s: %w", claimed.Sandbox, err)
 	}
 
-	existing, err := findSandbox(listing, drudgerName)
+	existing, err := findSandbox(listing, claimed.Sandbox)
 	if err != nil {
 		return err
 	}
-	if existing != nil {
-		return checkSandboxWorkspace(existing, workspace)
+
+	if existing == nil {
+		if _, err := service.commands.Run(plan.create); err != nil {
+			service.recordHealth(projectSlug, claimed.Slot, HealthGone)
+			return fmt.Errorf("could not create sandbox %s: %w", claimed.Sandbox, err)
+		}
+		service.recordHealth(projectSlug, claimed.Slot, HealthUsable)
+		return nil
 	}
 
-	if _, err := service.commands.Run(plan.create); err != nil {
-		return fmt.Errorf("could not create sandbox %s: %w", drudgerName, err)
+	if err := checkSandboxWorkspace(existing, workspace); err != nil {
+		service.recordHealth(projectSlug, claimed.Slot, HealthMisplaced)
+		return err
 	}
+	service.recordHealth(projectSlug, claimed.Slot, HealthUsable)
 	return nil
 }
 

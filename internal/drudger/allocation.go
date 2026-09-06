@@ -54,6 +54,26 @@ func (service *DrudgerService) releaseDrudger(projectSlug string, slot int, task
 	})
 }
 
+// recordHealth stores what drudge just saw of a Drudger's sandbox and stamps
+// when it looked. This is bookkeeping, so a write that fails is logged and the
+// launch carries on.
+func (service *DrudgerService) recordHealth(projectSlug string, slot int, health Health) {
+	now := time.Now().UTC()
+
+	err := service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
+		for _, candidate := range drudgers {
+			if candidate.Slot == slot {
+				candidate.Health = health
+				candidate.LastChecked = now
+			}
+		}
+		return drudgers, nil
+	})
+	if err != nil {
+		service.logger.Error("Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+	}
+}
+
 // pickDrudger reclaims finished Sessions and hands the task the lowest free
 // slot under the configured limit. If a free slot has no Drydger yet, then it
 // creates a new one and hands it back.

@@ -495,11 +495,17 @@ func TestDrudgerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testin
 				if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
 					t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
 				}
+				if recorded := service.drudgers.atSlot(1); recorded.Health != HealthMisplaced {
+					t.Errorf("expected the refusal to be recorded as %q, got %q", HealthMisplaced, recorded.Health)
+				}
 				return
 			}
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if recorded := service.drudgers.atSlot(1); recorded.Health != HealthUsable {
+				t.Errorf("expected the sandbox to be recorded as %q, got %q", HealthUsable, recorded.Health)
 			}
 		})
 	}
@@ -746,6 +752,9 @@ func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
 	if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
 		t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
 	}
+	if recorded := service.drudgers.atSlot(1); recorded.Health != HealthUnknown {
+		t.Errorf("expected a dry run to record no health, got %q", recorded.Health)
+	}
 	if len(commands.calls) != 0 {
 		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
 	}
@@ -798,5 +807,84 @@ func TestDrudgerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *test
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected error to name %s, got %q", want, err)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
+	const otherRepo = "/some/other/repo"
+	sbxErr := fmt.Errorf("sbx: no such binary")
+
+	cases := []struct {
+		name string
+		// listing is what the inspect call reports, and listErr is the inspect
+		// call failing outright. createErr fails the call that builds a
+		// sandbox the listing did not hold.
+		listing    string
+		listErr    error
+		createErr  error
+		wantHealth Health
+		wantErr    bool
+	}{
+		{
+			name:       "the sandbox is there on the workspace of the run",
+			listing:    sandboxListingWith(testSandbox),
+			wantHealth: HealthUsable,
+		},
+		{
+			name:       "the listing omits the sandbox, so it is built",
+			listing:    sandboxListingWith(),
+			wantHealth: HealthUsable,
+		},
+		{
+			name:       "the sandbox is missing and cannot be built",
+			listing:    sandboxListingWith(),
+			createErr:  sbxErr,
+			wantHealth: HealthGone,
+			wantErr:    true,
+		},
+		{
+			name:       "the sandbox is mounted on another repository",
+			listing:    sandboxListingMountedOn(testSandbox, otherRepo),
+			wantHealth: HealthMisplaced,
+			wantErr:    true,
+		},
+		{
+			name:       "the listing cannot be read, so nothing was learned",
+			listErr:    sbxErr,
+			wantHealth: HealthUnknown,
+			wantErr:    true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{
+				workspace: workspace,
+				outputs:   []string{testCase.listing},
+				errs:      []error{testCase.listErr, testCase.createErr},
+			}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			if testCase.wantErr != (err != nil) {
+				t.Fatalf("expected an error %t, got %v", testCase.wantErr, err)
+			}
+
+			recorded := service.drudgers.atSlot(1)
+			if recorded == nil {
+				t.Fatalf("expected Drudger 1 to be in the pool, got %v", service.drudgers.drudgers)
+			}
+			if recorded.Health != testCase.wantHealth {
+				t.Errorf("expected health %q, got %q", testCase.wantHealth, recorded.Health)
+			}
+			// The claim stamps the Drudger too, so this only says the record
+			// the launch left behind carries a time.
+			if recorded.LastChecked.IsZero() {
+				t.Error("expected last checked to be stamped")
+			}
+		})
 	}
 }

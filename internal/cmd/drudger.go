@@ -26,6 +26,19 @@ const (
 	neverCheckedLabel = "never"
 )
 
+// Labels for what drudge last saw of a Drudger's sandbox. A usable sandbox is
+// the normal case and stays quiet. A broken one is shouted so it stands out in
+// a listing of otherwise fine Drudgers.
+const (
+	healthUsableLabel    = "ok"
+	healthGoneLabel      = "SANDBOX GONE"
+	healthMisplacedLabel = "WRONG WORKSPACE"
+	healthUnknownLabel   = "unchecked"
+
+	// healthColumnWidth fits the longest label.
+	healthColumnWidth = len(healthMisplacedLabel)
+)
+
 func runDrudger(args []string) error {
 	if len(args) < 1 {
 		return errors.New(drudgerUsage)
@@ -66,6 +79,7 @@ func drudgerList(args []string) error {
 		{Title: "SLOT", Width: 4},
 		{Title: "SANDBOX", Width: 40},
 		{Title: "TASK", Width: task.ShortIDLength},
+		{Title: "HEALTH", Width: healthColumnWidth},
 		{Title: "LAST CHECKED"},
 	}
 	now := time.Now().UTC()
@@ -75,6 +89,7 @@ func drudgerList(args []string) error {
 			strconv.Itoa(entry.Slot),
 			entry.Sandbox,
 			occupyingTask(entry),
+			formatHealth(entry.Health),
 			formatLastChecked(entry.LastChecked, now),
 		})
 	}
@@ -88,6 +103,24 @@ func occupyingTask(entry *drudger.Drudger) string {
 		return idleLabel
 	}
 	return shortTaskID(entry.TaskID)
+}
+
+// formatHealth names what drudge last saw of a sandbox. A stored value this
+// build does not know is printed as it is, so a hand-edited Drudgers file
+// shows what it actually holds.
+func formatHealth(health drudger.Health) string {
+	switch health {
+	case drudger.HealthUsable:
+		return healthUsableLabel
+	case drudger.HealthGone:
+		return healthGoneLabel
+	case drudger.HealthMisplaced:
+		return healthMisplacedLabel
+	case drudger.HealthUnknown:
+		return healthUnknownLabel
+	default:
+		return string(health)
+	}
 }
 
 func formatLastChecked(lastChecked time.Time, now time.Time) string {

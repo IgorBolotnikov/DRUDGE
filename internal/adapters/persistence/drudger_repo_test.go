@@ -45,7 +45,20 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 		{
 			name: "an idle Drudger",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Health: drudger.HealthUsable, LastChecked: lastChecked},
+			},
+		},
+		{
+			name: "a Drudger whose sandbox is broken",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Health: drudger.HealthGone, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", Health: drudger.HealthMisplaced, LastChecked: lastChecked},
+			},
+		},
+		{
+			name: "a Drudger nobody has looked at yet",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1"},
 			},
 		},
 		{
@@ -90,6 +103,9 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				}
 				if got.TaskID != want.TaskID {
 					t.Errorf("expected task %q, got %q", want.TaskID, got.TaskID)
+				}
+				if got.Health != want.Health {
+					t.Errorf("expected health %q, got %q", want.Health, got.Health)
 				}
 				if !got.LastChecked.Equal(want.LastChecked) {
 					t.Errorf("expected last checked %v, got %v", want.LastChecked, got.LastChecked)
