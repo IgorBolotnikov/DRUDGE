@@ -815,10 +815,7 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 	sbxErr := fmt.Errorf("sbx: no such binary")
 
 	cases := []struct {
-		name string
-		// listing is what the inspect call reports, and listErr is the inspect
-		// call failing outright. createErr fails the call that builds a
-		// sandbox the listing did not hold.
+		name       string
 		listing    string
 		listErr    error
 		createErr  error
@@ -880,8 +877,6 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 			if recorded.Health != testCase.wantHealth {
 				t.Errorf("expected health %q, got %q", testCase.wantHealth, recorded.Health)
 			}
-			// The claim stamps the Drudger too, so this only says the record
-			// the launch left behind carries a time.
 			if recorded.LastChecked.IsZero() {
 				t.Error("expected last checked to be stamped")
 			}

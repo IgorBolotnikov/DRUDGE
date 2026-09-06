@@ -166,9 +166,7 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds the workspace of this run.
 //
-// What the listing says about the sandbox is recorded as the Drudger's health,
-// so a broken sandbox shows up in the Drudger listing. A failure before the
-// listing is read records nothing, because nothing was learned.
+// What the listing says about the sandbox is recorded as the Drudger's health.
 func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, workspace string) error {
 	listing, err := service.commands.Run(plan.inspect)
 	if err != nil {

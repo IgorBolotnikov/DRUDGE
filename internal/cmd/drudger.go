@@ -105,9 +105,6 @@ func occupyingTask(entry *drudger.Drudger) string {
 	return shortTaskID(entry.TaskID)
 }
 
-// formatHealth names what drudge last saw of a sandbox. A stored value this
-// build does not know is printed as it is, so a hand-edited Drudgers file
-// shows what it actually holds.
 func formatHealth(health drudger.Health) string {
 	switch health {
 	case drudger.HealthUsable:

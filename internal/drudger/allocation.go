@@ -54,9 +54,8 @@ func (service *DrudgerService) releaseDrudger(projectSlug string, slot int, task
 	})
 }
 
-// recordHealth stores what drudge just saw of a Drudger's sandbox and stamps
-// when it looked. This is bookkeeping, so a write that fails is logged and the
-// launch carries on.
+// recordHealth stores what drudge just saw of a Drudger's sandbox and records
+// when it looked.
 func (service *DrudgerService) recordHealth(projectSlug string, slot int, health Health) {
 	now := time.Now().UTC()
 

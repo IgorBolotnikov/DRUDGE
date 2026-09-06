@@ -20,8 +20,7 @@ type Drudger struct {
 }
 
 // Health is what drudge last saw of a Drudger's sandbox. It describes the
-// sandbox and nothing else. How the agent's work is going is a Session
-// question, answered from the run directory.
+// sandbox and nothing else.
 type Health string
 
 const (
@@ -32,7 +31,7 @@ const (
 	// HealthGone means the sandbox is not there.
 	HealthGone Health = "gone"
 	// HealthMisplaced means the sandbox is there but is mounted on another
-	// workspace, so an agent in it would edit the wrong repository.
+	// workspace.
 	HealthMisplaced Health = "misplaced"
 )
 
