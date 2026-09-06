@@ -33,9 +33,7 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 	}
 }
 
-// ListDrudgers reads the Drudgers a project has, ordered by slot. Every entry
-// is a snapshot of what drudge last observed, so a caller that shows one
-// should show its LastChecked beside it.
+// ListDrudgers returns all Drudgers which currently exist in a Project.
 func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, error) {
 	drudgers, err := service.drudgers.ListDrudgers(projectSlug)
 	if err != nil {

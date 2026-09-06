@@ -141,8 +141,6 @@ func TestFormatLastChecked(t *testing.T) {
 	}
 }
 
-// setupProject gives the test a home directory and a current directory linked
-// to a project, which is what a Drudger command expects to find.
 func setupProject(t *testing.T) {
 	t.Helper()
 	setupHome(t)
@@ -154,8 +152,6 @@ func setupProject(t *testing.T) {
 	}
 }
 
-// seedDrudgers writes a pool through the real repository, so the test reads
-// back what a run would have left behind.
 func seedDrudgers(t *testing.T, pool []*drudger.Drudger) {
 	t.Helper()
 	if len(pool) == 0 {

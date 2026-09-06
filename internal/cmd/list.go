@@ -20,15 +20,14 @@ const (
 )
 
 // column is one column of a listing. A width of zero means the column takes
-// whatever room its values need, which only makes sense for the last one.
+// whatever room its values need (which only makes sense for the last one).
 type column struct {
 	Title string
 	Width int
 }
 
 // printList prints a listing: how many rows there are, a header, a rule under
-// it and one line per row. What an empty listing means differs per command, so
-// callers say that themselves and only call this once they have rows.
+// it and one line per row.
 func printList(log *common.Logger, title string, columns []column, rows [][]string) {
 	for _, line := range listLines(title, columns, rows) {
 		// The line is already formatted and may hold a percent sign.
@@ -36,7 +35,6 @@ func printList(log *common.Logger, title string, columns []column, rows [][]stri
 	}
 }
 
-// listLines renders a whole listing, one string per line.
 func listLines(title string, columns []column, rows [][]string) []string {
 	lines := make([]string, 0, len(rows)+3)
 	lines = append(lines, fmt.Sprintf("%s (%d):", title, len(rows)))
@@ -48,9 +46,6 @@ func listLines(title string, columns []column, rows [][]string) []string {
 	return lines
 }
 
-// listLine lays values out across the columns. A value too long for its column
-// is cut short, and a column the row says nothing about is left blank, so the
-// columns line up whatever it is handed.
 func listLine(columns []column, values []string) string {
 	cells := make([]string, 0, len(columns))
 	for index, col := range columns {
@@ -74,8 +69,7 @@ func columnTitles(columns []column) []string {
 	return titles
 }
 
-// columnRules draws the line under the header. A column with no width of its
-// own is ruled to the width of its title.
+// columnRules draws the line under the header.
 func columnRules(columns []column) []string {
 	rules := make([]string, 0, len(columns))
 	for _, col := range columns {
@@ -88,8 +82,7 @@ func columnRules(columns []column) []string {
 	return rules
 }
 
-// fitColumn cuts a value short so it fits its column, marking the cut with an
-// ellipsis. A column too narrow to hold the ellipsis is cut without one.
+// fitColumn cuts a value short so it fits its column.
 func fitColumn(value string, width int) string {
 	runes := []rune(value)
 	if len(runes) <= width {
@@ -101,9 +94,6 @@ func fitColumn(value string, width int) string {
 	return string(runes[:width-len(listEllipsis)]) + listEllipsis
 }
 
-// shortTaskID cuts a task id down to the length listings show it at. Ids are
-// cut without an ellipsis, because a listing shows the leading characters a
-// user types back to name the task.
 func shortTaskID(id task.TaskID) string {
 	text := string(id)
 	if len(text) > task.ShortIDLength {

@@ -21,11 +21,8 @@ const (
 	drudgerUsage     = "usage: drg drudger <subcommand>"
 	drudgerListUsage = "usage: drg drudger list"
 
-	// idleLabel stands in the task column of a Drudger no task occupies.
 	idleLabel = "idle"
 
-	// neverCheckedLabel stands in the last checked column of a Drudger drudge
-	// has not looked at yet.
 	neverCheckedLabel = "never"
 )
 
@@ -86,8 +83,6 @@ func drudgerList(args []string) error {
 	return nil
 }
 
-// occupyingTask names the task a Drudger is working on, shortened to the
-// length listings use elsewhere.
 func occupyingTask(entry *drudger.Drudger) string {
 	if entry.Idle() {
 		return idleLabel
@@ -95,9 +90,6 @@ func occupyingTask(entry *drudger.Drudger) string {
 	return shortTaskID(entry.TaskID)
 }
 
-// formatLastChecked says how long ago drudge looked at a Drudger, so a reader
-// knows how much to trust the rest of the row. A zero time means drudge has
-// never looked.
 func formatLastChecked(lastChecked time.Time, now time.Time) string {
 	if lastChecked.IsZero() {
 		return neverCheckedLabel

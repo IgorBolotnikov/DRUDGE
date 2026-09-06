@@ -9,8 +9,6 @@ import (
 	"drudge/internal/task"
 )
 
-// commandDeps holds the dependency graph a subcommand works with. It is built
-// around the project the current directory is linked to.
 type commandDeps struct {
 	localCfg *config.LocalConfig
 	log      *common.Logger
@@ -18,8 +16,6 @@ type commandDeps struct {
 	drudger  *drudger.DrudgerService
 }
 
-// newCommandDeps wires up what a subcommand needs to reach a project's tasks
-// and the Drudgers working on them.
 func newCommandDeps() (*commandDeps, error) {
 	localCfg, err := config.LoadLocal()
 	if err != nil {
