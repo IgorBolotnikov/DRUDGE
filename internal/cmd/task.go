@@ -28,6 +28,9 @@ const (
 
 const taskRunUsage = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 
+// taskTitleWidth is how much room a listing gives a task title.
+const taskTitleWidth = 40
+
 var validStatuses = []string{
 	task.StatusDraft,
 	task.StatusTodo,
@@ -159,22 +162,18 @@ func taskList(args []string) error {
 		return nil
 	}
 
-	log.Info("Tasks (%d):", len(tasks))
-	log.Info("  %-15s  %-8s  %-40s  %s", "STATUS", "ID", "TITLE", "TICKET")
-	log.Info("  ---------------  --------  ----------------------------------------  ------")
-	maxTitleLen := 40
+	columns := []column{
+		{Title: "STATUS", Width: 15},
+		{Title: "ID", Width: task.ShortIDLength},
+		{Title: "TITLE", Width: taskTitleWidth},
+		{Title: "TICKET"},
+	}
+	rows := make([][]string, 0, len(tasks))
 	for _, t := range tasks {
-		id := string(t.ID)
-		if len(id) > task.ShortIDLength {
-			id = id[:task.ShortIDLength]
-		}
-		title := t.Title
-		if len(title) > maxTitleLen {
-			title = title[:maxTitleLen-3] + "..."
-		}
-		log.Info("  %-15s  %-8s  %-40s  %s", t.Status, id, title, t.TicketID)
+		rows = append(rows, []string{string(t.Status), shortTaskID(t.ID), t.Title, t.TicketID})
 	}
 
+	printList(log, "Tasks", columns, rows)
 	return nil
 }
 

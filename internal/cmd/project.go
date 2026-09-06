@@ -139,12 +139,15 @@ func projectList() error {
 		return nil
 	}
 
-	log.Info("Projects (%d):", len(projects))
-	log.Info("  %-20s  %s", "slug", "name")
-	log.Info("  --------------------  --------")
+	columns := []column{
+		{Title: "SLUG", Width: 20},
+		{Title: "NAME"},
+	}
+	rows := make([][]string, 0, len(projects))
 	for _, p := range projects {
-		log.Info("  %-20s  %s", p.Slug, p.Name)
+		rows = append(rows, []string{p.Slug, p.Name})
 	}
 
+	printList(log, "Projects", columns, rows)
 	return nil
 }

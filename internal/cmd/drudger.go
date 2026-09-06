@@ -27,10 +27,6 @@ const (
 	// neverCheckedLabel stands in the last checked column of a Drudger drudge
 	// has not looked at yet.
 	neverCheckedLabel = "never"
-
-	// drudgerListRow lays out one row of the listing. The header, the rule
-	// under it and every Drudger go through it, so the columns line up.
-	drudgerListRow = "  %-4s  %-40s  %-8s  %s"
 )
 
 func runDrudger(args []string) error {
@@ -69,20 +65,24 @@ func drudgerList(args []string) error {
 		return nil
 	}
 
+	columns := []column{
+		{Title: "SLOT", Width: 4},
+		{Title: "SANDBOX", Width: 40},
+		{Title: "TASK", Width: task.ShortIDLength},
+		{Title: "LAST CHECKED"},
+	}
 	now := time.Now().UTC()
-	deps.log.Info("Drudgers (%d):", len(drudgers))
-	deps.log.Info(drudgerListRow, "SLOT", "SANDBOX", "TASK", "LAST CHECKED")
-	deps.log.Info(drudgerListRow, "----", "----------------------------------------", "--------", "------------")
+	rows := make([][]string, 0, len(drudgers))
 	for _, entry := range drudgers {
-		deps.log.Info(
-			drudgerListRow,
+		rows = append(rows, []string{
 			strconv.Itoa(entry.Slot),
 			entry.Sandbox,
 			occupyingTask(entry),
 			formatLastChecked(entry.LastChecked, now),
-		)
+		})
 	}
 
+	printList(deps.log, "Drudgers", columns, rows)
 	return nil
 }
 
@@ -92,12 +92,7 @@ func occupyingTask(entry *drudger.Drudger) string {
 	if entry.Idle() {
 		return idleLabel
 	}
-
-	taskID := string(entry.TaskID)
-	if len(taskID) > task.ShortIDLength {
-		taskID = taskID[:task.ShortIDLength]
-	}
-	return taskID
+	return shortTaskID(entry.TaskID)
 }
 
 // formatLastChecked says how long ago drudge looked at a Drudger, so a reader
