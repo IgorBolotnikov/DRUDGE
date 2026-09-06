@@ -360,3 +360,48 @@ func TestRunDirPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestFrontMatter_RoundTripsAwkwardValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{name: "a plain value", value: "Fix login"},
+		{name: "a value over several lines", value: "Done:\n\n- built it\n- tested it"},
+		{name: "a value holding the delimiter", value: "before\n---\nafter"},
+		{name: "a value holding a backslash", value: `C:\Users\drudge`},
+		{name: "a value holding an escape sequence", value: `literally \n here`},
+		{name: "a value holding a carriage return", value: "one\r\ntwo"},
+		{name: "a value holding the separator", value: "note: read this"},
+		{name: "an empty value", value: ""},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			body := "the body stays put"
+			document := FormatFrontMatter(map[string]string{"note": testCase.value}) + body
+
+			metadata, content := ParseFrontMatter(document)
+
+			if metadata["note"] != testCase.value {
+				t.Errorf("expected note %q, got %q", testCase.value, metadata["note"])
+			}
+			if content != body {
+				t.Errorf("expected body %q, got %q", body, content)
+			}
+		})
+	}
+}
+
+func TestParseFrontMatter_WithoutABlock(t *testing.T) {
+	body := "just a body, no front matter"
+
+	metadata, content := ParseFrontMatter(body)
+
+	if len(metadata) != 0 {
+		t.Errorf("expected no metadata, got %v", metadata)
+	}
+	if content != body {
+		t.Errorf("expected body %q, got %q", body, content)
+	}
+}

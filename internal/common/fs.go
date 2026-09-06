@@ -22,6 +22,21 @@ const (
 	ThemeConfigName  = "theme.json"
 )
 
+// Shape of a front matter block: a delimiter line around a body of
+// `key: value` lines.
+const (
+	frontMatterDelimiter = "---"
+	frontMatterSeparator = ": "
+)
+
+// frontMatterEscaper folds a value onto a single line. The backslash is
+// replaced first, so an escape it introduces is not escaped again.
+var frontMatterEscaper = strings.NewReplacer(
+	"\\", "\\\\",
+	"\n", "\\n",
+	"\r", "\\r",
+)
+
 // Files of a task's run directory. The agent writes all of them but the
 // prompt, which drudge renders before the agent starts.
 const (
@@ -114,57 +129,100 @@ func RemoveAll(path string) error {
 }
 
 // FormatFrontMatter serializes metadata as a `---` delimited YAML-like block.
-// Keys are sorted alphabetically for reproducibility.
+// Keys are sorted alphabetically for reproducibility. Values are escaped, so
+// one holding line breaks stays on its own line and cannot break the block.
 func FormatFrontMatter(metadata map[string]string) string {
 	var buf strings.Builder
-	buf.WriteString("---\n")
+	buf.WriteString(frontMatterDelimiter + "\n")
 	keys := make([]string, 0, len(metadata))
 	for k := range metadata {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(&buf, "%s: %s\n", k, metadata[k])
+		fmt.Fprintf(&buf, "%s%s%s\n", k, frontMatterSeparator, escapeFrontMatterValue(metadata[k]))
 	}
-	buf.WriteString("---\n")
+	buf.WriteString(frontMatterDelimiter + "\n")
+	return buf.String()
+}
+
+// escapeFrontMatterValue folds a value onto a single line. Backslashes are
+// doubled first, so unescaping reads back exactly what was written.
+func escapeFrontMatterValue(value string) string {
+	return frontMatterEscaper.Replace(value)
+}
+
+// unescapeFrontMatterValue reads back a value written by
+// escapeFrontMatterValue. A backslash followed by anything else is left as it
+// is, so a value written before escaping existed still reads as itself.
+func unescapeFrontMatterValue(value string) string {
+	var buf strings.Builder
+	buf.Grow(len(value))
+
+	for index := 0; index < len(value); index++ {
+		if value[index] != '\\' || index+1 == len(value) {
+			buf.WriteByte(value[index])
+			continue
+		}
+
+		switch value[index+1] {
+		case 'n':
+			buf.WriteByte('\n')
+		case 'r':
+			buf.WriteByte('\r')
+		case '\\':
+			buf.WriteByte('\\')
+		default:
+			buf.WriteByte(value[index])
+			continue
+		}
+		index++
+	}
 	return buf.String()
 }
 
 // ParseFrontMatter reads the front-matter block from the beginning of data
-// and returns the key-value pairs. Expects `---` delimited format.
+// and returns the key-value pairs. Expects `---` delimited format. The
+// delimiter is a line of its own, so a value holding one is not mistaken for
+// the end of the block.
 func ParseFrontMatter(data string) (map[string]string, string) {
 	result := make(map[string]string)
 
-	// Find first ---
-	_, after, ok := strings.Cut(data, "---")
+	metaBlock, content, ok := cutFrontMatterBlock(data)
 	if !ok {
 		return result, data
 	}
 
-	rest := strings.TrimSpace(after)
-	before, after, ok := strings.Cut(rest, "---")
-	if !ok {
-		return result, data
-	}
-
-	metaBlock := before
-	content := strings.TrimSpace(after)
-	separator := ": "
-
-	for line := range strings.SplitSeq(metaBlock, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, line := range metaBlock {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), frontMatterSeparator)
+		if !ok {
 			continue
 		}
-		if before, after, ok := strings.Cut(line, separator); ok {
-			key := before
-
-			val := after
-			result[key] = val
-		}
+		result[key] = unescapeFrontMatterValue(value)
 	}
 
 	return result, content
+}
+
+// cutFrontMatterBlock splits data into the lines of its front matter block and
+// the content that follows it. The block opens on the very first line and
+// closes on the next delimiter line. Data that does not open and close one
+// carries no front matter, and is all content.
+func cutFrontMatterBlock(data string) ([]string, string, bool) {
+	lines := strings.Split(data, "\n")
+	if strings.TrimSpace(lines[0]) != frontMatterDelimiter {
+		return nil, "", false
+	}
+
+	for index, line := range lines[1:] {
+		if strings.TrimSpace(line) != frontMatterDelimiter {
+			continue
+		}
+		closing := index + 1
+		return lines[1:closing], strings.TrimSpace(strings.Join(lines[closing+1:], "\n")), true
+	}
+
+	return nil, "", false
 }
 
 // WriteFileWithFrontMatter writes metadata as front-matter followed by raw content.
