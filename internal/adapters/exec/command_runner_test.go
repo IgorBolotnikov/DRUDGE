@@ -13,6 +13,7 @@ func TestCommandRunner_Run(t *testing.T) {
 		name            string
 		argv            []string
 		want            string
+		wantStderr      string
 		wantErrContains string
 	}{
 		{
@@ -26,8 +27,15 @@ func TestCommandRunner_Run(t *testing.T) {
 			want: "first line\nsecond line",
 		},
 		{
+			name:       "hands back a notice a succeeding command wrote to stderr",
+			argv:       []string{"sh", "-c", "echo 'Starting sandboxd daemon...' >&2; echo hello"},
+			want:       "hello\n",
+			wantStderr: "Starting sandboxd daemon...",
+		},
+		{
 			name:            "reports what a failing command wrote to stderr",
 			argv:            []string{"sh", "-c", "echo boom >&2; exit 1"},
+			wantStderr:      "boom",
 			wantErrContains: "boom",
 		},
 		{
@@ -46,7 +54,11 @@ func TestCommandRunner_Run(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := runner.Run(testCase.argv)
+			got, gotStderr, err := runner.Run(testCase.argv)
+
+			if gotStderr != testCase.wantStderr {
+				t.Errorf("expected stderr %q, got %q", testCase.wantStderr, gotStderr)
+			}
 
 			if testCase.wantErrContains != "" {
 				if err == nil {

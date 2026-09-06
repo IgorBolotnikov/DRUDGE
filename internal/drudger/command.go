@@ -13,9 +13,11 @@ import (
 
 // CommandRunner runs the commands that put a Drudger to work.
 type CommandRunner interface {
-	// Run waits for a command to finish and hands back its stdout.
-	Run(argv []string) (string, error)
-	// Stars runs the command and exist immediately.
+	// Run waits for a command to finish and hands back what it wrote to
+	// stdout and to stderr. Writing to stderr is not a failure on its own:
+	// sbx reports its daemon there on calls that succeed.
+	Run(argv []string) (stdout string, stderr string, err error)
+	// Start runs the command and returns immediately.
 	Start(argv []string) error
 }
 
@@ -63,6 +65,17 @@ const (
 
 // unknownProjectSlug stands in for a project slug that normalizes to nothing.
 const unknownProjectSlug = "unknown"
+
+// What sbx writes to stderr about its own daemon.
+const (
+	// The first sbx call after a boot brings the daemon up and says so. The
+	// call itself still succeeds.
+	sbxDaemonStartingNotice = "Starting sandboxd daemon..."
+	// A daemon that will not come up fails the call with this in the message.
+	sbxDaemonFailureNotice = "ensure daemon"
+	// What a user runs to look at the daemon themselves.
+	sbxDaemonStatusCommand = "sbx daemon status"
+)
 
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
@@ -229,6 +242,17 @@ func normaliseNameSlug(projectSlug string) string {
 		return unknownProjectSlug
 	}
 	return slug
+}
+
+// daemonJustStarted tells whether an sbx call brought the daemon up on its way.
+func daemonJustStarted(stderr string) bool {
+	return strings.Contains(stderr, sbxDaemonStartingNotice)
+}
+
+// daemonWouldNotStart tells whether an sbx call failed because its daemon
+// never came up.
+func daemonWouldNotStart(stderr string) bool {
+	return strings.Contains(stderr, sbxDaemonFailureNotice)
 }
 
 // formatArgv renders an argv for display.

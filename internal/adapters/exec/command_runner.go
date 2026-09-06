@@ -15,27 +15,29 @@ func NewCommandRunner() *CommandRunner {
 	return &CommandRunner{}
 }
 
-// Run executes argv as a process and returns its stdout.
-func (runner *CommandRunner) Run(argv []string) (string, error) {
+// Run executes argv as a process and returns what it wrote to stdout and to
+// stderr. A command can write to stderr and still succeed, so stderr comes
+// back on both paths and the caller decides what it means.
+func (runner *CommandRunner) Run(argv []string) (string, string, error) {
 	if len(argv) == 0 {
-		return "", fmt.Errorf("cannot run an empty command")
+		return "", "", fmt.Errorf("cannot run an empty command")
 	}
 
 	command := osexec.Command(argv[0], argv[1:]...)
 
-	var stderr strings.Builder
-	command.Stderr = &stderr
+	var stderrBuffer strings.Builder
+	command.Stderr = &stderrBuffer
 
 	stdout, err := command.Output()
+	stderr := strings.TrimSpace(stderrBuffer.String())
 	if err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return "", fmt.Errorf("command %s failed: %w: %s", argv[0], err, message)
+		if stderr != "" {
+			return "", stderr, fmt.Errorf("command %s failed: %w: %s", argv[0], err, stderr)
 		}
-		return "", fmt.Errorf("command %s failed: %w", argv[0], err)
+		return "", stderr, fmt.Errorf("command %s failed: %w", argv[0], err)
 	}
 
-	return string(stdout), nil
+	return string(stdout), stderr, nil
 }
 
 // Start spawns argv and returns as soon as it is running. An agent runs for

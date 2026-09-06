@@ -45,7 +45,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force b
 
 		// The sandbox is removed under the lock, so that nothing can claim this
 		// Drudger in the meantime.
-		if _, err := service.commands.Run(remove); err != nil {
+		if _, _, err := service.runSbx(remove); err != nil {
 			return nil, fmt.Errorf("could not remove sandbox %s: %w", doomed.Sandbox, err)
 		}
 

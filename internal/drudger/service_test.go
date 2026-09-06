@@ -72,16 +72,17 @@ type fakeCommandRunner struct {
 	calls     [][]string
 	started   [][]string
 	outputs   []string
+	stderrs   []string
 	errs      []error
 }
 
 func (runner *fakeCommandRunner) Start(argv []string) error {
 	runner.started = append(runner.started, argv)
-	_, err := runner.Run(argv)
+	_, _, err := runner.Run(argv)
 	return err
 }
 
-func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
+func (runner *fakeCommandRunner) Run(argv []string) (string, string, error) {
 	index := len(runner.calls)
 	runner.calls = append(runner.calls, argv)
 
@@ -89,11 +90,15 @@ func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
 	if index < len(runner.outputs) {
 		output = inWorkspace(runner.outputs[index], runner.workspace)
 	}
+	var stderr string
+	if index < len(runner.stderrs) {
+		stderr = runner.stderrs[index]
+	}
 	var err error
 	if index < len(runner.errs) {
 		err = runner.errs[index]
 	}
-	return output, err
+	return output, stderr, err
 }
 
 func (runner *fakeCommandRunner) subcommands() []string {
@@ -110,6 +115,17 @@ func (runner *fakeCommandRunner) startedSubcommands() []string {
 		names = append(names, argv[1])
 	}
 	return names
+}
+
+// callCount returns how many times an sbx subcommand was run.
+func (runner *fakeCommandRunner) callCount(subcommand string) int {
+	count := 0
+	for _, argv := range runner.calls {
+		if argv[1] == subcommand {
+			count++
+		}
+	}
+	return count
 }
 
 // call returns the first call to an sbx subcommand.
@@ -186,8 +202,11 @@ func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
 	logger := common.NewLogger("")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
+	service := New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), drudgers, commands)
+	// A retry is exercised for what it does, not for how long it waits.
+	service.daemonRetryDelay = 0
 	return &testService{
-		DrudgerService: New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), drudgers, commands),
+		DrudgerService: service,
 		drudgers:       drudgers,
 	}
 }
@@ -1001,6 +1020,102 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 			}
 			if recorded.LastChecked.IsZero() {
 				t.Error("expected last checked to be stamped")
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
+	// What sbx really writes to stderr in each of these situations.
+	const (
+		coldStartStderr  = "Starting sandboxd daemon..."
+		daemonDownStderr = "ERROR: ensure daemon: daemon exited unexpectedly: exit status 1"
+		noBinaryStderr   = "sbx: no such binary"
+	)
+
+	daemonDown := fmt.Errorf("command sbx failed: exit status 1: %s", daemonDownStderr)
+	noBinary := fmt.Errorf("command sbx failed: %s", noBinaryStderr)
+
+	cases := []struct {
+		name            string
+		outputs         []string
+		stderrs         []string
+		errs            []error
+		wantListings    int
+		wantLogContains string
+		wantErrContains string
+	}{
+		{
+			name:            "a cold start is reported and the run goes on",
+			outputs:         []string{sandboxListingWith(testSandbox)},
+			stderrs:         []string{coldStartStderr},
+			wantListings:    1,
+			wantLogContains: "daemon was not running",
+		},
+		{
+			name:            "a daemon that comes up on the second try costs one retry",
+			outputs:         []string{"", sandboxListingWith(testSandbox)},
+			stderrs:         []string{daemonDownStderr},
+			errs:            []error{daemonDown},
+			wantListings:    2,
+			wantLogContains: "one more try",
+		},
+		{
+			name:            "a daemon that never comes up names the daemon",
+			outputs:         []string{"", ""},
+			stderrs:         []string{daemonDownStderr, daemonDownStderr},
+			errs:            []error{daemonDown, daemonDown},
+			wantListings:    2,
+			wantErrContains: "sbx daemon status",
+		},
+		{
+			name:            "any other listing failure is not retried",
+			stderrs:         []string{noBinaryStderr},
+			errs:            []error{noBinary},
+			wantListings:    1,
+			wantErrContains: "could not list the sandboxes",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{
+				workspace: workspace,
+				outputs:   testCase.outputs,
+				stderrs:   testCase.stderrs,
+				errs:      testCase.errs,
+			}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			if got := commands.callCount(sbxLsSubcommand); got != testCase.wantListings {
+				t.Errorf("expected %d listings, got %d in %v", testCase.wantListings, got, commands.subcommands())
+			}
+			if testCase.wantLogContains != "" && !strings.Contains(logged, testCase.wantLogContains) {
+				t.Errorf("expected the log to say %q, got %q", testCase.wantLogContains, logged)
+			}
+
+			if testCase.wantErrContains != "" {
+				if err == nil {
+					t.Fatal("expected the failure to surface")
+				}
+				if !strings.Contains(err.Error(), testCase.wantErrContains) {
+					t.Errorf("expected error to say %q, got %q", testCase.wantErrContains, err)
+				}
+				if taskToRun.Status != task.StatusTodo {
+					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if taskToRun.Status != task.StatusInProgress {
+				t.Errorf("expected the task to be %q, got %q", task.StatusInProgress, taskToRun.Status)
 			}
 		})
 	}

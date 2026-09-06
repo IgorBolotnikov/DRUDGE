@@ -12,6 +12,10 @@ import (
 	"drudge/internal/task"
 )
 
+// sbxDaemonRetryDelay is how long DRUDGE waits before giving the sbx daemon a
+// second chance to come up.
+const sbxDaemonRetryDelay = 2 * time.Second
+
 type DrudgerService struct {
 	logger    *common.Logger
 	localCfg  *config.LocalConfig
@@ -19,17 +23,21 @@ type DrudgerService struct {
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
 	commands  CommandRunner
+	// daemonRetryDelay is the wait before a retried sbx call, held here so a
+	// test does not have to sit through it.
+	daemonRetryDelay time.Duration
 	// Some of the service methods also live in allocation.go and nuke.go
 }
 
 func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {
 	return &DrudgerService{
-		logger:    logger,
-		localCfg:  localCfg,
-		globalCfg: globalCfg,
-		tasks:     tasks,
-		drudgers:  drudgers,
-		commands:  commands,
+		logger:           logger,
+		localCfg:         localCfg,
+		globalCfg:        globalCfg,
+		tasks:            tasks,
+		drudgers:         drudgers,
+		commands:         commands,
+		daemonRetryDelay: sbxDaemonRetryDelay,
 	}
 }
 
@@ -166,9 +174,9 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 //
 // What the listing says about the sandbox is recorded as the Drudger's health.
 func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, workspace string) error {
-	listing, err := service.commands.Run(plan.inspect)
+	listing, err := service.listSandboxes(plan.inspect, claimed.Sandbox)
 	if err != nil {
-		return fmt.Errorf("could not list the sandboxes to look for %s: %w", claimed.Sandbox, err)
+		return err
 	}
 
 	existing, err := findSandbox(listing, claimed.Sandbox)
@@ -177,7 +185,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 	}
 
 	if existing == nil {
-		if _, err := service.commands.Run(plan.create); err != nil {
+		if _, _, err := service.runSbx(plan.create); err != nil {
 			service.recordHealth(projectSlug, claimed.Slot, HealthGone)
 			return fmt.Errorf("could not create sandbox %s: %w", claimed.Sandbox, err)
 		}
@@ -191,6 +199,40 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 	}
 	service.recordHealth(projectSlug, claimed.Slot, HealthUsable)
 	return nil
+}
+
+// listSandboxes lists the sandboxes, coping with an sbx daemon that is not up
+// yet. Listing changes nothing, so it is safe to repeat and gets one more
+// attempt. No other sbx command is repeated, because creating a sandbox that
+// already exists fails, and a blanket retry would turn one clear error into a
+// second confusing one.
+func (service *DrudgerService) listSandboxes(inspect []string, sandboxName string) (string, error) {
+	listing, stderr, err := service.runSbx(inspect)
+
+	if err != nil && daemonWouldNotStart(stderr) {
+		service.logger.Info("The sbx daemon did not come up, DRUDGE gives it one more try")
+		time.Sleep(service.daemonRetryDelay)
+
+		listing, stderr, err = service.runSbx(inspect)
+		if err != nil && daemonWouldNotStart(stderr) {
+			return "", fmt.Errorf("the sbx daemon would not start, run %s to see what is wrong with it: %w", sbxDaemonStatusCommand, err)
+		}
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("could not list the sandboxes to look for %s: %w", sandboxName, err)
+	}
+	return listing, nil
+}
+
+// runSbx runs one sbx command and says when the call had to bring the sandbox
+// daemon up, so a launch that pauses for a second explains itself.
+func (service *DrudgerService) runSbx(argv []string) (string, string, error) {
+	stdout, stderr, err := service.commands.Run(argv)
+	if daemonJustStarted(stderr) {
+		service.logger.Info("The sbx daemon was not running, sbx has just started it")
+	}
+	return stdout, stderr, err
 }
 
 // writeRunPrompt puts the rendered prompt in the run directory, where the
