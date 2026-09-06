@@ -1,7 +1,10 @@
 package drudger
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"drudge/internal/common"
@@ -84,6 +87,8 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 	}
 
 	limit := config.ResolveMaxConcurrentDrudgers(service.localCfg, service.globalCfg)
+	service.warnAboveLimit(drudgers, projectSlug, limit)
+
 	bySlot := make(map[int]*Drudger, len(drudgers))
 	for _, candidate := range drudgers {
 		bySlot[candidate.Slot] = candidate
@@ -108,6 +113,35 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 	}
 
 	return nil, nil, fmt.Errorf("all %d Drudgers of project %s are busy, wait for one to finish or raise %s in the config", limit, projectSlug, config.MaxConcurrentDrudgersKey)
+}
+
+// warnAboveLimit names the Drudgers whose slot is above the configured limit.
+// Lowering the limit leaves them in place and keeps allocation capped, so the
+// pool works with fewer Drudgers than it holds.
+//
+// Nothing is deleted here. One of those Drudgers may have an agent working in
+// it right now, and removing one is a deliberate act of its own.
+func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug string, limit int) {
+	above := make([]*Drudger, 0, len(drudgers))
+	for _, candidate := range drudgers {
+		if candidate.Slot > limit {
+			above = append(above, candidate)
+		}
+	}
+	if len(above) == 0 {
+		return
+	}
+	slices.SortFunc(above, func(first, second *Drudger) int {
+		return cmp.Compare(first.Slot, second.Slot)
+	})
+
+	names := make([]string, 0, len(above))
+	for _, candidate := range above {
+		names = append(names, fmt.Sprintf("slot %d (%s)", candidate.Slot, candidate.Sandbox))
+	}
+
+	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, config.MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
+	service.logger.Info("They are left alone and no task is handed to them. Raise %s to put them back to work, or remove their sandboxes if you are done with them.", config.MaxConcurrentDrudgersKey)
 }
 
 // reclaimFinished frees every Drudger whose Session has finished. A Session is

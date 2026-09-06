@@ -693,6 +693,100 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 	}
 }
 
+func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
+	cases := []struct {
+		name      string
+		limit     int
+		pool      []*Drudger
+		wantNamed []int // slots the warning has to name, none means it stays quiet
+		wantSlot  int
+		wantErr   bool
+	}{
+		{
+			name:     "a pool under the limit stays quiet",
+			limit:    3,
+			pool:     []*Drudger{idleDrudger(1)},
+			wantSlot: 1,
+		},
+		{
+			name:     "a pool at the limit stays quiet",
+			limit:    2,
+			pool:     []*Drudger{busyDrudger(1), idleDrudger(2)},
+			wantSlot: 2,
+		},
+		{
+			name:      "a lowered limit names the Drudgers above it and still allocates",
+			limit:     3,
+			pool:      []*Drudger{busyDrudger(1), busyDrudger(2), busyDrudger(4), busyDrudger(5)},
+			wantNamed: []int{4, 5},
+			wantSlot:  3,
+		},
+		{
+			name:      "a full pool warns and still refuses a slot above the limit",
+			limit:     2,
+			pool:      []*Drudger{busyDrudger(1), busyDrudger(2), idleDrudger(3)},
+			wantNamed: []int{3},
+			wantErr:   true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWithPool(
+				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
+				config.DefaultConfig(),
+				commands,
+				testCase.pool,
+				taskToRun,
+			)
+
+			var err error
+			warnings := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			if len(testCase.wantNamed) == 0 {
+				if strings.Contains(warnings, config.MaxConcurrentDrudgersKey) {
+					t.Errorf("expected no warning about the limit, got %q", warnings)
+				}
+			} else {
+				if !strings.Contains(warnings, config.MaxConcurrentDrudgersKey) {
+					t.Errorf("expected the warning to name the config key, got %q", warnings)
+				}
+				for _, entry := range testCase.pool {
+					named := strings.Contains(warnings, entry.Sandbox)
+					wanted := slices.Contains(testCase.wantNamed, entry.Slot)
+					if named != wanted {
+						t.Errorf("expected slot %d named in the warning: %t, got %t (warning %q)", entry.Slot, wanted, named, warnings)
+					}
+				}
+			}
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("expected an error, the pool should have been full within the limit")
+				}
+				if holder := service.drudgers.holderOf(taskToRun.ID); holder != nil {
+					t.Errorf("expected no Drudger to hold the task, got slot %d", holder.Slot)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			claimed := service.drudgers.holderOf(taskToRun.ID)
+			if claimed == nil {
+				t.Fatalf("expected a Drudger to hold the task, got pool %v", service.drudgers.drudgers)
+			}
+			if claimed.Slot != testCase.wantSlot {
+				t.Errorf("expected Drudger %d, got %d", testCase.wantSlot, claimed.Slot)
+			}
+		})
+	}
+}
+
 func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	const namedByAnEarlierHarness = "drudge-opencode-test-project-1"
 
