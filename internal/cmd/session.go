@@ -25,7 +25,7 @@ func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
 
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", session.Task.ID, session.Task.Title),
-		sessionLine("Session", string(report.Verdict)),
+		sessionLine("Session", string(report.Status)),
 		sessionLine("Session id", orNotReported(report.SessionID)),
 		sessionLine("Last write", formatAgo(report.LastWrite, time.Now().UTC())),
 		sessionLine("Run dir", report.RunDir),

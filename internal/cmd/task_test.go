@@ -140,7 +140,7 @@ func TestPrintSessionStatus(t *testing.T) {
 		{
 			name: "an agent still working",
 			report: drudger.SessionReport{
-				Verdict:   drudger.VerdictWorking,
+				Status:    drudger.StatusWorking,
 				RunDir:    "/tmp/run",
 				SessionID: "ebe60e03",
 				LastWrite: time.Now(),
@@ -150,7 +150,7 @@ func TestPrintSessionStatus(t *testing.T) {
 		{
 			name: "an agent that has not reported its session yet",
 			report: drudger.SessionReport{
-				Verdict:   drudger.VerdictNeedsBabysitting,
+				Status:    drudger.StatusNeedsBabysitting,
 				LastWrite: time.Now().Add(-2 * time.Hour),
 			},
 			want: []string{"needs babysitting", notReportedLabel, "2h ago"},
@@ -158,7 +158,7 @@ func TestPrintSessionStatus(t *testing.T) {
 		{
 			name: "a finished run",
 			report: drudger.SessionReport{
-				Verdict:   drudger.VerdictGotShitDone,
+				Status:    drudger.StatusGotShitDone,
 				LastWrite: time.Now(),
 				ExitCode:  0,
 				Result: &drudger.SessionResult{
@@ -174,7 +174,7 @@ func TestPrintSessionStatus(t *testing.T) {
 		{
 			name: "a run that fell over",
 			report: drudger.SessionReport{
-				Verdict:   drudger.VerdictFuckedUp,
+				Status:    drudger.StatusFuckedUp,
 				LastWrite: time.Now(),
 				ExitCode:  137,
 			},
