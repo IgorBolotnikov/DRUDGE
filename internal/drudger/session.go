@@ -93,7 +93,51 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
+	if err := service.recordOutcome(projectSlug, tracked, report); err != nil {
+		return nil, err
+	}
+
 	return &TaskSession{Task: tracked, Report: report}, nil
+}
+
+// recordOutcome writes what a finished Session left behind onto its task, so
+// the task record says what happened without anyone reading the run directory.
+//
+// A Session that is still working leaves its task alone, and a task already
+// carrying a finish time is left as it is, so checking twice records once.
+func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) error {
+	if !report.Finished() || !tracked.FinishedAt.IsZero() {
+		return nil
+	}
+
+	tracked.Status = taskStatusOf(report.Status)
+	tracked.FinishedAt = time.Now().UTC()
+	if report.SessionID != "" {
+		tracked.SessionID = report.SessionID
+	}
+	if result := report.Result; result != nil {
+		tracked.SessionFailed = result.IsError
+		tracked.SessionResult = result.Text
+		tracked.SessionTurns = result.NumTurns
+		tracked.SessionDuration = result.Duration
+		tracked.SessionCostUSD = result.CostUSD
+	}
+
+	if err := service.tasks.UpdateTask(projectSlug, tracked); err != nil {
+		return fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, tracked.Status, err)
+	}
+
+	service.logger.Info("Task [%s] %s is %s, its Session is over", tracked.ID, tracked.Title, tracked.Status)
+	return nil
+}
+
+// taskStatusOf turns the status of a finished Session into the status of the
+// task it worked on.
+func taskStatusOf(status SessionStatus) task.TaskStatus {
+	if status == StatusGotShitDone {
+		return task.StatusDone
+	}
+	return task.StatusFuckedUp
 }
 
 func readSessionReport(runDir string, now time.Time) (SessionReport, error) {

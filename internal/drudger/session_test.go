@@ -305,3 +305,152 @@ func writeExit(t *testing.T, runDir string, contents string) {
 		t.Fatalf("could not write the exit file: %v", err)
 	}
 }
+
+func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
+	cases := []struct {
+		name string
+		// stream holds the event lines of the task's run.
+		stream []string
+		exit   string
+
+		wantStatus     task.TaskStatus
+		wantFailed     bool
+		wantResult     string
+		wantTurns      int
+		wantDuration   time.Duration
+		wantCostUSD    float64
+		wantFinishedAt bool
+		// wantSessionID is what the task carries afterwards. Only a recorded
+		// outcome puts one there, since these tasks never went through a launch.
+		wantSessionID string
+	}{
+		{
+			name:           "a run that got the work done",
+			stream:         []string{initEvent, assistantEvent, resultEvent},
+			exit:           "0\n",
+			wantStatus:     task.StatusDone,
+			wantResult:     "Done",
+			wantTurns:      3,
+			wantDuration:   8664 * time.Millisecond,
+			wantCostUSD:    0.0695,
+			wantFinishedAt: true,
+			wantSessionID:  sampleSessionID,
+		},
+		{
+			name:           "a run the agent flagged as an error",
+			stream:         []string{initEvent, erroredResultEvent},
+			exit:           "0\n",
+			wantStatus:     task.StatusFuckedUp,
+			wantFailed:     true,
+			wantResult:     "Could not build",
+			wantTurns:      2,
+			wantDuration:   4 * time.Second,
+			wantCostUSD:    0.02,
+			wantFinishedAt: true,
+			wantSessionID:  sampleSessionID,
+		},
+		{
+			name:           "a run that died without a terminal event",
+			stream:         []string{initEvent},
+			exit:           "1\n",
+			wantStatus:     task.StatusFuckedUp,
+			wantFinishedAt: true,
+			wantSessionID:  sampleSessionID,
+		},
+		{
+			name:       "a run that is still going",
+			stream:     []string{initEvent, assistantEvent},
+			exit:       noExitFile,
+			wantStatus: task.StatusInProgress,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			tracked := runningTask()
+			runDir := common.RunDir(workspace, string(tracked.ID))
+			writeStream(t, runDir, testCase.stream...)
+			if testCase.exit != noExitFile {
+				writeExit(t, runDir, testCase.exit)
+			}
+
+			service := newTestService(tracked)
+			if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+			if err != nil {
+				t.Fatalf("could not read the task back: %v", err)
+			}
+
+			if recorded.Status != testCase.wantStatus {
+				t.Errorf("expected task status %q, got %q", testCase.wantStatus, recorded.Status)
+			}
+			if recorded.SessionFailed != testCase.wantFailed {
+				t.Errorf("expected the error flag %v, got %v", testCase.wantFailed, recorded.SessionFailed)
+			}
+			if recorded.SessionResult != testCase.wantResult {
+				t.Errorf("expected result %q, got %q", testCase.wantResult, recorded.SessionResult)
+			}
+			if recorded.SessionTurns != testCase.wantTurns {
+				t.Errorf("expected %d turns, got %d", testCase.wantTurns, recorded.SessionTurns)
+			}
+			if recorded.SessionDuration != testCase.wantDuration {
+				t.Errorf("expected duration %s, got %s", testCase.wantDuration, recorded.SessionDuration)
+			}
+			if recorded.SessionCostUSD != testCase.wantCostUSD {
+				t.Errorf("expected cost %v, got %v", testCase.wantCostUSD, recorded.SessionCostUSD)
+			}
+			if recorded.FinishedAt.IsZero() == testCase.wantFinishedAt {
+				t.Errorf("expected a finish time stamped %v, got %v", testCase.wantFinishedAt, recorded.FinishedAt)
+			}
+			if recorded.SessionID != testCase.wantSessionID {
+				t.Errorf("expected session id %q, got %q", testCase.wantSessionID, recorded.SessionID)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_SessionStatus_RecordsTheOutcomeOnce(t *testing.T) {
+	workspace := setupWorkspace(t)
+	tracked := runningTask()
+	runDir := common.RunDir(workspace, string(tracked.ID))
+	writeStream(t, runDir, initEvent, resultEvent)
+	writeExit(t, runDir, "0\n")
+
+	service := newTestService(tracked)
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("unexpected error on the first check: %v", err)
+	}
+
+	first, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+	if err != nil {
+		t.Fatalf("could not read the task back: %v", err)
+	}
+	recorded := *first
+
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("unexpected error on the second check: %v", err)
+	}
+
+	second, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+	if err != nil {
+		t.Fatalf("could not read the task back: %v", err)
+	}
+	if second.FinishedAt != recorded.FinishedAt {
+		t.Errorf("expected the finish time %s to stand, got %s", recorded.FinishedAt, second.FinishedAt)
+	}
+	if second.Status != recorded.Status {
+		t.Errorf("expected the status %q to stand, got %q", recorded.Status, second.Status)
+	}
+}
+
+// runningTask is a task an agent has already been put on.
+func runningTask() *task.Task {
+	tracked := todoTask()
+	tracked.Status = task.StatusInProgress
+	tracked.StartedAt = time.Now().UTC()
+	return tracked
+}

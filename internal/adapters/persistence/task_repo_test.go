@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -790,4 +791,130 @@ func TestFileTaskRepository_GetTask_TakesFullIDsOnly(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	// Every case is what one recorded run left on a task.
+	cases := []struct {
+		name     string
+		failed   bool
+		result   string
+		turns    int
+		duration time.Duration
+		costUSD  float64
+		// wantKeysInFile are the front matter keys the file should carry. A
+		// zero field is left out, so a task file holds no empty entries.
+		wantKeysInFile []string
+	}{
+		{
+			name:           "a run nothing was recorded for yet",
+			wantKeysInFile: nil,
+		},
+		{
+			name:     "a run that got the work done",
+			result:   "Done",
+			turns:    3,
+			duration: 8664 * time.Millisecond,
+			costUSD:  0.0695468,
+			wantKeysInFile: []string{
+				metaKeySessionResult,
+				metaKeySessionTurns,
+				metaKeySessionDuration,
+				metaKeySessionCostUSD,
+			},
+		},
+		{
+			name:     "a run the agent flagged as an error",
+			failed:   true,
+			result:   "Could not build",
+			turns:    2,
+			duration: 4 * time.Second,
+			costUSD:  0.02,
+			wantKeysInFile: []string{
+				metaKeySessionFailed,
+				metaKeySessionResult,
+				metaKeySessionTurns,
+				metaKeySessionDuration,
+				metaKeySessionCostUSD,
+			},
+		},
+		{
+			name:           "a result the agent wrote over several lines",
+			result:         "Done:\n\n- built it\n---\n- tested it",
+			turns:          7,
+			wantKeysInFile: []string{metaKeySessionResult, metaKeySessionTurns},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusDone,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				SessionFailed:   testCase.failed,
+				SessionResult:   testCase.result,
+				SessionTurns:    testCase.turns,
+				SessionDuration: testCase.duration,
+				SessionCostUSD:  testCase.costUSD,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if read.SessionFailed != written.SessionFailed {
+				t.Errorf("expected the error flag %v, got %v", written.SessionFailed, read.SessionFailed)
+			}
+			if read.SessionResult != written.SessionResult {
+				t.Errorf("expected result %q, got %q", written.SessionResult, read.SessionResult)
+			}
+			if read.SessionTurns != written.SessionTurns {
+				t.Errorf("expected %d turns, got %d", written.SessionTurns, read.SessionTurns)
+			}
+			if read.SessionDuration != written.SessionDuration {
+				t.Errorf("expected duration %s, got %s", written.SessionDuration, read.SessionDuration)
+			}
+			if read.SessionCostUSD != written.SessionCostUSD {
+				t.Errorf("expected cost %v, got %v", written.SessionCostUSD, read.SessionCostUSD)
+			}
+			if read.Description != written.Description {
+				t.Errorf("expected the body %q, got %q", written.Description, read.Description)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			for _, key := range outcomeMetaKeys {
+				wanted := slices.Contains(testCase.wantKeysInFile, key)
+				if strings.Contains(string(data), key) != wanted {
+					t.Errorf("expected %s in the file: %v", key, wanted)
+				}
+			}
+		})
+	}
+}
+
+// outcomeMetaKeys are every front matter key of a recorded run outcome.
+var outcomeMetaKeys = []string{
+	metaKeySessionFailed,
+	metaKeySessionResult,
+	metaKeySessionTurns,
+	metaKeySessionDuration,
+	metaKeySessionCostUSD,
 }

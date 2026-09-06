@@ -120,9 +120,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	}
 	launched = true
 
-	taskToRun.Status = task.StatusInProgress
-	taskToRun.StartedAt = time.Now().UTC()
-	taskToRun.SessionID = service.launchedSessionID(runDir)
+	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
 		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", drudger.Sandbox, taskID, task.StatusInProgress, err)

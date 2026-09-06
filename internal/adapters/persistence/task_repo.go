@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,10 +31,18 @@ const (
 	metaKeyTicketID    = "ticket_id"
 	metaKeyProjectSlug = "project_slug"
 	metaKeySessionID   = "session_id"
-	metaKeyStartedAt   = "started_at"
-	metaKeyFinishedAt  = "finished_at"
-	metaKeyCreatedAt   = "created_at"
-	metaKeyUpdatedAt   = "updated_at"
+
+	// Keys of what the agent reported when its run ended.
+	metaKeySessionFailed   = "session_failed"
+	metaKeySessionResult   = "session_result"
+	metaKeySessionTurns    = "session_turns"
+	metaKeySessionDuration = "session_duration_ms"
+	metaKeySessionCostUSD  = "session_cost_usd"
+
+	metaKeyStartedAt  = "started_at"
+	metaKeyFinishedAt = "finished_at"
+	metaKeyCreatedAt  = "created_at"
+	metaKeyUpdatedAt  = "updated_at"
 )
 
 type FileTaskRepository struct {
@@ -107,6 +116,21 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.SessionID != "" {
 		metadata[metaKeySessionID] = taskToWrite.SessionID
 	}
+	if taskToWrite.SessionFailed {
+		metadata[metaKeySessionFailed] = strconv.FormatBool(taskToWrite.SessionFailed)
+	}
+	if taskToWrite.SessionResult != "" {
+		metadata[metaKeySessionResult] = taskToWrite.SessionResult
+	}
+	if taskToWrite.SessionTurns != 0 {
+		metadata[metaKeySessionTurns] = strconv.Itoa(taskToWrite.SessionTurns)
+	}
+	if taskToWrite.SessionDuration != 0 {
+		metadata[metaKeySessionDuration] = strconv.FormatInt(taskToWrite.SessionDuration.Milliseconds(), 10)
+	}
+	if taskToWrite.SessionCostUSD != 0 {
+		metadata[metaKeySessionCostUSD] = strconv.FormatFloat(taskToWrite.SessionCostUSD, 'f', -1, 64)
+	}
 	if !taskToWrite.StartedAt.IsZero() {
 		metadata[metaKeyStartedAt] = taskToWrite.StartedAt.Format(time.RFC3339)
 	}
@@ -148,6 +172,22 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if sessionID, ok := metadata[metaKeySessionID]; ok {
 		t.SessionID = sessionID
+	}
+	if sessionFailed, ok := metadata[metaKeySessionFailed]; ok {
+		t.SessionFailed, _ = strconv.ParseBool(sessionFailed)
+	}
+	if sessionResult, ok := metadata[metaKeySessionResult]; ok {
+		t.SessionResult = sessionResult
+	}
+	if sessionTurns, ok := metadata[metaKeySessionTurns]; ok {
+		t.SessionTurns, _ = strconv.Atoi(sessionTurns)
+	}
+	if sessionDuration, ok := metadata[metaKeySessionDuration]; ok {
+		milliseconds, _ := strconv.ParseInt(sessionDuration, 10, 64)
+		t.SessionDuration = time.Duration(milliseconds) * time.Millisecond
+	}
+	if sessionCostUSD, ok := metadata[metaKeySessionCostUSD]; ok {
+		t.SessionCostUSD, _ = strconv.ParseFloat(sessionCostUSD, 64)
 	}
 	if startedAt, ok := metadata[metaKeyStartedAt]; ok {
 		t.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
