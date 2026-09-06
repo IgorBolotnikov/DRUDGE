@@ -21,9 +21,14 @@ const (
 	sbxLsSubcommand     = "ls"
 	sbxCreateSubcommand = "create"
 	sbxExecSubcommand   = "exec"
+	sbxRmSubcommand     = "rm"
 	sbxJSONFlag         = "--json"
 	sbxNameFlag         = "--name"
 	sbxDetachedFlag     = "-d"
+	// sbx asks for confirmation before removing a sandbox and its own help
+	// names this flag as how a script skips the prompt. Drudge has no terminal
+	// to answer with, so every removal passes it.
+	sbxForceFlag = "--force"
 
 	sbxHarnessClaude = "claude"
 	// This harness is to be implemented later
@@ -93,6 +98,18 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 	}
 
 	return sandboxPlan{}, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the Drudger settings in the config", harness, env)
+}
+
+// pickRemoveCommand builds the command that deletes a Drudger's sandbox. The
+// harness does not matter here, since removal is the same whatever runs inside.
+func (service *DrudgerService) pickRemoveCommand(sandboxName string) ([]string, error) {
+	env := service.globalCfg.Drudger.Env
+
+	if env == config.EnvDockerSbx {
+		return []string{sbxBinary, sbxRmSubcommand, sbxForceFlag, sandboxName}, nil
+	}
+
+	return nil, fmt.Errorf("DRUDGE does not know how to remove a sandbox in environment %q, check the Drudger settings in the config", env)
 }
 
 // formatLauncher renders the shell script that runs the agent in a sandbox.

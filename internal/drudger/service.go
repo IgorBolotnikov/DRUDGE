@@ -19,7 +19,7 @@ type DrudgerService struct {
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
 	commands  CommandRunner
-	// Some of the service methos also live in allocation.go
+	// Some of the service methods also live in allocation.go and nuke.go
 }
 
 func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {

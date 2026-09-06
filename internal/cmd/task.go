@@ -21,9 +21,11 @@ var TaskCmd = &Cmd{
 
 // CLI flag names.
 const (
-	dryRunFlag    = "--dry-run"
-	helpFlag      = "--help"
-	helpFlagShort = "-h"
+	dryRunFlag     = "--dry-run"
+	helpFlag       = "--help"
+	helpFlagShort  = "-h"
+	forceFlag      = "--force"
+	forceFlagShort = "-f"
 )
 
 const taskRunUsage = "usage: drg task run <task-id> [" + dryRunFlag + "]"

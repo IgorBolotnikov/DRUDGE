@@ -136,7 +136,7 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 	}
 
 	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, config.MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
-	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or remove their sandboxes if you are done with them.", config.MaxConcurrentDrudgersKey)
+	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or nuke them if you are done with them.", config.MaxConcurrentDrudgersKey)
 }
 
 // reclaimFinished frees every Drudger whose Session has finished. A Session is

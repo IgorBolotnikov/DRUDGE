@@ -138,6 +138,50 @@ func TestRunDrudger_BadArgs(t *testing.T) {
 	}
 }
 
+func TestParseDrudgerNukeArgs(t *testing.T) {
+	cases := []struct {
+		name      string
+		args      []string
+		wantSlot  int
+		wantForce bool
+		wantErr   bool
+	}{
+		{name: "a slot alone", args: []string{"2"}, wantSlot: 2},
+		{name: "a slot and the short force flag", args: []string{"2", "-f"}, wantSlot: 2, wantForce: true},
+		{name: "a slot and the long force flag", args: []string{"2", "--force"}, wantSlot: 2, wantForce: true},
+		{name: "the force flag first", args: []string{"-f", "2"}, wantSlot: 2, wantForce: true},
+		{name: "no slot", args: nil, wantErr: true},
+		{name: "the force flag alone", args: []string{"-f"}, wantErr: true},
+		{name: "two slots", args: []string{"1", "2"}, wantErr: true},
+		{name: "an unknown flag", args: []string{"1", "--yolo"}, wantErr: true},
+		{name: "a slot that is not a number", args: []string{"one"}, wantErr: true},
+		{name: "slot zero", args: []string{"0"}, wantErr: true},
+		{name: "a negative slot reads as a flag", args: []string{"-1"}, wantErr: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			slot, force, err := parseDrudgerNukeArgs(testCase.args)
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for args %v", testCase.args)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if slot != testCase.wantSlot {
+				t.Errorf("expected slot %d, got %d", testCase.wantSlot, slot)
+			}
+			if force != testCase.wantForce {
+				t.Errorf("expected force %v, got %v", testCase.wantForce, force)
+			}
+		})
+	}
+}
+
 func TestFormatHealth(t *testing.T) {
 	cases := []struct {
 		name   string

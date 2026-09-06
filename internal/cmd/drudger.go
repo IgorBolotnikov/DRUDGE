@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"drudge/internal/drudger"
@@ -20,6 +21,7 @@ var DrudgerCmd = &Cmd{
 const (
 	drudgerUsage     = "usage: drg drudger <subcommand>"
 	drudgerListUsage = "usage: drg drudger list"
+	drudgerNukeUsage = "usage: drg drudger nuke <slot> [" + forceFlagShort + "]"
 
 	idleLabel = "idle"
 
@@ -47,6 +49,8 @@ func runDrudger(args []string) error {
 	switch args[0] {
 	case "list":
 		return drudgerList(args[1:])
+	case "nuke":
+		return drudgerNuke(args[1:])
 	default:
 		return fmt.Errorf("unknown drudger subcommand: %s", args[0])
 	}
@@ -96,6 +100,63 @@ func drudgerList(args []string) error {
 
 	printList(deps.log, "Drudgers", columns, rows)
 	return nil
+}
+
+// drudgerNuke destroys one Drudger. It is the only destructive command DRUDGE
+// has, so the slot is always named and a working Drudger takes a flag on top
+// of that. The flag is the whole confirmation, because DRUDGE runs with no
+// terminal that could answer a prompt.
+func drudgerNuke(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(drudgerNukeUsage)
+		fmt.Println()
+		fmt.Println("Delete a Drudger's sandbox and drop it from the pool.")
+		fmt.Println("A Drudger with a running Session is refused unless you insist.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Printf("  %s, %s  Nuke a working Drudger, killing its agent and fucking up its task\n", forceFlagShort, forceFlag)
+		return nil
+	}
+
+	slot, force, err := parseDrudgerNukeArgs(args)
+	if err != nil {
+		return err
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.NukeDrudger(deps.localCfg.ProjectSlug, slot, force)
+}
+
+func parseDrudgerNukeArgs(args []string) (int, bool, error) {
+	var slot string
+	force := false
+
+	for _, arg := range args {
+		switch {
+		case arg == forceFlag || arg == forceFlagShort:
+			force = true
+		case strings.HasPrefix(arg, "-"):
+			return 0, false, fmt.Errorf("unknown flag %q, %s", arg, drudgerNukeUsage)
+		case slot == "":
+			slot = arg
+		default:
+			return 0, false, fmt.Errorf("unexpected argument %q, drg drudger nuke takes a single slot", arg)
+		}
+	}
+
+	if slot == "" {
+		return 0, false, fmt.Errorf("slot is required, %s", drudgerNukeUsage)
+	}
+
+	parsed, err := strconv.Atoi(slot)
+	if err != nil || parsed < 1 {
+		return 0, false, fmt.Errorf("%q is not a Drudger slot, slots are whole numbers starting at 1", slot)
+	}
+	return parsed, force, nil
 }
 
 func occupyingTask(entry *drudger.Drudger) string {
