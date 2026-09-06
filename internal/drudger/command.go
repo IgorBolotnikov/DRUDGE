@@ -25,9 +25,10 @@ const (
 	sbxJSONFlag         = "--json"
 	sbxNameFlag         = "--name"
 	sbxDetachedFlag     = "-d"
-	// sbx asks for confirmation before removing a sandbox and its own help
-	// names this flag as how a script skips the prompt. Drudge has no terminal
-	// to answer with, so every removal passes it.
+	// sbx asks for confirmation before removing a sandbox and this flag is used
+	// only to skip the confirmation prompt. The flag is always passed since
+	// drudge has no terminal to confirm the action. Drudge has its own
+	// safety check for that.
 	sbxForceFlag = "--force"
 
 	sbxHarnessClaude = "claude"
@@ -100,8 +101,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 	return sandboxPlan{}, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the Drudger settings in the config", harness, env)
 }
 
-// pickRemoveCommand builds the command that deletes a Drudger's sandbox. The
-// harness does not matter here, since removal is the same whatever runs inside.
+// pickRemoveCommand builds the command that deletes a Drudger's sandbox.
 func (service *DrudgerService) pickRemoveCommand(sandboxName string) ([]string, error) {
 	env := service.globalCfg.Drudger.Env
 

@@ -10,7 +10,6 @@ import (
 	"drudge/internal/task"
 )
 
-// busyTask is the task a busy Drudger of a slot is working on.
 func busyTask(slot int) *task.Task {
 	return &task.Task{
 		ID:          busyTaskID(slot),

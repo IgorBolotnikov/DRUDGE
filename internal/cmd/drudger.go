@@ -102,10 +102,7 @@ func drudgerList(args []string) error {
 	return nil
 }
 
-// drudgerNuke destroys one Drudger. It is the only destructive command DRUDGE
-// has, so the slot is always named and a working Drudger takes a flag on top
-// of that. The flag is the whole confirmation, because DRUDGE runs with no
-// terminal that could answer a prompt.
+// drudgerNuke destroys one Drudger and fucks up the task worked on, if any.
 func drudgerNuke(args []string) error {
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println(drudgerNukeUsage)
