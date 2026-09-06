@@ -67,11 +67,21 @@ func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task
 // fakeCommandRunner answers a fixed script of calls and remembers what it was
 // asked to run, in order. It swaps its workspace into the runWorkspace
 // placeholder of every output it hands back.
+//
+// A started command is remembered a second time, since a command drudge does
+// not wait for is a different thing from one it does.
 type fakeCommandRunner struct {
 	workspace string
 	calls     [][]string
+	started   [][]string
 	outputs   []string
 	errs      []error
+}
+
+func (runner *fakeCommandRunner) Start(argv []string) error {
+	runner.started = append(runner.started, argv)
+	_, err := runner.Run(argv)
+	return err
 }
 
 func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
@@ -92,6 +102,15 @@ func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
 func (runner *fakeCommandRunner) subcommands() []string {
 	names := make([]string, 0, len(runner.calls))
 	for _, argv := range runner.calls {
+		names = append(names, argv[1])
+	}
+	return names
+}
+
+// startedSubcommands names the sbx subcommands drudge started without waiting.
+func (runner *fakeCommandRunner) startedSubcommands() []string {
+	names := make([]string, 0, len(runner.started))
+	for _, argv := range runner.started {
 		names = append(names, argv[1])
 	}
 	return names
@@ -805,6 +824,32 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	}
 	if claimed := service.drudgers.atSlot(1); claimed.Sandbox != namedByAnEarlierHarness {
 		t.Errorf("expected the stored sandbox name to survive the run, got %q", claimed.Sandbox)
+	}
+}
+
+// The agent works for as long as the task takes. Waiting for it would hold the
+// terminal for the whole run, so only the launch is started without waiting,
+// and every step the launch depends on is still waited for.
+func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantAll := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
+	if got := commands.subcommands(); !slices.Equal(got, wantAll) {
+		t.Errorf("expected commands %v, got %v", wantAll, got)
+	}
+
+	wantStarted := []string{sbxExecSubcommand}
+	if got := commands.startedSubcommands(); !slices.Equal(got, wantStarted) {
+		t.Errorf("expected only %v to be started without waiting, got %v", wantStarted, got)
 	}
 }
 

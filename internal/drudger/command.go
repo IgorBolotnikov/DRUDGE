@@ -11,8 +11,14 @@ import (
 	"drudge/internal/config"
 )
 
+// CommandRunner runs the commands that put a Drudger to work.
+//
+// Run waits for a command to finish and hands back its stdout. Start does not
+// wait, which is what launching an agent needs: the agent works for as long as
+// the task takes, and drudge is done with it the moment it is running.
 type CommandRunner interface {
 	Run(argv []string) (string, error)
+	Start(argv []string) error
 }
 
 // Pieces of an sbx invocation.

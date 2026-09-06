@@ -115,7 +115,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 
 	// TODO: add a command that pings a task's Session to tell whether it
 	// is still alive, and frees the Drudger slot when it is not.
-	if _, err := service.commands.Run(plan.start); err != nil {
+	if err := service.commands.Start(plan.start); err != nil {
 		return fmt.Errorf("could not start Drudger %s for task %s: %w", drudger.Sandbox, taskID, err)
 	}
 	launched = true
