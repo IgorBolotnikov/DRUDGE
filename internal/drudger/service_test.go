@@ -67,9 +67,6 @@ func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task
 // fakeCommandRunner answers a fixed script of calls and remembers what it was
 // asked to run, in order. It swaps its workspace into the runWorkspace
 // placeholder of every output it hands back.
-//
-// A started command is remembered a second time, since a command drudge does
-// not wait for is a different thing from one it does.
 type fakeCommandRunner struct {
 	workspace string
 	calls     [][]string
@@ -107,7 +104,6 @@ func (runner *fakeCommandRunner) subcommands() []string {
 	return names
 }
 
-// startedSubcommands names the sbx subcommands drudge started without waiting.
 func (runner *fakeCommandRunner) startedSubcommands() []string {
 	names := make([]string, 0, len(runner.started))
 	for _, argv := range runner.started {
@@ -827,9 +823,6 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	}
 }
 
-// The agent works for as long as the task takes. Waiting for it would hold the
-// terminal for the whole run, so only the launch is started without waiting,
-// and every step the launch depends on is still waited for.
 func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRun := todoTask()

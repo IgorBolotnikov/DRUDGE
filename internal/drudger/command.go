@@ -12,12 +12,10 @@ import (
 )
 
 // CommandRunner runs the commands that put a Drudger to work.
-//
-// Run waits for a command to finish and hands back its stdout. Start does not
-// wait, which is what launching an agent needs: the agent works for as long as
-// the task takes, and drudge is done with it the moment it is running.
 type CommandRunner interface {
+	// Run waits for a command to finish and hands back its stdout.
 	Run(argv []string) (string, error)
+	// Stars runs the command and exist immediately.
 	Start(argv []string) error
 }
 

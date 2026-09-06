@@ -112,8 +112,6 @@ func TestCommandRunner_Start(t *testing.T) {
 	}
 }
 
-// An agent outlives the command that launches it, so Start has to hand back
-// control while the command it started is still going.
 func TestCommandRunner_Start_DoesNotWaitForTheCommand(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "marker")
 	runner := NewCommandRunner()
@@ -126,8 +124,6 @@ func TestCommandRunner_Start_DoesNotWaitForTheCommand(t *testing.T) {
 		t.Fatal("Start waited for the command to finish")
 	}
 
-	// The command has to carry on once Start has returned, so the work it was
-	// given still lands.
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		if _, err := os.Stat(marker); err == nil {
