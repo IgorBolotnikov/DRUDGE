@@ -6,6 +6,13 @@ import (
 )
 
 // Logger is a simple printf-style logger.
+//
+// Logger has only two levels: Error and Info.
+// It does not need any other levels.
+//
+// The logis is:
+//   - this is an error (breaks the program) -> Error level
+//   - everything else (the program still works) -> Info level
 type Logger struct {
 	prefix string
 }
