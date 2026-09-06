@@ -32,6 +32,7 @@ Title: {{taskTitle}}
 Description:
 {{taskDescription}}
 
+---
 Work in the repository you were started in. Read the surrounding code before
 you change it and follow the conventions you find there. Keep the change
 scoped to this task.
@@ -39,8 +40,8 @@ scoped to this task.
 You are working in a fully autonomous session. You will not get any
 interactions from the user so use your best judgement when dealing with
 uncertainty or problems. At the same time don't go down the rabbit hole of
-fixing adjacent issues which don't directly block the ticket implementation.
- and leave unrelated problems you spot along the way alone.
+fixing adjacent issues which don't directly block the ticket implementation
+and leave unrelated problems you spot along the way alone.
 
 Always follow established project code style and conventions.
 
