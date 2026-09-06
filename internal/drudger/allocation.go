@@ -147,10 +147,9 @@ func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error
 			continue
 		}
 
-		runDir := common.RunDir(workspace, string(candidate.TaskID))
-		finished, err := common.Exists(common.RunExitPath(runDir))
+		finished, err := sessionFinished(common.RunDir(workspace, string(candidate.TaskID)))
 		if err != nil {
-			return fmt.Errorf("could not tell whether the Session of task %s has finished: %w", candidate.TaskID, err)
+			return err
 		}
 		if !finished {
 			continue

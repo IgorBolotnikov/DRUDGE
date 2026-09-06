@@ -25,7 +25,8 @@ const (
 
 	idleLabel = "idle"
 
-	neverCheckedLabel = "never"
+	// neverLabel stands for a moment that never happened.
+	neverLabel = "never"
 )
 
 // Labels for what drudge last saw of a Drudger's sandbox. A usable sandbox is
@@ -94,7 +95,7 @@ func drudgerList(args []string) error {
 			entry.Sandbox,
 			occupyingTask(entry),
 			formatHealth(entry.Health),
-			formatLastChecked(entry.LastChecked, now),
+			formatAgo(entry.LastChecked, now),
 		})
 	}
 
@@ -178,12 +179,14 @@ func formatHealth(health drudger.Health) string {
 	}
 }
 
-func formatLastChecked(lastChecked time.Time, now time.Time) string {
-	if lastChecked.IsZero() {
-		return neverCheckedLabel
+// formatAgo renders roughly how long ago a moment was, at the precision a
+// reader skimming a listing needs.
+func formatAgo(moment time.Time, now time.Time) string {
+	if moment.IsZero() {
+		return neverLabel
 	}
 
-	elapsed := now.Sub(lastChecked)
+	elapsed := now.Sub(moment)
 	switch {
 	case elapsed < time.Minute:
 		return "just now"

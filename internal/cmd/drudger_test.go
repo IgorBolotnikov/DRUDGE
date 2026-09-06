@@ -205,7 +205,7 @@ func TestFormatHealth(t *testing.T) {
 	}
 }
 
-func TestFormatLastChecked(t *testing.T) {
+func TestFormatAgo(t *testing.T) {
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 
 	cases := []struct {
@@ -223,7 +223,7 @@ func TestFormatLastChecked(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := formatLastChecked(testCase.lastChecked, now)
+			got := formatAgo(testCase.lastChecked, now)
 			if got != testCase.want {
 				t.Errorf("expected %q, got %q", testCase.want, got)
 			}

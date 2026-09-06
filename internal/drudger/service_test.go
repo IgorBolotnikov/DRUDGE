@@ -233,13 +233,7 @@ func testSandboxOfSlot(slot int) string {
 
 func finishSession(t *testing.T, workspace string, taskID task.TaskID) {
 	t.Helper()
-	runDir := common.RunDir(workspace, string(taskID))
-	if err := common.EnsureDir(runDir); err != nil {
-		t.Fatalf("could not create the run directory: %v", err)
-	}
-	if err := common.WriteFile(common.RunExitPath(runDir), "0\n"); err != nil {
-		t.Fatalf("could not write the exit file: %v", err)
-	}
+	writeExit(t, common.RunDir(workspace, string(taskID)), "0\n")
 }
 
 func inWorkspace(value, workspace string) string {
@@ -383,11 +377,7 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
 			if testCase.lines != nil {
-				runDir := common.RunDir(workspace, string(taskToRun.ID))
-				if err := common.EnsureDir(runDir); err != nil {
-					t.Fatalf("could not create the run directory: %v", err)
-				}
-				writeStream(t, runDir, testCase.lines...)
+				writeStream(t, common.RunDir(workspace, string(taskToRun.ID)), testCase.lines...)
 			}
 
 			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}

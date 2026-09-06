@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -28,7 +29,11 @@ const (
 	forceFlagShort = "-f"
 )
 
-const taskRunUsage = "usage: drg task run <task-id> [" + dryRunFlag + "]"
+const (
+	taskUsage       = "usage: drg task <new|list|run|status>"
+	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
+	taskStatusUsage = "usage: drg task status <task-id>"
+)
 
 // taskTitleWidth is how much room a listing gives a task title.
 const taskTitleWidth = 40
@@ -43,7 +48,7 @@ var validStatuses = []string{
 
 func runTask(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: drg task <subcommand>")
+		return errors.New(taskUsage)
 	}
 
 	switch args[0] {
@@ -53,8 +58,10 @@ func runTask(args []string) error {
 		return taskList(args[1:])
 	case "run":
 		return taskRun(args[1:])
+	case "status":
+		return taskStatus(args[1:])
 	default:
-		return fmt.Errorf("unknown task subcommand: %s", args[0])
+		return fmt.Errorf("unknown task subcommand %q, %s", args[0], taskUsage)
 	}
 }
 
@@ -201,6 +208,55 @@ func taskRun(args []string) error {
 	}
 
 	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
+}
+
+// taskStatus reports how the last Session of a task is going.
+func taskStatus(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(taskStatusUsage)
+		fmt.Println()
+		fmt.Println("Tell whether the agent working on a task is working, stuck or has fallen over.")
+		return nil
+	}
+
+	taskID, err := parseTaskStatusArgs(args)
+	if err != nil {
+		return err
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	session, err := deps.drudger.SessionStatus(deps.localCfg.ProjectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	printSessionStatus(deps.log, session)
+	return nil
+}
+
+func parseTaskStatusArgs(args []string) (task.TaskID, error) {
+	var taskID string
+
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "-"):
+			return "", fmt.Errorf("unknown flag %q, %s", arg, taskStatusUsage)
+		case taskID == "":
+			taskID = arg
+		default:
+			return "", fmt.Errorf("unexpected argument %q, drg task status takes a single task ID", arg)
+		}
+	}
+
+	if taskID == "" {
+		return "", fmt.Errorf("task ID is required, %s", taskStatusUsage)
+	}
+
+	return task.TaskID(taskID), nil
 }
 
 func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {

@@ -101,11 +101,21 @@ func TestReadSessionID_UnreadableStream(t *testing.T) {
 	}
 }
 
-// writeStream puts event lines in the stream file of a run directory.
+// writeStream puts event lines in the stream file of a run directory, creating
+// the directory if the test has not.
 func writeStream(t *testing.T, runDir string, lines ...string) {
 	t.Helper()
+	ensureRunDir(t, runDir)
 	if err := common.WriteFile(common.RunStreamPath(runDir), joinLines(lines)); err != nil {
 		t.Fatalf("could not write the event stream: %v", err)
+	}
+}
+
+// ensureRunDir creates a run directory for a fixture to live in.
+func ensureRunDir(t *testing.T, runDir string) {
+	t.Helper()
+	if err := common.EnsureDir(runDir); err != nil {
+		t.Fatalf("could not create the run directory: %v", err)
 	}
 }
 
