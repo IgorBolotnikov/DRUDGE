@@ -2,7 +2,9 @@
 package drudger
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"time"
 
 	"drudge/internal/common"
@@ -29,6 +31,21 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 		drudgers:  drudgers,
 		commands:  commands,
 	}
+}
+
+// ListDrudgers reads the Drudgers a project has, ordered by slot. Every entry
+// is a snapshot of what drudge last observed, so a caller that shows one
+// should show its LastChecked beside it.
+func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, error) {
+	drudgers, err := service.drudgers.ListDrudgers(projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("could not list the Drudgers of project %s: %w", projectSlug, err)
+	}
+
+	slices.SortFunc(drudgers, func(first, second *Drudger) int {
+		return cmp.Compare(first.Slot, second.Slot)
+	})
+	return drudgers, nil
 }
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and
@@ -77,7 +94,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		if !launched {
 			e := service.releaseDrudger(projectSlug, drudger.Slot, taskID)
 			if e != nil {
-				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", slot, projectSlug, err)
+				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", drudger.Slot, projectSlug, e)
 			}
 		}
 	}()

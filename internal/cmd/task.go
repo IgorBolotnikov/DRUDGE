@@ -6,11 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/adapters/exec"
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
 	"drudge/internal/config"
-	"drudge/internal/drudger"
 	"drudge/internal/task"
 )
 
@@ -36,41 +34,6 @@ var validStatuses = []string{
 	task.StatusInProgress,
 	task.StatusFuckedUp,
 	task.StatusDone,
-}
-
-// taskDeps holds the dependency graph a task subcommand works with.
-type taskDeps struct {
-	localCfg *config.LocalConfig
-	log      *common.Logger
-	tasks    *task.TaskService
-	drudger  *drudger.DrudgerService
-}
-
-// newTaskDeps wires up what a task subcommand needs to reach a project's
-// tasks and the Drudgers working on them.
-func newTaskDeps() (*taskDeps, error) {
-	localCfg, err := config.LoadLocal()
-	if err != nil {
-		return nil, err
-	}
-
-	globalCfg, err := config.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	log := common.NewLogger("")
-	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	tasks := task.NewTaskService(repo, log)
-	drudgers := persistence.NewFileDrudgerRepository("")
-	cmdRunner := exec.NewCommandRunner()
-
-	return &taskDeps{
-		localCfg: localCfg,
-		log:      log,
-		tasks:    tasks,
-		drudger:  drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner),
-	}, nil
 }
 
 func runTask(args []string) error {
@@ -231,7 +194,7 @@ func taskRun(args []string) error {
 		return err
 	}
 
-	deps, err := newTaskDeps()
+	deps, err := newCommandDeps()
 	if err != nil {
 		return err
 	}

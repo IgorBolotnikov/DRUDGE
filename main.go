@@ -16,6 +16,7 @@ func main() {
 		cmd.CleanupCmd,
 		cmd.ProjectCmd,
 		cmd.TaskCmd,
+		cmd.DrudgerCmd,
 	)
 
 	if err := cli.Run(os.Args[1:]); err != nil {

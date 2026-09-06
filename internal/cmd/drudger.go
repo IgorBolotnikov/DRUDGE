@@ -1,0 +1,122 @@
+package cmd
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"drudge/internal/drudger"
+	"drudge/internal/task"
+)
+
+var DrudgerCmd = &Cmd{
+	Name:  "drudger",
+	Usage: "drudger <subcommand>",
+	Desc:  "Drudger management commands",
+	Run:   runDrudger,
+}
+
+const (
+	drudgerUsage     = "usage: drg drudger <subcommand>"
+	drudgerListUsage = "usage: drg drudger list"
+
+	// idleLabel stands in the task column of a Drudger no task occupies.
+	idleLabel = "idle"
+
+	// neverCheckedLabel stands in the last checked column of a Drudger drudge
+	// has not looked at yet.
+	neverCheckedLabel = "never"
+
+	// drudgerListRow lays out one row of the listing. The header, the rule
+	// under it and every Drudger go through it, so the columns line up.
+	drudgerListRow = "  %-4s  %-40s  %-8s  %s"
+)
+
+func runDrudger(args []string) error {
+	if len(args) < 1 {
+		return errors.New(drudgerUsage)
+	}
+
+	switch args[0] {
+	case "list":
+		return drudgerList(args[1:])
+	default:
+		return fmt.Errorf("unknown drudger subcommand: %s", args[0])
+	}
+}
+
+func drudgerList(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(drudgerListUsage)
+		fmt.Println()
+		fmt.Println("List the Drudgers of the current project and what each one is doing.")
+		return nil
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	drudgers, err := deps.drudger.ListDrudgers(deps.localCfg.ProjectSlug)
+	if err != nil {
+		return err
+	}
+
+	if len(drudgers) == 0 {
+		deps.log.Info("Project %s has no Drudgers, the first one is built when you run a task", deps.localCfg.ProjectSlug)
+		return nil
+	}
+
+	now := time.Now().UTC()
+	deps.log.Info("Drudgers (%d):", len(drudgers))
+	deps.log.Info(drudgerListRow, "SLOT", "SANDBOX", "TASK", "LAST CHECKED")
+	deps.log.Info(drudgerListRow, "----", "----------------------------------------", "--------", "------------")
+	for _, entry := range drudgers {
+		deps.log.Info(
+			drudgerListRow,
+			strconv.Itoa(entry.Slot),
+			entry.Sandbox,
+			occupyingTask(entry),
+			formatLastChecked(entry.LastChecked, now),
+		)
+	}
+
+	return nil
+}
+
+// occupyingTask names the task a Drudger is working on, shortened to the
+// length listings use elsewhere.
+func occupyingTask(entry *drudger.Drudger) string {
+	if entry.Idle() {
+		return idleLabel
+	}
+
+	taskID := string(entry.TaskID)
+	if len(taskID) > task.ShortIDLength {
+		taskID = taskID[:task.ShortIDLength]
+	}
+	return taskID
+}
+
+// formatLastChecked says how long ago drudge looked at a Drudger, so a reader
+// knows how much to trust the rest of the row. A zero time means drudge has
+// never looked.
+func formatLastChecked(lastChecked time.Time, now time.Time) string {
+	if lastChecked.IsZero() {
+		return neverCheckedLabel
+	}
+
+	elapsed := now.Sub(lastChecked)
+	switch {
+	case elapsed < time.Minute:
+		return "just now"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm ago", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(elapsed.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(elapsed.Hours()/24))
+	}
+}
