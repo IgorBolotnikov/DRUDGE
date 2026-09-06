@@ -43,8 +43,8 @@ type Task struct {
 	UpdatedAt time.Time
 }
 
-// StartRun stamps a task as handed to an agent, and clears what the previous
-// run left behind. A task carries the outcome of its current run only.
+// StartRun marks a task as handed to an agent, and clears what the previous
+// run left behind. A task only carries the outcome of its current run.
 func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.Status = StatusInProgress
 	taskToRun.StartedAt = startedAt

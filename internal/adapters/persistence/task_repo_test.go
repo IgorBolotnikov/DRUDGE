@@ -806,7 +806,7 @@ func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
 		duration time.Duration
 		costUSD  float64
 		// wantKeysInFile are the front matter keys the file should carry. A
-		// zero field is left out, so a task file holds no empty entries.
+		// zero field is left out to have no empty entries in the file.
 		wantKeysInFile []string
 	}{
 		{

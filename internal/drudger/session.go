@@ -100,11 +100,7 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 	return &TaskSession{Task: tracked, Report: report}, nil
 }
 
-// recordOutcome writes what a finished Session left behind onto its task, so
-// the task record says what happened without anyone reading the run directory.
-//
-// A Session that is still working leaves its task alone, and a task already
-// carrying a finish time is left as it is, so checking twice records once.
+// recordOutcome writes what a finished Session left behind onto its task.
 func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) error {
 	if !report.Finished() || !tracked.FinishedAt.IsZero() {
 		return nil
