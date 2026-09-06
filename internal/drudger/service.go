@@ -17,6 +17,7 @@ type DrudgerService struct {
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
 	commands  CommandRunner
+	// Some of the service methos also live in allocation.go
 }
 
 func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {
@@ -65,21 +66,23 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return service.describeRun(projectSlug, taskToRun, workspace, runDir, prompt, promptSource)
 	}
 
-	claimed, err := service.claimDrudger(projectSlug, taskID, workspace)
+	drudger, err := service.claimDrudger(projectSlug, taskID, workspace)
 	if err != nil {
 		return err
 	}
 
-	// Every way out of here before the agent is up has to hand the slot back,
-	// or a failed run costs the pool a Drudger until someone notices.
 	launched := false
 	defer func() {
+		// Manually release the drudger in case it failed to start.
 		if !launched {
-			service.releaseDrudger(projectSlug, claimed.Slot, taskID)
+			e := service.releaseDrudger(projectSlug, drudger.Slot, taskID)
+			if e != nil {
+				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", slot, projectSlug, err)
+			}
 		}
 	}()
 
-	plan, err := service.pickDrudgerCommand(claimed.Sandbox, workspace, runDir)
+	plan, err := service.pickDrudgerCommand(drudger.Sandbox, workspace, runDir)
 	if err != nil {
 		return err
 	}
@@ -87,7 +90,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(plan, claimed.Sandbox, workspace); err != nil {
+	if err := service.ensureSandbox(plan, drudger.Sandbox, workspace); err != nil {
 		return err
 	}
 
@@ -98,7 +101,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	// TODO: add a command that pings a task's Session to tell whether it
 	// is still alive, and frees the Drudger slot when it is not.
 	if _, err := service.commands.Run(plan.start); err != nil {
-		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
+		return fmt.Errorf("could not start Drudger %s for task %s: %w", drudger.Sandbox, taskID, err)
 	}
 	launched = true
 
@@ -107,17 +110,14 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	taskToRun.SessionID = service.launchedSessionID(runDir)
 
 	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
-		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", claimed.Sandbox, taskID, task.StatusInProgress, err)
+		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", drudger.Sandbox, taskID, task.StatusInProgress, err)
 	}
 
-	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Drudger %s is working on task [%s] %s", drudger.Sandbox, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Run directory: %s", runDir)
 	return nil
 }
 
-// describeRun prints what a run would hand the agent. It claims no Drudger and
-// writes nothing. The Drudger it names is the one a run would pick right now,
-// and nothing holds it until a real run takes it.
 func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, workspace, runDir, prompt, promptSource string) error {
 	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, workspace)
 	if err != nil {

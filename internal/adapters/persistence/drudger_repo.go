@@ -15,17 +15,15 @@ import (
 )
 
 const (
-	// DrudgersFileName is the file listing a project's Drudgers.
+	// DrudgersFileName is the file listing project's Drudgers.
 	DrudgersFileName = "drudgers.json"
 
 	// drudgersLockFileName guards the Drudgers file against two processes
-	// handing out the same slot. It carries no content of its own.
+	// handing out the same slot. It has no content.
 	//
 	// The lock lives in its own file because it has to be takeable before a
-	// project has any Drudgers, and creating the Drudgers file to lock it
-	// would leave an empty one that reads back as malformed. A lock file is
-	// also unaffected by how the Drudgers file is written, so a write that
-	// replaces the file instead of truncating it cannot quietly break it.
+	// project has any Drudgers. Creating the Drudgers file to lock it
+	// would leave an empty one that reads back as malformed JSON.
 	drudgersLockFileName = DrudgersFileName + ".lock"
 )
 
@@ -34,7 +32,7 @@ type drudgersFile struct {
 	Drudgers []storedDrudger `json:"drudgers"`
 }
 
-// storedDrudger is one Drudger as it is written to disk.
+// storedDrudger is one Drudger as it is written to file.
 type storedDrudger struct {
 	Slot        int       `json:"slot"`
 	Sandbox     string    `json:"sandbox"`
@@ -43,19 +41,17 @@ type storedDrudger struct {
 }
 
 // FileDrudgerRepository keeps each project's Drudgers in a JSON file inside
-// the project directory.
+// the global projects directory.
 type FileDrudgerRepository struct {
+	// This attribute is mostly for testing purposes.
 	projectsDirPath string
 }
 
-// NewFileDrudgerRepository builds the repository over a projects directory. An
-// empty path means the projects directory of the drudge home directory.
 func NewFileDrudgerRepository(projectsDirPath string) *FileDrudgerRepository {
 	return &FileDrudgerRepository{projectsDirPath: projectsDirPath}
 }
 
-// ListDrudgers reads project's Drudgers. A project that has never run any
-// Drudger has an empty pool.
+// ListDrudgers reads project's Drudgers.
 func (repo *FileDrudgerRepository) ListDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	path, err := repo.drudgersFilePath(projectSlug)
 	if err != nil {
@@ -96,8 +92,8 @@ func (repo *FileDrudgerRepository) UpdateDrudgers(projectSlug string, change fun
 	return writeDrudgersFile(path, updated)
 }
 
-// readDrudgersFile parses the Drudgers a file holds. A missing file is an
-// empty pool.
+// readDrudgersFile parses the Drudgers from a file ans returns their pool.
+// If file is missing, it returns nil which also means a pool is empty.
 func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 	exists, err := common.Exists(path)
 	if err != nil {
@@ -124,8 +120,8 @@ func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 	return drudgers, nil
 }
 
-// writeDrudgersFile stores the Drudgers, lowest slot first, so the file reads
-// the same way a listing does.
+// writeDrudgersFile stores the Drudgers, always sorted by slot from lowest
+// to highest.
 func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 	stored := drudgersFile{Drudgers: make([]storedDrudger, 0, len(drudgers))}
 	for _, entry := range drudgers {
@@ -144,8 +140,8 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 }
 
 // lockDrudgers takes an exclusive lock on the lock file and returns the
-// release. It waits for a lock another process holds. The kernel drops the
-// lock if the process dies, so a crash never leaves the pool wedged.
+// release callback. It also waits for a lock another process holds. If the
+// process dies, then lock is released by the kernel.
 func lockDrudgers(path string) (func(), error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, common.DefaultFilePerm)
 	if err != nil {
@@ -164,6 +160,8 @@ func lockDrudgers(path string) (func(), error) {
 }
 
 func (repo *FileDrudgerRepository) resolveProjectsDir() (string, error) {
+	// This is basically an override for testing purposes.
+	// Real projects dir is resolved from home dir lower in the code.
 	if repo.projectsDirPath != "" {
 		return repo.projectsDirPath, nil
 	}

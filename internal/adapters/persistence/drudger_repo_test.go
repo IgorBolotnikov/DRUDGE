@@ -77,8 +77,6 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				t.Fatalf("expected %d Drudgers, got %d", len(testCase.pool), len(read))
 			}
 
-			// The file is stored lowest slot first, so a listing reads in slot
-			// order whatever order it was written in.
 			for index, got := range read {
 				if index > 0 && read[index-1].Slot > got.Slot {
 					t.Errorf("expected the Drudgers to come back in slot order, got %d after %d", got.Slot, read[index-1].Slot)

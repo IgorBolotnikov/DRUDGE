@@ -194,8 +194,6 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 		}
 	}
 
-	// Every argument is printed quoted, so a launcher full of newlines stays
-	// on one line of the preview.
 	for _, argument := range []string{sbxBinary, sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxDetachedFlag, workspace} {
 		if !strings.Contains(out, strconv.Quote(argument)) {
 			t.Errorf("expected the preview to contain the argument %q, got %q", argument, out)

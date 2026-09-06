@@ -6,10 +6,10 @@ import (
 	"drudge/internal/task"
 )
 
-// Drudger is a reusable sandbox that does the work. It outlives the Sessions
+// Drudger is a reusable sandbox that works on Tasks. It outlives the Sessions
 // that run in it, and at any moment it is either occupied by one Task or idle.
 //
-// A Drudger record is a snapshot of what drudge last observed, never a live
+// A Drudger record is a snapshot of what drudge last observed, not a live
 // view of the sandbox. LastChecked says how old that observation is.
 type Drudger struct {
 	Slot        int         // Pool position, starting at 1

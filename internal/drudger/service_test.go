@@ -17,13 +17,9 @@ import (
 const (
 	testProjectSlug = "test-project"
 
-	// The sandbox drudge names for the first two Drudger slots of the test
-	// project, under the default harness.
 	testSandbox      = "drudge-claude-test-project-1"
 	testSandboxSlot2 = "drudge-claude-test-project-2"
 
-	// runWorkspace stands in for the workspace a run happens in, so a table
-	// can name that path before the test has one.
 	runWorkspace = "{{workspace}}"
 )
 
@@ -93,8 +89,6 @@ func (runner *fakeCommandRunner) Run(argv []string) (string, error) {
 	return output, err
 }
 
-// subcommands names the sbx subcommand of every call, in order, so a test can
-// assert on the shape of a run without repeating whole argvs.
 func (runner *fakeCommandRunner) subcommands() []string {
 	names := make([]string, 0, len(runner.calls))
 	for _, argv := range runner.calls {
@@ -103,7 +97,7 @@ func (runner *fakeCommandRunner) subcommands() []string {
 	return names
 }
 
-// call returns the first call to an sbx subcommand, or nil if it never came.
+// call returns the first call to an sbx subcommand.
 func (runner *fakeCommandRunner) call(subcommand string) []string {
 	for _, argv := range runner.calls {
 		if argv[1] == subcommand {
@@ -113,9 +107,8 @@ func (runner *fakeCommandRunner) call(subcommand string) []string {
 	return nil
 }
 
-// fakeDrudgerRepo keeps a project's Drudgers in memory. It hands out copies
-// the way the file adapter hands out freshly parsed records, so a caller that
-// changes what it reads changes nothing until it stores the result.
+// fakeDrudgerRepo keeps project's Drudgers in memory and mimics the behavior
+// of a real repo.
 type fakeDrudgerRepo struct {
 	drudgers []*Drudger
 }
@@ -133,7 +126,7 @@ func (repo *fakeDrudgerRepo) UpdateDrudgers(projectSlug string, change func([]*D
 	return nil
 }
 
-// holderOf returns the Drudger occupied by a task, or nil when none is.
+// holderOf returns the Drudger occupied by a task, or nil if none.
 func (repo *fakeDrudgerRepo) holderOf(taskID task.TaskID) *Drudger {
 	for _, candidate := range repo.drudgers {
 		if candidate.TaskID == taskID {
@@ -162,8 +155,6 @@ func copyDrudgers(drudgers []*Drudger) []*Drudger {
 	return copied
 }
 
-// testService is the service under test together with the fakes behind it, so
-// a test can assert on what a run recorded.
 type testService struct {
 	*DrudgerService
 	drudgers *fakeDrudgerRepo
@@ -186,13 +177,10 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	}
 }
 
-// setupWorkspace moves the test into a temp workspace and returns its path.
 func setupWorkspace(t *testing.T) string {
 	return setupWorkspaceNamed(t, "")
 }
 
-// setupWorkspaceNamed moves the test into a named directory of a temp
-// workspace, so a test can pick a path a shell would choke on unquoted.
 func setupWorkspaceNamed(t *testing.T, name string) string {
 	t.Helper()
 	setupPromptDirs(t)
@@ -213,7 +201,6 @@ func setupWorkspaceNamed(t *testing.T, name string) string {
 	return workspace
 }
 
-// todoTask is the task every run test hands to an agent.
 func todoTask() *task.Task {
 	return &task.Task{
 		ID:          "task-1",
@@ -224,7 +211,6 @@ func todoTask() *task.Task {
 	}
 }
 
-// busyDrudger occupies a slot so the next run has to allocate another one.
 func busyDrudger(slot int) *Drudger {
 	return &Drudger{
 		Slot:    slot,
@@ -233,24 +219,18 @@ func busyDrudger(slot int) *Drudger {
 	}
 }
 
-// idleDrudger is a Drudger that exists and holds no task.
 func idleDrudger(slot int) *Drudger {
 	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot)}
 }
 
-// busyTaskID names the task occupying a busy Drudger.
 func busyTaskID(slot int) task.TaskID {
 	return task.TaskID(fmt.Sprintf("busy-%d", slot))
 }
 
-// testSandboxOfSlot names the sandbox of any slot, the way the consts at the
-// top of this file name the first two.
 func testSandboxOfSlot(slot int) string {
 	return fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, slot)
 }
 
-// finishSession writes the exit file the launcher writes last, which is how
-// drudge tells that a Session is over and its Drudger is free again.
 func finishSession(t *testing.T, workspace string, taskID task.TaskID) {
 	t.Helper()
 	runDir := common.RunDir(workspace, string(taskID))
@@ -262,13 +242,10 @@ func finishSession(t *testing.T, workspace string, taskID task.TaskID) {
 	}
 }
 
-// inWorkspace swaps a workspace into the runWorkspace placeholder of a value.
 func inWorkspace(value, workspace string) string {
 	return strings.ReplaceAll(value, runWorkspace, workspace)
 }
 
-// sandboxListingWith renders the `sbx ls --json` output for a listing that
-// holds exactly the named sandboxes, each mounted on the workspace of the run.
 func sandboxListingWith(names ...string) string {
 	entries := make([]string, 0, len(names))
 	for _, name := range names {
@@ -277,13 +254,10 @@ func sandboxListingWith(names ...string) string {
 	return sandboxListingOf(entries...)
 }
 
-// sandboxListingMountedOn renders a listing holding one sandbox with the given
-// mounts, so a test can point it away from the workspace of the run.
 func sandboxListingMountedOn(name string, mounts ...string) string {
 	return sandboxListingOf(sandboxEntry(name, mounts...))
 }
 
-// sandboxEntry renders one sandbox of a listing.
 func sandboxEntry(name string, mounts ...string) string {
 	quoted := make([]string, 0, len(mounts))
 	for _, mount := range mounts {
@@ -292,7 +266,6 @@ func sandboxEntry(name string, mounts ...string) string {
 	return fmt.Sprintf(`{"name":%q,"workspaces":[%s]}`, name, strings.Join(quoted, ","))
 }
 
-// sandboxListingOf wraps rendered sandbox entries in a listing.
 func sandboxListingOf(entries ...string) string {
 	return fmt.Sprintf(`{"sandboxes":[%s]}`, strings.Join(entries, ","))
 }
@@ -387,8 +360,6 @@ func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
 	if claimed.LastChecked.IsZero() {
 		t.Error("expected last checked to be stamped")
 	}
-	// The session id only exists once the agent has written its init event, so
-	// a task is recorded without one.
 	if taskToRun.SessionID != "" {
 		t.Errorf("expected no session id to be recorded, got %q", taskToRun.SessionID)
 	}
@@ -411,8 +382,6 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			// The agent writes the stream from inside a sandbox. No test
-			// starts one, so the test writes the stream itself.
 			if testCase.lines != nil {
 				runDir := common.RunDir(workspace, string(taskToRun.ID))
 				if err := common.EnsureDir(runDir); err != nil {
@@ -564,9 +533,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 	spawnErr := fmt.Errorf("sbx: no such binary")
 
 	cases := []struct {
-		name string
-		// A run directory survives only a failure that happens after the
-		// sandbox is known to be up. Anything earlier leaves nothing behind.
+		name       string
 		outputs    []string
 		errs       []error
 		wantRuns   int
@@ -616,8 +583,6 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			if taskToRun.Status != task.StatusTodo {
 				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
 			}
-			// A run that never got the agent up hands its slot back, so a
-			// failure never costs the pool a Drudger.
 			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
 				t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
 			}
@@ -635,11 +600,9 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) {
 	cases := []struct {
-		name  string
-		limit int
-		pool  []*Drudger
-		// finished names the tasks whose Session has written its exit file, so
-		// the Drudgers holding them are free again.
+		name     string
+		limit    int
+		pool     []*Drudger
 		finished []task.TaskID
 		wantSlot int
 		wantErr  bool
@@ -656,10 +619,9 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 			wantSlot: 1,
 		},
 		{
-			name:  "leaves a Drudger whose Session is still running",
-			limit: 3,
-			pool:  []*Drudger{busyDrudger(1), busyDrudger(2)},
-			// No exit file anywhere, so both Sessions are still going.
+			name:     "leaves a Drudger whose Session is still running",
+			limit:    3,
+			pool:     []*Drudger{busyDrudger(1), busyDrudger(2)},
 			wantSlot: 3,
 		},
 		{
@@ -726,9 +688,6 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 }
 
 func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
-	// A Drudger that already exists keeps the name its sandbox was created
-	// under, so changing the harness setting cannot silently rename a
-	// container that is already on disk.
 	const namedByAnEarlierHarness = "drudge-opencode-test-project-1"
 
 	workspace := setupWorkspace(t)

@@ -75,10 +75,8 @@ type sandbox struct {
 	Workspaces []string `json:"workspaces"`
 }
 
-// pickDrudgerCommand builds the commands that put an agent to work on the
-// prompt sitting in the run directory. The sandbox name comes from the Drudger
-// that was claimed, so a Drudger keeps the name it was created under even if
-// the harness setting changes later.
+// pickDrudgerCommand builds the commands that ensure the sandbox exists and
+// put an agent to work on the configured prompt.
 func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace, runDir string) (sandboxPlan, error) {
 	env := service.globalCfg.Drudger.Env
 	harness := service.globalCfg.Drudger.Harness
