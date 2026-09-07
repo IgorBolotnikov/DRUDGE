@@ -23,9 +23,8 @@ import (
 const sbxDaemonRetryDelay = 2 * time.Second
 
 // launchGracePeriod is how long a launch waits for the agent to write its
-// first stream event. The agent writes it in the first second or two, so an
-// empty stream after this means the process is not there. A launch blocks for
-// this long at worst, so it stays short.
+// first stream event. An agent writes that event a second or two after it
+// starts, and a launch blocks for this whole period when none arrives.
 const launchGracePeriod = 10 * time.Second
 
 // launchPollInterval is how often a launch checks the stream while it waits
@@ -38,8 +37,7 @@ const launchPollInterval = 100 * time.Millisecond
 const nukeCommand = "drg drudger nuke"
 
 // reclaimCommand is what a user runs to free the Drudger slots whose agent is
-// gone. This package uses it only as an informative value, not a source of any
-// decisions.
+// gone.
 const reclaimCommand = "drg drudger reclaim"
 
 // rerunnableStatuses are the task statuses a rerun accepts. They are the ones
@@ -53,13 +51,11 @@ type DrudgerService struct {
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
 	commands  CommandRunner
-	// daemonRetryDelay is the wait before a retried sbx call, held here so a
-	// test does not have to sit through it.
+	// daemonRetryDelay and launchGrace default to the constants above. A test
+	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
-	// launchGrace is how long a launch waits for the agent to write its first
-	// event, held here so a test does not have to sit through it.
-	launchGrace time.Duration
-	// Some of the service methods also live in allocation.go and nuke.go
+	launchGrace      time.Duration
+	// Some of the service methods live in other files of this package.
 }
 
 func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {
@@ -153,13 +149,12 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 	return nil
 }
 
-// workingDrudger returns the Drudger whose agent is working on a task, and
-// nil when none is.
+// workingDrudger returns the Drudger whose agent is working on a task, and nil
+// when none is.
 //
-// Both facts have to hold. The run directory has to have no exit file, and a
-// Drudger has to still hold the task. The Drudgers file is what says whether
-// an agent exists, so a run directory a dead agent left unfinished stops
-// counting once ReclaimDrudgers has cleared its slot.
+// It checks the run directory and the Drudgers file. A dead agent leaves a run
+// directory with no exit file, which on its own reads as a Session still
+// working.
 func (service *DrudgerService) workingDrudger(projectSlug string, workspace string, taskID task.TaskID) (*Drudger, error) {
 	live, err := service.sessionStillRunning(workspace, taskID)
 	if err != nil {
@@ -198,8 +193,8 @@ func formatStatuses(statuses []task.TaskStatus) string {
 	return strings.Join(quoted, " and ")
 }
 
-// launch resolves the prompt, claims a Drudger, makes sure its sandbox is
-// there, clears the run directory and starts the agent.
+// launch starts an agent on a task and records the task as in progress. A dry
+// run prints the plan and writes nothing.
 func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, workspace string, dryRun bool) error {
 	taskID := taskToRun.ID
 
@@ -240,10 +235,9 @@ func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, 
 		return err
 	}
 
-	// The run directory is made before the sandbox steps, which take minutes
-	// on a first launch. That keeps the gap between claiming a slot and
-	// creating its run directory short, so ReclaimDrudgers can read a missing
-	// run directory as a launch that never happened.
+	// The run directory is made before the sandbox steps, which take minutes on
+	// a first launch. ReclaimDrudgers frees a claimed slot that has no run
+	// directory past the grace period, so the two happen back to back here.
 	if err := prepareRunDir(runDir, prompt); err != nil {
 		return err
 	}
@@ -294,9 +288,8 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 
 // confirmLaunch blocks until the agent writes its first stream event or the
 // grace period runs out. Start returns as soon as the process is forked and
-// drudge never learns its exit status, so an sbx exec that dies a moment later
-// is otherwise indistinguishable from a working agent. Failing here leaves the
-// task in todo and releases the claimed slot.
+// drudge never learns its exit status, so an sbx exec that starts and exits is
+// otherwise indistinguishable from a working agent.
 func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, taskID task.TaskID) error {
 	deadline := time.Now().Add(service.launchGrace)
 
@@ -319,9 +312,8 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 }
 
 // launchedSessionID reads the session id the agent has written so far. The
-// stream has content by this point, but the line holding the id can be
-// partially written, so an empty id is a normal answer. Later reads of the run
-// directory fill it in.
+// line carrying the id can still be half written, so an empty id is a normal
+// answer.
 func (service *DrudgerService) launchedSessionID(runDir string) string {
 	sessionID, err := readSessionID(runDir)
 	if err != nil {
@@ -365,8 +357,8 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 }
 
 // observeSandboxes returns which sandboxes of the configured environment are
-// running. The result decides whether a slot is freed, so a listing that fails
-// stops the caller with an error.
+// running. A listing that fails is an error here, because a partial answer
+// would free a slot on a guess.
 func (service *DrudgerService) observeSandboxes(projectSlug string) (map[string]bool, error) {
 	inspect, err := service.pickInspectCommand()
 	if err != nil {
@@ -409,8 +401,8 @@ func (service *DrudgerService) listSandboxes(inspect []string) (string, error) {
 	return listing, nil
 }
 
-// runSbx runs one sbx command and says when the call had to bring the sandbox
-// daemon up to explain the relay in running the command.
+// runSbx runs one sbx command and logs when the call had to start the sbx
+// daemon, which explains the delay the user sees.
 func (service *DrudgerService) runSbx(argv []string) (string, string, error) {
 	stdout, stderr, err := service.commands.Run(argv)
 	if daemonJustStarted(stderr) {
