@@ -250,3 +250,57 @@ func TestFileDrudgerRepository_UpdateDrudgers_TwoClaimsCannotTakeTheSameSlot(t *
 		taken[claimed.Slot] = true
 	}
 }
+
+func TestFileDrudgerRepository_TryUpdateDrudgers_GivesUpOnALockHeldElsewhere(t *testing.T) {
+	repo, drudgersPath := setupDrudgerRepo(t)
+	storeDrudgers(t, repo, []*drudger.Drudger{{Slot: 1, Sandbox: "drudge-claude-test-project-1", TaskID: "task-1"}})
+
+	// Take the lock the way another drudge process would during a launch.
+	lockPath := filepath.Join(filepath.Dir(drudgersPath), drudgersLockFileName)
+	unlock, locked, err := lockDrudgers(lockPath, waitForLock)
+	if err != nil {
+		t.Fatalf("could not take the lock the test holds: %v", err)
+	}
+	if !locked {
+		t.Fatal("expected the waiting lock to be taken")
+	}
+
+	freeTheSlot := func(drudgers []*drudger.Drudger) ([]*drudger.Drudger, error) {
+		drudgers[0].TaskID = ""
+		return drudgers, nil
+	}
+
+	took, err := repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
+	if err != nil {
+		t.Fatalf("expected a held lock to be no error, got %v", err)
+	}
+	if took {
+		t.Fatal("expected the update to give up on a lock someone else holds")
+	}
+
+	read, err := repo.ListDrudgers(drudgerTestProject)
+	if err != nil {
+		t.Fatalf("ListDrudgers: %v", err)
+	}
+	if len(read) != 1 || read[0].TaskID != "task-1" {
+		t.Errorf("expected the stored pool to be untouched, got %v", read[0])
+	}
+
+	unlock()
+
+	took, err = repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
+	if err != nil {
+		t.Fatalf("TryUpdateDrudgers: %v", err)
+	}
+	if !took {
+		t.Fatal("expected the update to take a free lock")
+	}
+
+	read, err = repo.ListDrudgers(drudgerTestProject)
+	if err != nil {
+		t.Fatalf("ListDrudgers: %v", err)
+	}
+	if len(read) != 1 || read[0].TaskID != "" {
+		t.Errorf("expected the slot to be freed, got %v", read[0])
+	}
+}

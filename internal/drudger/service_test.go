@@ -148,6 +148,11 @@ func (runner *fakeCommandRunner) call(subcommand string) []string {
 // of a real repo.
 type fakeDrudgerRepo struct {
 	drudgers []*Drudger
+	// lockHeld stands for another drudge command holding the lock, which is
+	// what a caller that would rather not wait runs into.
+	lockHeld bool
+	// updates counts the writes the repo was asked to make.
+	updates int
 }
 
 func (repo *fakeDrudgerRepo) ListDrudgers(projectSlug string) ([]*Drudger, error) {
@@ -159,8 +164,16 @@ func (repo *fakeDrudgerRepo) UpdateDrudgers(projectSlug string, change func([]*D
 	if err != nil {
 		return err
 	}
+	repo.updates++
 	repo.drudgers = updated
 	return nil
+}
+
+func (repo *fakeDrudgerRepo) TryUpdateDrudgers(projectSlug string, change func([]*Drudger) ([]*Drudger, error)) (bool, error) {
+	if repo.lockHeld {
+		return false, nil
+	}
+	return true, repo.UpdateDrudgers(projectSlug, change)
 }
 
 // holderOf returns the Drudger occupied by a task, or nil if none.
@@ -1504,5 +1517,155 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 				t.Error("expected last checked to be stamped")
 			}
 		})
+	}
+}
+
+func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
+	claimedAt := time.Now().UTC().Add(-time.Hour)
+
+	cases := []struct {
+		name string
+		// stream is what the agent of the claimed task wrote, and exit is what
+		// it exited with. noExitFile stands for a Session that is still going.
+		stream []string
+		exit   string
+		// noRunDir stands for a claim whose run directory was never created.
+		noRunDir bool
+		// lockHeld stands for another drudge command holding the Drudgers lock.
+		lockHeld bool
+
+		// wantTask is the task the Drudger of slot 1 still holds, empty when
+		// the slot was freed.
+		wantTask  task.TaskID
+		wantAgent AgentHealth
+		// wantLooked says whether the record was stamped as re-examined.
+		wantLooked bool
+	}{
+		{
+			name:       "a Session that is over frees the slot",
+			stream:     []string{initEvent, resultEvent},
+			exit:       "0\n",
+			wantAgent:  AgentReady,
+			wantLooked: true,
+		},
+		{
+			name:       "a Session the vendor refused frees the slot and names the agent",
+			stream:     []string{initEvent, authRefusedEvent, authRefusedResultEvent},
+			exit:       "1\n",
+			wantAgent:  AgentRefused,
+			wantLooked: true,
+		},
+		{
+			name:      "a Session that is still going keeps the slot",
+			stream:    []string{initEvent, assistantEvent},
+			exit:      noExitFile,
+			wantTask:  busyTaskID(1),
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:      "a claim with no run directory is left alone",
+			noRunDir:  true,
+			wantTask:  busyTaskID(1),
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:      "a list that cannot take the lock reports what it read",
+			stream:    []string{initEvent, resultEvent},
+			exit:      "0\n",
+			lockHeld:  true,
+			wantTask:  busyTaskID(1),
+			wantAgent: AgentUnchecked,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+
+			claimed := busyDrudger(1)
+			claimed.SandboxHealth = SandboxUsable
+			claimed.LastChecked = claimedAt
+
+			if !testCase.noRunDir {
+				runDir := common.RunDir(workspace, string(claimed.TaskID))
+				writeStream(t, runDir, testCase.stream...)
+				if testCase.exit != noExitFile {
+					writeExit(t, runDir, testCase.exit)
+				}
+			}
+
+			pool := []*Drudger{idleDrudger(2), claimed}
+			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+			service.drudgers.lockHeld = testCase.lockHeld
+
+			var listed []*Drudger
+			var err error
+			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(listed) != 2 {
+				t.Fatalf("expected both Drudgers to be listed, got %v", listed)
+			}
+			reported := listed[0]
+			if reported.Slot != 1 {
+				t.Fatalf("expected the lowest slot first, got slot %d", reported.Slot)
+			}
+
+			if reported.TaskID != testCase.wantTask {
+				t.Errorf("expected the list to report task %q, got %q", testCase.wantTask, reported.TaskID)
+			}
+			if reported.AgentHealth != testCase.wantAgent {
+				t.Errorf("expected the list to report agent health %q, got %q", testCase.wantAgent, reported.AgentHealth)
+			}
+			// A list looks at run directories alone, so what it says about a
+			// sandbox is whatever the last launch saw.
+			if reported.SandboxHealth != SandboxUsable {
+				t.Errorf("expected sandbox health %q to be left alone, got %q", SandboxUsable, reported.SandboxHealth)
+			}
+
+			// The record is what the next command reads, so it has to say the
+			// same thing the list did.
+			recorded := service.drudgers.atSlot(1)
+			if recorded == nil {
+				t.Fatalf("expected Drudger 1 to stay in the pool, got %v", service.drudgers.drudgers)
+			}
+			if recorded.TaskID != testCase.wantTask {
+				t.Errorf("expected the record to hold task %q, got %q", testCase.wantTask, recorded.TaskID)
+			}
+			if recorded.AgentHealth != testCase.wantAgent {
+				t.Errorf("expected the record to hold agent health %q, got %q", testCase.wantAgent, recorded.AgentHealth)
+			}
+
+			// A record that was not re-examined keeps the timestamp it had,
+			// because restamping it would claim a look that never happened.
+			looked := recorded.LastChecked.After(claimedAt)
+			if looked != testCase.wantLooked {
+				t.Errorf("expected re-examined to be %v, got last checked %s against a claim at %s", testCase.wantLooked, recorded.LastChecked, claimedAt)
+			}
+
+			idle := service.drudgers.atSlot(2)
+			if !idle.LastChecked.IsZero() {
+				t.Errorf("expected an idle Drudger to be left alone, got last checked %s", idle.LastChecked)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T) {
+	setupWorkspace(t)
+
+	pool := []*Drudger{idleDrudger(1), idleDrudger(2)}
+	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+
+	var err error
+	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if service.drudgers.updates != 0 {
+		t.Errorf("expected a list of idle Drudgers to write nothing, got %d writes", service.drudgers.updates)
 	}
 }

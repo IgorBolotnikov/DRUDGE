@@ -10,4 +10,8 @@ type DrudgerRepository interface {
 	// stores what it returns. The whole call holds an exclusive lock. An error
 	// from change stores nothing and is returned back to the caller.
 	UpdateDrudgers(projectSlug string, change func(drudgers []*Drudger) ([]*Drudger, error)) error
+	// TryUpdateDrudgers works like UpdateDrudgers, but gives up when someone
+	// else holds the lock. It reports whether it took the lock and ran change.
+	// It is for callers that would rather do nothing than wait.
+	TryUpdateDrudgers(projectSlug string, change func(drudgers []*Drudger) ([]*Drudger, error)) (bool, error)
 }
