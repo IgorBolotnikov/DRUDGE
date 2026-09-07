@@ -164,16 +164,7 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 }
 
 // reclaimFinished frees every Drudger whose Session has finished, and records
-// what that Session said about the agent that ran it. A Session is finished
-// once its run directory holds an exit file.
-//
-// The Drudger holding the task is the only link back to the agent that ran it,
-// so the moment the slot is freed is the last moment the two facts are both in
-// hand.
-//
-// A Drudger claiming a task with no run directory is left as it is. There is
-// nothing to read about that Session, and guessing would free a slot an agent
-// may still be working in.
+// what that Session said about the agent that ran it.
 func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error {
 	for _, candidate := range drudgers {
 		if candidate.Idle() {
@@ -201,11 +192,6 @@ func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error
 // reclaimForListing frees the Drudgers whose Session has ended, so a list
 // reports the pool as it stands. It returns the pool it read, reclaimed as far
 // as it could be.
-//
-// Freeing a slot writes to the Drudgers file and therefore needs the lock. A
-// launch in progress holds that lock, and asking what the pool is doing should
-// never wait for a launch, so a list that cannot take the lock reports what it
-// read and says so.
 func (service *DrudgerService) reclaimForListing(projectSlug string, workspace string) ([]*Drudger, error) {
 	asRead, err := service.drudgers.ListDrudgers(projectSlug)
 	if err != nil {
@@ -217,7 +203,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, workspace s
 	}
 
 	var reclaimed []*Drudger
-	locked, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
+	stored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		if err := reclaimFinished(drudgers, workspace, time.Now().UTC()); err != nil {
 			return nil, err
 		}
@@ -227,7 +213,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, workspace s
 	if err != nil {
 		return nil, err
 	}
-	if !locked {
+	if !stored {
 		service.logger.Info("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", projectSlug)
 		return asRead, nil
 	}

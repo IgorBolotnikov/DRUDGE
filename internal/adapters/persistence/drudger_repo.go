@@ -78,15 +78,16 @@ func (repo *FileDrudgerRepository) UpdateDrudgers(projectSlug string, change fun
 }
 
 // TryUpdateDrudgers runs change the way UpdateDrudgers does, but gives up
-// when someone else holds the lock. It reports whether it took the lock.
-func (repo *FileDrudgerRepository) TryUpdateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error)) (bool, error) {
+// when someone else holds the lock. It reports whether the Drudgers were
+// stored.
+func (repo *FileDrudgerRepository) TryUpdateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error)) (stored bool, err error) {
 	return repo.updateDrudgers(projectSlug, change, giveUpOnLock)
 }
 
 // updateDrudgers reads the project's Drudgers under the lock, hands them to
-// change and writes back what it returns. It reports whether it took the lock,
-// which is always true when it was told to wait for one.
-func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error), wait bool) (bool, error) {
+// change and writes back what it returns. stored says whether it got all the
+// way through, which it always does when it was told to wait for the lock.
+func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error), wait bool) (stored bool, err error) {
 	projectDir, err := repo.resolveProjectDir(projectSlug)
 	if err != nil {
 		return false, err
@@ -95,11 +96,11 @@ func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change fun
 		return false, err
 	}
 
-	unlock, locked, err := lockDrudgers(filepath.Join(projectDir, drudgersLockFileName), wait)
+	unlock, gotLock, err := lockDrudgers(filepath.Join(projectDir, drudgersLockFileName), wait)
 	if err != nil {
 		return false, err
 	}
-	if !locked {
+	if !gotLock {
 		return false, nil
 	}
 	defer unlock()
@@ -177,10 +178,10 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 // release callback. If the process dies, then lock is released by the kernel.
 //
 // With waitForLock it waits for a lock someone else holds and always comes
-// back with it. With giveUpOnLock it comes back at once, and locked says
-// whether it got the lock. A caller that did not get the lock gets a nil
+// back with it. With giveUpOnLock it comes back at once, and gotLock says
+// whether the lock was free. A caller that did not get the lock gets a nil
 // release callback.
-func lockDrudgers(path string, wait bool) (unlock func(), locked bool, err error) {
+func lockDrudgers(path string, wait bool) (unlock func(), gotLock bool, err error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, common.DefaultFilePerm)
 	if err != nil {
 		return nil, false, fmt.Errorf("could not open the Drudgers lock file %s: %w", path, err)

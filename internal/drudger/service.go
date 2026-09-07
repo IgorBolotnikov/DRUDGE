@@ -57,10 +57,6 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 }
 
 // ListDrudgers returns all Drudgers which currently exist in a Project.
-//
-// It looks at the run directories before it reports, so a Drudger whose
-// Session has ended reads as idle. A Drudger record stays a snapshot of what
-// drudge last observed, and LastChecked still says how old that is.
 func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, error) {
 	workspace, err := common.WorkDir()
 	if err != nil {
