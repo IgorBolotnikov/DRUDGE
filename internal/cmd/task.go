@@ -30,9 +30,17 @@ const (
 )
 
 const (
-	taskUsage       = "usage: drg task <new|list|run|status>"
+	taskUsage       = "usage: drg task <new|list|run|rerun|status>"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
+	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
 	taskStatusUsage = "usage: drg task status <task-id>"
+)
+
+// Names of the subcommands that hand a task to an agent, used in the errors
+// their argument parsing produces.
+const (
+	runSubcommand   = "run"
+	rerunSubcommand = "rerun"
 )
 
 // taskTitleWidth is how much room a listing gives a task title.
@@ -56,8 +64,10 @@ func runTask(args []string) error {
 		return taskNew(args[1:])
 	case "list":
 		return taskList(args[1:])
-	case "run":
+	case runSubcommand:
 		return taskRun(args[1:])
+	case rerunSubcommand:
+		return taskRerun(args[1:])
 	case "status":
 		return taskSessionStatus(args[1:])
 	default:
@@ -197,7 +207,7 @@ func taskRun(args []string) error {
 		return nil
 	}
 
-	taskID, dryRun, err := parseTaskRunArgs(args)
+	taskID, dryRun, err := parseTaskRunArgs(args, runSubcommand, taskRunUsage)
 	if err != nil {
 		return err
 	}
@@ -208,6 +218,32 @@ func taskRun(args []string) error {
 	}
 
 	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
+}
+
+// taskRerun hands a task back to a Drudger and starts it over.
+func taskRerun(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(taskRerunUsage)
+		fmt.Println()
+		fmt.Println("Start a task over from scratch, clearing what its last run left behind.")
+		fmt.Println("Only a task an agent has already had can be rerun, so in-progress and fucked-up.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Printf("  %s  Print the prompt the agent would get and stop\n", dryRunFlag)
+		return nil
+	}
+
+	taskID, dryRun, err := parseTaskRunArgs(args, rerunSubcommand, taskRerunUsage)
+	if err != nil {
+		return err
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.RerunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
 }
 
 // taskSessionStatus reports how the last Session of a task is going.
@@ -259,7 +295,10 @@ func parseTaskSessionStatusArgs(args []string) (task.TaskID, error) {
 	return task.TaskID(taskID), nil
 }
 
-func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {
+// parseTaskRunArgs reads the task id and the dry run flag that both launch
+// subcommands take. The subcommand names itself, so its errors say which one
+// the user typed.
+func parseTaskRunArgs(args []string, subcommand, usage string) (task.TaskID, bool, error) {
 	var taskID string
 	dryRun := false
 
@@ -268,16 +307,16 @@ func parseTaskRunArgs(args []string) (task.TaskID, bool, error) {
 		case arg == dryRunFlag:
 			dryRun = true
 		case strings.HasPrefix(arg, "-"):
-			return "", false, fmt.Errorf("unknown flag %q, %s", arg, taskRunUsage)
+			return "", false, fmt.Errorf("unknown flag %q, %s", arg, usage)
 		case taskID == "":
 			taskID = arg
 		default:
-			return "", false, fmt.Errorf("unexpected argument %q, drg task run takes a single task ID", arg)
+			return "", false, fmt.Errorf("unexpected argument %q, drg task %s takes a single task ID", arg, subcommand)
 		}
 	}
 
 	if taskID == "" {
-		return "", false, fmt.Errorf("task ID is required, %s", taskRunUsage)
+		return "", false, fmt.Errorf("task ID is required, %s", usage)
 	}
 
 	return task.TaskID(taskID), dryRun, nil

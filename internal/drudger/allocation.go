@@ -160,3 +160,14 @@ func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error
 	}
 	return nil
 }
+
+// drudgerHoldingTask returns the Drudger a task occupies, or nil when no
+// Drudger holds it.
+func drudgerHoldingTask(drudgers []*Drudger, taskID task.TaskID) *Drudger {
+	for _, candidate := range drudgers {
+		if candidate.TaskID == taskID {
+			return candidate
+		}
+	}
+	return nil
+}

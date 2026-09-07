@@ -3,8 +3,10 @@ package drudger
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"drudge/internal/common"
@@ -19,6 +21,14 @@ import (
 // sbxDaemonRetryDelay is how long DRUDGE waits before giving the sbx daemon a
 // second chance to come up.
 const sbxDaemonRetryDelay = 2 * time.Second
+
+// nukeCommand is what a user runs to kill a Drudger and the agent inside it.
+const nukeCommand = "drg drudger nuke"
+
+// rerunnableStatuses are the task statuses a rerun accepts. They are the ones
+// an agent has actually had. A draft was never ready for an agent, a todo task
+// has nothing to redo, and a done one is finished.
+var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp}
 
 type DrudgerService struct {
 	logger    *common.Logger
@@ -65,13 +75,111 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	if err != nil {
 		return err
 	}
-	// The caller may have named the task by a prefix of its ID, which we should
-	// not rely on in our internal logic.
-	taskID := taskToRun.ID
 
 	if taskToRun.Status != task.StatusTodo {
-		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskID, taskToRun.Status, task.StatusTodo)
+		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
 	}
+
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return fmt.Errorf("could not work out where to run task %s: %w", taskToRun.ID, err)
+	}
+
+	return service.launch(projectSlug, taskToRun, workspace, dryRun)
+}
+
+// RerunTask hands a task back to a Drudger and starts it over from scratch.
+// Only a task an agent has actually had may be rerun. A task that never ran is
+// started with RunTask, and a finished one is left alone.
+//
+// The launch is the one a first run goes through, so a rerun differs from a
+// run in nothing but the checks above it.
+func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
+	taskToRerun, err := service.tasks.GetTask(projectSlug, requestedID)
+	if err != nil {
+		return err
+	}
+
+	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
+		return fmt.Errorf(
+			"task %s is %q, only %s tasks can be rerun",
+			taskToRerun.ID, taskToRerun.Status, formatStatuses(rerunnableStatuses),
+		)
+	}
+
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return fmt.Errorf("could not work out where to run task %s: %w", taskToRerun.ID, err)
+	}
+
+	live, err := service.sessionStillRunning(workspace, taskToRerun.ID)
+	if err != nil {
+		return err
+	}
+	if live {
+		return service.refuseLiveRerun(projectSlug, taskToRerun)
+	}
+
+	cameFrom := taskToRerun.Status
+	if err := service.launch(projectSlug, taskToRerun, workspace, dryRun); err != nil {
+		return err
+	}
+	if !dryRun {
+		service.logger.Info("Task [%s] %s was %q, its previous run is cleared and it starts over", taskToRerun.ID, taskToRerun.Title, cameFrom)
+	}
+	return nil
+}
+
+// sessionStillRunning reports whether an agent is currently working on a task.
+// The run directory decides that, the same way a status check does, so a task
+// recorded as in progress whose run has ended counts as nothing running.
+func (service *DrudgerService) sessionStillRunning(workspace string, taskID task.TaskID) (bool, error) {
+	report, err := readSessionReport(common.RunDir(workspace, string(taskID)), time.Now().UTC())
+	if errors.Is(err, errNoRunDirectory) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !report.Finished(), nil
+}
+
+// refuseLiveRerun explains why a task with a working agent cannot start over.
+// Restarting it would clear the run directory out from under that agent while
+// it still held its Drudger slot, and drudge starts agents detached, so it has
+// no way to stop one.
+func (service *DrudgerService) refuseLiveRerun(projectSlug string, taskToRerun *task.Task) error {
+	drudgers, err := service.drudgers.ListDrudgers(projectSlug)
+	if err != nil {
+		return fmt.Errorf("an agent is still working on task %s, but the Drudgers of project %s could not be read to name it: %w", taskToRerun.ID, projectSlug, err)
+	}
+
+	holder := drudgerHoldingTask(drudgers, taskToRerun.ID)
+	if holder == nil {
+		return fmt.Errorf("an agent is still working on task %s, wait for that Session to finish before starting the task over", taskToRerun.ID)
+	}
+	return fmt.Errorf(
+		"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then start the task over",
+		holder.Slot, holder.Sandbox, taskToRerun.ID, nukeCommand, holder.Slot,
+	)
+}
+
+// formatStatuses lists task statuses for an error message.
+func formatStatuses(statuses []task.TaskStatus) string {
+	quoted := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		quoted = append(quoted, fmt.Sprintf("%q", status))
+	}
+	return strings.Join(quoted, " and ")
+}
+
+// launch is the path both a run and a rerun go down. It resolves the prompt,
+// claims a Drudger, makes sure its sandbox is there, clears the run directory
+// and starts the agent.
+func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, workspace string, dryRun bool) error {
+	// Callers resolve the task before they get here, so this is its full id
+	// whatever prefix a user typed.
+	taskID := taskToRun.ID
 
 	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
 	if err != nil {
@@ -83,10 +191,6 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return fmt.Errorf("%s: %w", promptSource, err)
 	}
 
-	workspace, err := common.WorkDir()
-	if err != nil {
-		return fmt.Errorf("could not work out where to run task %s: %w", taskID, err)
-	}
 	runDir := common.RunDir(workspace, string(taskID))
 
 	if dryRun {

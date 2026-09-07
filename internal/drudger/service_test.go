@@ -1173,3 +1173,229 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 		t.Errorf("expected the previous refusal to be cleared, got %q as %q", taskToRun.VendorError, taskToRun.VendorErrorClass)
 	}
 }
+
+func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
+	cases := []struct {
+		name   string
+		status task.TaskStatus
+		// finishedRun says whether the task has a run directory holding a run
+		// that is over, which is what an in-progress task needs to start again.
+		finishedRun bool
+		wantErr     bool
+	}{
+		{name: "reruns an in-progress task whose Session is over", status: task.StatusInProgress, finishedRun: true},
+		{name: "reruns a fucked-up task", status: task.StatusFuckedUp},
+		{name: "refuses a draft task", status: task.StatusDraft, wantErr: true},
+		{name: "refuses a todo task", status: task.StatusTodo, wantErr: true},
+		{name: "refuses a done task", status: task.StatusDone, wantErr: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			taskToRerun := todoTask()
+			taskToRerun.Status = testCase.status
+			if testCase.finishedRun {
+				finishSession(t, workspace, taskToRerun.ID)
+			}
+
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+
+			var err error
+			out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for status %q", testCase.status)
+				}
+				if !strings.Contains(err.Error(), string(testCase.status)) {
+					t.Errorf("expected the error to name status %q, got %q", testCase.status, err)
+				}
+				if len(commands.calls) != 0 {
+					t.Errorf("expected a refused rerun to run nothing, got %v", commands.subcommands())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if taskToRerun.Status != task.StatusInProgress {
+				t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRerun.Status)
+			}
+			if taskToRerun.StartedAt.IsZero() {
+				t.Error("expected started at to be stamped")
+			}
+			if !strings.Contains(out, string(testCase.status)) {
+				t.Errorf("expected the rerun to say the task was %q, got %q", testCase.status, out)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRerun := todoTask()
+	taskToRerun.Status = task.StatusInProgress
+
+	// A stream with no exit file beside it is an agent that is still writing.
+	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	writeStream(t, runDir, initEvent)
+
+	working := idleDrudger(1)
+	working.TaskID = taskToRerun.ID
+
+	commands := &fakeCommandRunner{workspace: workspace}
+	service := newTestServiceWithPool(
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		commands,
+		[]*Drudger{working},
+		taskToRerun,
+	)
+
+	var err error
+	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	if err == nil {
+		t.Fatal("expected a rerun of a task with a working agent to be refused")
+	}
+	for _, want := range []string{testSandbox, string(taskToRerun.ID), nukeCommand} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected the error to name %q, got %q", want, err)
+		}
+	}
+
+	if len(commands.calls) != 0 {
+		t.Errorf("expected a refused rerun to launch nothing, got %v", commands.subcommands())
+	}
+	if !taskToRerun.StartedAt.IsZero() {
+		t.Error("expected the task record to be left alone")
+	}
+
+	report, err := readSessionReport(runDir, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("could not read the run directory: %v", err)
+	}
+	if report.Status != StatusWorking {
+		t.Errorf("expected the run directory to be left alone, got %q", report.Status)
+	}
+}
+
+func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRerun := todoTask()
+	taskToRerun.Status = task.StatusFuckedUp
+	taskToRerun.SessionResult = "gave up"
+	taskToRerun.SessionTurns = 12
+	taskToRerun.FinishedAt = time.Now().UTC()
+
+	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	writeStream(t, runDir, initEvent, resultEvent)
+	writeExit(t, runDir, "1\n")
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+
+	var err error
+	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	report, err := readSessionReport(runDir, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("could not read the run directory: %v", err)
+	}
+	if report.Status != StatusWorking {
+		t.Errorf("expected the new run to read as %q, got %q", StatusWorking, report.Status)
+	}
+	if report.Result != nil {
+		t.Errorf("expected the terminal event of the previous run to be gone, got %+v", report.Result)
+	}
+
+	if !taskToRerun.FinishedAt.IsZero() {
+		t.Error("expected the finish time of the previous run to be cleared")
+	}
+	if taskToRerun.SessionResult != "" || taskToRerun.SessionTurns != 0 {
+		t.Errorf("expected the previous outcome to be cleared, got %q in %d turns", taskToRerun.SessionResult, taskToRerun.SessionTurns)
+	}
+}
+
+func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error on the first run: %v", err)
+	}
+	firstRun := slices.Clone(commands.calls)
+
+	// The agent finishes and the task ends up fucked up, which is what a rerun
+	// is for. Forgetting the calls of the first run starts the fake over.
+	finishSession(t, workspace, taskToRun.ID)
+	taskToRun.Status = task.StatusFuckedUp
+	commands.calls = nil
+	commands.started = nil
+
+	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error on the rerun: %v", err)
+	}
+
+	if !slices.EqualFunc(firstRun, commands.calls, slices.Equal) {
+		t.Errorf("expected a rerun to make the same sbx calls as a run, got %v after %v", commands.calls, firstRun)
+	}
+}
+
+func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRerun := todoTask()
+	taskToRerun.Status = task.StatusFuckedUp
+
+	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	writeStream(t, runDir, initEvent, resultEvent)
+	writeExit(t, runDir, "0\n")
+
+	commands := &fakeCommandRunner{workspace: workspace}
+	service := newTestServiceWithPool(
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		commands,
+		[]*Drudger{busyDrudger(1)},
+		taskToRerun,
+	)
+
+	var err error
+	out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, true) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// A dry run still says which Drudger the real rerun would take.
+	if !strings.Contains(out, testSandboxSlot2) {
+		t.Errorf("expected the dry run to name sandbox %q, got %q", testSandboxSlot2, out)
+	}
+	if len(commands.calls) != 0 {
+		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
+	}
+	if held := service.drudgers.holderOf(taskToRerun.ID); held != nil {
+		t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
+	}
+	if taskToRerun.Status != task.StatusFuckedUp {
+		t.Errorf("expected the task to stay %q, got %q", task.StatusFuckedUp, taskToRerun.Status)
+	}
+
+	report, err := readSessionReport(runDir, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("could not read the run directory: %v", err)
+	}
+	if report.Status != StatusGotShitDone {
+		t.Errorf("expected the previous run to be left alone, got %q", report.Status)
+	}
+}

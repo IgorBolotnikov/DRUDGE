@@ -13,10 +13,14 @@ import (
 func TestParseTaskRunArgs(t *testing.T) {
 	cases := []struct {
 		name       string
+		subcommand string
+		usage      string
 		args       []string
 		wantTaskID task.TaskID
 		wantDryRun bool
 		wantErr    bool
+		// wantErrText is a fragment the error must carry, checked when set.
+		wantErrText string
 	}{
 		{
 			name:       "task ID only",
@@ -55,15 +59,43 @@ func TestParseTaskRunArgs(t *testing.T) {
 			args:    []string{"abc123", "def456"},
 			wantErr: true,
 		},
+		{
+			name:        "the error names the subcommand the user typed",
+			subcommand:  rerunSubcommand,
+			usage:       taskRerunUsage,
+			args:        []string{"abc123", "def456"},
+			wantErr:     true,
+			wantErrText: "drg task rerun",
+		},
+		{
+			name:       "rerun takes the same arguments",
+			subcommand: rerunSubcommand,
+			usage:      taskRerunUsage,
+			args:       []string{"abc123", "--dry-run"},
+			wantTaskID: "abc123",
+			wantDryRun: true,
+		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			taskID, dryRun, err := parseTaskRunArgs(testCase.args)
+			subcommand := testCase.subcommand
+			if subcommand == "" {
+				subcommand = runSubcommand
+			}
+			usage := testCase.usage
+			if usage == "" {
+				usage = taskRunUsage
+			}
+
+			taskID, dryRun, err := parseTaskRunArgs(testCase.args, subcommand, usage)
 
 			if testCase.wantErr {
 				if err == nil {
 					t.Fatalf("expected an error, got task ID %q and dry run %v", taskID, dryRun)
+				}
+				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
+					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
 				}
 				return
 			}
