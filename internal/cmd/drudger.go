@@ -91,7 +91,7 @@ func drudgerList(args []string) error {
 
 	columns := []column{
 		{Title: "SLOT", Width: 4},
-		{Title: "SANDBOX", Width: 40},
+		{Title: "DRUDGER", Width: 40},
 		{Title: "TASK", Width: task.ShortIDLength},
 		{Title: "HEALTH", Width: healthColumnWidth},
 		{Title: "LAST CHECKED"},

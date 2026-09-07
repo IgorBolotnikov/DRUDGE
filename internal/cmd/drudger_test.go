@@ -129,7 +129,7 @@ func TestDrudgerList(t *testing.T) {
 			name:       "no Drudgers yet",
 			pool:       nil,
 			wantLines:  []string{"has no Drudgers"},
-			wantAbsent: []string{"SLOT", "SANDBOX", "HEALTH"},
+			wantAbsent: []string{"SLOT", "DRUDGER", "HEALTH"},
 		},
 	}
 
