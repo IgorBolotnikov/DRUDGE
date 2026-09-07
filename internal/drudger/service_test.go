@@ -21,6 +21,10 @@ const (
 	testSandboxSlot2 = "drudge-claude-test-project-2"
 
 	runWorkspace = "{{workspace}}"
+
+	// stoppedSandboxStatus is the sbx status of a sandbox with nothing running
+	// in it.
+	stoppedSandboxStatus = "stopped"
 )
 
 type fakeTaskRepo struct {
@@ -75,17 +79,62 @@ type fakeCommandRunner struct {
 	stderrs   []string
 	errs      []error
 	// onStart stands in for the agent, which writes to its run directory only
-	// once it has been started.
+	// after it is started. A runner without one writes an init event, which is
+	// what a real agent writes first.
 	onStart func()
+	// silentAgent stands for a start that forked and died, leaving an empty
+	// run directory behind.
+	silentAgent bool
 }
 
 func (runner *fakeCommandRunner) Start(argv []string) error {
 	runner.started = append(runner.started, argv)
 	_, _, err := runner.Run(argv)
-	if runner.onStart != nil {
-		runner.onStart()
+	if err != nil {
+		return err
 	}
-	return err
+	switch {
+	case runner.onStart != nil:
+		runner.onStart()
+	case !runner.silentAgent:
+		writeInitEventOf(argv)
+	}
+	return nil
+}
+
+// writeInitEventOf writes an init event into the stream file that a launcher
+// script redirects its agent to.
+func writeInitEventOf(argv []string) {
+	path := streamPathIn(argv)
+	if path == "" {
+		return
+	}
+	_ = os.WriteFile(path, []byte(initEvent+"\n"), common.DefaultFilePerm)
+}
+
+// streamPathIn reads the event stream path out of a launcher script. The
+// script redirects its agent on the second line, and the stream is the first
+// of the two redirects.
+func streamPathIn(argv []string) string {
+	lines := strings.Split(argv[len(argv)-1], "\n")
+	if len(lines) < 2 {
+		return ""
+	}
+	_, redirected, found := strings.Cut(lines[1], " > ")
+	if !found {
+		return ""
+	}
+	quoted, _, found := strings.Cut(redirected, " 2> ")
+	if !found {
+		return ""
+	}
+	return shellUnquote(quoted)
+}
+
+// shellUnquote turns a value the launcher quoted back into the path it names.
+func shellUnquote(quoted string) string {
+	bare := strings.TrimSuffix(strings.TrimPrefix(quoted, "'"), "'")
+	return strings.ReplaceAll(bare, `'\''`, "'")
 }
 
 func (runner *fakeCommandRunner) Run(argv []string) (string, string, error) {
@@ -222,8 +271,10 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	logger := common.NewLogger("")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
 	service := New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), drudgers, commands)
-	// A retry is exercised for what it does, not for how long it waits.
+	// Tests check what a retry and a grace period do. Sitting through the real
+	// durations adds nothing.
 	service.daemonRetryDelay = 0
+	service.launchGrace = 0
 	return &testService{
 		DrudgerService: service,
 		drudgers:       drudgers,
@@ -294,23 +345,31 @@ func inWorkspace(value, workspace string) string {
 }
 
 func sandboxListingWith(names ...string) string {
+	return sandboxListingIn(sbxStatusRunning, names...)
+}
+
+func sandboxListingStopped(names ...string) string {
+	return sandboxListingIn(stoppedSandboxStatus, names...)
+}
+
+func sandboxListingIn(status string, names ...string) string {
 	entries := make([]string, 0, len(names))
 	for _, name := range names {
-		entries = append(entries, sandboxEntry(name, runWorkspace))
+		entries = append(entries, sandboxEntry(name, status, runWorkspace))
 	}
 	return sandboxListingOf(entries...)
 }
 
 func sandboxListingMountedOn(name string, mounts ...string) string {
-	return sandboxListingOf(sandboxEntry(name, mounts...))
+	return sandboxListingOf(sandboxEntry(name, sbxStatusRunning, mounts...))
 }
 
-func sandboxEntry(name string, mounts ...string) string {
+func sandboxEntry(name string, status string, mounts ...string) string {
 	quoted := make([]string, 0, len(mounts))
 	for _, mount := range mounts {
 		quoted = append(quoted, fmt.Sprintf("%q", mount))
 	}
-	return fmt.Sprintf(`{"name":%q,"workspaces":[%s]}`, name, strings.Join(quoted, ","))
+	return fmt.Sprintf(`{"name":%q,"status":%q,"workspaces":[%s]}`, name, status, strings.Join(quoted, ","))
 }
 
 func sandboxListingOf(entries ...string) string {
@@ -407,8 +466,8 @@ func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
 	if claimed.LastChecked.IsZero() {
 		t.Error("expected last checked to be stamped")
 	}
-	if taskToRun.SessionID != "" {
-		t.Errorf("expected no session id to be recorded, got %q", taskToRun.SessionID)
+	if taskToRun.SessionID != sampleSessionID {
+		t.Errorf("expected session id %q, got %q", sampleSessionID, taskToRun.SessionID)
 	}
 }
 
@@ -416,12 +475,11 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 	cases := []struct {
 		name string
 		// lines stand for what the agent has written to its stream by the time
-		// the launch returns. Nothing there is the usual case, since an agent
-		// takes a moment to start up.
+		// the launch returns.
 		lines []string
 		want  string
 	}{
-		{name: "the agent has not started writing yet"},
+		{name: "the agent is halfway through its first event", lines: []string{`{"type":"system","subty`}},
 		{name: "the agent has written its init event", lines: []string{initEvent}, want: sampleSessionID},
 	}
 
@@ -584,11 +642,13 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 	spawnErr := fmt.Errorf("sbx: no such binary")
 
 	cases := []struct {
-		name       string
-		outputs    []string
-		errs       []error
-		wantRuns   int
-		wantRunDir bool
+		name    string
+		outputs []string
+		errs    []error
+		// silentAgent stands for a launch that forked and died without
+		// starting an agent.
+		silentAgent bool
+		wantRuns    int
 	}{
 		{
 			name:     "the listing fails",
@@ -607,11 +667,16 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			wantRuns: 2,
 		},
 		{
-			name:       "starting the agent fails",
-			outputs:    []string{sandboxListingWith(testSandbox)},
-			errs:       []error{nil, spawnErr},
-			wantRuns:   2,
-			wantRunDir: true,
+			name:     "starting the agent fails",
+			outputs:  []string{sandboxListingWith(testSandbox)},
+			errs:     []error{nil, spawnErr},
+			wantRuns: 2,
+		},
+		{
+			name:        "the agent never comes up",
+			outputs:     []string{sandboxListingWith(testSandbox)},
+			silentAgent: true,
+			wantRuns:    2,
 		},
 	}
 
@@ -619,7 +684,12 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{workspace: workspace, outputs: testCase.outputs, errs: testCase.errs}
+			commands := &fakeCommandRunner{
+				workspace:   workspace,
+				outputs:     testCase.outputs,
+				errs:        testCase.errs,
+				silentAgent: testCase.silentAgent,
+			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
@@ -638,12 +708,14 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 				t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
 			}
 
+			// A launch creates the run directory before the sandbox steps, so
+			// it is there whatever fails afterwards.
 			exists, err := common.Exists(common.RunDir(workspace, string(taskToRun.ID)))
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
-			if exists != testCase.wantRunDir {
-				t.Errorf("expected the run directory to exist %t, got %t", testCase.wantRunDir, exists)
+			if !exists {
+				t.Error("expected the run directory of the claimed slot to be there")
 			}
 		})
 	}
@@ -1295,6 +1367,40 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 	}
 }
 
+func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRerun := todoTask()
+	taskToRerun.Status = task.StatusInProgress
+
+	// The agent died without writing an exit file, so its run directory reads
+	// as unfinished. A reclaim has already cleared its slot, and that idle
+	// slot is what says the agent is gone.
+	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	writeStream(t, runDir, initEvent)
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWithPool(
+		&config.LocalConfig{ProjectSlug: testProjectSlug},
+		config.DefaultConfig(),
+		commands,
+		[]*Drudger{idleDrudger(1)},
+		taskToRerun,
+	)
+
+	var err error
+	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if taskToRerun.Status != task.StatusInProgress {
+		t.Errorf("expected the task to be handed to an agent again, got %q", taskToRerun.Status)
+	}
+	if held := service.drudgers.holderOf(taskToRerun.ID); held == nil {
+		t.Errorf("expected a Drudger to hold the task again, got pool %v", service.drudgers.drudgers)
+	}
+}
+
 func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 	workspace := setupWorkspace(t)
 	taskToRerun := todoTask()
@@ -1595,7 +1701,8 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			}
 
 			pool := []*Drudger{idleDrudger(2), claimed}
-			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+			commands := &fakeCommandRunner{}
+			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
 			service.drudgers.lockHeld = testCase.lockHeld
 
 			var listed []*Drudger
@@ -1603,6 +1710,12 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug) })
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// A list reads run directories and runs no commands, which keeps
+			// it fast.
+			if len(commands.calls) != 0 {
+				t.Errorf("expected a list to run no commands, got %v", commands.subcommands())
 			}
 
 			if len(listed) != 2 {
@@ -1650,6 +1763,233 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 				t.Errorf("expected an idle Drudger to be left alone, got last checked %s", idle.LastChecked)
 			}
 		})
+	}
+}
+
+func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
+	cases := []struct {
+		name string
+		// stream is what the agent of the claimed task wrote, and exit is what
+		// it exited with. noExitFile stands for a Session that has not ended.
+		stream []string
+		exit   string
+		// noRunDir stands for a claim whose run directory was never created.
+		noRunDir bool
+		// heldFor is how long the slot has been claimed. It defaults to an
+		// hour, which is well past the grace period.
+		heldFor time.Duration
+		// listing is what the sandbox listing says.
+		listing string
+
+		// wantReason is the condition that freed the slot, empty when nothing
+		// was freed.
+		wantReason string
+		// wantHolds says whether the Drudger still holds its task afterwards.
+		wantHolds bool
+		wantAgent AgentHealth
+	}{
+		{
+			name:      "an agent that is working keeps its slot",
+			stream:    []string{initEvent, assistantEvent},
+			exit:      noExitFile,
+			listing:   sandboxListingWith(testSandbox),
+			wantHolds: true,
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:      "an agent that has gone quiet keeps its slot",
+			stream:    []string{initEvent},
+			exit:      noExitFile,
+			listing:   sandboxListingWith(testSandbox),
+			wantHolds: true,
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:       "an agent whose sandbox stopped loses its slot",
+			stream:     []string{initEvent, assistantEvent},
+			exit:       noExitFile,
+			listing:    sandboxListingStopped(testSandbox),
+			wantReason: stuckSandboxNotRunning,
+			wantAgent:  AgentUnchecked,
+		},
+		{
+			name:       "an agent whose sandbox is gone loses its slot",
+			stream:     []string{initEvent, assistantEvent},
+			exit:       noExitFile,
+			listing:    sandboxListingWith(),
+			wantReason: stuckSandboxNotRunning,
+			wantAgent:  AgentUnchecked,
+		},
+		{
+			name:      "a launch still building its sandbox keeps its slot",
+			exit:      noExitFile,
+			listing:   sandboxListingWith(),
+			wantHolds: true,
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:       "a claim with no run directory loses its slot",
+			noRunDir:   true,
+			listing:    sandboxListingWith(testSandbox),
+			wantReason: stuckNoRunDirectory,
+			wantAgent:  AgentUnchecked,
+		},
+		{
+			name:      "a claim with no run directory yet keeps its slot",
+			noRunDir:  true,
+			heldFor:   time.Second,
+			listing:   sandboxListingWith(testSandbox),
+			wantHolds: true,
+			wantAgent: AgentUnchecked,
+		},
+		{
+			name:      "a Session that has ended frees its slot the ordinary way",
+			stream:    []string{initEvent, resultEvent},
+			exit:      "0\n",
+			listing:   sandboxListingWith(testSandbox),
+			wantAgent: AgentReady,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+
+			heldFor := testCase.heldFor
+			if heldFor == 0 {
+				heldFor = time.Hour
+			}
+			claimedAt := time.Now().UTC().Add(-heldFor)
+
+			claimed := busyDrudger(1)
+			claimed.SandboxHealth = SandboxUsable
+			claimed.LastChecked = claimedAt
+
+			if !testCase.noRunDir {
+				runDir := common.RunDir(workspace, string(claimed.TaskID))
+				writeStream(t, runDir, testCase.stream...)
+				if testCase.exit != noExitFile {
+					writeExit(t, runDir, testCase.exit)
+				}
+			}
+
+			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{testCase.listing}}
+			pool := []*Drudger{claimed, idleDrudger(2)}
+			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
+
+			var freed []FreedSlot
+			var err error
+			captureOutput(func() { freed, err = service.ReclaimDrudgers(testProjectSlug) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// A Session with an exit file is freed by reclaimFinished and
+			// stays out of the report.
+			if testCase.wantReason == "" {
+				if len(freed) != 0 {
+					t.Fatalf("expected nothing to be reported as taken back, got %v", freed)
+				}
+			} else {
+				if len(freed) != 1 {
+					t.Fatalf("expected one slot to be reported as taken back, got %v", freed)
+				}
+				if freed[0].Slot != 1 || freed[0].TaskID != busyTaskID(1) || freed[0].Sandbox != testSandbox {
+					t.Errorf("expected the report to name Drudger 1 and its task, got %+v", freed[0])
+				}
+				if freed[0].Reason != testCase.wantReason {
+					t.Errorf("expected reason %q, got %q", testCase.wantReason, freed[0].Reason)
+				}
+			}
+
+			var wantTask task.TaskID
+			if testCase.wantHolds {
+				wantTask = busyTaskID(1)
+			}
+
+			recorded := service.drudgers.atSlot(1)
+			if recorded.TaskID != wantTask {
+				t.Errorf("expected the record to hold task %q, got %q", wantTask, recorded.TaskID)
+			}
+			if recorded.AgentHealth != testCase.wantAgent {
+				t.Errorf("expected agent health %q, got %q", testCase.wantAgent, recorded.AgentHealth)
+			}
+			// A reclaim writes TaskID and LastChecked, and leaves every other
+			// field alone.
+			if recorded.SandboxHealth != SandboxUsable {
+				t.Errorf("expected sandbox health %q to be left alone, got %q", SandboxUsable, recorded.SandboxHealth)
+			}
+
+			idle := service.drudgers.atSlot(2)
+			if !idle.Idle() || !idle.LastChecked.IsZero() {
+				t.Errorf("expected an idle Drudger to be left alone, got %+v", idle)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
+	workspace := setupWorkspace(t)
+
+	held := todoTask()
+	held.Status = task.StatusInProgress
+	claimed := busyDrudger(1)
+	claimed.TaskID = held.ID
+	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
+
+	runDir := common.RunDir(workspace, string(held.ID))
+	writeStream(t, runDir, initEvent, assistantEvent)
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingStopped(testSandbox)}}
+	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed}, held)
+
+	var freed []FreedSlot
+	var err error
+	captureOutput(func() { freed, err = service.ReclaimDrudgers(testProjectSlug) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(freed) != 1 {
+		t.Fatalf("expected the stuck slot to be taken back, got %v", freed)
+	}
+
+	if held.Status != task.StatusInProgress {
+		t.Errorf("expected the task to be left %q, got %q", task.StatusInProgress, held.Status)
+	}
+	if !held.FinishedAt.IsZero() {
+		t.Error("expected the task to be left without a finish time")
+	}
+
+	// The run directory holds what the dead agent wrote, and a reclaim does
+	// not touch it.
+	present, err := common.Exists(runDir)
+	if err != nil {
+		t.Fatalf("could not check the run directory: %v", err)
+	}
+	if !present {
+		t.Error("expected the run directory to be left where it is")
+	}
+}
+
+func TestDrudgerService_ReclaimDrudgers_RefusesToGuessWithoutAListing(t *testing.T) {
+	setupWorkspace(t)
+
+	claimed := busyDrudger(1)
+	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
+	commands := &fakeCommandRunner{errs: []error{fmt.Errorf("sbx: no such binary")}}
+	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed})
+
+	var err error
+	captureOutput(func() { _, err = service.ReclaimDrudgers(testProjectSlug) })
+	if err == nil {
+		t.Fatal("expected a listing that failed to stop the reclaim")
+	}
+	if !strings.Contains(err.Error(), "could not list the sandboxes") {
+		t.Errorf("expected the error to name the listing, got %q", err)
+	}
+
+	if service.drudgers.atSlot(1).Idle() {
+		t.Error("expected the claim to be left alone when nothing could be checked")
 	}
 }
 

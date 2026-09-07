@@ -91,6 +91,19 @@ func readOutcome(runDir string) (streamOutcome, error) {
 	return readStream(runDir, outcomeFromStream)
 }
 
+// streamHasContent reports whether the agent has written anything at all to
+// its event stream.
+func streamHasContent(runDir string) (bool, error) {
+	stream, err := os.Stat(common.RunStreamPath(runDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("could not check the event stream of run directory %s: %w", runDir, err)
+	}
+	return stream.Size() > 0, nil
+}
+
 // readStream opens the event stream of a run directory and hands it to a
 // reader. A run directory with no stream file yet gets the zero value, since
 // an agent that has not written anything is the normal state right after a

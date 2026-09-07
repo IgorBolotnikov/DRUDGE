@@ -19,9 +19,10 @@ var DrudgerCmd = &Cmd{
 }
 
 const (
-	drudgerUsage     = "usage: drg drudger <subcommand>"
-	drudgerListUsage = "usage: drg drudger list"
-	drudgerNukeUsage = "usage: drg drudger nuke <slot> [" + forceFlagShort + "]"
+	drudgerUsage        = "usage: drg drudger <subcommand>"
+	drudgerListUsage    = "usage: drg drudger list"
+	drudgerNukeUsage    = "usage: drg drudger nuke <slot> [" + forceFlagShort + "]"
+	drudgerReclaimUsage = "usage: drg drudger reclaim"
 
 	idleLabel = "idle"
 
@@ -61,6 +62,8 @@ func runDrudger(args []string) error {
 		return drudgerList(args[1:])
 	case "nuke":
 		return drudgerNuke(args[1:])
+	case "reclaim":
+		return drudgerReclaim(args[1:])
 	default:
 		return fmt.Errorf("unknown drudger subcommand: %s", args[0])
 	}
@@ -109,6 +112,49 @@ func drudgerList(args []string) error {
 	}
 
 	printList(deps.log, "Drudgers", columns, rows)
+	return nil
+}
+
+// drudgerReclaim frees the Drudger slots whose agent is gone.
+func drudgerReclaim(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(drudgerReclaimUsage)
+		fmt.Println()
+		fmt.Println("Free the Drudger slots that are still claimed by an agent that is gone.")
+		fmt.Println()
+		fmt.Println("A Drudger frees its slot when its agent writes an exit file. An agent killed")
+		fmt.Println("before that leaves the slot claimed, and a claimed slot counts against the")
+		fmt.Println("concurrency limit.")
+		fmt.Println()
+		fmt.Println("This only rewrites the Drudgers file. No process is killed, no sandbox is")
+		fmt.Println("removed and the tasks those slots held keep their status, so start one over")
+		fmt.Printf("with %s.\n", taskRerunCommand)
+		return nil
+	}
+
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected argument %q, %s", args[0], drudgerReclaimUsage)
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	freed, err := deps.drudger.ReclaimDrudgers(deps.localCfg.ProjectSlug)
+	if err != nil {
+		return err
+	}
+
+	if len(freed) == 0 {
+		deps.log.Info("Every Drudger of project %s is either idle or working, nothing to reclaim", deps.localCfg.ProjectSlug)
+		return nil
+	}
+
+	for _, entry := range freed {
+		deps.log.Info("Drudger %d (%s) was holding task %s with no agent in it, %s", entry.Slot, entry.Sandbox, shortTaskID(entry.TaskID), entry.Reason)
+	}
+	deps.log.Info("Those slots are free. Start a task over with %s <task-id>.", taskRerunCommand)
 	return nil
 }
 

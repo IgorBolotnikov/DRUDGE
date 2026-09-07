@@ -43,6 +43,10 @@ const (
 	rerunSubcommand = "rerun"
 )
 
+// taskRerunCommand is what a user types to start a task over. Other commands
+// name it when starting a task over is the next step.
+const taskRerunCommand = "drg task rerun"
+
 // taskTitleWidth is how much room a listing gives a task title.
 const taskTitleWidth = 40
 

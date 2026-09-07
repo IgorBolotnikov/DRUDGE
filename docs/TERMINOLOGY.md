@@ -6,7 +6,7 @@ The words below mean exactly one thing each. Use them in code, docs, commit mess
 
 An agent running in a reusable sandbox that does the work. One Drudger is one agent in one sandbox.
 
-A Drudger is either occupied with a Task or idle. It goes idle when a Session ends, whether that Session got shit done or fucked up, and it stays around afterwards ready for the next Task. Drudgers are created as they are needed and live until the pool is deliberately shrunk.
+A Drudger is either occupied with a Task or idle. It goes idle when a Session ends, whether that Session got shit done or fucked up, and it stays around afterwards ready for the next Task. An agent killed before its Session ends leaves the Drudger occupied by a Task with nothing working on it. Reclaiming puts that Drudger back to idle. Drudgers are created as they are needed and live until the pool is deliberately shrunk.
 
 The agent and the sandbox break independently, so a Drudger has one state for each of them. A perfectly good sandbox can hold a broken agent.
 

@@ -173,6 +173,16 @@ func TestDrudgerList_NoProjectInDirectory(t *testing.T) {
 	}
 }
 
+func TestDrudgerReclaim_BadArgs(t *testing.T) {
+	err := drudgerReclaim([]string{"1"})
+	if err == nil {
+		t.Fatal("expected an error for an argument the subcommand does not take")
+	}
+	if !strings.Contains(err.Error(), drudgerReclaimUsage) {
+		t.Errorf("expected the error to hold the usage, got %q", err)
+	}
+}
+
 func TestRunDrudger_BadArgs(t *testing.T) {
 	cases := []struct {
 		name string

@@ -40,6 +40,10 @@ const (
 	sbxHarnessClaude = "claude"
 	// This harness is to be implemented later
 	sbxHarnessOpencode = "opencode"
+
+	// sbxStatusRunning is the sandbox status that means a process can be
+	// running inside it. Every other status means nothing is.
+	sbxStatusRunning = "running"
 )
 
 // Pieces of the shell invocation that launches an agent inside a sandbox.
@@ -95,7 +99,25 @@ type sandboxListing struct {
 // sandbox is one entry of a sandbox listing.
 type sandbox struct {
 	Name       string   `json:"name"`
+	Status     string   `json:"status"`
 	Workspaces []string `json:"workspaces"`
+}
+
+// pickInspectCommand builds the command that lists the sandboxes of the
+// configured environment.
+func (service *DrudgerService) pickInspectCommand() ([]string, error) {
+	env := service.globalCfg.Drudger.Env
+
+	if env == config.EnvDockerSbx {
+		return sbxInspectCommand(), nil
+	}
+
+	return nil, fmt.Errorf("DRUDGE does not know how to list the sandboxes of environment %q, check the Drudger settings in the config", env)
+}
+
+// sbxInspectCommand lists the sandboxes of an sbx environment.
+func sbxInspectCommand() []string {
+	return []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag}
 }
 
 // pickDrudgerCommand builds the commands that ensure the sandbox exists and
@@ -106,7 +128,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
 		return sandboxPlan{
-			inspect: []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag},
+			inspect: sbxInspectCommand(),
 			create:  []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, sandboxName},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
@@ -166,6 +188,22 @@ func catPrompt(runDir string) string {
 // shellQuote wraps a value in single quotes so a shell reads it literally.
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// readRunningSandboxes maps each sandbox of a listing to whether it is
+// running. A sandbox the listing does not hold is absent from the map, which
+// reads as not running.
+func readRunningSandboxes(listing string) (map[string]bool, error) {
+	var parsed sandboxListing
+	if err := json.Unmarshal([]byte(listing), &parsed); err != nil {
+		return nil, fmt.Errorf("could not parse the sandbox listing: %w", err)
+	}
+
+	running := make(map[string]bool, len(parsed.Sandboxes))
+	for _, candidate := range parsed.Sandboxes {
+		running[candidate.Name] = candidate.Status == sbxStatusRunning
+	}
+	return running, nil
 }
 
 // findSandbox picks the named sandbox out of a sandbox listing. A nil result

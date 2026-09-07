@@ -247,6 +247,20 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 	return report, nil
 }
 
+// agentStarted reports whether a run has produced evidence that its agent
+// ran. Content in the event stream is that evidence. So is an exit file, which
+// the launcher script writes after the agent exits.
+func agentStarted(runDir string) (bool, error) {
+	written, err := streamHasContent(runDir)
+	if err != nil {
+		return false, err
+	}
+	if written {
+		return true, nil
+	}
+	return sessionFinished(runDir)
+}
+
 // sessionFinished reports whether a Session has stopped.
 func sessionFinished(runDir string) (bool, error) {
 	finished, err := common.Exists(common.RunExitPath(runDir))
