@@ -29,17 +29,26 @@ const (
 	neverLabel = "never"
 )
 
-// Labels for what drudge last saw of a Drudger's sandbox. A usable sandbox is
-// the normal case and stays quiet. A broken one is shouted so it stands out in
-// a listing of otherwise fine Drudgers.
+// Labels for what drudge last saw of a Drudger. A Drudger is an agent in a
+// sandbox, so the health column reports both parts. A part that is fine stays
+// quiet. A part drudge has not looked at yet says so plainly. A broken part is
+// shouted, so it stands out in a listing of otherwise fine Drudgers.
 const (
-	healthUsableLabel    = "ok"
-	healthGoneLabel      = "SANDBOX GONE"
-	healthMisplacedLabel = "WRONG WORKSPACE"
-	healthUnknownLabel   = "unchecked"
+	healthOkLabel        = "ok"
+	healthUncheckedLabel = "unchecked"
 
-	// healthColumnWidth fits the longest label.
-	healthColumnWidth = len(healthMisplacedLabel)
+	sandboxGoneLabel      = "SANDBOX GONE"
+	sandboxMisplacedLabel = "WRONG WORKSPACE"
+	sandboxUncheckedLabel = "sandbox unchecked"
+
+	agentRefusedLabel   = "AGENT REFUSED"
+	agentUncheckedLabel = "agent unchecked"
+
+	// healthPartSeparator joins the two parts when both have something to say.
+	healthPartSeparator = ", "
+
+	// healthColumnWidth fits the longest pair of labels.
+	healthColumnWidth = len(sandboxMisplacedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
 func runDrudger(args []string) error {
@@ -94,7 +103,7 @@ func drudgerList(args []string) error {
 			strconv.Itoa(entry.Slot),
 			entry.Sandbox,
 			occupyingTask(entry),
-			formatHealth(entry.Health),
+			formatHealth(entry),
 			formatAgo(entry.LastChecked, now),
 		})
 	}
@@ -164,16 +173,55 @@ func occupyingTask(entry *drudger.Drudger) string {
 	return shortTaskID(entry.TaskID)
 }
 
-func formatHealth(health drudger.Health) string {
+// formatHealth renders what drudge last saw of a Drudger. Only a Drudger whose
+// sandbox and agent are both fine reads as ok. Anything else names the part
+// that is at fault, so the reader knows which one to fix.
+func formatHealth(entry *drudger.Drudger) string {
+	// Both parts of a Drudger drudge has not looked at yet share one label.
+	if entry.SandboxHealth == drudger.SandboxUnchecked && entry.AgentHealth == drudger.AgentUnchecked {
+		return healthUncheckedLabel
+	}
+
+	parts := make([]string, 0, 2)
+	if label := sandboxHealthLabel(entry.SandboxHealth); label != "" {
+		parts = append(parts, label)
+	}
+	if label := agentHealthLabel(entry.AgentHealth); label != "" {
+		parts = append(parts, label)
+	}
+	if len(parts) == 0 {
+		return healthOkLabel
+	}
+	return strings.Join(parts, healthPartSeparator)
+}
+
+// sandboxHealthLabel names a sandbox that is not fine. A usable sandbox has
+// nothing to report and gets an empty label.
+func sandboxHealthLabel(health drudger.SandboxHealth) string {
 	switch health {
-	case drudger.HealthUsable:
-		return healthUsableLabel
-	case drudger.HealthGone:
-		return healthGoneLabel
-	case drudger.HealthMisplaced:
-		return healthMisplacedLabel
-	case drudger.HealthUnknown:
-		return healthUnknownLabel
+	case drudger.SandboxUsable:
+		return ""
+	case drudger.SandboxGone:
+		return sandboxGoneLabel
+	case drudger.SandboxMisplaced:
+		return sandboxMisplacedLabel
+	case drudger.SandboxUnchecked:
+		return sandboxUncheckedLabel
+	default:
+		return string(health)
+	}
+}
+
+// agentHealthLabel names an agent that is not fine. A ready agent has nothing
+// to report and gets an empty label.
+func agentHealthLabel(health drudger.AgentHealth) string {
+	switch health {
+	case drudger.AgentReady:
+		return ""
+	case drudger.AgentRefused:
+		return agentRefusedLabel
+	case drudger.AgentUnchecked:
+		return agentUncheckedLabel
 	default:
 		return string(health)
 	}

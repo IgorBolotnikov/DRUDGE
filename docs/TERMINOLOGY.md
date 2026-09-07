@@ -4,11 +4,16 @@ The words below mean exactly one thing each. Use them in code, docs, commit mess
 
 ## Drudger
 
-A reusable sandbox that does the work. One Drudger is one sandbox.
+An agent running in a reusable sandbox that does the work. One Drudger is one agent in one sandbox.
 
 A Drudger is either occupied with a Task or idle. It goes idle when a Session ends, whether that Session got shit done or fucked up, and it stays around afterwards ready for the next Task. Drudgers are created as they are needed and live until the pool is deliberately shrunk.
 
-A Drudger's own state is about the sandbox: usable, gone, or mounted on the wrong workspace. How the work inside it is going is not a Drudger question.
+The agent and the sandbox break independently, so a Drudger has one state for each of them. A perfectly good sandbox can hold an agent the vendor turned away.
+
+- **Sandbox health** is usable, gone, or mounted on the wrong workspace. It is learned from the sandbox listing every time a Drudger is put to work.
+- **Agent health** is ready or refused. Refused means the vendor turned the agent away, so it can do nothing until whatever the vendor named is fixed. It is learned from the Session a Drudger finished.
+
+A Drudger answers whether it is able to work. How the work itself is going is a Session question.
 
 ## Session
 
@@ -38,5 +43,5 @@ Task --- has had many Sessions, only the last is tracked ---> Session
 
 Two questions with two homes, and they never overlap:
 
-- **Is the Drudger usable?** Answered by the Drudger record.
+- **Is the Drudger able to work?** Answered by the Drudger record, in two parts: its sandbox and its agent.
 - **How is the work going?** Answered by the Session's run directory.

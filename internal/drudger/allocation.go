@@ -57,22 +57,45 @@ func (service *DrudgerService) releaseDrudger(projectSlug string, slot int, task
 	})
 }
 
-// recordHealth stores what drudge just saw of a Drudger's sandbox and records
-// when it looked.
-func (service *DrudgerService) recordHealth(projectSlug string, slot int, health Health) {
+// recordSandboxHealth stores what drudge just saw of a Drudger's sandbox and
+// records when it looked.
+func (service *DrudgerService) recordSandboxHealth(projectSlug string, slot int, health SandboxHealth) {
 	now := time.Now().UTC()
 
 	err := service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		for _, candidate := range drudgers {
 			if candidate.Slot == slot {
-				candidate.Health = health
+				candidate.SandboxHealth = health
 				candidate.LastChecked = now
 			}
 		}
 		return drudgers, nil
 	})
 	if err != nil {
-		service.logger.Error("Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+		service.logger.Error("The sandbox of Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+	}
+}
+
+// recordAgentHealth stores what a finished Session just said about the agent
+// that ran it and records when drudge looked.
+//
+// The Drudger holding the task is the one that ran it. Once that slot is freed
+// the link between the two is gone, so there is nothing left to record
+// against and the observation is dropped.
+func (service *DrudgerService) recordAgentHealth(projectSlug string, taskID task.TaskID, health AgentHealth) {
+	now := time.Now().UTC()
+
+	err := service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
+		holder := drudgerHoldingTask(drudgers, taskID)
+		if holder == nil {
+			return drudgers, nil
+		}
+		holder.AgentHealth = health
+		holder.LastChecked = now
+		return drudgers, nil
+	})
+	if err != nil {
+		service.logger.Error("The agent that ran task %s of project %s is %s, but that could not be recorded: %v", taskID, projectSlug, health, err)
 	}
 }
 

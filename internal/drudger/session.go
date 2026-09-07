@@ -14,8 +14,8 @@ import (
 )
 
 // SessionStatus is how the work of one Session is going. It answers a
-// different question from the Task's own status and from the Drudger's health,
-// hence its own type.
+// different question from the Task's own status and from what drudge last saw
+// of the Drudger, hence its own type.
 type SessionStatus string
 
 const (
@@ -120,11 +120,14 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 	return &TaskSession{Task: tracked, Report: report}, nil
 }
 
-// recordOutcome writes what a finished Session left behind onto its task.
+// recordOutcome writes what a finished Session left behind onto its task, and
+// what it says about the agent onto the Drudger that ran it.
 func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) error {
 	if !report.Finished() || !tracked.FinishedAt.IsZero() {
 		return nil
 	}
+
+	service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
 
 	if report.Status == StatusNeverGotGoing {
 		return service.rollBackRefusedRun(projectSlug, tracked, report)
@@ -186,6 +189,16 @@ func vendorErrorAdvice(class task.VendorErrorClass) string {
 	default:
 		return "Read the error above, fix what it names, then run the task again."
 	}
+}
+
+// agentHealthOf reads what a finished Session says about the agent that ran
+// it. An agent that failed the work still got through to the vendor, so only a
+// refusal means the agent itself cannot work.
+func agentHealthOf(status SessionStatus) AgentHealth {
+	if status == StatusNeverGotGoing {
+		return AgentRefused
+	}
+	return AgentReady
 }
 
 // taskStatusOf turns the status of a finished Session into the status of the

@@ -34,11 +34,12 @@ func TestDrudgerList(t *testing.T) {
 					Sandbox: "drudge-claude-test-project-2",
 				},
 				{
-					Slot:        1,
-					Sandbox:     "drudge-claude-test-project-1",
-					TaskID:      occupiedTaskID,
-					Health:      drudger.HealthUsable,
-					LastChecked: time.Now().UTC(),
+					Slot:          1,
+					Sandbox:       "drudge-claude-test-project-1",
+					TaskID:        occupiedTaskID,
+					SandboxHealth: drudger.SandboxUsable,
+					AgentHealth:   drudger.AgentReady,
+					LastChecked:   time.Now().UTC(),
 				},
 			},
 			wantLines: []string{
@@ -54,16 +55,18 @@ func TestDrudgerList(t *testing.T) {
 			name: "a broken sandbox stands out",
 			pool: []*drudger.Drudger{
 				{
-					Slot:        1,
-					Sandbox:     "drudge-claude-test-project-1",
-					Health:      drudger.HealthGone,
-					LastChecked: time.Now().UTC(),
+					Slot:          1,
+					Sandbox:       "drudge-claude-test-project-1",
+					SandboxHealth: drudger.SandboxGone,
+					AgentHealth:   drudger.AgentReady,
+					LastChecked:   time.Now().UTC(),
 				},
 				{
-					Slot:        2,
-					Sandbox:     "drudge-claude-test-project-2",
-					Health:      drudger.HealthMisplaced,
-					LastChecked: time.Now().UTC(),
+					Slot:          2,
+					Sandbox:       "drudge-claude-test-project-2",
+					SandboxHealth: drudger.SandboxMisplaced,
+					AgentHealth:   drudger.AgentReady,
+					LastChecked:   time.Now().UTC(),
 				},
 			},
 			wantLines: []string{
@@ -71,6 +74,56 @@ func TestDrudgerList(t *testing.T) {
 				"1", "drudge-claude-test-project-1", "SANDBOX GONE",
 				"2", "drudge-claude-test-project-2", "WRONG WORKSPACE",
 			},
+			wantAbsent: []string{"AGENT REFUSED"},
+		},
+		{
+			name: "a refused agent stands out on a sandbox that is fine",
+			pool: []*drudger.Drudger{
+				{
+					Slot:          1,
+					Sandbox:       "drudge-claude-test-project-1",
+					SandboxHealth: drudger.SandboxUsable,
+					AgentHealth:   drudger.AgentRefused,
+					LastChecked:   time.Now().UTC(),
+				},
+			},
+			wantLines: []string{
+				"HEALTH",
+				"1", "drudge-claude-test-project-1", "AGENT REFUSED",
+			},
+			// The sandbox is fine, so nothing in the row blames it.
+			wantAbsent: []string{"SANDBOX GONE", "WRONG WORKSPACE"},
+		},
+		{
+			name: "both parts broken names both",
+			pool: []*drudger.Drudger{
+				{
+					Slot:          1,
+					Sandbox:       "drudge-claude-test-project-1",
+					SandboxHealth: drudger.SandboxGone,
+					AgentHealth:   drudger.AgentRefused,
+					LastChecked:   time.Now().UTC(),
+				},
+			},
+			wantLines: []string{
+				"1", "drudge-claude-test-project-1", "SANDBOX GONE, AGENT REFUSED",
+			},
+		},
+		{
+			name: "a sandbox that is fine under an agent nobody has seen work",
+			pool: []*drudger.Drudger{
+				{
+					Slot:          1,
+					Sandbox:       "drudge-claude-test-project-1",
+					SandboxHealth: drudger.SandboxUsable,
+					LastChecked:   time.Now().UTC(),
+				},
+			},
+			wantLines: []string{
+				"1", "drudge-claude-test-project-1", "agent unchecked",
+			},
+			// Only both parts being fine reads as ok.
+			wantAbsent: []string{"ok"},
 		},
 		{
 			name:       "no Drudgers yet",
@@ -184,20 +237,28 @@ func TestParseDrudgerNukeArgs(t *testing.T) {
 
 func TestFormatHealth(t *testing.T) {
 	cases := []struct {
-		name   string
-		health drudger.Health
-		want   string
+		name    string
+		sandbox drudger.SandboxHealth
+		agent   drudger.AgentHealth
+		want    string
 	}{
-		{name: "never looked", health: drudger.HealthUnknown, want: "unchecked"},
-		{name: "the sandbox is fine", health: drudger.HealthUsable, want: "ok"},
-		{name: "the sandbox is not there", health: drudger.HealthGone, want: "SANDBOX GONE"},
-		{name: "the sandbox holds another repository", health: drudger.HealthMisplaced, want: "WRONG WORKSPACE"},
-		{name: "a value this build does not know", health: "hand-edited", want: "hand-edited"},
+		{name: "never looked at either part", want: "unchecked"},
+		{name: "both parts are fine", sandbox: drudger.SandboxUsable, agent: drudger.AgentReady, want: "ok"},
+		{name: "the sandbox is not there", sandbox: drudger.SandboxGone, agent: drudger.AgentReady, want: "SANDBOX GONE"},
+		{name: "the sandbox holds another repository", sandbox: drudger.SandboxMisplaced, agent: drudger.AgentReady, want: "WRONG WORKSPACE"},
+		{name: "the vendor turned the agent away", sandbox: drudger.SandboxUsable, agent: drudger.AgentRefused, want: "AGENT REFUSED"},
+		{name: "both parts are broken", sandbox: drudger.SandboxGone, agent: drudger.AgentRefused, want: "SANDBOX GONE, AGENT REFUSED"},
+		{name: "the agent has not been seen work yet", sandbox: drudger.SandboxUsable, want: "agent unchecked"},
+		{name: "the sandbox has not been looked at yet", agent: drudger.AgentReady, want: "sandbox unchecked"},
+		{name: "a sandbox value this build does not know", sandbox: "hand-edited", agent: drudger.AgentReady, want: "hand-edited"},
+		{name: "an agent value this build does not know", sandbox: drudger.SandboxUsable, agent: "hand-edited", want: "hand-edited"},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := formatHealth(testCase.health)
+			entry := &drudger.Drudger{SandboxHealth: testCase.sandbox, AgentHealth: testCase.agent}
+
+			got := formatHealth(entry)
 			if got != testCase.want {
 				t.Errorf("expected %q, got %q", testCase.want, got)
 			}

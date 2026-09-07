@@ -268,7 +268,8 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds the workspace of this run.
 //
-// What the listing says about the sandbox is recorded as the Drudger's health.
+// What the listing says about the sandbox is recorded as the Drudger's
+// sandbox health.
 func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, workspace string) error {
 	listing, err := service.listSandboxes(plan.inspect, claimed.Sandbox)
 	if err != nil {
@@ -282,18 +283,18 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 
 	if existing == nil {
 		if _, _, err := service.runSbx(plan.create); err != nil {
-			service.recordHealth(projectSlug, claimed.Slot, HealthGone)
+			service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxGone)
 			return fmt.Errorf("could not create sandbox %s: %w", claimed.Sandbox, err)
 		}
-		service.recordHealth(projectSlug, claimed.Slot, HealthUsable)
+		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxUsable)
 		return nil
 	}
 
 	if err := checkSandboxWorkspace(existing, workspace); err != nil {
-		service.recordHealth(projectSlug, claimed.Slot, HealthMisplaced)
+		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxMisplaced)
 		return err
 	}
-	service.recordHealth(projectSlug, claimed.Slot, HealthUsable)
+	service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxUsable)
 	return nil
 }
 

@@ -45,14 +45,20 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 		{
 			name: "an idle Drudger",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Health: drudger.HealthUsable, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentReady, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger whose sandbox is broken",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Health: drudger.HealthGone, LastChecked: lastChecked},
-				{Slot: 2, Sandbox: "drudge-claude-test-project-2", Health: drudger.HealthMisplaced, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxGone, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", SandboxHealth: drudger.SandboxMisplaced, LastChecked: lastChecked},
+			},
+		},
+		{
+			name: "a Drudger whose agent the vendor refused",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentRefused, LastChecked: lastChecked},
 			},
 		},
 		{
@@ -104,8 +110,11 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				if got.TaskID != want.TaskID {
 					t.Errorf("expected task %q, got %q", want.TaskID, got.TaskID)
 				}
-				if got.Health != want.Health {
-					t.Errorf("expected health %q, got %q", want.Health, got.Health)
+				if got.SandboxHealth != want.SandboxHealth {
+					t.Errorf("expected sandbox health %q, got %q", want.SandboxHealth, got.SandboxHealth)
+				}
+				if got.AgentHealth != want.AgentHealth {
+					t.Errorf("expected agent health %q, got %q", want.AgentHealth, got.AgentHealth)
 				}
 				if !got.LastChecked.Equal(want.LastChecked) {
 					t.Errorf("expected last checked %v, got %v", want.LastChecked, got.LastChecked)
