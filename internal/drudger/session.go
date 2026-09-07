@@ -13,9 +13,7 @@ import (
 	"drudge/internal/task"
 )
 
-// SessionStatus is how the work of one Session is going. It answers a
-// different question from the Task's own status and from what drudge last saw
-// of the Drudger, hence its own type.
+// SessionStatus is how the work of one Session is going.
 type SessionStatus string
 
 const (
@@ -192,8 +190,7 @@ func vendorErrorAdvice(class task.VendorErrorClass) string {
 }
 
 // agentHealthOf reads what a finished Session says about the agent that ran
-// it. An agent that failed the work still got through to the vendor, so only a
-// refusal means the agent itself cannot work.
+// it.
 func agentHealthOf(status SessionStatus) AgentHealth {
 	if status == StatusNeverGotGoing {
 		return AgentRefused

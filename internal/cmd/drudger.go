@@ -176,6 +176,8 @@ func occupyingTask(entry *drudger.Drudger) string {
 // formatHealth renders what drudge last saw of a Drudger. Only a Drudger whose
 // sandbox and agent are both fine reads as ok. Anything else names the part
 // that is at fault, so the reader knows which one to fix.
+//
+// TODO: move this to the drudger package to be reused in other UI layers.
 func formatHealth(entry *drudger.Drudger) string {
 	// Both parts of a Drudger drudge has not looked at yet share one label.
 	if entry.SandboxHealth == drudger.SandboxUnchecked && entry.AgentHealth == drudger.AgentUnchecked {

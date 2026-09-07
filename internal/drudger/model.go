@@ -10,8 +10,7 @@ import (
 // that run in it, and at any moment it is either occupied by one Task or idle.
 //
 // The agent and the sandbox break independently, so a Drudger has one state
-// for each of them. A sandbox that is perfectly fine can hold an agent the
-// vendor turned away.
+// for each of them.
 //
 // A Drudger record is a snapshot of what drudge last observed, not a live
 // view of the Drudger. LastChecked says how old that observation is.
@@ -24,8 +23,7 @@ type Drudger struct {
 	LastChecked   time.Time     // When drudge last looked at this Drudger
 }
 
-// SandboxHealth is what drudge last saw of a Drudger's sandbox. It is learned
-// from the sandbox listing every time a Drudger is put to work.
+// SandboxHealth is what drudge last saw of a Drudger's sandbox.
 type SandboxHealth string
 
 const (
@@ -41,16 +39,13 @@ const (
 )
 
 // AgentHealth is what drudge last saw of the agent inside a Drudger's sandbox.
-// It answers whether the agent can work at all, which is a different question
-// from how a Session is going. It is learned from the Session a Drudger
-// finished.
+// It answers whether the agent can work at all.
 type AgentHealth string
 
 const (
 	// AgentUnchecked means drudge has not seen this agent finish a Session yet.
 	AgentUnchecked AgentHealth = ""
 	// AgentReady means the agent got through to the vendor and did its work.
-	// Whether that work came to anything is a Session question.
 	AgentReady AgentHealth = "ready"
 	// AgentRefused means the vendor turned the agent away, so it can do
 	// nothing until whatever the vendor named is fixed.
