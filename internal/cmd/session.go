@@ -40,6 +40,9 @@ func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
 			sessionLine("Duration", result.Duration.Round(time.Second).String()),
 			sessionLine("Cost", fmt.Sprintf("$%.4f", result.CostUSD)),
 		)
+		if result.VendorErrorClass != "" {
+			lines = append(lines, sessionLine("Refused", string(result.VendorErrorClass)))
+		}
 		if result.Text != "" {
 			lines = append(lines, "", "The agent said:", "", result.Text)
 		}

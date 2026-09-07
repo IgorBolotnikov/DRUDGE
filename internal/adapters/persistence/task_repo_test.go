@@ -918,3 +918,97 @@ var outcomeMetaKeys = []string{
 	metaKeySessionDuration,
 	metaKeySessionCostUSD,
 }
+
+func TestTaskFrontMatter_VendorErrorRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	// Every case is why the vendor turned a task's last run away.
+	cases := []struct {
+		name        string
+		vendorError string
+		class       task.VendorErrorClass
+		// wantKeysInFile are the front matter keys the file should carry. A
+		// zero field is left out to have no empty entries in the file.
+		wantKeysInFile []string
+	}{
+		{
+			name:           "a run the vendor had no part in",
+			wantKeysInFile: nil,
+		},
+		{
+			name:           "credentials the vendor would not take",
+			vendorError:    "Failed to authenticate: OAuth session expired",
+			class:          task.VendorErrorAuth,
+			wantKeysInFile: []string{metaKeyVendorError, metaKeyVendorErrorClass},
+		},
+		{
+			name:           "a rate limit",
+			vendorError:    "Rate limit exceeded",
+			class:          task.VendorErrorRateLimit,
+			wantKeysInFile: []string{metaKeyVendorError, metaKeyVendorErrorClass},
+		},
+		{
+			name:           "an error the vendor wrote over several lines",
+			vendorError:    "Refused:\n\n- token expired\n---\n- log in again",
+			class:          task.VendorErrorUnknown,
+			wantKeysInFile: []string{metaKeyVendorError, metaKeyVendorErrorClass},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusTodo,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				VendorError:      testCase.vendorError,
+				VendorErrorClass: testCase.class,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if read.VendorError != written.VendorError {
+				t.Errorf("expected vendor error %q, got %q", written.VendorError, read.VendorError)
+			}
+			if read.VendorErrorClass != written.VendorErrorClass {
+				t.Errorf("expected vendor error class %q, got %q", written.VendorErrorClass, read.VendorErrorClass)
+			}
+			if read.Description != written.Description {
+				t.Errorf("expected the body %q, got %q", written.Description, read.Description)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			for _, key := range vendorErrorMetaKeys {
+				wanted := slices.Contains(testCase.wantKeysInFile, key)
+				// One key is a prefix of the other, so the entry is matched
+				// with the colon that follows it.
+				if strings.Contains(string(data), key+":") != wanted {
+					t.Errorf("expected %s in the file: %v", key, wanted)
+				}
+			}
+		})
+	}
+}
+
+// vendorErrorMetaKeys are every front matter key of a recorded vendor refusal.
+var vendorErrorMetaKeys = []string{
+	metaKeyVendorError,
+	metaKeyVendorErrorClass,
+}

@@ -17,6 +17,24 @@ const (
 	sampleSessionID = "ebe60e03-991c-44f9-861c-f9e779298552"
 )
 
+// Sample events of a run the vendor turned away. The agent reports the error
+// code on the turn it failed, and the terminal event names only the reason.
+const (
+	authRefusedText  = "Failed to authenticate: OAuth session expired and could not be refreshed"
+	rateLimitedText  = "Rate limit exceeded, try again later"
+	vendorOutageText = "The service is overloaded"
+
+	authRefusedEvent       = `{"type":"assistant","session_id":"ebe60e03-991c-44f9-861c-f9e779298552","message":{"content":[{"type":"text","text":"` + authRefusedText + `"}]},"error":"authentication_failed","is_api_error_message":true}`
+	authRefusedResultEvent = `{"type":"result","subtype":"success","is_error":true,"num_turns":1,"duration_ms":1200,"total_cost_usd":0,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","terminal_reason":"api_error","result":"` + authRefusedText + `"}`
+
+	rateLimitedEvent       = `{"type":"assistant","session_id":"ebe60e03-991c-44f9-861c-f9e779298552","message":{"content":[{"type":"text","text":"` + rateLimitedText + `"}]},"error":"rate_limit_error","is_api_error_message":true}`
+	rateLimitedResultEvent = `{"type":"result","subtype":"success","is_error":true,"num_turns":1,"duration_ms":800,"total_cost_usd":0,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","terminal_reason":"api_error","result":"` + rateLimitedText + `"}`
+
+	// A refusal the agent reported without an error code, which is a refusal
+	// drudge cannot tell apart from any other.
+	uncodedRefusalResultEvent = `{"type":"result","subtype":"success","is_error":true,"num_turns":1,"duration_ms":700,"total_cost_usd":0,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","terminal_reason":"api_error","result":"` + vendorOutageText + `"}`
+)
+
 func TestSessionIDFromStream(t *testing.T) {
 	cases := []struct {
 		name  string

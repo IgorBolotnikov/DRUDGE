@@ -39,6 +39,10 @@ const (
 	metaKeySessionDuration = "session_duration_ms"
 	metaKeySessionCostUSD  = "session_cost_usd"
 
+	// Keys of why the vendor turned the run away, when it did.
+	metaKeyVendorError      = "vendor_error"
+	metaKeyVendorErrorClass = "vendor_error_class"
+
 	metaKeyStartedAt  = "started_at"
 	metaKeyFinishedAt = "finished_at"
 	metaKeyCreatedAt  = "created_at"
@@ -131,6 +135,12 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.SessionCostUSD != 0 {
 		metadata[metaKeySessionCostUSD] = strconv.FormatFloat(taskToWrite.SessionCostUSD, 'f', -1, 64)
 	}
+	if taskToWrite.VendorError != "" {
+		metadata[metaKeyVendorError] = taskToWrite.VendorError
+	}
+	if taskToWrite.VendorErrorClass != "" {
+		metadata[metaKeyVendorErrorClass] = string(taskToWrite.VendorErrorClass)
+	}
 	if !taskToWrite.StartedAt.IsZero() {
 		metadata[metaKeyStartedAt] = taskToWrite.StartedAt.Format(time.RFC3339)
 	}
@@ -188,6 +198,12 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if sessionCostUSD, ok := metadata[metaKeySessionCostUSD]; ok {
 		t.SessionCostUSD, _ = strconv.ParseFloat(sessionCostUSD, 64)
+	}
+	if vendorError, ok := metadata[metaKeyVendorError]; ok {
+		t.VendorError = vendorError
+	}
+	if vendorErrorClass, ok := metadata[metaKeyVendorErrorClass]; ok {
+		t.VendorErrorClass = task.VendorErrorClass(vendorErrorClass)
 	}
 	if startedAt, ok := metadata[metaKeyStartedAt]; ok {
 		t.StartedAt, _ = time.Parse(time.RFC3339, startedAt)

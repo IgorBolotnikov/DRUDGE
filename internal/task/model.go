@@ -6,6 +6,8 @@ import "time"
 type (
 	TaskID     string // UUID
 	TaskStatus string
+	// VendorErrorClass is which kind of refusal a vendor made when it turned a run away
+	VendorErrorClass string
 )
 
 const (
@@ -14,6 +16,14 @@ const (
 	StatusInProgress = "in-progress"
 	StatusFuckedUp   = "fucked-up"
 	StatusDone       = "done"
+)
+
+// Kinds of vendor refusal. An empty class means the vendor refused nothing.
+const (
+	VendorErrorAuth      VendorErrorClass = "auth"
+	VendorErrorRateLimit VendorErrorClass = "rate limit"
+	VendorErrorOutage    VendorErrorClass = "outage"
+	VendorErrorUnknown   VendorErrorClass = "unknown" // A refusal drudge cannot tell apart
 )
 
 type Task struct {
@@ -39,6 +49,11 @@ type Task struct {
 	SessionDuration time.Duration // How long the agent worked
 	SessionCostUSD  float64       // What the run cost
 
+	// Why the vendor turned the last run away, when it did. A refused run did
+	// no work, so this is kept apart from what the agent reported.
+	VendorError      string           // What the vendor said when it refused the run
+	VendorErrorClass VendorErrorClass // Which kind of refusal that was
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -56,4 +71,6 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.SessionTurns = 0
 	taskToRun.SessionDuration = 0
 	taskToRun.SessionCostUSD = 0
+	taskToRun.VendorError = ""
+	taskToRun.VendorErrorClass = ""
 }

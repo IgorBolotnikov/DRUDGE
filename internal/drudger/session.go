@@ -28,6 +28,16 @@ const (
 	StatusFuckedUp SessionStatus = "fucked up"
 	// StatusGotShitDone means the agent finished the work it was given.
 	StatusGotShitDone SessionStatus = "got shit done"
+	// StatusNeverGotGoing means the vendor turned the agent away, so the work
+	// never started and the task is not at fault.
+	StatusNeverGotGoing SessionStatus = "never got going"
+)
+
+// Fragments of a vendor error code that say which kind of refusal it was.
+const (
+	authErrorFragment        = "auth"
+	rateLimitErrorFragment   = "rate_limit"
+	vendorOverloadedFragment = "overloaded"
 )
 
 // sessionStaleAfter is how long a running Session may write nothing before
@@ -59,11 +69,21 @@ type SessionResult struct {
 	Duration time.Duration // how long the agent worked
 	CostUSD  float64       // what the run cost
 	Text     string        // the last thing the agent said
+
+	// VendorErrorClass is which kind of refusal the vendor made. It is empty
+	// when the vendor refused nothing, so it is also the answer to whether the
+	// run was refused at all.
+	VendorErrorClass task.VendorErrorClass
 }
 
 // Finished reports whether the Session has stopped, whatever it left behind.
 func (report SessionReport) Finished() bool {
-	return report.Status == StatusFuckedUp || report.Status == StatusGotShitDone
+	switch report.Status {
+	case StatusFuckedUp, StatusGotShitDone, StatusNeverGotGoing:
+		return true
+	default:
+		return false
+	}
 }
 
 // TaskSession pairs a task with what its run directory says about the last
@@ -106,6 +126,10 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 		return nil
 	}
 
+	if report.Status == StatusNeverGotGoing {
+		return service.rollBackRefusedRun(projectSlug, tracked, report)
+	}
+
 	tracked.Status = taskStatusOf(report.Status)
 	tracked.FinishedAt = time.Now().UTC()
 	if report.SessionID != "" {
@@ -125,6 +149,43 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 
 	service.logger.Info("Task [%s] %s is %s, its Session is over", tracked.ID, tracked.Title, tracked.Status)
 	return nil
+}
+
+// rollBackRefusedRun puts a task the vendor never let start back where it came
+// from. The Session outcome fields stay empty, since there was no work to
+// describe. The report always carries a result here, because the terminal
+// event is what named the refusal.
+//
+// The finish time stays zero, so every later check records the same refusal
+// again. The write is identical every time, and a task that is still blocked
+// should keep saying so.
+func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *task.Task, report SessionReport) error {
+	tracked.Status = task.StatusTodo
+	tracked.VendorErrorClass = report.Result.VendorErrorClass
+	tracked.VendorError = report.Result.Text
+
+	if err := service.tasks.UpdateTask(projectSlug, tracked); err != nil {
+		return fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", tracked.ID, task.StatusTodo, err)
+	}
+
+	service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", tracked.ID, tracked.Title, tracked.VendorErrorClass, tracked.VendorError)
+	service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
+	service.logger.Info("%s", vendorErrorAdvice(tracked.VendorErrorClass))
+	return nil
+}
+
+// vendorErrorAdvice tells the user what to do about a refusal.
+func vendorErrorAdvice(class task.VendorErrorClass) string {
+	switch class {
+	case task.VendorErrorAuth:
+		return "Log in again, then re-seed the credentials inside sbx. sbx keeps its own copy of the token, and a host login does not refresh it."
+	case task.VendorErrorRateLimit:
+		return "Run the task again once the vendor lets you through."
+	case task.VendorErrorOutage:
+		return "Run the task again once the vendor is serving requests."
+	default:
+		return "Read the error above, fix what it names, then run the task again."
+	}
 }
 
 // taskStatusOf turns the status of a finished Session into the status of the
@@ -154,11 +215,11 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 		return SessionReport{}, err
 	}
 
-	terminal, err := readResult(runDir)
+	outcome, err := readOutcome(runDir)
 	if err != nil {
 		return SessionReport{}, err
 	}
-	report.Result = sessionResultOf(terminal)
+	report.Result = sessionResultOf(outcome)
 
 	finished, err := sessionFinished(runDir)
 	if err != nil {
@@ -193,8 +254,13 @@ func statusOfRunning(lastWrite time.Time, now time.Time) SessionStatus {
 	return StatusWorking
 }
 
-// statusOfFinished judges a Session that has stopped.
+// statusOfFinished judges a Session that has stopped. A vendor refusal is read
+// first, because a refused run exits non-zero and would otherwise read as the
+// task failing.
 func statusOfFinished(exitCode int, result *SessionResult) SessionStatus {
+	if result != nil && result.VendorErrorClass != "" {
+		return StatusNeverGotGoing
+	}
 	if exitCode != 0 {
 		return StatusFuckedUp
 	}
@@ -237,17 +303,39 @@ func readExitCode(runDir string) (int, error) {
 }
 
 // sessionResultOf keeps the parts of a terminal event drudge reports on. A nil
-// event means the agent has not written one yet.
-func sessionResultOf(terminal *streamEvent) *SessionResult {
+// result means the agent has not written a terminal event yet.
+func sessionResultOf(outcome streamOutcome) *SessionResult {
+	terminal := outcome.terminal
 	if terminal == nil {
 		return nil
 	}
-	return &SessionResult{
+
+	result := &SessionResult{
 		IsError:  terminal.IsError,
 		Subtype:  terminal.Subtype,
 		NumTurns: terminal.NumTurns,
 		Duration: time.Duration(terminal.DurationMS) * time.Millisecond,
 		CostUSD:  terminal.TotalCostUSD,
 		Text:     terminal.Result,
+	}
+	if terminal.vendorRefused() {
+		result.VendorErrorClass = vendorErrorClassOf(outcome.errorCode)
+	}
+	return result
+}
+
+// vendorErrorClassOf reads which kind of refusal a vendor error code was. A
+// code drudge does not recognise is still a refusal, so it gets its own class
+// instead of being folded into one of the known kinds.
+func vendorErrorClassOf(errorCode string) task.VendorErrorClass {
+	switch {
+	case strings.Contains(errorCode, authErrorFragment):
+		return task.VendorErrorAuth
+	case strings.Contains(errorCode, rateLimitErrorFragment):
+		return task.VendorErrorRateLimit
+	case strings.Contains(errorCode, vendorOverloadedFragment):
+		return task.VendorErrorOutage
+	default:
+		return task.VendorErrorUnknown
 	}
 }

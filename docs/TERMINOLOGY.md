@@ -18,6 +18,8 @@ A Session is what the agent harness resumes from, and its id comes from the init
 
 A Drudger hosts at most one Session at a time.
 
+A Session that the vendor turned away never got going. The agent was refused before it could work, so the Task is not at fault and goes back where it came from.
+
 ## Task
 
 A piece of work to be done.

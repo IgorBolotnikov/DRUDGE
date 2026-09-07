@@ -29,11 +29,12 @@ func TestReadSessionReport(t *testing.T) {
 		// since is how long after the last write drudge looks at the run.
 		since time.Duration
 
-		want          SessionStatus
-		wantExitCode  int
-		wantSessionID string
-		wantResult    bool
-		wantErr       bool
+		want            SessionStatus
+		wantExitCode    int
+		wantSessionID   string
+		wantResult      bool
+		wantVendorClass task.VendorErrorClass
+		wantErr         bool
 	}{
 		{
 			name:          "an agent still writing events",
@@ -109,6 +110,45 @@ func TestReadSessionReport(t *testing.T) {
 			wantResult:    true,
 		},
 		{
+			name:            "a run the vendor refused on credentials",
+			stream:          []string{initEvent, authRefusedEvent, authRefusedResultEvent},
+			exit:            "1\n",
+			want:            StatusNeverGotGoing,
+			wantExitCode:    1,
+			wantSessionID:   sampleSessionID,
+			wantResult:      true,
+			wantVendorClass: task.VendorErrorAuth,
+		},
+		{
+			name:            "a run the vendor refused on a rate limit",
+			stream:          []string{initEvent, rateLimitedEvent, rateLimitedResultEvent},
+			exit:            "1\n",
+			want:            StatusNeverGotGoing,
+			wantExitCode:    1,
+			wantSessionID:   sampleSessionID,
+			wantResult:      true,
+			wantVendorClass: task.VendorErrorRateLimit,
+		},
+		{
+			name:            "a refusal the agent reported no code for",
+			stream:          []string{initEvent, uncodedRefusalResultEvent},
+			exit:            "1\n",
+			want:            StatusNeverGotGoing,
+			wantExitCode:    1,
+			wantSessionID:   sampleSessionID,
+			wantResult:      true,
+			wantVendorClass: task.VendorErrorUnknown,
+		},
+		{
+			name:          "a terminal event the vendor had no part in",
+			stream:        []string{initEvent, erroredResultEvent},
+			exit:          "1\n",
+			want:          StatusFuckedUp,
+			wantExitCode:  1,
+			wantSessionID: sampleSessionID,
+			wantResult:    true,
+		},
+		{
 			name:    "an exit file holding something that is not an exit code",
 			stream:  []string{initEvent},
 			exit:    "killed\n",
@@ -149,6 +189,9 @@ func TestReadSessionReport(t *testing.T) {
 			}
 			if (report.Result != nil) != testCase.wantResult {
 				t.Errorf("expected a terminal event recorded %v, got %+v", testCase.wantResult, report.Result)
+			}
+			if vendorClassOf(report) != testCase.wantVendorClass {
+				t.Errorf("expected vendor error class %q, got %q", testCase.wantVendorClass, vendorClassOf(report))
 			}
 			if report.RunDir != runDir {
 				t.Errorf("expected run directory %q, got %q", runDir, report.RunDir)
@@ -453,4 +496,185 @@ func runningTask() *task.Task {
 	tracked.Status = task.StatusInProgress
 	tracked.StartedAt = time.Now().UTC()
 	return tracked
+}
+
+// vendorClassOf reads the refusal class off a report, which carries none until
+// the agent has written a terminal event.
+func vendorClassOf(report SessionReport) task.VendorErrorClass {
+	if report.Result == nil {
+		return ""
+	}
+	return report.Result.VendorErrorClass
+}
+
+func TestDrudgerService_SessionStatus_RollsBackARefusedRun(t *testing.T) {
+	cases := []struct {
+		name string
+		// stream holds the event lines of the task's run.
+		stream []string
+
+		wantStatus     task.TaskStatus
+		wantVendorText string
+		// wantVendorClass is empty for a run the vendor had no part in, which
+		// is the case that pins the rollback to vendor refusals alone.
+		wantVendorClass task.VendorErrorClass
+		wantFinishedAt  bool
+	}{
+		{
+			name:            "credentials the vendor would not take",
+			stream:          []string{initEvent, authRefusedEvent, authRefusedResultEvent},
+			wantStatus:      task.StatusTodo,
+			wantVendorText:  authRefusedText,
+			wantVendorClass: task.VendorErrorAuth,
+		},
+		{
+			name:            "a rate limit",
+			stream:          []string{initEvent, rateLimitedEvent, rateLimitedResultEvent},
+			wantStatus:      task.StatusTodo,
+			wantVendorText:  rateLimitedText,
+			wantVendorClass: task.VendorErrorRateLimit,
+		},
+		{
+			name:            "a refusal with no code to read",
+			stream:          []string{initEvent, uncodedRefusalResultEvent},
+			wantStatus:      task.StatusTodo,
+			wantVendorText:  vendorOutageText,
+			wantVendorClass: task.VendorErrorUnknown,
+		},
+		{
+			name:           "an agent that failed on its own",
+			stream:         []string{initEvent, erroredResultEvent},
+			wantStatus:     task.StatusFuckedUp,
+			wantFinishedAt: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			tracked := runningTask()
+			runDir := common.RunDir(workspace, string(tracked.ID))
+			writeStream(t, runDir, testCase.stream...)
+			writeExit(t, runDir, "1\n")
+
+			service := newTestService(tracked)
+
+			var err error
+			captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+			if err != nil {
+				t.Fatalf("could not read the task back: %v", err)
+			}
+
+			if recorded.Status != testCase.wantStatus {
+				t.Errorf("expected task status %q, got %q", testCase.wantStatus, recorded.Status)
+			}
+			if recorded.VendorError != testCase.wantVendorText {
+				t.Errorf("expected vendor error %q, got %q", testCase.wantVendorText, recorded.VendorError)
+			}
+			if recorded.VendorErrorClass != testCase.wantVendorClass {
+				t.Errorf("expected vendor error class %q, got %q", testCase.wantVendorClass, recorded.VendorErrorClass)
+			}
+			if recorded.FinishedAt.IsZero() == testCase.wantFinishedAt {
+				t.Errorf("expected a finish time stamped %v, got %v", testCase.wantFinishedAt, recorded.FinishedAt)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_SessionStatus_ARefusedRunRecordsNoWork(t *testing.T) {
+	service, tracked := serviceWithAnAuthRefusal(t)
+	recorded := checkRefusedTask(t, service, tracked.ID)
+
+	if recorded.SessionFailed {
+		t.Error("expected no error flag on a run that did no work")
+	}
+	if recorded.SessionResult != "" {
+		t.Errorf("expected no session result, got %q", recorded.SessionResult)
+	}
+	if recorded.SessionTurns != 0 {
+		t.Errorf("expected no turns recorded, got %d", recorded.SessionTurns)
+	}
+	if recorded.SessionDuration != 0 {
+		t.Errorf("expected no duration recorded, got %s", recorded.SessionDuration)
+	}
+	if recorded.SessionCostUSD != 0 {
+		t.Errorf("expected no cost recorded, got %v", recorded.SessionCostUSD)
+	}
+}
+
+func TestDrudgerService_SessionStatus_RecordsTheSameRefusalOnEveryCheck(t *testing.T) {
+	service, tracked := serviceWithAnAuthRefusal(t)
+
+	first := checkRefusedTask(t, service, tracked.ID)
+	second := checkRefusedTask(t, service, tracked.ID)
+
+	if first.Status != second.Status {
+		t.Errorf("expected the status %q to stand, got %q", first.Status, second.Status)
+	}
+	if first.VendorError != second.VendorError {
+		t.Errorf("expected the vendor error %q to stand, got %q", first.VendorError, second.VendorError)
+	}
+	if first.VendorErrorClass != second.VendorErrorClass {
+		t.Errorf("expected the vendor error class %q to stand, got %q", first.VendorErrorClass, second.VendorErrorClass)
+	}
+	if !second.FinishedAt.IsZero() {
+		t.Errorf("expected no finish time on a run that never got going, got %v", second.FinishedAt)
+	}
+}
+
+// serviceWithAnAuthRefusal sets up a task whose run the vendor turned away on
+// credentials, with the whole finished run in its run directory.
+func serviceWithAnAuthRefusal(t *testing.T) (*testService, *task.Task) {
+	t.Helper()
+
+	workspace := setupWorkspace(t)
+	tracked := runningTask()
+	runDir := common.RunDir(workspace, string(tracked.ID))
+	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
+	writeExit(t, runDir, "1\n")
+
+	return newTestService(tracked), tracked
+}
+
+// checkRefusedTask reports on a refused Session and reads back what the check
+// wrote on the task.
+func checkRefusedTask(t *testing.T, service *testService, taskID task.TaskID) task.Task {
+	t.Helper()
+
+	var session *TaskSession
+	var err error
+	captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, taskID) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if session.Report.Status != StatusNeverGotGoing {
+		t.Fatalf("expected status %q, got %q", StatusNeverGotGoing, session.Report.Status)
+	}
+
+	recorded, err := service.tasks.GetTask(testProjectSlug, taskID)
+	if err != nil {
+		t.Fatalf("could not read the task back: %v", err)
+	}
+	return *recorded
+}
+
+func TestDrudgerService_SessionStatus_AnAuthRefusalNamesTheSbxCredentials(t *testing.T) {
+	service, tracked := serviceWithAnAuthRefusal(t)
+
+	var err error
+	output := captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, wanted := range []string{"sbx", authRefusedText, string(task.StatusTodo)} {
+		if !strings.Contains(output, wanted) {
+			t.Errorf("expected the report to mention %q, got:\n%s", wanted, output)
+		}
+	}
 }

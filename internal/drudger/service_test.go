@@ -74,11 +74,17 @@ type fakeCommandRunner struct {
 	outputs   []string
 	stderrs   []string
 	errs      []error
+	// onStart stands in for the agent, which writes to its run directory only
+	// once it has been started.
+	onStart func()
 }
 
 func (runner *fakeCommandRunner) Start(argv []string) error {
 	runner.started = append(runner.started, argv)
 	_, _, err := runner.Run(argv)
+	if runner.onStart != nil {
+		runner.onStart()
+	}
 	return err
 }
 
@@ -410,11 +416,13 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := setupWorkspace(t)
 			taskToRun := todoTask()
-			if testCase.lines != nil {
-				writeStream(t, common.RunDir(workspace, string(taskToRun.ID)), testCase.lines...)
-			}
 
 			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+			if testCase.lines != nil {
+				commands.onStart = func() {
+					writeStream(t, common.RunDir(workspace, string(taskToRun.ID)), testCase.lines...)
+				}
+			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
@@ -1118,5 +1126,50 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 				t.Errorf("expected the task to be %q, got %q", task.StatusInProgress, taskToRun.Status)
 			}
 		})
+	}
+}
+
+func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
+	workspace := setupWorkspace(t)
+
+	// A task the vendor refused, which put it back in todo and left the whole
+	// finished run behind.
+	taskToRun := todoTask()
+	taskToRun.VendorError = authRefusedText
+	taskToRun.VendorErrorClass = task.VendorErrorAuth
+
+	runDir := common.RunDir(workspace, string(taskToRun.ID))
+	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
+	writeExit(t, runDir, "1\n")
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	finished, err := sessionFinished(runDir)
+	if err != nil {
+		t.Fatalf("could not check the run directory: %v", err)
+	}
+	if finished {
+		t.Error("expected the exit code of the previous run to be gone")
+	}
+
+	report, err := readSessionReport(runDir, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("could not read the run directory: %v", err)
+	}
+	if report.Status != StatusWorking {
+		t.Errorf("expected the new run to read as %q, got %q", StatusWorking, report.Status)
+	}
+	if report.Result != nil {
+		t.Errorf("expected the terminal event of the previous run to be gone, got %+v", report.Result)
+	}
+	if taskToRun.VendorError != "" || taskToRun.VendorErrorClass != "" {
+		t.Errorf("expected the previous refusal to be cleared, got %q as %q", taskToRun.VendorError, taskToRun.VendorErrorClass)
 	}
 }

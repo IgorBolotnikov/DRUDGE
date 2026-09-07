@@ -24,6 +24,10 @@ const (
 	// streamSubtypeSuccess is the only result subtype that means the agent
 	// finished the work it was given.
 	streamSubtypeSuccess = "success"
+
+	// terminalReasonAPIError is what a run ends on when the vendor turned the
+	// agent away before it could work.
+	terminalReasonAPIError = "api_error"
 )
 
 // A single event holds whole tool arguments and whole tool results, so a line
@@ -46,6 +50,22 @@ type streamEvent struct {
 	DurationMS   int64   `json:"duration_ms"`
 	TotalCostUSD float64 `json:"total_cost_usd"`
 	Result       string  `json:"result"`
+
+	// TerminalReason says what ended the run. It is the only field that names a
+	// vendor-level failure, so a refused run is unrecognisable without it.
+	TerminalReason string `json:"terminal_reason"`
+
+	// Error is the code of a failure the agent hit on a turn. The terminal
+	// event names a vendor refusal only by its reason, so the code that says
+	// which refusal it was comes from here.
+	Error string `json:"error"`
+}
+
+// vendorRefused reports whether a terminal event says the vendor turned the
+// run away. The result subtype says nothing here, since a refused run is
+// reported with the success subtype and the error flag set.
+func (event streamEvent) vendorRefused() bool {
+	return event.Type == streamEventResult && event.TerminalReason == terminalReasonAPIError
 }
 
 // carriesSessionID tells whether an event names the agent's session. The agent
@@ -68,10 +88,10 @@ func readSessionID(runDir string) (string, error) {
 	return readStream(runDir, sessionIDFromStream)
 }
 
-// readResult picks the terminal result event out of the event stream of a run
-// directory. A nil result means the agent has not written it yet.
-func readResult(runDir string) (*streamEvent, error) {
-	return readStream(runDir, resultFromStream)
+// readOutcome picks what the end of a run says out of the event stream of a
+// run directory.
+func readOutcome(runDir string) (streamOutcome, error) {
+	return readStream(runDir, outcomeFromStream)
 }
 
 // readStream opens the event stream of a run directory and hands it to a
@@ -112,20 +132,32 @@ func sessionIDFromStream(stream io.Reader) (string, error) {
 	return sessionID, err
 }
 
-// resultFromStream reads the terminal result event. The agent writes one at
-// the very end of a run, so a stream without it comes from a run that has not
-// finished.
-func resultFromStream(stream io.Reader) (*streamEvent, error) {
-	var result *streamEvent
+// streamOutcome is what the end of an event stream says about a run.
+type streamOutcome struct {
+	// terminal is the result event the agent writes at the very end of a run.
+	// A nil one comes from a run that has not finished.
+	terminal *streamEvent
+	// errorCode is the last failure code the agent reported on a turn, empty
+	// when it reported none.
+	errorCode string
+}
+
+// outcomeFromStream reads the terminal result event and the last error code
+// the agent reported.
+func outcomeFromStream(stream io.Reader) (streamOutcome, error) {
+	var outcome streamOutcome
 
 	err := scanStream(stream, func(event streamEvent) bool {
+		if event.Error != "" {
+			outcome.errorCode = event.Error
+		}
 		if event.Type == streamEventResult {
 			terminal := event
-			result = &terminal
+			outcome.terminal = &terminal
 		}
 		return true
 	})
-	return result, err
+	return outcome, err
 }
 
 // scanStream hands every event of a stream to visit, until visit returns false
