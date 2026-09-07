@@ -241,13 +241,7 @@ func (service *DrudgerService) runSbx(argv []string) (string, string, error) {
 
 // prepareRunDir clears whatever the previous run left in the run directory and
 // puts the rendered prompt there, where the agent reads it from inside its
-// sandbox. It runs last, once the sandbox is known to be there, so a launch
-// that never gets that far leaves no run directory for the status command to
-// find.
-//
-// Clearing is what makes a re-run readable. The launcher truncates the stream
-// and the stderr log through its redirects, but writes the exit file only when
-// the agent finishes, so a leftover one would say this run has already ended.
+// sandbox.
 func prepareRunDir(runDir string, prompt string) error {
 	if err := common.RemoveAll(runDir); err != nil {
 		return err

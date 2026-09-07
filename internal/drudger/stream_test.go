@@ -17,8 +17,7 @@ const (
 	sampleSessionID = "ebe60e03-991c-44f9-861c-f9e779298552"
 )
 
-// Sample events of a run the vendor turned away. The agent reports the error
-// code on the turn it failed, and the terminal event names only the reason.
+// Sample events of a run the vendor turned away.
 const (
 	authRefusedText  = "Failed to authenticate: OAuth session expired and could not be refreshed"
 	rateLimitedText  = "Rate limit exceeded, try again later"

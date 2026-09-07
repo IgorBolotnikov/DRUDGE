@@ -29,7 +29,7 @@ const (
 	// StatusGotShitDone means the agent finished the work it was given.
 	StatusGotShitDone SessionStatus = "got shit done"
 	// StatusNeverGotGoing means the vendor turned the agent away, so the work
-	// never started and the task is not at fault.
+	// on the task never reallystarted.
 	StatusNeverGotGoing SessionStatus = "never got going"
 )
 

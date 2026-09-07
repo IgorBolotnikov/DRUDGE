@@ -52,18 +52,15 @@ type streamEvent struct {
 	Result       string  `json:"result"`
 
 	// TerminalReason says what ended the run. It is the only field that names a
-	// vendor-level failure, so a refused run is unrecognisable without it.
+	// vendor-level failure.
 	TerminalReason string `json:"terminal_reason"`
 
-	// Error is the code of a failure the agent hit on a turn. The terminal
-	// event names a vendor refusal only by its reason, so the code that says
-	// which refusal it was comes from here.
+	// Error is the code of a failure the agent hit on a turn.
 	Error string `json:"error"`
 }
 
-// vendorRefused reports whether a terminal event says the vendor turned the
-// run away. The result subtype says nothing here, since a refused run is
-// reported with the success subtype and the error flag set.
+// vendorRefused reports whether a terminal event says that the vendor turned
+// the run away.
 func (event streamEvent) vendorRefused() bool {
 	return event.Type == streamEventResult && event.TerminalReason == terminalReasonAPIError
 }
@@ -135,7 +132,7 @@ func sessionIDFromStream(stream io.Reader) (string, error) {
 // streamOutcome is what the end of an event stream says about a run.
 type streamOutcome struct {
 	// terminal is the result event the agent writes at the very end of a run.
-	// A nil one comes from a run that has not finished.
+	// An unfinished run tesults in nil.
 	terminal *streamEvent
 	// errorCode is the last failure code the agent reported on a turn, empty
 	// when it reported none.
