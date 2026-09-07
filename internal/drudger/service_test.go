@@ -1336,8 +1336,6 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	}
 	firstRun := slices.Clone(commands.calls)
 
-	// The agent finishes and the task ends up fucked up, which is what a rerun
-	// is for. Forgetting the calls of the first run starts the fake over.
 	finishSession(t, workspace, taskToRun.ID)
 	taskToRun.Status = task.StatusFuckedUp
 	commands.calls = nil
