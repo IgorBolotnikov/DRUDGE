@@ -282,7 +282,7 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 
 	service.logger.Info("Drudger %d (%s) for task [%s] %s", wouldUse.Slot, wouldUse.Sandbox, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
-	service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect), formatArgv(plan.create), formatArgv(plan.start))
+	service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect.argv), formatArgv(plan.create.argv), formatArgv(plan.start))
 	return nil
 }
 
@@ -382,10 +382,12 @@ func (service *DrudgerService) observeSandboxes(projectSlug string) (map[string]
 // TODO: This method is OK for now while I'm still trying to make everything
 // work. But when I inevitably do, I need to move out all the sbx quirks into
 // an adapter, because service and sbx are now a bit too close to each other.
-func (service *DrudgerService) listSandboxes(inspect []string) (string, error) {
+func (service *DrudgerService) listSandboxes(inspect sandboxCommand) (string, error) {
 	listing, stderr, err := service.runSbx(inspect)
 
-	if err != nil && daemonWouldNotStart(stderr) {
+	// A call killed for outrunning its timeout is not the daemon-not-up
+	// condition, and retrying it would wait out a second full timeout.
+	if err != nil && daemonWouldNotStart(stderr) && !timedOut(err) {
 		service.logger.Info("The sbx daemon did not come up, DRUDGE gives it one more try")
 		time.Sleep(service.daemonRetryDelay)
 
@@ -402,11 +404,15 @@ func (service *DrudgerService) listSandboxes(inspect []string) (string, error) {
 }
 
 // runSbx runs one sbx command and logs when the call had to start the sbx
-// daemon, which explains the delay the user sees.
-func (service *DrudgerService) runSbx(argv []string) (string, string, error) {
-	stdout, stderr, err := service.commands.Run(argv)
+// daemon, which explains the delay the user sees. A call killed for outrunning
+// its timeout is reported as a daemon that stopped answering.
+func (service *DrudgerService) runSbx(command sandboxCommand) (string, string, error) {
+	stdout, stderr, err := service.commands.Run(command.argv, command.timeout)
 	if daemonJustStarted(stderr) {
 		service.logger.Info("The sbx daemon was not running, sbx has just started it")
+	}
+	if timedOut(err) {
+		return stdout, stderr, fmt.Errorf("the sbx daemon stopped answering, run %s to see what is wrong with it: %w", sbxDaemonStatusCommand, err)
 	}
 	return stdout, stderr, err
 }

@@ -1,6 +1,8 @@
 package exec
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,45 +10,60 @@ import (
 	"time"
 )
 
+// generousTimeout is long enough that no command of these tests reaches it.
+const generousTimeout = 30 * time.Second
+
 func TestCommandRunner_Run(t *testing.T) {
 	cases := []struct {
 		name            string
 		argv            []string
+		timeout         time.Duration
 		want            string
 		wantStderr      string
 		wantErrContains string
 	}{
 		{
-			name: "returns stdout",
-			argv: []string{"echo", "hello"},
-			want: "hello\n",
+			name:    "returns stdout",
+			argv:    []string{"echo", "hello"},
+			timeout: generousTimeout,
+			want:    "hello\n",
 		},
 		{
-			name: "passes an argument with spaces and newlines through untouched",
-			argv: []string{"printf", "%s", "first line\nsecond line"},
-			want: "first line\nsecond line",
+			name:    "passes an argument with spaces and newlines through untouched",
+			argv:    []string{"printf", "%s", "first line\nsecond line"},
+			timeout: generousTimeout,
+			want:    "first line\nsecond line",
 		},
 		{
 			name:       "hands back a notice a succeeding command wrote to stderr",
 			argv:       []string{"sh", "-c", "echo 'Starting sandboxd daemon...' >&2; echo hello"},
+			timeout:    generousTimeout,
 			want:       "hello\n",
 			wantStderr: "Starting sandboxd daemon...",
 		},
 		{
 			name:            "reports what a failing command wrote to stderr",
 			argv:            []string{"sh", "-c", "echo boom >&2; exit 1"},
+			timeout:         generousTimeout,
 			wantStderr:      "boom",
 			wantErrContains: "boom",
 		},
 		{
 			name:            "unknown binary is an error",
 			argv:            []string{"drudge-no-such-binary"},
+			timeout:         generousTimeout,
 			wantErrContains: "drudge-no-such-binary",
 		},
 		{
 			name:            "empty argv is an error",
 			argv:            nil,
+			timeout:         generousTimeout,
 			wantErrContains: "empty command",
+		},
+		{
+			name:            "a command without a timeout is an error",
+			argv:            []string{"echo", "hello"},
+			wantErrContains: "positive timeout",
 		},
 	}
 
@@ -54,7 +71,7 @@ func TestCommandRunner_Run(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, gotStderr, err := runner.Run(testCase.argv)
+			got, gotStderr, err := runner.Run(testCase.argv, testCase.timeout)
 
 			if gotStderr != testCase.wantStderr {
 				t.Errorf("expected stderr %q, got %q", testCase.wantStderr, gotStderr)
@@ -145,5 +162,37 @@ func TestCommandRunner_Start_DoesNotWaitForTheCommand(t *testing.T) {
 			t.Fatal("the started command never finished its work")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestCommandRunner_Run_KillsACommandThatOutrunsItsTimeout(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "marker")
+	argv := []string{"sh", "-c", "sleep 2; touch " + marker}
+	timeout := 100 * time.Millisecond
+	runner := NewCommandRunner()
+
+	started := time.Now()
+	_, _, err := runner.Run(argv, timeout)
+	waited := time.Since(started)
+
+	if err == nil {
+		t.Fatal("expected an error, got none")
+	}
+	for _, want := range []string{"sh", timeout.String()} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to name %s, got %q", want, err)
+		}
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected a deadline error the caller can recognise, got %q", err)
+	}
+
+	if waited > time.Second {
+		t.Errorf("Run waited %s for a command it was told to kill after %s", waited, timeout)
+	}
+
+	time.Sleep(2 * time.Second)
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the killed command went on working after Run returned")
 	}
 }

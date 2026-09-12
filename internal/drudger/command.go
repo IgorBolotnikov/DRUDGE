@@ -1,11 +1,14 @@
 package drudger
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"drudge/internal/common"
 	"drudge/internal/config"
@@ -15,10 +18,17 @@ import (
 type CommandRunner interface {
 	// Run waits for a command to finish and hands back what it wrote to
 	// stdout and to stderr. Writing to stderr is not a failure on its own:
-	// that may be where the sandbox prints its results.
-	Run(argv []string) (stdout string, stderr string, err error)
+	// that may be where the sandbox prints its results. A command that runs
+	// longer than timeout is killed and the error wraps
+	// context.DeadlineExceeded.
+	Run(argv []string, timeout time.Duration) (stdout string, stderr string, err error)
 	// Start runs the command and returns immediately.
 	Start(argv []string) error
+}
+
+// timedOut tells whether a command was killed for outrunning its timeout.
+func timedOut(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // Pieces of an sbx invocation.
@@ -84,11 +94,18 @@ const (
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
 
+// sandboxCommand is a sandbox command and how long it may run before DRUDGE
+// kills it.
+type sandboxCommand struct {
+	argv    []string
+	timeout time.Duration
+}
+
 // sandboxPlan is the ordered set of commands that puts a Drudger to work.
 type sandboxPlan struct {
-	inspect []string // lists sandboxes so drudge can tell whether this Drudger's sandbox exists
-	create  []string // creates the sandbox, runs only when it does not exist yet
-	start   []string // starts the agent and passes the prompt, always runs
+	inspect sandboxCommand // lists sandboxes so drudge can tell whether this Drudger's sandbox exists
+	create  sandboxCommand // creates the sandbox, runs only when it does not exist yet
+	start   []string       // starts the agent and passes the prompt, always runs and is never waited for
 }
 
 // sandboxListing is what `sbx ls --json` reports.
@@ -105,19 +122,22 @@ type sandbox struct {
 
 // pickInspectCommand builds the command that lists the sandboxes of the
 // configured environment.
-func (service *DrudgerService) pickInspectCommand() ([]string, error) {
+func (service *DrudgerService) pickInspectCommand() (sandboxCommand, error) {
 	env := service.globalCfg.Drudger.Env
 
 	if env == config.EnvDockerSbx {
-		return sbxInspectCommand(), nil
+		return service.sbxInspectCommand(), nil
 	}
 
-	return nil, fmt.Errorf("DRUDGE does not know how to list the sandboxes of environment %q, check the Drudger settings in the config", env)
+	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to list the sandboxes of environment %q, check the Drudger settings in the config", env)
 }
 
 // sbxInspectCommand lists the sandboxes of an sbx environment.
-func sbxInspectCommand() []string {
-	return []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag}
+func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
+	return sandboxCommand{
+		argv:    []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag},
+		timeout: service.globalCfg.Drudger.SandboxTimeouts.List(),
+	}
 }
 
 // pickDrudgerCommand builds the commands that ensure the sandbox exists and
@@ -128,8 +148,11 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
 		return sandboxPlan{
-			inspect: sbxInspectCommand(),
-			create:  []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, sandboxName},
+			inspect: service.sbxInspectCommand(),
+			create: sandboxCommand{
+				argv:    []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, sandboxName},
+				timeout: service.globalCfg.Drudger.SandboxTimeouts.Create(),
+			},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
 				shellBinary, shellCommandFlag, formatLauncher(workspace, runDir),
@@ -141,14 +164,17 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 }
 
 // pickRemoveCommand builds the command that deletes a Drudger's sandbox.
-func (service *DrudgerService) pickRemoveCommand(sandboxName string) ([]string, error) {
+func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCommand, error) {
 	env := service.globalCfg.Drudger.Env
 
 	if env == config.EnvDockerSbx {
-		return []string{sbxBinary, sbxRmSubcommand, sbxForceFlag, sandboxName}, nil
+		return sandboxCommand{
+			argv:    []string{sbxBinary, sbxRmSubcommand, sbxForceFlag, sandboxName},
+			timeout: service.globalCfg.Drudger.SandboxTimeouts.Remove(),
+		}, nil
 	}
 
-	return nil, fmt.Errorf("DRUDGE does not know how to remove a sandbox in environment %q, check the Drudger settings in the config", env)
+	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to remove a sandbox in environment %q, check the Drudger settings in the config", env)
 }
 
 // formatLauncher renders the shell script that runs the agent in a sandbox.

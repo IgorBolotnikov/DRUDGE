@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -68,12 +69,17 @@ func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task
 	return fmt.Errorf("task %q not found", taskToUpdate.ID)
 }
 
+// startTimeout is what the fake passes when Start walks the script of answers.
+// A started command gets no timeout, because nothing waits for it.
+const startTimeout = 0
+
 // fakeCommandRunner answers a fixed script of calls and remembers what it was
 // asked to run, in order. It swaps its workspace into the runWorkspace
 // placeholder of every output it hands back.
 type fakeCommandRunner struct {
 	workspace string
 	calls     [][]string
+	timeouts  []time.Duration
 	started   [][]string
 	outputs   []string
 	stderrs   []string
@@ -89,7 +95,7 @@ type fakeCommandRunner struct {
 
 func (runner *fakeCommandRunner) Start(argv []string) error {
 	runner.started = append(runner.started, argv)
-	_, _, err := runner.Run(argv)
+	_, _, err := runner.Run(argv, startTimeout)
 	if err != nil {
 		return err
 	}
@@ -137,9 +143,10 @@ func shellUnquote(quoted string) string {
 	return strings.ReplaceAll(bare, `'\''`, "'")
 }
 
-func (runner *fakeCommandRunner) Run(argv []string) (string, string, error) {
+func (runner *fakeCommandRunner) Run(argv []string, timeout time.Duration) (string, string, error) {
 	index := len(runner.calls)
 	runner.calls = append(runner.calls, argv)
+	runner.timeouts = append(runner.timeouts, timeout)
 
 	var output string
 	if index < len(runner.outputs) {
@@ -191,6 +198,16 @@ func (runner *fakeCommandRunner) call(subcommand string) []string {
 		}
 	}
 	return nil
+}
+
+// timeoutOf returns the timeout the first call to an sbx subcommand was given.
+func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
+	for index, argv := range runner.calls {
+		if argv[1] == subcommand {
+			return runner.timeouts[index]
+		}
+	}
+	return 0
 }
 
 // fakeDrudgerRepo keeps project's Drudgers in memory and mimics the behavior
@@ -1128,6 +1145,7 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 
 	daemonDown := fmt.Errorf("command sbx failed: exit status 1: %s", daemonDownStderr)
 	noBinary := fmt.Errorf("command sbx failed: %s", noBinaryStderr)
+	listingKilled := fmt.Errorf("command sbx ls --json did not finish within 30s and was killed: %w", context.DeadlineExceeded)
 
 	cases := []struct {
 		name            string
@@ -1167,6 +1185,15 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 			errs:            []error{noBinary},
 			wantListings:    1,
 			wantErrContains: "could not list the sandboxes",
+		},
+		{
+			// The stderr says the daemon is down, which on its own would buy a
+			// retry. A killed call does not get one.
+			name:            "a listing killed for outrunning its timeout is not retried",
+			stderrs:         []string{daemonDownStderr},
+			errs:            []error{listingKilled},
+			wantListings:    1,
+			wantErrContains: "sbx daemon status",
 		},
 	}
 
@@ -2007,5 +2034,52 @@ func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T)
 
 	if service.drudgers.updates != 0 {
 		t.Errorf("expected a list of idle Drudgers to write nothing, got %d writes", service.drudgers.updates)
+	}
+}
+
+func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+	globalCfg := config.DefaultConfig()
+	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, taskToRun)
+
+	captureOutput(func() {
+		if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	cases := []struct {
+		subcommand string
+		want       time.Duration
+	}{
+		{subcommand: sbxLsSubcommand, want: 5 * time.Second},
+		{subcommand: sbxCreateSubcommand, want: time.Minute},
+	}
+
+	for _, testCase := range cases {
+		if got := commands.timeoutOf(testCase.subcommand); got != testCase.want {
+			t.Errorf("expected %s to be given %s, got %s", testCase.subcommand, testCase.want, got)
+		}
+	}
+}
+
+func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testing.T) {
+	workspace := setupWorkspace(t)
+	commands := &fakeCommandRunner{workspace: workspace}
+	globalCfg := config.DefaultConfig()
+	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
+	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, []*Drudger{idleDrudger(1)})
+
+	captureOutput(func() {
+		if err := service.NukeDrudger(testProjectSlug, 1, false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if got := commands.timeoutOf(sbxRmSubcommand); got != 7*time.Second {
+		t.Errorf("expected %s to be given %s, got %s", sbxRmSubcommand, 7*time.Second, got)
 	}
 }

@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"drudge/internal/common"
 )
@@ -27,12 +28,24 @@ const (
 	defaultMaxConcurrentDrudgers = 3
 )
 
+// How long a sandbox command may run before DRUDGE kills it, in seconds.
+// Creating a sandbox pulls an image on a first run, so it gets far more room
+// than the calls that only talk to the daemon.
+const (
+	defaultListTimeoutSeconds   = 30
+	defaultCreateTimeoutSeconds = 600
+	defaultRemoveTimeoutSeconds = 120
+)
+
 // JSON keys, named in error messages so they match what a user writes in a config file.
 const (
 	projectSlugKey = "projectSlug"
 	promptFileKey  = "promptFile"
 	// MaxConcurrentDrudgersKey is exported so the drudger package can name it when a project's pool is full.
 	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
+	listTimeoutKey           = "sandboxTimeouts.listSeconds"
+	createTimeoutKey         = "sandboxTimeouts.createSeconds"
+	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
 )
 
 // schemaRef is the $schema reference path in config.json.
@@ -48,10 +61,35 @@ type GlobalConfig struct {
 }
 
 type DrudgerConfig struct {
-	Env                   Env     `json:"environment"`
-	Harness               Harness `json:"harness"`
-	PromptFile            string  `json:"promptFile,omitempty"`
-	MaxConcurrentDrudgers int     `json:"maxConcurrentDrudgers,omitempty"` // Drudgers allowed on one project at once, zero means unset
+	Env                   Env             `json:"environment"`
+	Harness               Harness         `json:"harness"`
+	PromptFile            string          `json:"promptFile,omitempty"`
+	MaxConcurrentDrudgers int             `json:"maxConcurrentDrudgers,omitempty"` // Drudgers allowed on one project at once, zero means unset
+	SandboxTimeouts       SandboxTimeouts `json:"sandboxTimeouts"`
+}
+
+// SandboxTimeouts caps how long DRUDGE waits for each sandbox command it runs.
+// A command that outruns its cap is killed. Every field is a whole number of
+// seconds and zero means unset.
+type SandboxTimeouts struct {
+	ListSeconds   int `json:"listSeconds,omitempty"`
+	CreateSeconds int `json:"createSeconds,omitempty"`
+	RemoveSeconds int `json:"removeSeconds,omitempty"`
+}
+
+// List returns how long listing the sandboxes may take.
+func (timeouts SandboxTimeouts) List() time.Duration {
+	return time.Duration(timeouts.ListSeconds) * time.Second
+}
+
+// Create returns how long creating a sandbox may take.
+func (timeouts SandboxTimeouts) Create() time.Duration {
+	return time.Duration(timeouts.CreateSeconds) * time.Second
+}
+
+// Remove returns how long removing a sandbox may take.
+func (timeouts SandboxTimeouts) Remove() time.Duration {
+	return time.Duration(timeouts.RemoveSeconds) * time.Second
 }
 
 func Load() (*GlobalConfig, error) {
@@ -81,6 +119,9 @@ func Load() (*GlobalConfig, error) {
 	if err := validateMaxConcurrentDrudgers(cfg.Drudger.MaxConcurrentDrudgers, cfgPath); err != nil {
 		return nil, err
 	}
+	if err := validateSandboxTimeouts(cfg.Drudger.SandboxTimeouts, cfgPath); err != nil {
+		return nil, err
+	}
 
 	defaultCfg := DefaultConfig()
 	return mergeConfigs(defaultCfg, &cfg), nil
@@ -93,6 +134,11 @@ func DefaultConfig() *GlobalConfig {
 			Env:                   defaultEnv,
 			Harness:               defaultHarness,
 			MaxConcurrentDrudgers: defaultMaxConcurrentDrudgers,
+			SandboxTimeouts: SandboxTimeouts{
+				ListSeconds:   defaultListTimeoutSeconds,
+				CreateSeconds: defaultCreateTimeoutSeconds,
+				RemoveSeconds: defaultRemoveTimeoutSeconds,
+			},
 		},
 	}
 }
@@ -107,6 +153,15 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 	}
 	if loadedCfg.Drudger.MaxConcurrentDrudgers == 0 {
 		loadedCfg.Drudger.MaxConcurrentDrudgers = defaultCfg.Drudger.MaxConcurrentDrudgers
+	}
+	if loadedCfg.Drudger.SandboxTimeouts.ListSeconds == 0 {
+		loadedCfg.Drudger.SandboxTimeouts.ListSeconds = defaultCfg.Drudger.SandboxTimeouts.ListSeconds
+	}
+	if loadedCfg.Drudger.SandboxTimeouts.CreateSeconds == 0 {
+		loadedCfg.Drudger.SandboxTimeouts.CreateSeconds = defaultCfg.Drudger.SandboxTimeouts.CreateSeconds
+	}
+	if loadedCfg.Drudger.SandboxTimeouts.RemoveSeconds == 0 {
+		loadedCfg.Drudger.SandboxTimeouts.RemoveSeconds = defaultCfg.Drudger.SandboxTimeouts.RemoveSeconds
 	}
 	return loadedCfg
 }
@@ -127,6 +182,25 @@ func validatePromptFile(value string, path string) error {
 func validateMaxConcurrentDrudgers(value int, path string) error {
 	if value < 0 {
 		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, MaxConcurrentDrudgersKey, value)
+	}
+	return nil
+}
+
+// validateSandboxTimeouts rejects a negative sandbox command timeout. Zero
+// passes, since that is what an absent key unmarshals to.
+func validateSandboxTimeouts(timeouts SandboxTimeouts, path string) error {
+	seconds := []struct {
+		key   string
+		value int
+	}{
+		{key: listTimeoutKey, value: timeouts.ListSeconds},
+		{key: createTimeoutKey, value: timeouts.CreateSeconds},
+		{key: removeTimeoutKey, value: timeouts.RemoveSeconds},
+	}
+	for _, timeout := range seconds {
+		if timeout.value < 0 {
+			return fmt.Errorf("%s has %s = %d, it must be a positive number of seconds", path, timeout.key, timeout.value)
+		}
 	}
 	return nil
 }

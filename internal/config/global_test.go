@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"drudge/internal/common"
 )
@@ -291,6 +292,81 @@ func TestLoad_PromptFileOutsidePromptsDir_ReturnsError(t *testing.T) {
 			_, err := Load()
 			if err == nil {
 				t.Fatalf("expected an error for prompt file %q", test.promptFile)
+			}
+		})
+	}
+}
+
+func TestLoad_MissingSandboxTimeouts_FallBackToDefaults(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Drudger: DrudgerConfig{Harness: HarnessOpencode},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	timeouts := cfg.Drudger.SandboxTimeouts
+	if timeouts.ListSeconds != defaultListTimeoutSeconds {
+		t.Errorf("ListSeconds = %d, want default %d", timeouts.ListSeconds, defaultListTimeoutSeconds)
+	}
+	if timeouts.CreateSeconds != defaultCreateTimeoutSeconds {
+		t.Errorf("CreateSeconds = %d, want default %d", timeouts.CreateSeconds, defaultCreateTimeoutSeconds)
+	}
+	if timeouts.RemoveSeconds != defaultRemoveTimeoutSeconds {
+		t.Errorf("RemoveSeconds = %d, want default %d", timeouts.RemoveSeconds, defaultRemoveTimeoutSeconds)
+	}
+}
+
+func TestLoad_SandboxTimeoutOverrides_ReturnLoadedValues(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Drudger: DrudgerConfig{
+			SandboxTimeouts: SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7},
+		},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	timeouts := cfg.Drudger.SandboxTimeouts
+	if timeouts.List() != 5*time.Second {
+		t.Errorf("List() = %s, want %s", timeouts.List(), 5*time.Second)
+	}
+	if timeouts.Create() != time.Minute {
+		t.Errorf("Create() = %s, want %s", timeouts.Create(), time.Minute)
+	}
+	if timeouts.Remove() != 7*time.Second {
+		t.Errorf("Remove() = %s, want %s", timeouts.Remove(), 7*time.Second)
+	}
+}
+
+func TestLoad_NegativeSandboxTimeout_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "list", raw: `{"drudger": {"sandboxTimeouts": {"listSeconds": -1}}}`},
+		{name: "create", raw: `{"drudger": {"sandboxTimeouts": {"createSeconds": -1}}}`},
+		{name: "remove", raw: `{"drudger": {"sandboxTimeouts": {"removeSeconds": -1}}}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatalf("could not create drudge dir: %v", err)
+			}
+			if err := os.WriteFile(common.GlobalConfigPath(home), []byte(test.raw), common.DefaultFilePerm); err != nil {
+				t.Fatalf("could not write config: %v", err)
+			}
+
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected an error for a negative %s timeout", test.name)
 			}
 		})
 	}

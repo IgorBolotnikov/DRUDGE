@@ -36,6 +36,31 @@ const schemaJSON = `{
           "type": "integer",
           "minimum": 1,
           "default": 3
+        },
+        "sandboxTimeouts": {
+          "description": "How long DRUDGE waits for a sandbox command before it kills it. A command that needs longer than its timeout is killed and reported.",
+          "type": "object",
+          "properties": {
+            "listSeconds": {
+              "description": "Seconds allowed for listing the sandboxes.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 30
+            },
+            "createSeconds": {
+              "description": "Seconds allowed for creating a sandbox. A first creation pulls an image, which is why this one is generous.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 600
+            },
+            "removeSeconds": {
+              "description": "Seconds allowed for removing a sandbox.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 120
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
