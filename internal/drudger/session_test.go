@@ -724,6 +724,11 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 			stream: []string{initEvent, resultEvent},
 			exit:   "0\n",
 		},
+		{
+			name:   "a check holding a run the vendor refused",
+			stream: []string{authRefusedEvent, authRefusedResultEvent},
+			exit:   "1\n",
+		},
 	}
 
 	for _, testCase := range cases {

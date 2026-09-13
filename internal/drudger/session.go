@@ -127,12 +127,12 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 		return tracked, nil
 	}
 
+	record := service.recordFinishedRun
 	if report.Status == StatusNeverGotGoing {
-		service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
-		return service.rollBackRefusedRun(projectSlug, tracked.ID, report)
+		record = service.rollBackRefusedRun
 	}
 
-	current, recorded, err := service.recordFinishedRun(projectSlug, tracked, report)
+	current, recorded, err := record(projectSlug, tracked, report)
 	if err != nil {
 		return nil, err
 	}
@@ -216,23 +216,35 @@ func recordSessionEnd(tracked *task.Task, finished task.TaskStatus, report Sessi
 // The finish time stays zero, so every later check records the same refusal
 // again. The write is identical every time, and a task that is still blocked
 // should keep saying so.
-func (service *DrudgerService) rollBackRefusedRun(projectSlug string, taskID task.TaskID, report SessionReport) (*task.Task, error) {
-	var refused *task.Task
-	err := service.tasks.UpdateTask(projectSlug, taskID, func(stored *task.Task) error {
-		refused = stored
-		stored.Status = task.StatusTodo
-		stored.VendorErrorClass = report.Result.VendorErrorClass
-		stored.VendorError = report.Result.Text
+func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, bool, error) {
+	var current *task.Task
+	recorded := false
+
+	stored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
+		current = onDisk
+		// A launch since this check read the run directory put the task on a
+		// run the refusal says nothing about.
+		if !sameRun(onDisk, tracked) {
+			return task.ErrTaskUnchanged
+		}
+		onDisk.Status = task.StatusTodo
+		onDisk.VendorErrorClass = report.Result.VendorErrorClass
+		onDisk.VendorError = report.Result.Text
+		recorded = true
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", taskID, task.StatusTodo, err)
+		return nil, false, fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", tracked.ID, task.StatusTodo, err)
 	}
-
-	service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", refused.ID, refused.Title, refused.VendorErrorClass, refused.VendorError)
-	service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
-	service.logger.Info("%s", vendorErrorAdvice(refused.VendorErrorClass))
-	return refused, nil
+	if !stored {
+		return service.reportWithoutRecording(tracked), false, nil
+	}
+	if recorded {
+		service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", current.ID, current.Title, current.VendorErrorClass, current.VendorError)
+		service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
+		service.logger.Info("%s", vendorErrorAdvice(current.VendorErrorClass))
+	}
+	return current, recorded, nil
 }
 
 // vendorErrorAdvice tells the user what to do about a refusal.
