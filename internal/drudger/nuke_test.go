@@ -36,6 +36,9 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 		wantRemoved     string
 		wantSlotsLeft   []int
 		wantErrContains string
+		// taskStatus is what the task of the nuked Drudger is recorded as
+		// before the nuke. An empty value stands for a task still running.
+		taskStatus task.TaskStatus
 		// wantTaskStatus is what the task of the nuked Drudger ends up as. An
 		// empty value expects it to be left alone.
 		wantTaskStatus task.TaskStatus
@@ -102,6 +105,16 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			wantErrContains: removalFailed.Error(),
 		},
 		{
+			name:           "forcing a Drudger whose task moved on leaves the task alone",
+			pool:           []*Drudger{busyDrudger(1)},
+			slot:           1,
+			force:          true,
+			taskStatus:     task.StatusTodo,
+			wantRemoved:    testSandboxOfSlot(1),
+			wantSlotsLeft:  []int{},
+			wantTaskStatus: task.StatusTodo,
+		},
+		{
 			name:            "a failed removal of a forced Drudger leaves its task alone",
 			pool:            []*Drudger{busyDrudger(1)},
 			slot:            1,
@@ -122,6 +135,9 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 
 			commands := &fakeCommandRunner{workspace: workspace, errs: []error{testCase.removeErr}}
 			occupied := busyTask(testCase.slot)
+			if testCase.taskStatus != "" {
+				occupied.Status = testCase.taskStatus
+			}
 			service := newTestServiceWithPool(
 				&config.LocalConfig{ProjectSlug: testProjectSlug},
 				config.DefaultConfig(),

@@ -70,15 +70,25 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force b
 // recordKilledTask marks the task whose agent died with its Drudger.
 func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.TaskID) error {
 	var killed *task.Task
+	recorded := false
 
 	err := service.tasks.UpdateTask(projectSlug, taskID, func(stored *task.Task) error {
 		killed = stored
+		// A task the slot was read against may have moved on since. Only a task
+		// still recorded as running was what the dead agent was working on.
+		if stored.Status != task.StatusInProgress {
+			return task.ErrTaskUnchanged
+		}
 		stored.Status = task.StatusFuckedUp
 		stored.FinishedAt = time.Now().UTC()
+		recorded = true
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("the Drudger is gone, but task %s could not be marked %q: %w", taskID, task.StatusFuckedUp, err)
+	}
+	if !recorded {
+		return nil
 	}
 
 	service.logger.Info("Task [%s] %s is %s, its agent was killed with the Drudger", killed.ID, killed.Title, task.StatusFuckedUp)
