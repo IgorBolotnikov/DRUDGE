@@ -121,37 +121,74 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 
 // recordOutcome writes what a finished Session left behind onto its task, and
 // what it says about the agent onto the Drudger that ran it. It returns the
-// task as it stands once the write is through.
+// task as it stands afterwards.
 func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, error) {
 	if !report.Finished() || !tracked.FinishedAt.IsZero() {
 		return tracked, nil
 	}
 
-	service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
-
 	if report.Status == StatusNeverGotGoing {
+		service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
 		return service.rollBackRefusedRun(projectSlug, tracked.ID, report)
 	}
 
+	current, recorded, err := service.recordFinishedRun(projectSlug, tracked, report)
+	if err != nil {
+		return nil, err
+	}
+
+	// The health of the agent belongs to the run this report came from. A task
+	// that moved on since is held by a Drudger running something else.
+	if recorded {
+		service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
+	}
+	return current, nil
+}
+
+// recordFinishedRun records what a finished Session left behind on its task. It
+// writes nothing when the task has moved on to another run, when another
+// command already recorded this one, or when another command holds the task.
+func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, bool, error) {
 	finished := taskStatusOf(report.Status)
 
-	var recorded *task.Task
-	err := service.tasks.UpdateTask(projectSlug, tracked.ID, func(stored *task.Task) error {
-		recorded = stored
-		// Another command may have recorded this Session while this one was
-		// reading the run directory.
-		if !stored.FinishedAt.IsZero() {
+	var current *task.Task
+	recorded := false
+
+	stored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
+		current = onDisk
+		// Another command may have recorded this Session, or put the task on a
+		// new one, while this check was reading the run directory.
+		if !onDisk.FinishedAt.IsZero() || !sameRun(onDisk, tracked) {
 			return task.ErrTaskUnchanged
 		}
-		recordSessionEnd(stored, finished, report)
+		recordSessionEnd(onDisk, finished, report)
+		recorded = true
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, finished, err)
+		return nil, false, fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, finished, err)
 	}
+	if !stored {
+		return service.reportWithoutRecording(tracked), false, nil
+	}
+	if recorded {
+		service.logger.Info("Task [%s] %s is %s, its Session is over", current.ID, current.Title, current.Status)
+	}
+	return current, recorded, nil
+}
 
-	service.logger.Info("Task [%s] %s is %s, its Session is over", recorded.ID, recorded.Title, recorded.Status)
-	return recorded, nil
+// sameRun reports whether a stored task still carries the run a report was read
+// against. A launch stamps a new start time and a new session id, so a task
+// handed to an agent again describes a run the report knows nothing about.
+func sameRun(stored *task.Task, readBefore *task.Task) bool {
+	return stored.StartedAt.Equal(readBefore.StartedAt) && stored.SessionID == readBefore.SessionID
+}
+
+// reportWithoutRecording says that another command holds the task, so a check
+// reports what it read and writes nothing. It hands back the copy it read.
+func (service *DrudgerService) reportWithoutRecording(tracked *task.Task) *task.Task {
+	service.logger.Info("Another drudge command is working on task %s, so this check reports the run directory without recording it", tracked.ID)
+	return tracked
 }
 
 // recordSessionEnd puts the status and the agent's own report of a finished

@@ -710,3 +710,102 @@ func TestDrudgerService_SessionStatus_KeepsTheStartFieldsOfTheRunItRecords(t *te
 		t.Error("expected what the agent reported to be recorded")
 	}
 }
+
+func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) {
+	// Every case is what a check is holding when a launch puts the task on a
+	// new run before the check gets to record anything.
+	cases := []struct {
+		name   string
+		stream []string
+		exit   string
+	}{
+		{
+			name:   "a check holding a finished run",
+			stream: []string{initEvent, resultEvent},
+			exit:   "0\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			workspace := setupWorkspace(t)
+			tracked := runningTask()
+			runDir := common.RunDir(workspace, string(tracked.ID))
+			writeStream(t, runDir, testCase.stream...)
+			writeExit(t, runDir, testCase.exit)
+
+			service := newTestService(tracked)
+
+			// The launch that put the task on a new run, landing after this
+			// check read the task and before it records anything.
+			startedAt := time.Now().UTC().Add(time.Minute)
+			service.taskRepo.beforeChange = func() {
+				service.taskRepo.beforeChange = nil
+				tracked.StartRun(startedAt, "sess-relaunch")
+			}
+
+			captureOutput(func() {
+				if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			})
+
+			recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+			if err != nil {
+				t.Fatalf("could not read the task back: %v", err)
+			}
+
+			if recorded.Status != task.StatusInProgress {
+				t.Errorf("expected the new run to stand as %q, got %q", task.StatusInProgress, recorded.Status)
+			}
+			if !recorded.StartedAt.Equal(startedAt) {
+				t.Errorf("expected the start time %s of the new run, got %s", startedAt, recorded.StartedAt)
+			}
+			if recorded.SessionID != "sess-relaunch" {
+				t.Errorf("expected the session id of the new run, got %q", recorded.SessionID)
+			}
+			if !recorded.FinishedAt.IsZero() {
+				t.Error("expected the new run to be left unfinished")
+			}
+			if recorded.SessionResult != "" {
+				t.Errorf("expected nothing of the old run to be recorded, got result %q", recorded.SessionResult)
+			}
+			if recorded.VendorError != "" {
+				t.Errorf("expected nothing of the old run to be recorded, got vendor error %q", recorded.VendorError)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_SessionStatus_ReportsWithoutRecordingOnAHeldTask(t *testing.T) {
+	workspace := setupWorkspace(t)
+	tracked := runningTask()
+	runDir := common.RunDir(workspace, string(tracked.ID))
+	writeStream(t, runDir, initEvent, resultEvent)
+	writeExit(t, runDir, "0\n")
+
+	service := newTestService(tracked)
+	service.taskRepo.lockedTasks[tracked.ID] = true
+
+	var session *TaskSession
+	var err error
+	captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	if err != nil {
+		t.Fatalf("expected a held task to be reported anyway, got %v", err)
+	}
+
+	if session.Report.Status != StatusGotShitDone {
+		t.Errorf("expected the run directory to be reported as %q, got %q", StatusGotShitDone, session.Report.Status)
+	}
+
+	recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+	if err != nil {
+		t.Fatalf("could not read the task back: %v", err)
+	}
+	if recorded.Status != task.StatusInProgress {
+		t.Errorf("expected the task to be left alone as %q, got %q", task.StatusInProgress, recorded.Status)
+	}
+	if !recorded.FinishedAt.IsZero() {
+		t.Error("expected nothing to be recorded on a task another command holds")
+	}
+}
