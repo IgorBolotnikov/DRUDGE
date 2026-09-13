@@ -466,5 +466,21 @@ func (r *FileTaskRepository) updateTask(id task.TaskID, change func(*task.Task) 
 	if err := common.WriteFileWithFrontMatter(found.path, taskFrontMatter(taskToUpdate), taskToUpdate.Description); err != nil {
 		return false, fmt.Errorf("could not write task file %s: %w", found.path, err)
 	}
-	return true, nil
+
+	return true, r.renameAfterTitleChange(found, taskToUpdate.Title)
+}
+
+// renameAfterTitleChange names a task file after the title the task now
+// carries. The lock is keyed on the task id, so it still covers the file under
+// its new name.
+func (r *FileTaskRepository) renameAfterTitleChange(found taskFile, title string) error {
+	renamed := filepath.Join(r.taskDir(), taskFileName(found.id, title))
+	if renamed == found.path {
+		return nil
+	}
+
+	if err := os.Rename(found.path, renamed); err != nil {
+		return fmt.Errorf("task %s was written, but its file could not be renamed to %s: %w", found.id, renamed, err)
+	}
+	return nil
 }

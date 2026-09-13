@@ -1204,3 +1204,42 @@ func TestFileTaskRepository_ListTasks_SkipsLockFiles(t *testing.T) {
 		t.Fatalf("expected the lock file to be left out of the listing, got %d tasks", len(listed))
 	}
 }
+
+func TestFileTaskRepository_UpdateTask_RenamesTheFileAfterATitleChange(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	created := storeTask(t, repo, "Fix login bug")
+	oldPath := filepath.Join(repo.taskDir(), taskFileName(created.ID, "Fix login bug"))
+
+	err := repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.Title = "Fix logout bug"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+
+	newPath := filepath.Join(repo.taskDir(), taskFileName(created.ID, "Fix logout bug"))
+	if exists, _ := common.Exists(newPath); !exists {
+		entries, _ := os.ReadDir(repo.taskDir())
+		t.Fatalf("expected the task file to be named after the new title, got %v", entries)
+	}
+	if exists, _ := common.Exists(oldPath); exists {
+		t.Error("expected the file named after the old title to be gone")
+	}
+
+	reread, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if reread.Title != "Fix logout bug" {
+		t.Errorf("expected the new title on disk, got %q", reread.Title)
+	}
+}
