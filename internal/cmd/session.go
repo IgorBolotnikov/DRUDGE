@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	// sessionLabelWidth lines up the values of a status report, counting the
-	// colon that follows every label.
+	// sessionLabelWidth fits the longest label of a status report.
 	sessionLabelWidth = 11
 
 	// notReportedLabel stands for a fact the agent has not written yet.
@@ -55,7 +54,7 @@ func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
 }
 
 func sessionLine(label string, value string) string {
-	return fmt.Sprintf("%s%-*s %s", listIndent, sessionLabelWidth, label+":", value)
+	return labelledLine(label, sessionLabelWidth, value)
 }
 
 func orNotReported(value string) string {

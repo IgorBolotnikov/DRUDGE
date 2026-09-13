@@ -30,17 +30,20 @@ const (
 )
 
 const (
-	taskUsage       = "usage: drg task <new|list|run|rerun|status>"
+	taskUsage       = "usage: drg task <new|list|show|run|rerun|status>"
+	taskShowUsage   = "usage: drg task show <task-id>"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
 	taskStatusUsage = "usage: drg task status <task-id>"
 )
 
-// Names of the subcommands that hand a task to an agent, used in the errors
-// their argument parsing produces.
+// Names of the subcommands taking a task id, used in the errors their
+// argument parsing produces.
 const (
-	runSubcommand   = "run"
-	rerunSubcommand = "rerun"
+	showSubcommand   = "show"
+	runSubcommand    = "run"
+	rerunSubcommand  = "rerun"
+	statusSubcommand = "status"
 )
 
 // taskRerunCommand is what a user types to start a task over. Other commands
@@ -68,11 +71,13 @@ func runTask(args []string) error {
 		return taskNew(args[1:])
 	case "list":
 		return taskList(args[1:])
+	case showSubcommand:
+		return taskShow(args[1:])
 	case runSubcommand:
 		return taskRun(args[1:])
 	case rerunSubcommand:
 		return taskRerun(args[1:])
-	case "status":
+	case statusSubcommand:
 		return taskSessionStatus(args[1:])
 	default:
 		return fmt.Errorf("unknown task subcommand %q, %s", args[0], taskUsage)
@@ -200,6 +205,35 @@ func taskList(args []string) error {
 	return nil
 }
 
+// taskShow prints everything drudge knows about one task.
+func taskShow(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(taskShowUsage)
+		fmt.Println()
+		fmt.Println("Print one task in full: its description, where it stands and what its last run left behind.")
+		fmt.Println("The task ID may be the short one a listing prints, as long as it names a single task.")
+		return nil
+	}
+
+	taskID, err := parseTaskIDArgs(args, showSubcommand, taskShowUsage)
+	if err != nil {
+		return err
+	}
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	found, err := deps.tasks.GetTask(deps.localCfg.ProjectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	printTask(deps.log, found, time.Now().UTC())
+	return nil
+}
+
 func taskRun(args []string) error {
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println(taskRunUsage)
@@ -259,7 +293,7 @@ func taskSessionStatus(args []string) error {
 		return nil
 	}
 
-	taskID, err := parseTaskSessionStatusArgs(args)
+	taskID, err := parseTaskIDArgs(args, statusSubcommand, taskStatusUsage)
 	if err != nil {
 		return err
 	}
@@ -278,22 +312,25 @@ func taskSessionStatus(args []string) error {
 	return nil
 }
 
-func parseTaskSessionStatusArgs(args []string) (task.TaskID, error) {
+// parseTaskIDArgs reads the single task id a subcommand takes. The subcommand
+// names itself, so its errors say which one the user typed. The id reaches the
+// lookup as typed, which is what lets a short id from a listing resolve.
+func parseTaskIDArgs(args []string, subcommand, usage string) (task.TaskID, error) {
 	var taskID string
 
 	for _, arg := range args {
 		switch {
 		case strings.HasPrefix(arg, "-"):
-			return "", fmt.Errorf("unknown flag %q, %s", arg, taskStatusUsage)
+			return "", fmt.Errorf("unknown flag %q, %s", arg, usage)
 		case taskID == "":
 			taskID = arg
 		default:
-			return "", fmt.Errorf("unexpected argument %q, drg task status takes a single task ID", arg)
+			return "", fmt.Errorf("unexpected argument %q, drg task %s takes a single task ID", arg, subcommand)
 		}
 	}
 
 	if taskID == "" {
-		return "", fmt.Errorf("task ID is required, %s", taskStatusUsage)
+		return "", fmt.Errorf("task ID is required, %s", usage)
 	}
 
 	return task.TaskID(taskID), nil

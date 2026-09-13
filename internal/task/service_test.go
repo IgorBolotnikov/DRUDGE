@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,12 +342,47 @@ func TestTaskService_GetTask_RefusesAnEmptyID(t *testing.T) {
 }
 
 func TestTaskService_GetTask_SurfacesTheLookupFailure(t *testing.T) {
-	repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
-		return nil, errors.New("disk on fire")
-	}}
-	service := NewTaskService(repo, common.NewLogger(""))
+	// The repository decides what an id resolves to, so its refusal has to
+	// reach the caller with the text that explains it.
+	cases := []struct {
+		name      string
+		lookupErr error
+		wantText  string
+	}{
+		{
+			name:      "an id nobody carries",
+			lookupErr: NotFoundError("006684e3"),
+			wantText:  "006684e3",
+		},
+		{
+			name: "a prefix several tasks carry",
+			lookupErr: AmbiguousIDError("00", []IDMatch{
+				{ID: "006684e3", Title: "Fix login"},
+				{ID: "0071a2b4", Title: "Fix logout"},
+			}),
+			wantText: "Fix logout",
+		},
+		{
+			name:      "a repository that could not read",
+			lookupErr: errors.New("disk on fire"),
+			wantText:  "disk on fire",
+		},
+	}
 
-	if _, err := service.GetTask("demo", "006684e3"); err == nil {
-		t.Fatal("expected the lookup failure to surface")
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
+				return nil, testCase.lookupErr
+			}}
+			service := NewTaskService(repo, common.NewLogger(""))
+
+			_, err := service.GetTask("demo", "006684e3")
+			if err == nil {
+				t.Fatal("expected the lookup failure to surface")
+			}
+			if !strings.Contains(err.Error(), testCase.wantText) {
+				t.Errorf("expected the error to mention %q, got %q", testCase.wantText, err)
+			}
+		})
 	}
 }

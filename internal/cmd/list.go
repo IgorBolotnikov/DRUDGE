@@ -19,6 +19,12 @@ const (
 	listEllipsis = "..."
 )
 
+// labelledLine formats one line of a report. width lines the values up and
+// counts the colon that follows every label.
+func labelledLine(label string, width int, value string) string {
+	return fmt.Sprintf("%s%-*s %s", listIndent, width, label+":", value)
+}
+
 // column is one column of a listing. A width of zero means the column takes
 // whatever room its values need (which only makes sense for the last one).
 type column struct {

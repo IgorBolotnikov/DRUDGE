@@ -74,3 +74,28 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.VendorError = ""
 	taskToRun.VendorErrorClass = ""
 }
+
+// HasRun reports whether an agent has ever been handed this task. A launch
+// stamps the start time and StartRun clears everything the run before it left.
+func (taskToRead *Task) HasRun() bool {
+	return !taskToRead.StartedAt.IsZero()
+}
+
+// RunFinished reports whether drudge has seen the last run end. The fields the
+// agent reported carry its outcome only once this is true.
+func (taskToRead *Task) RunFinished() bool {
+	return !taskToRead.FinishedAt.IsZero()
+}
+
+// WasRefused reports whether the vendor turned the last run away. A refused
+// run did no work, so it reports no outcome of its own.
+func (taskToRead *Task) WasRefused() bool {
+	return taskToRead.VendorError != ""
+}
+
+// AgentReported reports whether the agent said anything about the last run.
+// A run killed with its Drudger is recorded as finished without a report, so
+// every field the agent fills stays zero.
+func (taskToRead *Task) AgentReported() bool {
+	return taskToRead.SessionTurns > 0 || taskToRead.SessionResult != ""
+}
