@@ -38,11 +38,12 @@ const (
 )
 
 const (
-	taskUsage     = "usage: drg task <new|list|show|edit|run|rerun|status>"
+	taskUsage     = "usage: drg task <new|list|show|edit|rm|run|rerun|status>"
 	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>]"
 	taskShowUsage = "usage: drg task show <task-id>"
 	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
 		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + forceFlag + "]"
+	taskRmUsage     = "usage: drg task rm <task-id> [" + forceFlag + "]"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
 	taskStatusUsage = "usage: drg task status <task-id>"
@@ -53,6 +54,7 @@ const (
 const (
 	showSubcommand   = "show"
 	editSubcommand   = "edit"
+	rmSubcommand     = "rm"
 	runSubcommand    = "run"
 	rerunSubcommand  = "rerun"
 	statusSubcommand = "status"
@@ -79,6 +81,8 @@ func runTask(args []string) error {
 		return taskShow(args[1:])
 	case editSubcommand:
 		return taskEdit(args[1:])
+	case rmSubcommand:
+		return taskRemove(args[1:])
 	case runSubcommand:
 		return taskRun(args[1:])
 	case rerunSubcommand:

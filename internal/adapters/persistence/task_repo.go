@@ -484,3 +484,52 @@ func (r *FileTaskRepository) renameAfterTitleChange(found taskFile, title string
 	}
 	return nil
 }
+
+// DeleteTask removes the file of the task carrying exactly this id, along with
+// the lock guarding it. accept runs against the stored task under that lock,
+// and a task accept refuses stays where it is. It gives up when another
+// process holds the lock.
+func (r *FileTaskRepository) DeleteTask(projectSlug string, id task.TaskID, accept func(*task.Task) error) (removed bool, err error) {
+	// The task is looked up before the lock is taken, so an id that names no
+	// task is reported without leaving a lock file behind for it.
+	if _, err := r.exactTaskFile(id); err != nil {
+		return false, err
+	}
+
+	lockPath := r.taskLockPath(id)
+	unlock, gotLock, err := lockFile(lockPath, giveUpOnLock)
+	if err != nil {
+		return false, err
+	}
+	if !gotLock {
+		return false, nil
+	}
+	defer unlock()
+
+	// The task file is named after the task title, so its path is looked up
+	// again under the lock.
+	found, err := r.exactTaskFile(id)
+	if err != nil {
+		return false, err
+	}
+
+	taskToRemove, err := r.readTaskFile(found)
+	if err != nil {
+		return false, err
+	}
+
+	if err := accept(taskToRemove); err != nil {
+		return false, err
+	}
+
+	if err := os.Remove(found.path); err != nil {
+		return false, fmt.Errorf("could not remove task file %s: %w", found.path, err)
+	}
+
+	// The lock is keyed on the task id, so nothing reaches for this lock file
+	// once the task it guards is gone.
+	if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+		return true, fmt.Errorf("task %s was removed, but its lock file %s was not: %w", id, lockPath, err)
+	}
+	return true, nil
+}

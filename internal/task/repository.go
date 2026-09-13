@@ -38,6 +38,11 @@ type TaskRepository interface {
 	// the lock. stored says whether the task went through change and was
 	// written back.
 	TryUpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) (stored bool, err error)
+	// DeleteTask removes the task carrying exactly this id. accept runs
+	// against the stored task under an exclusive lock on that task, and a task
+	// accept refuses stays where it is. removed is false when someone else
+	// holds the lock.
+	DeleteTask(projectSlug string, id TaskID, accept func(taskToRemove *Task) error) (removed bool, err error)
 }
 
 // ErrTaskUnchanged tells an update that the task needs no write. A change

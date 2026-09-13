@@ -27,10 +27,15 @@ var CleanupCmd = &Cmd{
 			return nil
 		}
 
-		force := HasForceFlag(args)
-
-		if err := ConfirmDeletion(drudgeDir, force); err != nil {
-			return err
+		if !HasForceFlag(args) {
+			confirmed, err := ConfirmDeletion(drudgeDir)
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				fmt.Println("Aborted")
+				return nil
+			}
 		}
 
 		if err := common.RemoveAll(drudgeDir); err != nil {

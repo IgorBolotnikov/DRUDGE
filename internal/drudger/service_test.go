@@ -96,6 +96,25 @@ func (repo *fakeTaskRepo) TryUpdateTask(projectSlug string, id task.TaskID, chan
 	return true, repo.UpdateTask(projectSlug, id, change)
 }
 
+func (repo *fakeTaskRepo) DeleteTask(projectSlug string, id task.TaskID, accept func(*task.Task) error) (bool, error) {
+	if repo.lockedTasks[id] {
+		return false, nil
+	}
+
+	stored := repo.stored(id)
+	if stored == nil {
+		return false, task.NotFoundError(string(id))
+	}
+	if err := accept(stored); err != nil {
+		return false, err
+	}
+
+	repo.tasks = slices.DeleteFunc(repo.tasks, func(candidate *task.Task) bool {
+		return candidate.ID == id
+	})
+	return true, nil
+}
+
 // stored returns the task a fake repository holds, or nil when it holds none.
 func (repo *fakeTaskRepo) stored(id task.TaskID) *task.Task {
 	for _, candidate := range repo.tasks {

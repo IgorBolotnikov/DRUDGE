@@ -176,8 +176,9 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace st
 	return nil
 }
 
-// RefuseWhileWorking refuses a change to a task whose agent is still working,
-// and names the Drudger running it. A task with no live Session goes through.
+// RefuseWhileWorking refuses an edit or a removal of a task whose agent is
+// still working, and names the Drudger running it. A task with no live Session
+// goes through.
 func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChange *task.Task) error {
 	workspace, err := common.WorkDir()
 	if err != nil {
@@ -192,9 +193,32 @@ func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChan
 		return nil
 	}
 	return fmt.Errorf(
-		"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then change the task",
+		"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then try again",
 		working.Slot, working.Sandbox, taskToChange.ID, nukeCommand, working.Slot,
 	)
+}
+
+// RemoveRun deletes the run directory of a task and reports whether the task
+// had one.
+func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return false, fmt.Errorf("could not work out where task %s runs: %w", taskID, err)
+	}
+
+	runDir := common.RunDir(workspace, string(taskID))
+	found, err := common.Exists(runDir)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	if err := common.RemoveAll(runDir); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // workingDrudger returns the Drudger whose agent is working on a task, and nil

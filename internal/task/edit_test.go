@@ -3,6 +3,7 @@ package task
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -85,6 +86,25 @@ func (repo *fakeTaskRepo) TryUpdateTask(projectSlug string, id TaskID, change fu
 		return false, nil
 	}
 	return true, repo.UpdateTask(projectSlug, id, change)
+}
+
+func (repo *fakeTaskRepo) DeleteTask(projectSlug string, id TaskID, accept func(*Task) error) (bool, error) {
+	if repo.locked[id] {
+		return false, nil
+	}
+
+	stored, err := repo.GetTask(projectSlug, id)
+	if err != nil {
+		return false, err
+	}
+	if err := accept(stored); err != nil {
+		return false, err
+	}
+
+	repo.tasks = slices.DeleteFunc(repo.tasks, func(candidate *Task) bool {
+		return candidate.ID == id
+	})
+	return true, nil
 }
 
 // fakeSessionGuard stands for the live Session check the drudger service does.

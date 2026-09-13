@@ -95,10 +95,15 @@ func projectDelete(args []string) error {
 
 	name := proj.Name
 
-	force := HasForceFlag(args)
-
-	if err := ConfirmDeletion(fmt.Sprintf("project %q", name), force); err != nil {
-		return err
+	if !HasForceFlag(args) {
+		confirmed, err := ConfirmDeletion(fmt.Sprintf("project %q", name))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Println("Aborted")
+			return nil
+		}
 	}
 
 	if err := repo.DeleteProject(proj.Slug); err != nil {

@@ -1243,3 +1243,138 @@ func TestFileTaskRepository_UpdateTask_RenamesTheFileAfterATitleChange(t *testin
 		t.Errorf("expected the new title on disk, got %q", reread.Title)
 	}
 }
+
+func TestFileTaskRepository_DeleteTask(t *testing.T) {
+	cases := []struct {
+		name string
+		// refusal is what the accept callback answers with.
+		refusal error
+		// lockHeld stands for another command working on the task.
+		lockHeld bool
+
+		wantRemoved bool
+		wantErr     bool
+	}{
+		{
+			name:        "a task nothing is holding",
+			wantRemoved: true,
+		},
+		{
+			name:    "a task the accept callback refuses",
+			refusal: errors.New("an agent is still working on it"),
+			wantErr: true,
+		},
+		{
+			name:     "a task another command holds the lock on",
+			lockHeld: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, cleanup := setupTaskTestHome(t)
+			defer cleanup()
+
+			projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+			if err := common.EnsureDir(projectDir); err != nil {
+				t.Fatalf("ensure project dir: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			stored := storeTask(t, repo, "Fix login bug")
+
+			if testCase.lockHeld {
+				unlock, held, err := lockFile(repo.taskLockPath(stored.ID), waitForLock)
+				if err != nil || !held {
+					t.Fatalf("could not take the lock the test holds: %v", err)
+				}
+				defer unlock()
+			}
+
+			removed, err := repo.DeleteTask("test-project", stored.ID, func(taskToRemove *task.Task) error {
+				if taskToRemove.Title != stored.Title {
+					t.Errorf("expected the stored task to reach accept, got title %q", taskToRemove.Title)
+				}
+				return testCase.refusal
+			})
+
+			if testCase.wantErr != (err != nil) {
+				t.Fatalf("expected an error: %v, got %v", testCase.wantErr, err)
+			}
+			if removed != testCase.wantRemoved {
+				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, removed)
+			}
+
+			_, lookupErr := repo.GetTask("test-project", stored.ID)
+			gone := lookupErr != nil
+			if gone != testCase.wantRemoved {
+				t.Errorf("expected the task to be gone: %v, got %v", testCase.wantRemoved, gone)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_DeleteTask_TakesTheLockFileWithIt(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	stored := storeTask(t, repo, "Fix login bug")
+
+	// An update leaves the lock file of the task behind.
+	err := repo.UpdateTask("test-project", stored.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.Status = task.StatusInProgress
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+
+	if _, err := repo.DeleteTask("test-project", stored.ID, func(*task.Task) error { return nil }); err != nil {
+		t.Fatalf("DeleteTask: %v", err)
+	}
+
+	entries, err := os.ReadDir(repo.taskDir())
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), string(stored.ID)) {
+			t.Errorf("expected nothing of task %s to be left, found %s", stored.ID, entry.Name())
+		}
+	}
+}
+
+func TestFileTaskRepository_DeleteTask_UnknownTask(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	storeTask(t, repo, "Fix login bug")
+
+	_, err := repo.DeleteTask("test-project", "nope", func(*task.Task) error {
+		t.Error("expected accept not to be called for an unknown task")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected an unknown task to be reported")
+	}
+
+	lockLeft, err := common.Exists(repo.taskLockPath("nope"))
+	if err != nil {
+		t.Fatalf("could not check the lock file: %v", err)
+	}
+	if lockLeft {
+		t.Error("expected no lock file to be left behind for an unknown task")
+	}
+}

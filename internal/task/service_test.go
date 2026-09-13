@@ -59,6 +59,10 @@ func (m *mockRepo) TryUpdateTask(projectSlug string, id TaskID, change func(*Tas
 	return true, nil
 }
 
+func (m *mockRepo) DeleteTask(projectSlug string, id TaskID, accept func(*Task) error) (bool, error) {
+	return false, errors.New("DeleteTask should not be called")
+}
+
 func TestTaskService_UpdateTask(t *testing.T) {
 	cases := []struct {
 		name     string
