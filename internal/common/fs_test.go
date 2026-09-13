@@ -3,6 +3,8 @@ package common
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -403,5 +405,178 @@ func TestParseFrontMatter_WithoutABlock(t *testing.T) {
 	}
 	if content != body {
 		t.Errorf("expected body %q, got %q", body, content)
+	}
+}
+
+func TestWriteFile_LeavesNoTemporaryFileBehind(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing string
+		write    func(path string) error
+	}{
+		{
+			name:  "a file that does not exist yet",
+			write: func(path string) error { return WriteFile(path, "content") },
+		},
+		{
+			name:     "over an existing file",
+			existing: "old content",
+			write:    func(path string) error { return WriteFile(path, "content") },
+		},
+		{
+			name: "front matter",
+			write: func(path string) error {
+				return WriteFileWithFrontMatter(path, map[string]string{"title": "Hello"}, "body")
+			},
+		},
+		{
+			name:  "json",
+			write: func(path string) error { return WriteJSON(path, map[string]string{"title": "Hello"}) },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, targetFileName)
+			if tt.existing != "" {
+				seedFile(t, path, tt.existing)
+			}
+
+			if err := tt.write(path); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+
+			assertDirEntries(t, dir, targetFileName)
+		})
+	}
+}
+
+func TestWriteFile_FailedWriteKeepsTheTarget(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, path string)
+		verify  func(t *testing.T, path string)
+	}{
+		{
+			name: "the target is an empty directory",
+			prepare: func(t *testing.T, path string) {
+				mkdirOrFail(t, path)
+			},
+			verify: func(t *testing.T, path string) {
+				assertDirEntries(t, path)
+			},
+		},
+		{
+			name: "the target is a directory holding a file",
+			prepare: func(t *testing.T, path string) {
+				mkdirOrFail(t, path)
+				seedFile(t, filepath.Join(path, "kept.txt"), "original content")
+			},
+			verify: func(t *testing.T, path string) {
+				assertDirEntries(t, path, "kept.txt")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, targetFileName)
+			tt.prepare(t, path)
+
+			err := WriteFile(path, "new content")
+			if err == nil {
+				t.Fatal("expected the write to fail")
+			}
+			if !strings.Contains(err.Error(), path) {
+				t.Errorf("expected the error to name %s, got %q", path, err)
+			}
+
+			tt.verify(t, path)
+			assertDirEntries(t, dir, targetFileName)
+		})
+	}
+}
+
+func TestWriteFile_ConcurrentReadSeesOneWholeVersion(t *testing.T) {
+	const writeCount = 100
+	first := strings.Repeat("a", 256*1024)
+	second := strings.Repeat("b", 256*1024)
+
+	path := filepath.Join(t.TempDir(), targetFileName)
+	if err := WriteFile(path, first); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	writesDone := make(chan struct{})
+	go func() {
+		defer close(writesDone)
+		for count := range writeCount {
+			content := first
+			if count%2 == 1 {
+				content = second
+			}
+			if err := WriteFile(path, content); err != nil {
+				t.Errorf("WriteFile: %v", err)
+				return
+			}
+		}
+	}()
+
+	var badRead string
+	for writing := true; writing; {
+		select {
+		case <-writesDone:
+			writing = false
+		default:
+		}
+
+		got, err := ReadFile(path)
+		if err != nil {
+			badRead = err.Error()
+			break
+		}
+		if got != first && got != second {
+			badRead = strconv.Itoa(len(got)) + " bytes matching neither version"
+			break
+		}
+	}
+	<-writesDone
+
+	if badRead != "" {
+		t.Fatalf("a read during a write saw %s", badRead)
+	}
+}
+
+const targetFileName = "file.txt"
+
+func seedFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), DefaultFilePerm); err != nil {
+		t.Fatalf("seeding %s: %v", path, err)
+	}
+}
+
+func mkdirOrFail(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("Mkdir %s: %v", path, err)
+	}
+}
+
+func assertDirEntries(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if !slices.Equal(names, want) {
+		t.Errorf("%s holds %v, want %v", dir, names, want)
 	}
 }

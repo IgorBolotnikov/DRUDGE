@@ -66,12 +66,56 @@ func Exists(path string) (bool, error) {
 	return false, fmt.Errorf("could not check %s: %w", path, err)
 }
 
-// WriteFile writes content to path as a plain text file.
+const tempFilePattern = ".drudge-*.tmp"
+
+// WriteFile writes content to path as a plain text file. The content is staged
+// in a temporary file beside the target and renamed over it, so a reader sees
+// the whole old file or the whole new one. A write that fails leaves the
+// target as it was and removes the temporary file.
 func WriteFile(path string, content string) error {
-	if err := os.WriteFile(path, []byte(content), DefaultFilePerm); err != nil {
+	tempPath, err := writeTempFile(filepath.Dir(path), content)
+	if err != nil {
+		return fmt.Errorf("could not write %s: %w", path, err)
+	}
+
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
 		return fmt.Errorf("could not write %s: %w", path, err)
 	}
 	return nil
+}
+
+// writeTempFile writes content to a new file in dir and returns its path. A
+// failure anywhere removes the file, so dir is left as it was.
+func writeTempFile(dir string, content string) (string, error) {
+	file, err := os.CreateTemp(dir, tempFilePattern)
+	if err != nil {
+		return "", err
+	}
+
+	if err := fillTempFile(file, content); err != nil {
+		os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+// fillTempFile writes content to file and closes it with the permissions
+// drudge writes files with. The content is flushed to disk before the close,
+// so a rename cannot put the target name on unwritten data.
+func fillTempFile(file *os.File, content string) error {
+	if _, err := file.WriteString(content); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(file.Name(), DefaultFilePerm)
 }
 
 // ReadFile reads path as plain text.
