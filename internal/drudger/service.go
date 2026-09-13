@@ -97,16 +97,27 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return err
 	}
 
-	if taskToRun.Status != task.StatusTodo {
-		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
-	}
-
 	workspace, err := common.WorkDir()
 	if err != nil {
 		return fmt.Errorf("could not work out where to run task %s: %w", taskToRun.ID, err)
 	}
 
-	return service.launch(projectSlug, taskToRun, workspace, dryRun)
+	if dryRun {
+		if err := acceptRunnable(taskToRun); err != nil {
+			return err
+		}
+		return service.describeRun(projectSlug, taskToRun, workspace)
+	}
+
+	return service.launch(projectSlug, taskToRun.ID, workspace, acceptRunnable)
+}
+
+// acceptRunnable refuses a task that is not waiting for an agent.
+func acceptRunnable(taskToRun *task.Task) error {
+	if taskToRun.Status != task.StatusTodo {
+		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
+	}
+	return nil
 }
 
 // RerunTask hands a task back to a Drudger and starts it over from scratch.
@@ -116,16 +127,40 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 		return err
 	}
 
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return fmt.Errorf("could not work out where to run task %s: %w", taskToRerun.ID, err)
+	}
+
+	var cameFrom task.TaskStatus
+	accept := func(candidate *task.Task) error {
+		cameFrom = candidate.Status
+		return service.acceptRerunnable(projectSlug, workspace, candidate)
+	}
+
+	if dryRun {
+		if err := accept(taskToRerun); err != nil {
+			return err
+		}
+		return service.describeRun(projectSlug, taskToRerun, workspace)
+	}
+
+	if err := service.launch(projectSlug, taskToRerun.ID, workspace, accept); err != nil {
+		return err
+	}
+
+	service.logger.Info("Task [%s] %s was %q, its previous run is cleared and it starts over", taskToRerun.ID, taskToRerun.Title, cameFrom)
+	return nil
+}
+
+// acceptRerunnable refuses a task no agent has had yet, and one whose agent is
+// still working.
+func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace string, taskToRerun *task.Task) error {
 	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
 		return fmt.Errorf(
 			"task %s is %q, only %s tasks can be rerun",
 			taskToRerun.ID, taskToRerun.Status, formatStatuses(rerunnableStatuses),
 		)
-	}
-
-	workspace, err := common.WorkDir()
-	if err != nil {
-		return fmt.Errorf("could not work out where to run task %s: %w", taskToRerun.ID, err)
 	}
 
 	working, err := service.workingDrudger(projectSlug, workspace, taskToRerun.ID)
@@ -137,14 +172,6 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 			"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then start the task over",
 			working.Slot, working.Sandbox, taskToRerun.ID, nukeCommand, working.Slot,
 		)
-	}
-
-	cameFrom := taskToRerun.Status
-	if err := service.launch(projectSlug, taskToRerun, workspace, dryRun); err != nil {
-		return err
-	}
-	if !dryRun {
-		service.logger.Info("Task [%s] %s was %q, its previous run is cleared and it starts over", taskToRerun.ID, taskToRerun.Title, cameFrom)
 	}
 	return nil
 }
@@ -193,28 +220,52 @@ func formatStatuses(statuses []task.TaskStatus) string {
 	return strings.Join(quoted, " and ")
 }
 
-// launch starts an agent on a task and records the task as in progress. A dry
-// run prints the plan and writes nothing.
-func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, workspace string, dryRun bool) error {
+// launch starts an agent on a task and records the task as in progress. It
+// holds the lock on the task for the whole launch, and accept re-checks the
+// task against what is stored under that lock. A launch that finds the lock
+// taken starts nothing.
+//
+// The lock covers the sandbox steps, which take minutes on a first launch.
+// Only commands working on this same task wait that long, which is what a
+// second launch of it should do.
+func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, workspace string, accept func(*task.Task) error) error {
+	started := false
+
+	stored, err := service.tasks.TryUpdateTask(projectSlug, taskID, func(taskToRun *task.Task) error {
+		if err := accept(taskToRun); err != nil {
+			return err
+		}
+		if err := service.startAgent(projectSlug, taskToRun, workspace); err != nil {
+			return err
+		}
+		started = true
+		return nil
+	})
+	if err != nil {
+		if started {
+			return fmt.Errorf("an agent is already working on task %s, but the task could not be marked as %q: %w", taskID, task.StatusInProgress, err)
+		}
+		return err
+	}
+	if !stored {
+		return fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", taskID)
+	}
+	return nil
+}
+
+// startAgent claims a Drudger, starts an agent on a task and marks the task as
+// in progress. The caller writes the task back.
+func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, workspace string) error {
 	taskID := taskToRun.ID
 
-	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
+	prompt, _, err := service.renderTaskPrompt(taskToRun)
 	if err != nil {
 		return err
 	}
 
-	prompt, err := renderPrompt(promptTemplate, taskToRun)
-	if err != nil {
-		return fmt.Errorf("%s: %w", promptSource, err)
-	}
-
 	runDir := common.RunDir(workspace, string(taskID))
 
-	if dryRun {
-		return service.describeRun(projectSlug, taskToRun, workspace, runDir, prompt, promptSource)
-	}
-
-	drudger, err := service.claimDrudger(projectSlug, taskID, workspace)
+	claimed, err := service.claimDrudger(projectSlug, taskID, workspace)
 	if err != nil {
 		return err
 	}
@@ -223,14 +274,14 @@ func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, 
 	defer func() {
 		// Manually release the drudger in case it failed to start.
 		if !launched {
-			e := service.releaseDrudger(projectSlug, drudger.Slot, taskID)
+			e := service.releaseDrudger(projectSlug, claimed.Slot, taskID)
 			if e != nil {
-				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", drudger.Slot, projectSlug, e)
+				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", claimed.Slot, projectSlug, e)
 			}
 		}
 	}()
 
-	plan, err := service.pickDrudgerCommand(drudger.Sandbox, workspace, runDir)
+	plan, err := service.pickDrudgerCommand(claimed.Sandbox, workspace, runDir)
 	if err != nil {
 		return err
 	}
@@ -245,31 +296,51 @@ func (service *DrudgerService) launch(projectSlug string, taskToRun *task.Task, 
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(projectSlug, drudger, plan, workspace); err != nil {
+	if err := service.ensureSandbox(projectSlug, claimed, plan, workspace); err != nil {
 		return err
 	}
 
 	if err := service.commands.Start(plan.start); err != nil {
-		return fmt.Errorf("could not start Drudger %s for task %s: %w", drudger.Sandbox, taskID, err)
+		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
 	}
 
-	if err := service.confirmLaunch(runDir, drudger.Sandbox, taskID); err != nil {
+	if err := service.confirmLaunch(runDir, claimed.Sandbox, taskID); err != nil {
 		return err
 	}
 	launched = true
 
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
 
-	if err := service.tasks.UpdateTask(projectSlug, taskToRun); err != nil {
-		return fmt.Errorf("Drudger %s is already working on task %s, but the task could not be marked as %q: %w", drudger.Sandbox, taskID, task.StatusInProgress, err)
-	}
-
-	service.logger.Info("Drudger %s is working on task [%s] %s", drudger.Sandbox, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)
 	service.logger.Info("Run directory: %s", runDir)
 	return nil
 }
 
-func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, workspace, runDir, prompt, promptSource string) error {
+// renderTaskPrompt renders the prompt an agent is given for a task, and names
+// where the template came from.
+func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task) (prompt string, promptSource string, err error) {
+	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
+	if err != nil {
+		return "", "", err
+	}
+
+	prompt, err = renderPrompt(promptTemplate, taskToRun)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", promptSource, err)
+	}
+	return prompt, promptSource, nil
+}
+
+// describeRun prints the Drudger, the prompt and the commands a run would use,
+// and writes nothing.
+func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, workspace string) error {
+	prompt, promptSource, err := service.renderTaskPrompt(taskToRun)
+	if err != nil {
+		return err
+	}
+
+	runDir := common.RunDir(workspace, string(taskToRun.ID))
+
 	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, workspace)
 	if err != nil {
 		return err

@@ -257,7 +257,7 @@ func TestFileDrudgerRepository_TryUpdateDrudgers_GivesUpOnALockHeldElsewhere(t *
 
 	// Take the lock the way another drudge process would during a launch.
 	lockPath := filepath.Join(filepath.Dir(drudgersPath), drudgersLockFileName)
-	unlock, locked, err := lockDrudgers(lockPath, waitForLock)
+	unlock, locked, err := lockFile(lockPath, waitForLock)
 	if err != nil {
 		t.Fatalf("could not take the lock the test holds: %v", err)
 	}

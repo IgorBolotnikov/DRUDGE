@@ -111,27 +111,53 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
-	if err := service.recordOutcome(projectSlug, tracked, report); err != nil {
+	recorded, err := service.recordOutcome(projectSlug, tracked, report)
+	if err != nil {
 		return nil, err
 	}
 
-	return &TaskSession{Task: tracked, Report: report}, nil
+	return &TaskSession{Task: recorded, Report: report}, nil
 }
 
 // recordOutcome writes what a finished Session left behind onto its task, and
-// what it says about the agent onto the Drudger that ran it.
-func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) error {
+// what it says about the agent onto the Drudger that ran it. It returns the
+// task as it stands once the write is through.
+func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, error) {
 	if !report.Finished() || !tracked.FinishedAt.IsZero() {
-		return nil
+		return tracked, nil
 	}
 
 	service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
 
 	if report.Status == StatusNeverGotGoing {
-		return service.rollBackRefusedRun(projectSlug, tracked, report)
+		return service.rollBackRefusedRun(projectSlug, tracked.ID, report)
 	}
 
-	tracked.Status = taskStatusOf(report.Status)
+	finished := taskStatusOf(report.Status)
+
+	var recorded *task.Task
+	err := service.tasks.UpdateTask(projectSlug, tracked.ID, func(stored *task.Task) error {
+		recorded = stored
+		// Another command may have recorded this Session while this one was
+		// reading the run directory.
+		if !stored.FinishedAt.IsZero() {
+			return task.ErrTaskUnchanged
+		}
+		recordSessionEnd(stored, finished, report)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, finished, err)
+	}
+
+	service.logger.Info("Task [%s] %s is %s, its Session is over", recorded.ID, recorded.Title, recorded.Status)
+	return recorded, nil
+}
+
+// recordSessionEnd puts the status and the agent's own report of a finished
+// Session onto its task.
+func recordSessionEnd(tracked *task.Task, finished task.TaskStatus, report SessionReport) {
+	tracked.Status = finished
 	tracked.FinishedAt = time.Now().UTC()
 	if report.SessionID != "" {
 		tracked.SessionID = report.SessionID
@@ -143,13 +169,6 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 		tracked.SessionDuration = result.Duration
 		tracked.SessionCostUSD = result.CostUSD
 	}
-
-	if err := service.tasks.UpdateTask(projectSlug, tracked); err != nil {
-		return fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, tracked.Status, err)
-	}
-
-	service.logger.Info("Task [%s] %s is %s, its Session is over", tracked.ID, tracked.Title, tracked.Status)
-	return nil
 }
 
 // rollBackRefusedRun puts a task the vendor never let start back where it came
@@ -160,19 +179,23 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 // The finish time stays zero, so every later check records the same refusal
 // again. The write is identical every time, and a task that is still blocked
 // should keep saying so.
-func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *task.Task, report SessionReport) error {
-	tracked.Status = task.StatusTodo
-	tracked.VendorErrorClass = report.Result.VendorErrorClass
-	tracked.VendorError = report.Result.Text
-
-	if err := service.tasks.UpdateTask(projectSlug, tracked); err != nil {
-		return fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", tracked.ID, task.StatusTodo, err)
+func (service *DrudgerService) rollBackRefusedRun(projectSlug string, taskID task.TaskID, report SessionReport) (*task.Task, error) {
+	var refused *task.Task
+	err := service.tasks.UpdateTask(projectSlug, taskID, func(stored *task.Task) error {
+		refused = stored
+		stored.Status = task.StatusTodo
+		stored.VendorErrorClass = report.Result.VendorErrorClass
+		stored.VendorError = report.Result.Text
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", taskID, task.StatusTodo, err)
 	}
 
-	service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", tracked.ID, tracked.Title, tracked.VendorErrorClass, tracked.VendorError)
+	service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", refused.ID, refused.Title, refused.VendorErrorClass, refused.VendorError)
 	service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
-	service.logger.Info("%s", vendorErrorAdvice(tracked.VendorErrorClass))
-	return nil
+	service.logger.Info("%s", vendorErrorAdvice(refused.VendorErrorClass))
+	return refused, nil
 }
 
 // vendorErrorAdvice tells the user what to do about a refusal.

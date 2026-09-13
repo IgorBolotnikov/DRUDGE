@@ -2,6 +2,7 @@ package drudger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,8 +29,17 @@ const (
 	stoppedSandboxStatus = "stopped"
 )
 
+// fakeTaskRepo stores tasks the way the file repository does. A lookup hands
+// back a copy, and an update hands the stored task to change under a lock the
+// test can hold.
 type fakeTaskRepo struct {
 	tasks []*task.Task
+	// lockedTasks are the tasks another drudge command holds the lock on. A
+	// try update of one of them stores nothing.
+	lockedTasks map[task.TaskID]bool
+	// beforeChange runs just before an update hands out the stored task. It
+	// stands for another command's write landing first.
+	beforeChange func()
 }
 
 func (repo *fakeTaskRepo) CreateTask(dto task.CreateTaskDto) (*task.Task, error) {
@@ -41,32 +51,59 @@ func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*task.Task, error) {
 }
 
 func (repo *fakeTaskRepo) GetTask(projectSlug string, id task.TaskID) (*task.Task, error) {
-	for _, candidate := range repo.tasks {
-		if candidate.ID == id {
-			return candidate, nil
-		}
+	stored := repo.stored(id)
+	if stored == nil {
+		return nil, fmt.Errorf("task %q not found", id)
 	}
-	return nil, fmt.Errorf("task %q not found", id)
+	copied := *stored
+	return &copied, nil
 }
 
 func (repo *fakeTaskRepo) FindTask(projectSlug string, fullOrPartialID string) (*task.Task, error) {
 	for _, candidate := range repo.tasks {
 		if strings.HasPrefix(string(candidate.ID), fullOrPartialID) {
-			return candidate, nil
+			return repo.GetTask(projectSlug, candidate.ID)
 		}
 	}
 	return nil, fmt.Errorf("task %q not found", fullOrPartialID)
 }
 
-func (repo *fakeTaskRepo) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {
-	for index, candidate := range repo.tasks {
-		if candidate.ID == taskToUpdate.ID {
-			taskToUpdate.UpdatedAt = time.Now().UTC()
-			repo.tasks[index] = taskToUpdate
+func (repo *fakeTaskRepo) UpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) error {
+	stored := repo.stored(id)
+	if stored == nil {
+		return fmt.Errorf("task %q not found", id)
+	}
+
+	if repo.beforeChange != nil {
+		repo.beforeChange()
+	}
+
+	if err := change(stored); err != nil {
+		if errors.Is(err, task.ErrTaskUnchanged) {
 			return nil
 		}
+		return err
 	}
-	return fmt.Errorf("task %q not found", taskToUpdate.ID)
+
+	stored.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (repo *fakeTaskRepo) TryUpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) (bool, error) {
+	if repo.lockedTasks[id] {
+		return false, nil
+	}
+	return true, repo.UpdateTask(projectSlug, id, change)
+}
+
+// stored returns the task a fake repository holds, or nil when it holds none.
+func (repo *fakeTaskRepo) stored(id task.TaskID) *task.Task {
+	for _, candidate := range repo.tasks {
+		if candidate.ID == id {
+			return candidate
+		}
+	}
+	return nil
 }
 
 // startTimeout is what the fake passes when Start walks the script of answers.
@@ -274,6 +311,7 @@ func copyDrudgers(drudgers []*Drudger) []*Drudger {
 type testService struct {
 	*DrudgerService
 	drudgers *fakeDrudgerRepo
+	taskRepo *fakeTaskRepo
 }
 
 func newTestService(tasks ...*task.Task) *testService {
@@ -287,7 +325,8 @@ func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
 	logger := common.NewLogger("")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
-	service := New(logger, localCfg, globalCfg, task.NewTaskService(&fakeTaskRepo{tasks: tasks}, logger), drudgers, commands)
+	taskRepo := &fakeTaskRepo{tasks: tasks, lockedTasks: map[task.TaskID]bool{}}
+	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger), drudgers, commands)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -295,6 +334,7 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	return &testService{
 		DrudgerService: service,
 		drudgers:       drudgers,
+		taskRepo:       taskRepo,
 	}
 }
 
@@ -2081,5 +2121,83 @@ func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testi
 
 	if got := commands.timeoutOf(sbxRmSubcommand); got != 7*time.Second {
 		t.Errorf("expected %s to be given %s, got %s", sbxRmSubcommand, 7*time.Second, got)
+	}
+}
+
+func TestDrudgerService_RunTask_RefusesASecondLaunchOfATaskAlreadyRunning(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+	// The launch that got there first, landing after this one read the task as
+	// still waiting for an agent.
+	service.taskRepo.beforeChange = func() {
+		service.taskRepo.beforeChange = nil
+		taskToRun.StartRun(time.Now().UTC(), "sess-first")
+	}
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err == nil {
+		t.Fatal("expected the second launch to be refused")
+	}
+	if !strings.Contains(err.Error(), string(task.StatusInProgress)) {
+		t.Errorf("expected the error to name the status that refused the launch, got %q", err)
+	}
+	if len(commands.started) != 0 {
+		t.Errorf("expected no second agent to be started, got %v", commands.started)
+	}
+	if taskToRun.SessionID != "sess-first" {
+		t.Errorf("expected the first launch to stand, got session id %q", taskToRun.SessionID)
+	}
+}
+
+func TestDrudgerService_RunTask_GivesUpOnATaskAnotherCommandHolds(t *testing.T) {
+	workspace := setupWorkspace(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service.taskRepo.lockedTasks[taskToRun.ID] = true
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err == nil {
+		t.Fatal("expected the launch to be refused")
+	}
+	if !strings.Contains(err.Error(), string(taskToRun.ID)) {
+		t.Errorf("expected the error to name the task, got %q", err)
+	}
+	if len(commands.started) != 0 {
+		t.Errorf("expected no agent to be started, got %v", commands.started)
+	}
+	if taskToRun.Status != task.StatusTodo {
+		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+	}
+}
+
+func TestDrudgerService_RunTask_RunsATaskWhileAnotherTaskIsHeld(t *testing.T) {
+	workspace := setupWorkspace(t)
+	held := todoTask()
+	other := todoTask()
+	other.ID = "task-2"
+
+	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, held, other)
+	service.taskRepo.lockedTasks[held.ID] = true
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, other.ID, false) })
+	if err != nil {
+		t.Fatalf("expected a lock on another task to be no obstacle, got %v", err)
+	}
+	if other.Status != task.StatusInProgress {
+		t.Errorf("expected status %q, got %q", task.StatusInProgress, other.Status)
+	}
+	if held.Status != task.StatusTodo {
+		t.Errorf("expected the held task to be left alone, got %q", held.Status)
+	}
+	if len(commands.started) != 1 {
+		t.Errorf("expected one agent to be started, got %v", commands.started)
 	}
 }

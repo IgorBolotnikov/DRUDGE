@@ -678,3 +678,35 @@ func TestDrudgerService_SessionStatus_AnAuthRefusalNamesTheSbxCredentials(t *tes
 		}
 	}
 }
+
+func TestDrudgerService_SessionStatus_KeepsTheStartFieldsOfTheRunItRecords(t *testing.T) {
+	workspace := setupWorkspace(t)
+	tracked := runningTask()
+	startedAt := tracked.StartedAt
+	runDir := common.RunDir(workspace, string(tracked.ID))
+	writeStream(t, runDir, initEvent, resultEvent)
+	writeExit(t, runDir, "0\n")
+
+	service := newTestService(tracked)
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
+	if err != nil {
+		t.Fatalf("could not read the task back: %v", err)
+	}
+
+	if !recorded.StartedAt.Equal(startedAt) {
+		t.Errorf("expected the start time %s the launch wrote, got %s", startedAt, recorded.StartedAt)
+	}
+	if recorded.Status != task.StatusDone {
+		t.Errorf("expected status %q, got %q", task.StatusDone, recorded.Status)
+	}
+	if recorded.FinishedAt.IsZero() {
+		t.Error("expected a finish time to be stamped")
+	}
+	if recorded.SessionResult == "" {
+		t.Error("expected what the agent reported to be recorded")
+	}
+}

@@ -13,7 +13,7 @@ type mockRepo struct {
 	listTasksFn  func(string) ([]*Task, error)
 	getTaskFn    func(string, TaskID) (*Task, error)
 	findTaskFn   func(string, string) (*Task, error)
-	updateTaskFn func(string, *Task) error
+	updateTaskFn func(string, TaskID, func(*Task) error) error
 }
 
 func (m *mockRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -44,50 +44,59 @@ func (m *mockRepo) FindTask(projectSlug string, fullOrPartialID string) (*Task, 
 	return nil, nil
 }
 
-func (m *mockRepo) UpdateTask(projectSlug string, taskToUpdate *Task) error {
+func (m *mockRepo) UpdateTask(projectSlug string, id TaskID, change func(*Task) error) error {
 	if m.updateTaskFn != nil {
-		return m.updateTaskFn(projectSlug, taskToUpdate)
+		return m.updateTaskFn(projectSlug, id, change)
 	}
 	return nil
 }
 
+func (m *mockRepo) TryUpdateTask(projectSlug string, id TaskID, change func(*Task) error) (bool, error) {
+	if err := m.UpdateTask(projectSlug, id, change); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func TestTaskService_UpdateTask(t *testing.T) {
 	cases := []struct {
-		name       string
-		taskToSave *Task
-		repoErr    error
-		wantErr    bool
-		wantCall   bool
+		name     string
+		id       TaskID
+		repoErr  error
+		wantErr  bool
+		wantCall bool
 	}{
 		{
-			name:       "saves the task",
-			taskToSave: &Task{ID: "task-1", Title: "Fix login", Status: StatusInProgress},
-			wantCall:   true,
+			name:     "updates the task",
+			id:       "task-1",
+			wantCall: true,
 		},
 		{
-			name:       "refuses a task without an id",
-			taskToSave: &Task{Title: "Fix login"},
-			wantErr:    true,
+			name:    "refuses an update without an id",
+			id:      "",
+			wantErr: true,
 		},
 		{
-			name:       "surfaces a repository error",
-			taskToSave: &Task{ID: "task-1", Title: "Fix login"},
-			repoErr:    errors.New("disk is on fire"),
-			wantErr:    true,
-			wantCall:   true,
+			name:     "surfaces a repository error",
+			id:       "task-1",
+			repoErr:  errors.New("disk is on fire"),
+			wantErr:  true,
+			wantCall: true,
 		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			called := false
-			repo := &mockRepo{updateTaskFn: func(projectSlug string, taskToUpdate *Task) error {
+			repo := &mockRepo{updateTaskFn: func(projectSlug string, id TaskID, change func(*Task) error) error {
 				called = true
 				return testCase.repoErr
 			}}
-			svc := NewTaskService(repo, common.NewLogger(""))
+			service := NewTaskService(repo, common.NewLogger(""))
 
-			err := svc.UpdateTask("test", testCase.taskToSave)
+			err := service.UpdateTask("test", testCase.id, func(taskToUpdate *Task) error {
+				return nil
+			})
 
 			if testCase.wantErr && err == nil {
 				t.Fatal("expected an error")
@@ -99,6 +108,24 @@ func TestTaskService_UpdateTask(t *testing.T) {
 				t.Errorf("expected the repository to be called: %v, got %v", testCase.wantCall, called)
 			}
 		})
+	}
+}
+
+func TestTaskService_TryUpdateTask_RefusesAnEmptyID(t *testing.T) {
+	repo := &mockRepo{updateTaskFn: func(projectSlug string, id TaskID, change func(*Task) error) error {
+		t.Error("expected the repository to be left alone")
+		return nil
+	}}
+	service := NewTaskService(repo, common.NewLogger(""))
+
+	stored, err := service.TryUpdateTask("test", "", func(taskToUpdate *Task) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if stored {
+		t.Error("expected nothing to be stored")
 	}
 }
 

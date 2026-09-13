@@ -513,16 +513,14 @@ func TestFileTaskRepository_UpdateTask_PersistsSession(t *testing.T) {
 	}
 
 	startedAt := time.Now().UTC().Truncate(time.Second)
-	created.Status = task.StatusInProgress
-	created.StartedAt = startedAt
-	created.SessionID = "sess-abc123"
-
-	if err := repo.UpdateTask("test-project", created); err != nil {
+	err = repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.Status = task.StatusInProgress
+		taskToUpdate.StartedAt = startedAt
+		taskToUpdate.SessionID = "sess-abc123"
+		return nil
+	})
+	if err != nil {
 		t.Fatalf("UpdateTask: %v", err)
-	}
-
-	if created.UpdatedAt.IsZero() {
-		t.Error("expected UpdateTask to stamp updated_at on the task")
 	}
 
 	reread, err := repo.GetTask("test-project", created.ID)
@@ -557,7 +555,9 @@ func TestFileTaskRepository_UpdateTask_UnknownTask(t *testing.T) {
 	}
 
 	repo := NewFileTaskRepository("test-project")
-	err := repo.UpdateTask("test-project", &task.Task{ID: "nope", Title: "Ghost"})
+	err := repo.UpdateTask("test-project", "nope", func(taskToUpdate *task.Task) error {
+		return nil
+	})
 	if err == nil {
 		t.Fatal("expected an error for a task that does not exist")
 	}
@@ -1011,4 +1011,196 @@ func TestTaskFrontMatter_VendorErrorRoundTrip(t *testing.T) {
 var vendorErrorMetaKeys = []string{
 	metaKeyVendorError,
 	metaKeyVendorErrorClass,
+}
+
+// storeTask creates one task of the test project, ready to be updated.
+func storeTask(t *testing.T, repo *FileTaskRepository, title string) *task.Task {
+	t.Helper()
+
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:       title,
+		Description: "Body stays put",
+		Status:      task.StatusTodo,
+		ProjectSlug: "test-project",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	return created
+}
+
+func TestFileTaskRepository_UpdateTask_ChangesWhatIsOnDisk(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	created := storeTask(t, repo, "Fix login bug")
+
+	// The copy the second caller holds, read before the first one writes.
+	stale := *created
+
+	err := repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.SessionID = "sess-first"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("first UpdateTask: %v", err)
+	}
+
+	err = repo.UpdateTask("test-project", stale.ID, func(taskToUpdate *task.Task) error {
+		if taskToUpdate.SessionID != "sess-first" {
+			t.Errorf("expected the change to be handed the stored task, got session id %q", taskToUpdate.SessionID)
+		}
+		taskToUpdate.Status = task.StatusInProgress
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("second UpdateTask: %v", err)
+	}
+
+	reread, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if reread.SessionID != "sess-first" {
+		t.Errorf("expected the first change to survive, got session id %q", reread.SessionID)
+	}
+	if reread.Status != task.StatusInProgress {
+		t.Errorf("expected the second change to survive, got status %q", reread.Status)
+	}
+}
+
+func TestFileTaskRepository_UpdateTask_SkipsAnUnchangedTask(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	created := storeTask(t, repo, "Fix login bug")
+
+	err := repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.Status = task.StatusDone
+		return task.ErrTaskUnchanged
+	})
+	if err != nil {
+		t.Fatalf("expected an unchanged task to be no error, got %v", err)
+	}
+
+	reread, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if reread.Status != task.StatusTodo {
+		t.Errorf("expected the stored task to be untouched, got status %q", reread.Status)
+	}
+	if !reread.UpdatedAt.IsZero() {
+		t.Error("expected no write, so no updated_at stamp")
+	}
+}
+
+func TestFileTaskRepository_TryUpdateTask_LocksOneTaskAtATime(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	locked := storeTask(t, repo, "Fix login bug")
+	other := storeTask(t, repo, "Ship the thing")
+
+	cases := []struct {
+		name      string
+		update    task.TaskID
+		wantStore bool
+	}{
+		{
+			name:      "the task whose lock is held",
+			update:    locked.ID,
+			wantStore: false,
+		},
+		{
+			name:      "a different task of the same project",
+			update:    other.ID,
+			wantStore: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// Take the lock the way another drudge process would during a launch.
+			unlock, held, err := lockFile(repo.taskLockPath(locked.ID), waitForLock)
+			if err != nil {
+				t.Fatalf("could not take the lock the test holds: %v", err)
+			}
+			if !held {
+				t.Fatal("expected the waiting lock to be taken")
+			}
+			defer unlock()
+
+			stored, err := repo.TryUpdateTask("test-project", testCase.update, func(taskToUpdate *task.Task) error {
+				taskToUpdate.Status = task.StatusInProgress
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("TryUpdateTask: %v", err)
+			}
+			if stored != testCase.wantStore {
+				t.Fatalf("expected the update to be stored: %v, got %v", testCase.wantStore, stored)
+			}
+
+			reread, err := repo.GetTask("test-project", testCase.update)
+			if err != nil {
+				t.Fatalf("GetTask: %v", err)
+			}
+			var wantStatus task.TaskStatus = task.StatusTodo
+			if testCase.wantStore {
+				wantStatus = task.StatusInProgress
+			}
+			if reread.Status != wantStatus {
+				t.Errorf("expected status %q, got %q", wantStatus, reread.Status)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_ListTasks_SkipsLockFiles(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+	if err := common.EnsureDir(projectDir); err != nil {
+		t.Fatalf("ensure project dir: %v", err)
+	}
+
+	repo := NewFileTaskRepository("test-project")
+	created := storeTask(t, repo, "Fix login bug")
+
+	err := repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+		taskToUpdate.Status = task.StatusInProgress
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask: %v", err)
+	}
+
+	listed, err := repo.ListTasks("test-project")
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected the lock file to be left out of the listing, got %d tasks", len(listed))
+	}
 }

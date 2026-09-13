@@ -2,12 +2,8 @@ package persistence
 
 import (
 	"cmp"
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
 	"time"
 
 	"drudge/internal/common"
@@ -25,13 +21,7 @@ const (
 	// The lock lives in its own file because it has to be takeable before a
 	// project has any Drudgers. Creating the Drudgers file to lock it
 	// would leave an empty one that reads back as malformed JSON.
-	drudgersLockFileName = DrudgersFileName + ".lock"
-)
-
-// What an update does when someone else holds the Drudgers lock.
-const (
-	waitForLock  = true
-	giveUpOnLock = false
+	drudgersLockFileName = DrudgersFileName + lockFileExtension
 )
 
 // drudgersFile is the stored shape of project's Drudgers.
@@ -96,7 +86,7 @@ func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change fun
 		return false, err
 	}
 
-	unlock, gotLock, err := lockDrudgers(filepath.Join(projectDir, drudgersLockFileName), wait)
+	unlock, gotLock, err := lockFile(filepath.Join(projectDir, drudgersLockFileName), wait)
 	if err != nil {
 		return false, err
 	}
@@ -172,38 +162,6 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 	})
 
 	return common.WriteJSON(path, stored)
-}
-
-// lockDrudgers takes an exclusive lock on the lock file and returns the
-// release callback. If the process dies, then lock is released by the kernel.
-//
-// With waitForLock it waits for a lock someone else holds and always comes
-// back with it. With giveUpOnLock it comes back at once, and gotLock says
-// whether the lock was free. A caller that did not get the lock gets a nil
-// release callback.
-func lockDrudgers(path string, wait bool) (unlock func(), gotLock bool, err error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, common.DefaultFilePerm)
-	if err != nil {
-		return nil, false, fmt.Errorf("could not open the Drudgers lock file %s: %w", path, err)
-	}
-
-	lockMode := syscall.LOCK_EX
-	if !wait {
-		lockMode |= syscall.LOCK_NB
-	}
-
-	if err := syscall.Flock(int(file.Fd()), lockMode); err != nil {
-		file.Close()
-		if !wait && errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, false, nil
-		}
-		return nil, false, fmt.Errorf("could not lock %s: %w", path, err)
-	}
-
-	return func() {
-		syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-		file.Close()
-	}, true, nil
 }
 
 func (repo *FileDrudgerRepository) resolveProjectsDir() (string, error) {

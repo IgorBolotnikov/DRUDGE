@@ -1,6 +1,9 @@
 package task
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type CreateTaskDto struct {
 	Title        string
@@ -27,5 +30,17 @@ type TaskRepository interface {
 	// An implementation searches for the match instead of handing back every
 	// task, and reports an ambiguous prefix with AmbiguousIDError.
 	FindTask(projectSlug string, fullOrPartialID string) (*Task, error)
-	UpdateTask(projectSlug string, taskToUpdate *Task) error
+	// UpdateTask hands the stored task to change under an exclusive lock on
+	// that task and writes back what change leaves behind. It waits for a lock
+	// someone else holds. A change returning ErrTaskUnchanged writes nothing.
+	UpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) error
+	// TryUpdateTask works like UpdateTask, but gives up when someone else holds
+	// the lock. stored says whether the task went through change and was
+	// written back.
+	TryUpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) (stored bool, err error)
 }
+
+// ErrTaskUnchanged tells an update that the task needs no write. A change
+// callback returns it after reading the stored task and finding nothing to
+// record.
+var ErrTaskUnchanged = errors.New("task is unchanged")

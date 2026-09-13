@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -400,18 +401,70 @@ func (r *FileTaskRepository) FindTask(projectSlug string, fullOrPartialID string
 	return r.readTaskFile(found)
 }
 
-// UpdateTask rewrites the file of an existing task and stamps it as updated.
-func (r *FileTaskRepository) UpdateTask(projectSlug string, taskToUpdate *task.Task) error {
-	found, err := r.exactTaskFile(taskToUpdate.ID)
+// taskLockPath names the lock guarding one task against two commands writing
+// it at once. The lock is keyed on the task id, which survives a title change
+// that renames the task file.
+func (r *FileTaskRepository) taskLockPath(id task.TaskID) string {
+	return filepath.Join(r.taskDir(), string(id)+lockFileExtension)
+}
+
+// UpdateTask reads the task off disk under an exclusive lock on it, hands it
+// to change and writes back what change leaves behind. It waits for a lock
+// another process holds. A change returning task.ErrTaskUnchanged writes
+// nothing.
+func (r *FileTaskRepository) UpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) error {
+	_, err := r.updateTask(id, change, waitForLock)
+	return err
+}
+
+// TryUpdateTask updates a task the way UpdateTask does, and gives up when
+// another process holds the lock on it.
+func (r *FileTaskRepository) TryUpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) (stored bool, err error) {
+	return r.updateTask(id, change, giveUpOnLock)
+}
+
+// updateTask runs one read, change and write of a task under its lock. stored
+// says whether it got all the way through, which it always does when it was
+// told to wait for the lock.
+func (r *FileTaskRepository) updateTask(id task.TaskID, change func(*task.Task) error, wait bool) (stored bool, err error) {
+	// The task is looked up before the lock is taken, so an id that names no
+	// task is reported without leaving a lock file behind for it.
+	if _, err := r.exactTaskFile(id); err != nil {
+		return false, err
+	}
+
+	unlock, gotLock, err := lockFile(r.taskLockPath(id), wait)
 	if err != nil {
-		return err
+		return false, err
+	}
+	if !gotLock {
+		return false, nil
+	}
+	defer unlock()
+
+	// The task file is named after the task title, so its path is looked up
+	// again under the lock.
+	found, err := r.exactTaskFile(id)
+	if err != nil {
+		return false, err
+	}
+
+	taskToUpdate, err := r.readTaskFile(found)
+	if err != nil {
+		return false, err
+	}
+
+	if err := change(taskToUpdate); err != nil {
+		if errors.Is(err, task.ErrTaskUnchanged) {
+			return true, nil
+		}
+		return false, err
 	}
 
 	taskToUpdate.UpdatedAt = time.Now().UTC()
 
 	if err := common.WriteFileWithFrontMatter(found.path, taskFrontMatter(taskToUpdate), taskToUpdate.Description); err != nil {
-		return fmt.Errorf("could not write task file %s: %w", found.path, err)
+		return false, fmt.Errorf("could not write task file %s: %w", found.path, err)
 	}
-
-	return nil
+	return true, nil
 }

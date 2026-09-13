@@ -20,7 +20,7 @@ func NewTaskService(repo TaskRepository, log *common.Logger) *TaskService {
 	return &TaskService{repo: repo, log: log}
 }
 
-func (t *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
+func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	if dto.Title == "" {
 		return nil, fmt.Errorf("task title is required")
 	}
@@ -37,37 +37,45 @@ func (t *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 		dto.CreatedAt = time.Now()
 	}
 
-	task, err := t.repo.CreateTask(dto)
+	task, err := service.repo.CreateTask(dto)
 	if err != nil {
 		return nil, fmt.Errorf("could not create task: %w", err)
 	}
 
-	t.log.Info("Created task [%s] %s", task.ID, task.Title)
+	service.log.Info("Created task [%s] %s", task.ID, task.Title)
 	return task, nil
 }
 
-func (t *TaskService) ListTasks(projectSlug string) ([]*Task, error) {
-	return t.repo.ListTasks(projectSlug)
+func (service *TaskService) ListTasks(projectSlug string) ([]*Task, error) {
+	return service.repo.ListTasks(projectSlug)
 }
 
 // GetTask finds one task by its full id, or by any prefix of an id that names
 // a single task. Listings print shortened ids, so a prefix is what a user has
 // in front of them.
-func (t *TaskService) GetTask(projectSlug string, id TaskID) (*Task, error) {
+func (service *TaskService) GetTask(projectSlug string, id TaskID) (*Task, error) {
 	if id == "" {
 		return nil, ErrNoTaskID
 	}
-	return t.repo.FindTask(projectSlug, string(id))
+	return service.repo.FindTask(projectSlug, string(id))
 }
 
-func (t *TaskService) UpdateTask(projectSlug string, taskToUpdate *Task) error {
-	if taskToUpdate.ID == "" {
-		return fmt.Errorf("task id is required to update a task")
+// UpdateTask hands the stored task to change under an exclusive lock on it and
+// writes back what change leaves behind. It waits for a lock another command
+// holds. A change returning ErrTaskUnchanged writes nothing.
+func (service *TaskService) UpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) error {
+	if id == "" {
+		return ErrNoTaskID
 	}
+	return service.repo.UpdateTask(projectSlug, id, change)
+}
 
-	if err := t.repo.UpdateTask(projectSlug, taskToUpdate); err != nil {
-		return fmt.Errorf("could not update task %s: %w", taskToUpdate.ID, err)
+// TryUpdateTask updates a task the way UpdateTask does and gives up when
+// another command holds the lock on it. stored says whether the task was
+// written back.
+func (service *TaskService) TryUpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) (stored bool, err error) {
+	if id == "" {
+		return false, ErrNoTaskID
 	}
-
-	return nil
+	return service.repo.TryUpdateTask(projectSlug, id, change)
 }
