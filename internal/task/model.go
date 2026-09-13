@@ -1,7 +1,11 @@
 // Package task
 package task
 
-import "time"
+import (
+	"slices"
+	"strings"
+	"time"
+)
 
 type (
 	TaskID     string // UUID
@@ -11,11 +15,11 @@ type (
 )
 
 const (
-	StatusDraft      = "draft" // Default status
-	StatusTodo       = "todo"
-	StatusInProgress = "in-progress"
-	StatusFuckedUp   = "fucked-up"
-	StatusDone       = "done"
+	StatusDraft      TaskStatus = "draft" // Default status
+	StatusTodo       TaskStatus = "todo"
+	StatusInProgress TaskStatus = "in-progress"
+	StatusFuckedUp   TaskStatus = "fucked-up"
+	StatusDone       TaskStatus = "done"
 )
 
 // Kinds of vendor refusal. An empty class means the vendor refused nothing.
@@ -56,6 +60,23 @@ type Task struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Statuses are every status a task can carry.
+var Statuses = []TaskStatus{StatusDraft, StatusTodo, StatusInProgress, StatusFuckedUp, StatusDone}
+
+// KnownStatus reports whether a status is one drudge understands.
+func KnownStatus(status TaskStatus) bool {
+	return slices.Contains(Statuses, status)
+}
+
+// FormatStatuses joins statuses into a list for a message to the user.
+func FormatStatuses(statuses []TaskStatus) string {
+	names := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		names = append(names, string(status))
+	}
+	return strings.Join(names, ", ")
 }
 
 // StartRun marks a task as handed to an agent, and clears what the previous

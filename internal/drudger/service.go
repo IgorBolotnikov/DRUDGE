@@ -176,6 +176,27 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace st
 	return nil
 }
 
+// RefuseWhileWorking refuses a change to a task whose agent is still working,
+// and names the Drudger running it. A task with no live Session goes through.
+func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChange *task.Task) error {
+	workspace, err := common.WorkDir()
+	if err != nil {
+		return fmt.Errorf("could not work out where task %s runs: %w", taskToChange.ID, err)
+	}
+
+	working, err := service.workingDrudger(projectSlug, workspace, taskToChange.ID)
+	if err != nil {
+		return err
+	}
+	if working == nil {
+		return nil
+	}
+	return fmt.Errorf(
+		"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then change the task",
+		working.Slot, working.Sandbox, taskToChange.ID, nukeCommand, working.Slot,
+	)
+}
+
 // workingDrudger returns the Drudger whose agent is working on a task, and nil
 // when none is.
 //

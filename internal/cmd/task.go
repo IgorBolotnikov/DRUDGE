@@ -29,9 +29,20 @@ const (
 	forceFlagShort = "-f"
 )
 
+// Flags a task command reads a value after.
 const (
-	taskUsage       = "usage: drg task <new|list|show|run|rerun|status>"
-	taskShowUsage   = "usage: drg task show <task-id>"
+	titleFlag       = "--title"
+	descriptionFlag = "--description"
+	ticketFlag      = "--ticket"
+	statusFlag      = "--status"
+)
+
+const (
+	taskUsage     = "usage: drg task <new|list|show|edit|run|rerun|status>"
+	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>]"
+	taskShowUsage = "usage: drg task show <task-id>"
+	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
+		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + forceFlag + "]"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
 	taskStatusUsage = "usage: drg task status <task-id>"
@@ -41,6 +52,7 @@ const (
 // argument parsing produces.
 const (
 	showSubcommand   = "show"
+	editSubcommand   = "edit"
 	runSubcommand    = "run"
 	rerunSubcommand  = "rerun"
 	statusSubcommand = "status"
@@ -52,14 +64,6 @@ const taskRerunCommand = "drg task rerun"
 
 // taskTitleWidth is how much room a listing gives a task title.
 const taskTitleWidth = 40
-
-var validStatuses = []string{
-	task.StatusDraft,
-	task.StatusTodo,
-	task.StatusInProgress,
-	task.StatusFuckedUp,
-	task.StatusDone,
-}
 
 func runTask(args []string) error {
 	if len(args) < 1 {
@@ -73,6 +77,8 @@ func runTask(args []string) error {
 		return taskList(args[1:])
 	case showSubcommand:
 		return taskShow(args[1:])
+	case editSubcommand:
+		return taskEdit(args[1:])
 	case runSubcommand:
 		return taskRun(args[1:])
 	case rerunSubcommand:
@@ -101,24 +107,23 @@ func hasFlag(args []string, flag string) bool {
 }
 
 func taskNew(args []string) error {
-	title, hasTitle := parseFlagValue(args, "--title")
+	title, hasTitle := parseFlagValue(args, titleFlag)
 	if !hasTitle || title == "" {
-		return fmt.Errorf("--title is required")
+		return fmt.Errorf("%s is required", titleFlag)
 	}
 
-	description, hasDesc := parseFlagValue(args, "--description")
+	description, hasDesc := parseFlagValue(args, descriptionFlag)
 	if !hasDesc {
-		return fmt.Errorf("--description is required")
+		return fmt.Errorf("%s is required", descriptionFlag)
 	}
 
-	ticketID, _ := parseFlagValue(args, "--ticket")
-	status, hasStatus := parseFlagValue(args, "--status")
-	if !hasStatus {
-		status = task.StatusDraft
-	} else {
-		valid := slices.Contains(validStatuses, status)
-		if !valid {
-			return fmt.Errorf("invalid status %q, must be one of: %s", status, strings.Join(validStatuses, ", "))
+	ticketID, _ := parseFlagValue(args, ticketFlag)
+	statusValue, hasStatus := parseFlagValue(args, statusFlag)
+	status := task.StatusDraft
+	if hasStatus {
+		status = task.TaskStatus(statusValue)
+		if !task.KnownStatus(status) {
+			return invalidStatusError(status)
 		}
 	}
 
@@ -134,7 +139,7 @@ func taskNew(args []string) error {
 	dto := task.CreateTaskDto{
 		Title:       title,
 		Description: description,
-		Status:      task.TaskStatus(status),
+		Status:      status,
 		TicketID:    ticketID,
 		ProjectSlug: cfg.ProjectSlug,
 		CreatedAt:   time.Now().UTC(),
@@ -147,24 +152,22 @@ func taskNew(args []string) error {
 func taskList(args []string) error {
 	// TODO: make a util for printing out help text
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println("usage: drg task list [--status <status>] [--ticket <ticket>]")
+		fmt.Println(taskListUsage)
 		fmt.Println()
 		fmt.Println("List tasks in the current project.")
 		fmt.Println()
 		fmt.Println("Options:")
-		fmt.Println("  --status <status>  Filter by status (draft, todo, in-progress, fucked-up, done)")
-		fmt.Println("  --ticket <ticket>  Filter by ticket ID")
+		fmt.Printf("  %s <status>  Filter by status (%s)\n", statusFlag, task.FormatStatuses(task.Statuses))
+		fmt.Printf("  %s <ticket>  Filter by ticket ID\n", ticketFlag)
 		return nil
 	}
 
-	statusFilter, hasStatus := parseFlagValue(args, "--status")
-	ticketFilter, hasTicket := parseFlagValue(args, "--ticket")
+	statusValue, hasStatus := parseFlagValue(args, statusFlag)
+	ticketFilter, hasTicket := parseFlagValue(args, ticketFlag)
 
-	if hasStatus {
-		valid := slices.Contains(validStatuses, statusFilter)
-		if !valid {
-			return fmt.Errorf("invalid status %q, must be one of: %s", statusFilter, strings.Join(validStatuses, ", "))
-		}
+	statusFilter := task.TaskStatus(statusValue)
+	if hasStatus && !task.KnownStatus(statusFilter) {
+		return invalidStatusError(statusFilter)
 	}
 
 	cfg, err := config.LoadLocal()
@@ -363,10 +366,16 @@ func parseTaskRunArgs(args []string, subcommand, usage string) (task.TaskID, boo
 	return task.TaskID(taskID), dryRun, nil
 }
 
-func filterTasks(tasks []*task.Task, statusFilter string, hasStatus bool, ticketFilter string, hasTicket bool) []*task.Task {
+// invalidStatusError names a status drudge does not understand, and lists the
+// ones it does.
+func invalidStatusError(status task.TaskStatus) error {
+	return fmt.Errorf("invalid status %q, must be one of: %s", status, task.FormatStatuses(task.Statuses))
+}
+
+func filterTasks(tasks []*task.Task, statusFilter task.TaskStatus, hasStatus bool, ticketFilter string, hasTicket bool) []*task.Task {
 	var result []*task.Task
 	for _, t := range tasks {
-		if hasStatus && t.Status != task.TaskStatus(statusFilter) {
+		if hasStatus && t.Status != statusFilter {
 			continue
 		}
 		if hasTicket && t.TicketID != ticketFilter {
