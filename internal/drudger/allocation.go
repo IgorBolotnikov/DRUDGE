@@ -13,11 +13,11 @@ import (
 	"drudge/internal/task"
 )
 
-func (service *DrudgerService) claimDrudger(projectSlug string, taskID task.TaskID, workspace string) (*Drudger, error) {
+func (service *DrudgerService) claimDrudger(projectSlug string, taskID task.TaskID, layout projectLayout) (*Drudger, error) {
 	var claimed *Drudger
 
 	err := service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
-		chosen, updated, err := service.pickDrudger(drudgers, projectSlug, taskID, workspace)
+		chosen, updated, err := service.pickDrudger(drudgers, projectSlug, taskID, layout)
 		if err != nil {
 			return nil, err
 		}
@@ -33,13 +33,13 @@ func (service *DrudgerService) claimDrudger(projectSlug string, taskID task.Task
 
 // previewDrudger works out which Drudger a task would run on without
 // recording anything. It is what a dry run reports.
-func (service *DrudgerService) previewDrudger(projectSlug string, taskID task.TaskID, workspace string) (*Drudger, error) {
+func (service *DrudgerService) previewDrudger(projectSlug string, taskID task.TaskID, layout projectLayout) (*Drudger, error) {
 	drudgers, err := service.drudgers.ListDrudgers(projectSlug)
 	if err != nil {
 		return nil, err
 	}
 
-	chosen, _, err := service.pickDrudger(drudgers, projectSlug, taskID, workspace)
+	chosen, _, err := service.pickDrudger(drudgers, projectSlug, taskID, layout)
 	if err != nil {
 		return nil, err
 	}
@@ -103,10 +103,10 @@ func (service *DrudgerService) recordAgentHealth(projectSlug string, taskID task
 // pickDrudger reclaims finished Sessions and hands the task the lowest free
 // slot under the configured limit. If a free slot has no Drydger yet, then it
 // creates a new one and hands it back.
-func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug string, taskID task.TaskID, workspace string) (chosen *Drudger, pool []*Drudger, err error) {
+func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug string, taskID task.TaskID, layout projectLayout) (chosen *Drudger, pool []*Drudger, err error) {
 	now := time.Now().UTC()
 
-	if err := reclaimFinished(drudgers, workspace, now); err != nil {
+	if err := reclaimFinished(drudgers, layout, now); err != nil {
 		return nil, nil, err
 	}
 
@@ -165,13 +165,13 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 
 // reclaimFinished frees every Drudger whose Session has finished, and records
 // what that Session said about the agent that ran it.
-func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error {
+func reclaimFinished(drudgers []*Drudger, layout projectLayout, now time.Time) error {
 	for _, candidate := range drudgers {
 		if candidate.Idle() {
 			continue
 		}
 
-		report, err := readSessionReport(common.RunDir(workspace, string(candidate.TaskID)), now)
+		report, err := readSessionReport(layout.RunDir(candidate.TaskID), now)
 		if errors.Is(err, errNoRunDirectory) {
 			continue
 		}
@@ -195,7 +195,7 @@ func reclaimFinished(drudgers []*Drudger, workspace string, now time.Time) error
 //
 // It reads run directories and runs no commands, which keeps a list fast.
 // Slots stuck for any other reason are freed by ReclaimDrudgers.
-func (service *DrudgerService) reclaimForListing(projectSlug string, workspace string) ([]*Drudger, error) {
+func (service *DrudgerService) reclaimForListing(projectSlug string, layout projectLayout) ([]*Drudger, error) {
 	asRead, err := service.drudgers.ListDrudgers(projectSlug)
 	if err != nil {
 		return nil, err
@@ -207,7 +207,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, workspace s
 
 	var reclaimed []*Drudger
 	stored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
-		if err := reclaimFinished(drudgers, workspace, time.Now().UTC()); err != nil {
+		if err := reclaimFinished(drudgers, layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 		reclaimed = drudgers
@@ -250,9 +250,9 @@ const (
 // sandbox, writes nothing in a run directory and leaves the task record as it
 // is.
 func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot, error) {
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return nil, fmt.Errorf("could not work out where the Drudgers of project %s run: %w", projectSlug, err)
+		return nil, err
 	}
 
 	running, err := service.observeSandboxes(projectSlug)
@@ -263,10 +263,10 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 	var freed []FreedSlot
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		now := time.Now().UTC()
-		if err := reclaimFinished(drudgers, workspace, now); err != nil {
+		if err := reclaimFinished(drudgers, layout, now); err != nil {
 			return nil, err
 		}
-		stuck, err := freeStuckSlots(drudgers, workspace, running, now)
+		stuck, err := freeStuckSlots(drudgers, layout, running, now)
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +281,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 
 // freeStuckSlots clears the claim of every Drudger that stuckClaimReason
 // finds without an agent, and returns what it cleared.
-func freeStuckSlots(drudgers []*Drudger, workspace string, running map[string]bool, now time.Time) ([]FreedSlot, error) {
+func freeStuckSlots(drudgers []*Drudger, layout projectLayout, running map[string]bool, now time.Time) ([]FreedSlot, error) {
 	var freed []FreedSlot
 
 	for _, candidate := range drudgers {
@@ -289,7 +289,7 @@ func freeStuckSlots(drudgers []*Drudger, workspace string, running map[string]bo
 			continue
 		}
 
-		reason, err := stuckClaimReason(candidate, workspace, running, now)
+		reason, err := stuckClaimReason(candidate, layout, running, now)
 		if err != nil {
 			return nil, err
 		}
@@ -316,8 +316,8 @@ func freeStuckSlots(drudgers []*Drudger, workspace string, running map[string]bo
 // A stale stream is no proof of a dead agent. One tool call can run for
 // minutes, which is what needs babysitting reports. The sandbox status is the
 // proof, because a sandbox that is not running holds no process.
-func stuckClaimReason(claimed *Drudger, workspace string, running map[string]bool, now time.Time) (string, error) {
-	runDir := common.RunDir(workspace, string(claimed.TaskID))
+func stuckClaimReason(claimed *Drudger, layout projectLayout, running map[string]bool, now time.Time) (string, error) {
+	runDir := layout.RunDir(claimed.TaskID)
 
 	present, err := common.Exists(runDir)
 	if err != nil {

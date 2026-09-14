@@ -5,7 +5,6 @@ import (
 	"slices"
 	"time"
 
-	"drudge/internal/common"
 	"drudge/internal/task"
 )
 
@@ -16,9 +15,9 @@ import (
 // anyway, which kills the agent along with the sandbox and fucks up the task.
 // If Session is finished, it works the same way allocation does.
 func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force bool) error {
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return fmt.Errorf("could not work out where the Drudgers of project %s run: %w", projectSlug, err)
+		return err
 	}
 
 	var sandboxName string
@@ -26,7 +25,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force b
 
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		// Reclaim to get the up-to-date state of all Drudgers.
-		if err := reclaimFinished(drudgers, workspace, time.Now().UTC()); err != nil {
+		if err := reclaimFinished(drudgers, layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 

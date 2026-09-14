@@ -98,12 +98,12 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return nil, fmt.Errorf("could not work out where task %s runs: %w", tracked.ID, err)
+		return nil, err
 	}
 
-	report, err := readSessionReport(common.RunDir(workspace, string(tracked.ID)), time.Now().UTC())
+	report, err := readSessionReport(layout.RunDir(tracked.ID), time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return nil, fmt.Errorf("task %s is %q and has no run to report on, run it first", tracked.ID, tracked.Status)
 	}

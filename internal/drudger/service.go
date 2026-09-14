@@ -55,6 +55,8 @@ type DrudgerService struct {
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
 	launchGrace      time.Duration
+	// resolvedLayout is what layout worked out, kept from the first call on.
+	resolvedLayout *projectLayout
 	// Some of the service methods live in other files of this package.
 }
 
@@ -73,12 +75,12 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 
 // ListDrudgers returns all Drudgers which currently exist in a Project.
 func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, error) {
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return nil, fmt.Errorf("could not work out where the Drudgers of project %s run: %w", projectSlug, err)
+		return nil, err
 	}
 
-	drudgers, err := service.reclaimForListing(projectSlug, workspace)
+	drudgers, err := service.reclaimForListing(projectSlug, layout)
 	if err != nil {
 		return nil, fmt.Errorf("could not list the Drudgers of project %s: %w", projectSlug, err)
 	}
@@ -97,19 +99,19 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return err
 	}
 
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return fmt.Errorf("could not work out where to run task %s: %w", taskToRun.ID, err)
+		return err
 	}
 
 	if dryRun {
 		if err := acceptRunnable(taskToRun); err != nil {
 			return err
 		}
-		return service.describeRun(projectSlug, taskToRun, workspace)
+		return service.describeRun(projectSlug, taskToRun, layout)
 	}
 
-	return service.launch(projectSlug, taskToRun.ID, workspace, acceptRunnable)
+	return service.launch(projectSlug, taskToRun.ID, layout, acceptRunnable)
 }
 
 // acceptRunnable refuses a task that is not waiting for an agent.
@@ -127,25 +129,25 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 		return err
 	}
 
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return fmt.Errorf("could not work out where to run task %s: %w", taskToRerun.ID, err)
+		return err
 	}
 
 	var cameFrom task.TaskStatus
 	accept := func(candidate *task.Task) error {
 		cameFrom = candidate.Status
-		return service.acceptRerunnable(projectSlug, workspace, candidate)
+		return service.acceptRerunnable(projectSlug, layout, candidate)
 	}
 
 	if dryRun {
 		if err := accept(taskToRerun); err != nil {
 			return err
 		}
-		return service.describeRun(projectSlug, taskToRerun, workspace)
+		return service.describeRun(projectSlug, taskToRerun, layout)
 	}
 
-	if err := service.launch(projectSlug, taskToRerun.ID, workspace, accept); err != nil {
+	if err := service.launch(projectSlug, taskToRerun.ID, layout, accept); err != nil {
 		return err
 	}
 
@@ -155,7 +157,7 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 
 // acceptRerunnable refuses a task no agent has had yet, and one whose agent is
 // still working.
-func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace string, taskToRerun *task.Task) error {
+func (service *DrudgerService) acceptRerunnable(projectSlug string, layout projectLayout, taskToRerun *task.Task) error {
 	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
 		return fmt.Errorf(
 			"task %s is %q, only %s tasks can be rerun",
@@ -163,7 +165,7 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace st
 		)
 	}
 
-	working, err := service.workingDrudger(projectSlug, workspace, taskToRerun.ID)
+	working, err := service.workingDrudger(projectSlug, layout, taskToRerun.ID)
 	if err != nil {
 		return err
 	}
@@ -180,12 +182,12 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, workspace st
 // still working, and names the Drudger running it. A task with no live Session
 // goes through.
 func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChange *task.Task) error {
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return fmt.Errorf("could not work out where task %s runs: %w", taskToChange.ID, err)
+		return err
 	}
 
-	working, err := service.workingDrudger(projectSlug, workspace, taskToChange.ID)
+	working, err := service.workingDrudger(projectSlug, layout, taskToChange.ID)
 	if err != nil {
 		return err
 	}
@@ -201,12 +203,12 @@ func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChan
 // RemoveRun deletes the run directory of a task and reports whether the task
 // had one.
 func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
-	workspace, err := common.WorkDir()
+	layout, err := service.layout()
 	if err != nil {
-		return false, fmt.Errorf("could not work out where task %s runs: %w", taskID, err)
+		return false, err
 	}
 
-	runDir := common.RunDir(workspace, string(taskID))
+	runDir := layout.RunDir(taskID)
 	found, err := common.Exists(runDir)
 	if err != nil {
 		return false, err
@@ -227,8 +229,8 @@ func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
 // It checks the run directory and the Drudgers file. A dead agent leaves a run
 // directory with no exit file, which on its own reads as a Session still
 // working.
-func (service *DrudgerService) workingDrudger(projectSlug string, workspace string, taskID task.TaskID) (*Drudger, error) {
-	live, err := service.sessionStillRunning(workspace, taskID)
+func (service *DrudgerService) workingDrudger(projectSlug string, layout projectLayout, taskID task.TaskID) (*Drudger, error) {
+	live, err := service.sessionStillRunning(layout, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,8 +247,8 @@ func (service *DrudgerService) workingDrudger(projectSlug string, workspace stri
 
 // sessionStillRunning reports whether the run directory of a task says its
 // Session has not ended.
-func (service *DrudgerService) sessionStillRunning(workspace string, taskID task.TaskID) (bool, error) {
-	report, err := readSessionReport(common.RunDir(workspace, string(taskID)), time.Now().UTC())
+func (service *DrudgerService) sessionStillRunning(layout projectLayout, taskID task.TaskID) (bool, error) {
+	report, err := readSessionReport(layout.RunDir(taskID), time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return false, nil
 	}
@@ -273,14 +275,14 @@ func formatStatuses(statuses []task.TaskStatus) string {
 // The lock covers the sandbox steps, which take minutes on a first launch.
 // Only commands working on this same task wait that long, which is what a
 // second launch of it should do.
-func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, workspace string, accept func(*task.Task) error) error {
+func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, layout projectLayout, accept func(*task.Task) error) error {
 	started := false
 
 	stored, err := service.tasks.TryUpdateTask(projectSlug, taskID, func(taskToRun *task.Task) error {
 		if err := accept(taskToRun); err != nil {
 			return err
 		}
-		if err := service.startAgent(projectSlug, taskToRun, workspace); err != nil {
+		if err := service.startAgent(projectSlug, taskToRun, layout); err != nil {
 			return err
 		}
 		started = true
@@ -300,7 +302,7 @@ func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, wo
 
 // startAgent claims a Drudger, starts an agent on a task and marks the task as
 // in progress. The caller writes the task back.
-func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, workspace string) error {
+func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
 	taskID := taskToRun.ID
 
 	prompt, _, err := service.renderTaskPrompt(taskToRun)
@@ -308,9 +310,9 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	runDir := common.RunDir(workspace, string(taskID))
+	runDir := layout.RunDir(taskID)
 
-	claimed, err := service.claimDrudger(projectSlug, taskID, workspace)
+	claimed, err := service.claimDrudger(projectSlug, taskID, layout)
 	if err != nil {
 		return err
 	}
@@ -326,7 +328,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		}
 	}()
 
-	plan, err := service.pickDrudgerCommand(claimed.Sandbox, workspace, runDir)
+	plan, err := service.pickDrudgerCommand(claimed.Sandbox, layout, runDir)
 	if err != nil {
 		return err
 	}
@@ -341,7 +343,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	// TODO: before an agent is spawned, create a worktree for the task from the
 	// default branch under the local worktrees dir, named wt-<task-id>, and
 	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(projectSlug, claimed, plan, workspace); err != nil {
+	if err := service.ensureSandbox(projectSlug, claimed, plan, layout); err != nil {
 		return err
 	}
 
@@ -378,20 +380,20 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task) (prompt st
 
 // describeRun prints the Drudger, the prompt and the commands a run would use,
 // and writes nothing.
-func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, workspace string) error {
+func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
 	prompt, promptSource, err := service.renderTaskPrompt(taskToRun)
 	if err != nil {
 		return err
 	}
 
-	runDir := common.RunDir(workspace, string(taskToRun.ID))
+	runDir := layout.RunDir(taskToRun.ID)
 
-	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, workspace)
+	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, layout)
 	if err != nil {
 		return err
 	}
 
-	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, workspace, runDir)
+	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, layout, runDir)
 	if err != nil {
 		return err
 	}
@@ -444,7 +446,7 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 //
 // What the listing says about the sandbox is recorded as the Drudger's
 // sandbox health.
-func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, workspace string) error {
+func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, layout projectLayout) error {
 	listing, err := service.listSandboxes(plan.inspect)
 	if err != nil {
 		return fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
@@ -464,7 +466,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 		return nil
 	}
 
-	if err := checkSandboxWorkspace(existing, workspace); err != nil {
+	if err := checkSandboxWorkspace(existing, layout); err != nil {
 		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxMisplaced)
 		return err
 	}

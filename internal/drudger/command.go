@@ -142,7 +142,7 @@ func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
 
 // pickDrudgerCommand builds the commands that ensure the sandbox exists and
 // put an agent to work on the configured prompt.
-func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace, runDir string) (sandboxPlan, error) {
+func (service *DrudgerService) pickDrudgerCommand(sandboxName string, layout projectLayout, runDir string) (sandboxPlan, error) {
 	env := service.globalCfg.Drudger.Env
 	harness := service.globalCfg.Drudger.Harness
 
@@ -150,12 +150,12 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspace,
 		return sandboxPlan{
 			inspect: service.sbxInspectCommand(),
 			create: sandboxCommand{
-				argv:    []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, workspace, sbxNameFlag, sandboxName},
+				argv:    []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, layout.Dir, sbxNameFlag, sandboxName},
 				timeout: service.globalCfg.Drudger.SandboxTimeouts.Create(),
 			},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
-				shellBinary, shellCommandFlag, formatLauncher(workspace, runDir),
+				shellBinary, shellCommandFlag, formatLauncher(layout.Dir, runDir),
 			},
 		}, nil
 	}
@@ -249,16 +249,16 @@ func findSandbox(listing string, name string) (*sandbox, error) {
 }
 
 // checkSandboxWorkspace guards against an agent editing the wrong repository.
-func checkSandboxWorkspace(existing *sandbox, workspace string) error {
-	workspacePath := filepath.Clean(workspace)
+func checkSandboxWorkspace(existing *sandbox, layout projectLayout) error {
+	projectDir := filepath.Clean(layout.Dir)
 	for _, mount := range existing.Workspaces {
-		if filepath.Clean(mount) == workspacePath {
+		if filepath.Clean(mount) == projectDir {
 			return nil
 		}
 	}
 	return fmt.Errorf(
 		"sandbox %s is mounted on %s, but this project lives in %s, delete that sandbox so DRUDGE can recreate it on the right workspace",
-		existing.Name, formatMounts(existing.Workspaces), workspace,
+		existing.Name, formatMounts(existing.Workspaces), layout.Dir,
 	)
 }
 
