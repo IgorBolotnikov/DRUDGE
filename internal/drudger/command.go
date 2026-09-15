@@ -147,6 +147,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 	env := service.globalCfg.Drudger.Env
 	harness := service.globalCfg.Drudger.Harness
 
+	// TODO: at some point need to move concrete implementations to adapters
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
 		create := []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude}
 		create = append(create, mounts...)

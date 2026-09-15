@@ -4,8 +4,6 @@ The words below mean exactly one thing each. Use them in code, docs, commit mess
 
 ## Drudger
 
-An agent running in a reusable sandbox that does the work. One Drudger is one agent in one sandbox.
-
 A Drudger is a slot, a sandbox and a workspace. The workspace holds a git worktree per repository of the project, the sandbox is created over it, and the three are made together and stay together. Nothing is rebuilt between Tasks.
 
 A Drudger is either occupied with a Task or idle. It goes idle when a Session ends, whether that Session got shit done or fucked up, and it stays around afterwards ready for the next Task. An agent killed before its Session ends leaves the Drudger occupied by a Task with nothing working on it. Reclaiming puts that Drudger back to idle. Drudgers are created as they are needed and live until the pool is deliberately shrunk.

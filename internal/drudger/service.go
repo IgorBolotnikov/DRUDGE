@@ -346,10 +346,6 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	// The run directory is made before the workspace and the sandbox steps,
-	// which take minutes on a first launch. ReclaimDrudgers frees a claimed
-	// slot that has no run directory past the grace period, so the two happen
-	// back to back here.
 	if err := prepareRunDir(runDir, prompt); err != nil {
 		return err
 	}

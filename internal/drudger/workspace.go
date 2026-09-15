@@ -46,6 +46,7 @@ func (service *DrudgerService) resolveWorkspace(layout projectLayout, root strin
 	if len(repositories) == 0 {
 		return slotWorkspace{}, fmt.Errorf(
 			"project %s has no repositories recorded, run %s to record them",
+			// TODO: make init rerunnable on the existing project, or create another command, like `sync`
 			service.localCfg.ProjectSlug, initCommand,
 		)
 	}
@@ -83,6 +84,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 // workspace root, the .git of every repository, and the directory the runs of
 // the project live in.
 func (space slotWorkspace) mounts(runsDir string) []string {
+	// One mount for the root, one for the runs directory, one per repository.
 	paths := make([]string, 0, len(space.Repositories)+2)
 	paths = append(paths, space.Root)
 	for _, repository := range space.Repositories {
