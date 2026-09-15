@@ -77,6 +77,25 @@ func (service *DrudgerService) recordSandboxHealth(projectSlug string, slot int,
 	}
 }
 
+// recordWorkspaceHealth stores what drudge just saw of the workspace a Drudger
+// works in and records when it looked.
+func (service *DrudgerService) recordWorkspaceHealth(projectSlug string, slot int, health WorkspaceHealth) {
+	now := time.Now().UTC()
+
+	err := service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
+		for _, candidate := range drudgers {
+			if candidate.Slot == slot {
+				candidate.WorkspaceHealth = health
+				candidate.LastChecked = now
+			}
+		}
+		return drudgers, nil
+	})
+	if err != nil {
+		service.logger.Error("The workspace of Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+	}
+}
+
 // recordAgentHealth stores what a finished Session just said about the agent
 // that ran it and records when drudge looked.
 //

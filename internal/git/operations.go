@@ -38,6 +38,11 @@ type Operations interface {
 	// AddDetachedWorktree checks a repository out at ref in a new worktree at
 	// path, with no branch on it. A path holding files fails.
 	AddDetachedWorktree(dir string, path string, ref string) error
+	// HasWorktree reports whether path is registered as a worktree of the
+	// repository. A worktree whose directory was deleted stays registered
+	// until it is pruned, so this answers what the repository knows and not
+	// what is on disk.
+	HasWorktree(dir string, path string) (bool, error)
 	// IsDirty reports whether a work tree holds changes that are not
 	// committed. Untracked files count and ignored files do not.
 	IsDirty(dir string) (bool, error)

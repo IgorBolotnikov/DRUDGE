@@ -31,9 +31,10 @@ const (
 )
 
 // Labels for what drudge last saw of a Drudger. A Drudger is an agent in a
-// sandbox, so the health column reports both parts. A part that is fine stays
-// quiet. A part drudge has not looked at yet says so plainly. A broken part is
-// shouted, so it stands out in a listing of otherwise fine Drudgers.
+// sandbox over a workspace, so the health column reports all three parts. A
+// part that is fine stays quiet. A part drudge has not looked at yet says so
+// plainly. A broken part is shouted, so it stands out in a listing of
+// otherwise fine Drudgers.
 const (
 	healthOkLabel        = "ok"
 	healthUncheckedLabel = "unchecked"
@@ -42,14 +43,20 @@ const (
 	sandboxMisplacedLabel = "WRONG WORKSPACE"
 	sandboxUncheckedLabel = "sandbox unchecked"
 
+	workspaceGoneLabel      = "WORKSPACE GONE"
+	workspaceMisplacedLabel = "WRONG WORKTREE"
+	workspaceUncheckedLabel = "workspace unchecked"
+
 	agentRefusedLabel   = "AGENT REFUSED"
 	agentUncheckedLabel = "agent unchecked"
 
-	// healthPartSeparator joins the two parts when both have something to say.
+	// healthPartSeparator joins the parts that have something to say.
 	healthPartSeparator = ", "
 
-	// healthColumnWidth fits the longest pair of labels.
-	healthColumnWidth = len(sandboxMisplacedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
+	// healthColumnWidth fits the widest row a Drudger can show: two parts
+	// drudge has not looked at and one that is broken. Three unchecked parts
+	// read as one label.
+	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
 func runDrudger(args []string) error {
@@ -220,18 +227,22 @@ func occupyingTask(entry *drudger.Drudger) string {
 }
 
 // formatHealth renders what drudge last saw of a Drudger. Only a Drudger whose
-// sandbox and agent are both fine reads as ok. Anything else names the part
-// that is at fault, so the reader knows which one to fix.
+// sandbox, workspace and agent are all fine reads as ok. Anything else names
+// the part that is at fault, so the reader knows which one to fix.
 //
 // TODO: move this to the drudger package to be reused in other UI layers.
 func formatHealth(entry *drudger.Drudger) string {
-	// Both parts of a Drudger drudge has not looked at yet share one label.
-	if entry.SandboxHealth == drudger.SandboxUnchecked && entry.AgentHealth == drudger.AgentUnchecked {
+	// The three parts of a Drudger drudge has not looked at yet share one
+	// label.
+	if entry.SandboxHealth == drudger.SandboxUnchecked && entry.WorkspaceHealth == drudger.WorkspaceUnchecked && entry.AgentHealth == drudger.AgentUnchecked {
 		return healthUncheckedLabel
 	}
 
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, 3)
 	if label := sandboxHealthLabel(entry.SandboxHealth); label != "" {
+		parts = append(parts, label)
+	}
+	if label := workspaceHealthLabel(entry.WorkspaceHealth); label != "" {
 		parts = append(parts, label)
 	}
 	if label := agentHealthLabel(entry.AgentHealth); label != "" {
@@ -255,6 +266,23 @@ func sandboxHealthLabel(health drudger.SandboxHealth) string {
 		return sandboxMisplacedLabel
 	case drudger.SandboxUnchecked:
 		return sandboxUncheckedLabel
+	default:
+		return string(health)
+	}
+}
+
+// workspaceHealthLabel names a workspace that is not fine. A usable workspace
+// has nothing to report and gets an empty label.
+func workspaceHealthLabel(health drudger.WorkspaceHealth) string {
+	switch health {
+	case drudger.WorkspaceUsable:
+		return ""
+	case drudger.WorkspaceGone:
+		return workspaceGoneLabel
+	case drudger.WorkspaceMisplaced:
+		return workspaceMisplacedLabel
+	case drudger.WorkspaceUnchecked:
+		return workspaceUncheckedLabel
 	default:
 		return string(health)
 	}

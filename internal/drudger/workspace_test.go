@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"drudge/internal/common"
 	"drudge/internal/config"
 	"drudge/internal/task"
 )
@@ -229,5 +230,124 @@ func TestDrudgerService_RunTask_RefusesAProjectWithNoRepositories(t *testing.T) 
 	}
 	if taskToRun.Status != task.StatusTodo {
 		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+	}
+}
+
+func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
+	cases := []struct {
+		name string
+		// present says whether the worktree has a directory, and registered
+		// whether the repository knows the path as a worktree.
+		present    bool
+		registered bool
+		wantHealth WorkspaceHealth
+		// wantInErr is empty when the run goes through.
+		wantInErr []string
+	}{
+		{
+			name:       "a slot with no worktree yet gets one",
+			wantHealth: WorkspaceUsable,
+		},
+		{
+			name:       "the worktree the last Session left is handed over again",
+			present:    true,
+			registered: true,
+			wantHealth: WorkspaceUsable,
+		},
+		{
+			name:       "a worktree with no directory left stops the run",
+			registered: true,
+			wantHealth: WorkspaceGone,
+			wantInErr:  []string{testRepositoryName, nukeCommand + " 1"},
+		},
+		{
+			name:       "a directory the repository does not know stops the run",
+			present:    true,
+			wantHealth: WorkspaceMisplaced,
+			wantInErr:  []string{testRepositoryName, nukeCommand + " 1"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, taskToRun)
+			worktree := filepath.Join(slotRoot(projectDir, 1), testRepositoryName)
+			if testCase.present {
+				if err := common.EnsureDir(worktree); err != nil {
+					t.Fatalf("could not create the worktree directory: %v", err)
+				}
+			}
+			if testCase.registered {
+				service.git.registerWorktree(worktree)
+			}
+
+			var err error
+			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			if got := service.drudgers.atSlot(1).WorkspaceHealth; got != testCase.wantHealth {
+				t.Errorf("expected workspace health %q, got %q", testCase.wantHealth, got)
+			}
+
+			if len(testCase.wantInErr) == 0 {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if taskToRun.Status != task.StatusInProgress {
+					t.Errorf("expected status %q, got %q", task.StatusInProgress, taskToRun.Status)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Fatal("expected a workspace an agent cannot work in to stop the run")
+			}
+			for _, want := range testCase.wantInErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected the error to name %q, got %q", want, err)
+				}
+			}
+			if commands.calls != nil {
+				t.Errorf("expected no sandbox command to run, got %v", commands.subcommands())
+			}
+			if len(service.git.addedWorktrees) != 0 {
+				t.Errorf("expected the worktree to be left alone, got %v", service.git.addedWorktrees)
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+				t.Errorf("expected the slot to be released, got Drudger %d holding the task", held.Slot)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_CreatesOnlyTheWorktreesASlotIsMissing(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+	service := newTestServiceWith(localConfigWith("api", "ui"), config.DefaultConfig(), commands, taskToRun)
+	worktrees := pathsIn(slotRoot(projectDir, 1), "api", "ui")
+	// The second repository is where the last Session left it, the first has
+	// no worktree at all.
+	if err := common.EnsureDir(worktrees[1]); err != nil {
+		t.Fatalf("could not create the worktree directory: %v", err)
+	}
+	service.git.registerWorktree(worktrees[1])
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := service.git.worktreePaths(); !slices.Equal(got, worktrees[:1]) {
+		t.Errorf("expected only the missing worktree to be created, got %v", got)
+	}
+	if got := service.drudgers.atSlot(1).WorkspaceHealth; got != WorkspaceUsable {
+		t.Errorf("expected workspace health %q, got %q", WorkspaceUsable, got)
 	}
 }

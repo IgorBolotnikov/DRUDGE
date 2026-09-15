@@ -3,6 +3,7 @@ package drudger
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"drudge/internal/common"
 	"drudge/internal/config"
@@ -111,21 +112,109 @@ func (space slotWorkspace) mounts(runsDir string) []string {
 	return append(paths, runsDir)
 }
 
-// ensureWorktree checks a repository out in the worktree of a slot when it has
-// none yet, detached at the base the repository cuts work from so an idle
-// Drudger owns no branch. A worktree that is already there is left as the last
-// Session left it.
-func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) error {
+// fetchBase updates the tracking ref a repository cuts work from. A repository
+// with no remote is left alone. A fetch that fails only warns and names the
+// commit the work is cut from, because that base is still a correct one to
+// branch from.
+func (service *DrudgerService) fetchBase(repository repositoryWorktree) {
+	if !repository.Remote {
+		return
+	}
+
+	err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch)
+	if err == nil {
+		return
+	}
+	service.logger.Error("Could not fetch %s of repository %s: %v", repository.DefaultBranch, repository.Name, err)
+	service.logger.Error("Work on repository %s is cut from %s", repository.Name, service.describeBase(repository))
+}
+
+// describeBase names the commit a repository cuts work from and how old it is.
+// A ref git will not resolve is described by its name alone.
+func (service *DrudgerService) describeBase(repository repositoryWorktree) string {
+	base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
+	if err != nil {
+		return repository.BaseRef()
+	}
+	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), shortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
+}
+
+// ensureWorkspace makes a Drudger's workspace ready for a handover and records
+// what it saw. Every repository has its base fetched and gets a worktree when
+// the slot has none. A worktree no agent can be given stops the run and names
+// the Drudger to nuke.
+func (service *DrudgerService) ensureWorkspace(projectSlug string, space slotWorkspace) error {
+	for _, repository := range space.Repositories {
+		service.fetchBase(repository)
+
+		health, err := service.ensureWorktree(repository)
+		if err != nil {
+			return err
+		}
+		if health != WorkspaceUsable {
+			service.recordWorkspaceHealth(projectSlug, space.Slot, health)
+			return refuseWorkspace(space.Slot, repository, health)
+		}
+	}
+
+	service.recordWorkspaceHealth(projectSlug, space.Slot, WorkspaceUsable)
+	return nil
+}
+
+// ensureWorktree reports whether the worktree of one repository is usable, and
+// checks the repository out at a path that has none yet. A new worktree is
+// detached at the base the repository cuts work from, so an idle Drudger owns
+// no branch. A worktree that is already there is left as the last Session left
+// it.
+//
+// What the repository knows tells the two failures apart. A path it has
+// registered with no directory behind it is a worktree that was deleted, and a
+// directory it has not registered is a path something else took.
+func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) (WorkspaceHealth, error) {
 	present, err := common.Exists(repository.Worktree)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if present {
-		return nil
+	registered, err := service.gitOps.HasWorktree(repository.Dir, repository.Worktree)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case present && registered:
+		return WorkspaceUsable, nil
+	case present:
+		return WorkspaceMisplaced, nil
+	case registered:
+		return WorkspaceGone, nil
 	}
 
 	if err := service.gitOps.AddDetachedWorktree(repository.Dir, repository.Worktree, repository.BaseRef()); err != nil {
-		return fmt.Errorf("could not create the workspace of repository %s: %w", repository.Name, err)
+		return "", fmt.Errorf("could not create the workspace of repository %s: %w", repository.Name, err)
 	}
-	return nil
+	return WorkspaceUsable, nil
+}
+
+// refuseWorkspace explains a workspace no agent can be given and names the one
+// command that fixes it. A sandbox binds its mounts when it is created. A
+// worktree put back under a live sandbox is a directory the agent cannot see,
+// so rebuilding the whole Drudger is the only repair.
+func refuseWorkspace(slot int, repository repositoryWorktree, health WorkspaceHealth) error {
+	saw := fmt.Sprintf("%s is not a worktree of repository %s at %s", repository.Worktree, repository.Name, repository.Dir)
+	if health == WorkspaceGone {
+		saw = fmt.Sprintf("the worktree of repository %s is gone from %s", repository.Name, repository.Worktree)
+	}
+	return fmt.Errorf("%s, so Drudger %d cannot work, run %s %d to rebuild it", saw, slot, nukeCommand, slot)
+}
+
+// formatAge renders roughly how long ago a commit was made.
+func formatAge(elapsed time.Duration) string {
+	switch {
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(elapsed.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(elapsed.Hours()/24))
+	}
 }

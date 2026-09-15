@@ -62,6 +62,13 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 			},
 		},
 		{
+			name: "a Drudger whose workspace is broken",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", WorkspaceHealth: drudger.WorkspaceGone, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", WorkspaceHealth: drudger.WorkspaceMisplaced, LastChecked: lastChecked},
+			},
+		},
+		{
 			name: "a Drudger with a workspace",
 			pool: []*drudger.Drudger{
 				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Workspace: "/home/igor/app/.drudge/worktrees/slot-1", LastChecked: lastChecked},
@@ -121,6 +128,9 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				}
 				if got.SandboxHealth != want.SandboxHealth {
 					t.Errorf("expected sandbox health %q, got %q", want.SandboxHealth, got.SandboxHealth)
+				}
+				if got.WorkspaceHealth != want.WorkspaceHealth {
+					t.Errorf("expected workspace health %q, got %q", want.WorkspaceHealth, got.WorkspaceHealth)
 				}
 				if got.AgentHealth != want.AgentHealth {
 					t.Errorf("expected agent health %q, got %q", want.AgentHealth, got.AgentHealth)

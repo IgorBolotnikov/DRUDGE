@@ -284,6 +284,85 @@ func TestAddDetachedWorktree(t *testing.T) {
 	}
 }
 
+func TestHasWorktree(t *testing.T) {
+	tests := []struct {
+		name string
+		// build returns the path asked about.
+		build func(t *testing.T, root string, clone string) string
+		want  bool
+	}{
+		{
+			name: "a worktree that was added",
+			build: func(t *testing.T, root string, clone string) string {
+				worktree := filepath.Join(root, "workspace", "slot-1")
+				addWorktree(t, clone, worktree)
+				return worktree
+			},
+			want: true,
+		},
+		{
+			name: "a worktree whose directory was deleted",
+			build: func(t *testing.T, root string, clone string) string {
+				worktree := filepath.Join(root, "workspace", "slot-1")
+				addWorktree(t, clone, worktree)
+				if err := os.RemoveAll(worktree); err != nil {
+					t.Fatalf("could not delete the worktree: %v", err)
+				}
+				return worktree
+			},
+			want: true,
+		},
+		{
+			name:  "the main work tree of the repository",
+			build: func(t *testing.T, root string, clone string) string { return clone },
+			want:  true,
+		},
+		{
+			name: "a plain directory at the path",
+			build: func(t *testing.T, root string, clone string) string {
+				return makeDir(t, filepath.Join(root, "workspace", "slot-1"))
+			},
+		},
+		{
+			name: "a path nothing was ever put at",
+			build: func(t *testing.T, root string, clone string) string {
+				return filepath.Join(root, "workspace", "slot-1")
+			},
+		},
+		{
+			name: "a worktree of another repository",
+			build: func(t *testing.T, root string, clone string) string {
+				other := initRepo(t, filepath.Join(root, "other"), "main")
+				worktree := filepath.Join(root, "workspace", "slot-1")
+				addWorktree(t, other, worktree)
+				return worktree
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			clone := cloneRepo(t, root, "main", "clone")
+			path := test.build(t, root, clone)
+
+			got, err := newTestAdapter().HasWorktree(clone, path)
+			if err != nil {
+				t.Fatalf("HasWorktree: %v", err)
+			}
+			if got != test.want {
+				t.Errorf("expected %v, got %v", test.want, got)
+			}
+		})
+	}
+}
+
+// addWorktree checks a repository out in a detached worktree at path.
+func addWorktree(t *testing.T, repo string, path string) {
+	t.Helper()
+	runGit(t, repo, "worktree", "add", "--detach", path, "HEAD")
+}
+
 func TestAddDetachedWorktree_PathHoldingFiles(t *testing.T) {
 	root := t.TempDir()
 	clone := cloneRepo(t, root, "main", "clone")

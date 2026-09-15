@@ -339,6 +339,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	if err := service.ensureWorkspace(projectSlug, space); err != nil {
+		return err
+	}
+
 	mounts := space.mounts(layout.RunsDir())
 
 	plan, err := service.pickDrudgerCommand(claimed.Sandbox, space.Root, mounts, runDir)

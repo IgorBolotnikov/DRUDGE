@@ -6,22 +6,24 @@ import (
 	"drudge/internal/task"
 )
 
-// Drudger is an agent running in a reusable sandbox. It outlives the Sessions
-// that run in it, and at any moment it is either occupied by one Task or idle.
+// Drudger is an agent running in a reusable sandbox over a workspace of git
+// worktrees. It outlives the Sessions that run in it, and at any moment it is
+// either occupied by one Task or idle.
 //
-// The agent and the sandbox break independently, so a Drudger has one state
-// for each of them.
+// The sandbox, the workspace and the agent break independently, so a Drudger
+// has one state for each of them.
 //
 // A Drudger record is a snapshot of what drudge last observed, not a live
 // view of the Drudger. LastChecked says how old that observation is.
 type Drudger struct {
-	Slot          int           // Pool position, starting at 1
-	Sandbox       string        // Name of the real sandbox this Drudger works in
-	Workspace     string        // Directory the agent works in, holding a worktree per repository
-	TaskID        task.TaskID   // Task occupying the Drudger, empty when idle
-	SandboxHealth SandboxHealth // What drudge last saw of the sandbox
-	AgentHealth   AgentHealth   // What drudge last saw of the agent
-	LastChecked   time.Time     // When drudge last looked at this Drudger
+	Slot            int             // Pool position, starting at 1
+	Sandbox         string          // Name of the real sandbox this Drudger works in
+	Workspace       string          // Directory the agent works in, holding a worktree per repository
+	TaskID          task.TaskID     // Task occupying the Drudger, empty when idle
+	SandboxHealth   SandboxHealth   // What drudge last saw of the sandbox
+	WorkspaceHealth WorkspaceHealth // What drudge last saw of the workspace
+	AgentHealth     AgentHealth     // What drudge last saw of the agent
+	LastChecked     time.Time       // When drudge last looked at this Drudger
 }
 
 // SandboxHealth is what drudge last saw of a Drudger's sandbox.
@@ -37,6 +39,24 @@ const (
 	// SandboxMisplaced means the sandbox is there but is mounted on another
 	// workspace.
 	SandboxMisplaced SandboxHealth = "misplaced"
+)
+
+// WorkspaceHealth is what drudge last saw of the workspace a Drudger works in.
+// It is checked at every handover.
+type WorkspaceHealth string
+
+const (
+	// WorkspaceUnchecked means drudge has not looked at the workspace yet.
+	WorkspaceUnchecked WorkspaceHealth = ""
+	// WorkspaceUsable means every repository of the project is checked out
+	// where the Drudger expects it.
+	WorkspaceUsable WorkspaceHealth = "usable"
+	// WorkspaceGone means a worktree a repository still knows has no directory
+	// left at its path.
+	WorkspaceGone WorkspaceHealth = "gone"
+	// WorkspaceMisplaced means a worktree path holds a directory the
+	// repository does not know as a worktree.
+	WorkspaceMisplaced WorkspaceHealth = "misplaced"
 )
 
 // AgentHealth is what drudge last saw of the agent inside a Drudger's sandbox.

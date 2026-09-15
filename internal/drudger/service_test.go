@@ -32,6 +32,10 @@ const (
 	testRepoPath      = "."
 	testDefaultBranch = "main"
 
+	// testRepositoryName is the path a project's single repository sits at,
+	// and the name it is reported under.
+	testRepositoryName = "api"
+
 	// stoppedSandboxStatus is the sbx status of a sandbox with nothing running
 	// in it.
 	stoppedSandboxStatus = "stopped"
@@ -301,12 +305,15 @@ type fakeGit struct {
 	branchCommits map[string]int
 	// branchesPut are the branches a run checked out, keyed by the worktree
 	// they were put on and their name.
-	branchesPut     map[string]bool
-	fetched         []string
-	addedWorktrees  []addedWorktree
-	stashes         []stashCall
-	createdBranches []branchCall
-	resetBranches   []branchCall
+	branchesPut map[string]bool
+	// registeredWorktrees are the paths the repositories know as worktrees of
+	// their own. Adding a worktree registers its path, the way git does.
+	registeredWorktrees map[string]bool
+	fetched             []string
+	addedWorktrees      []addedWorktree
+	stashes             []stashCall
+	createdBranches     []branchCall
+	resetBranches       []branchCall
 }
 
 // addedWorktree is one call to add a worktree: the repository, where the
@@ -355,7 +362,12 @@ func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) er
 	if fake.worktreeErr != nil {
 		return fake.worktreeErr
 	}
+	fake.registerWorktree(path)
 	return common.EnsureDir(path)
+}
+
+func (fake *fakeGit) HasWorktree(dir string, path string) (bool, error) {
+	return fake.registeredWorktrees[path], nil
 }
 
 func (fake *fakeGit) IsDirty(dir string) (bool, error) {
@@ -401,6 +413,14 @@ func (fake *fakeGit) ResetBranch(dir string, branch string, start string) error 
 
 func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
 	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
+}
+
+// registerWorktree records a path as one a repository now knows as a worktree.
+func (fake *fakeGit) registerWorktree(path string) {
+	if fake.registeredWorktrees == nil {
+		fake.registeredWorktrees = map[string]bool{}
+	}
+	fake.registeredWorktrees[path] = true
 }
 
 // rememberBranch records a branch as one this worktree's repository now has.

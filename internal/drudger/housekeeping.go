@@ -3,7 +3,6 @@ package drudger
 import (
 	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	"drudge/internal/git"
@@ -42,21 +41,12 @@ type repositoryHandover struct {
 }
 
 // prepareWorkspace puts every repository of a workspace into the state a
-// handover needs. The tracking ref is fetched, the worktree is created when it
-// has none, whatever the last Session left uncommitted is stashed, and the
-// task's branch is checked out. It reports what it did.
+// handover needs. Whatever the last Session left uncommitted is stashed and
+// the task's branch is checked out. It reports what it did.
 //
-// Every step but the fetch stops the handover when it fails. An agent is never
-// given a workspace that is not in the state it was meant to be.
+// A step that fails stops the handover. An agent is never given a workspace
+// that is not in the state it was meant to be.
 func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *task.Task) (handover, error) {
-	for _, repository := range space.Repositories {
-		service.fetchBase(repository)
-
-		if err := service.ensureWorktree(repository); err != nil {
-			return handover{}, err
-		}
-	}
-
 	branch, err := service.pickTaskBranch(space, taskToRun)
 	if err != nil {
 		return handover{}, err
@@ -76,33 +66,6 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash})
 	}
 	return prepared, nil
-}
-
-// fetchBase updates the tracking ref a repository cuts work from. A repository
-// with no remote is left alone. A fetch that fails only warns and names the
-// commit the work is cut from, because that base is still a correct one to
-// branch from.
-func (service *DrudgerService) fetchBase(repository repositoryWorktree) {
-	if !repository.Remote {
-		return
-	}
-
-	err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch)
-	if err == nil {
-		return
-	}
-	service.logger.Error("Could not fetch %s of repository %s: %v", repository.DefaultBranch, repository.Name, err)
-	service.logger.Error("Work on repository %s is cut from %s", repository.Name, service.describeBase(repository))
-}
-
-// describeBase names the commit a repository cuts work from and how old it is.
-// A ref git will not resolve is described by its name alone.
-func (service *DrudgerService) describeBase(repository repositoryWorktree) string {
-	base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
-	if err != nil {
-		return repository.BaseRef()
-	}
-	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), shortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
 }
 
 // stashLeftovers puts whatever the last Session left uncommitted in a worktree
@@ -243,16 +206,4 @@ func shortSHA(commit string) string {
 		return commit
 	}
 	return commit[:shortSHALength]
-}
-
-// formatAge renders roughly how long ago a commit was made.
-func formatAge(elapsed time.Duration) string {
-	switch {
-	case elapsed < time.Hour:
-		return fmt.Sprintf("%d minutes ago", int(elapsed.Minutes()))
-	case elapsed < 24*time.Hour:
-		return fmt.Sprintf("%d hours ago", int(elapsed.Hours()))
-	default:
-		return fmt.Sprintf("%d days ago", int(elapsed.Hours()/24))
-	}
 }

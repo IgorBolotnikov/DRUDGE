@@ -4,6 +4,7 @@ package gitcli
 import (
 	"errors"
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"strconv"
@@ -29,6 +30,7 @@ const (
 	fetchSubcommand       = "fetch"
 	worktreeSubcommand    = "worktree"
 	addSubcommand         = "add"
+	listSubcommand        = "list"
 	detachFlag            = "--detach"
 	statusSubcommand      = "status"
 	porcelainFlag         = "--porcelain"
@@ -54,6 +56,10 @@ const (
 // commitRange is the two-dot range git reads "commits in tip that base does
 // not have" from.
 const commitRange = "%s..%s"
+
+// worktreeField starts the porcelain listing line that carries a worktree's
+// path.
+const worktreeField = "worktree "
 
 // Git runs git commands as processes.
 type Git struct {
@@ -135,6 +141,36 @@ func (adapter *Git) AddDetachedWorktree(dir string, path string, ref string) err
 		return fmt.Errorf("could not create a worktree of %s at %s on %s: %w: %s", dir, path, ref, err, strings.TrimSpace(stderr))
 	}
 	return nil
+}
+
+// HasWorktree reports whether path is registered as a worktree of the
+// repository at dir. The listing carries every worktree the repository knows,
+// including the main work tree and worktrees whose directory was deleted.
+func (adapter *Git) HasWorktree(dir string, path string) (bool, error) {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, worktreeSubcommand, listSubcommand, porcelainFlag)
+	if err != nil {
+		return false, fmt.Errorf("could not list the worktrees of %s: %w: %s", dir, err, strings.TrimSpace(stderr))
+	}
+
+	wanted, err := realPath(path)
+	if err != nil {
+		return false, err
+	}
+
+	for _, line := range strings.Split(stdout, "\n") {
+		listed, carries := strings.CutPrefix(strings.TrimSpace(line), worktreeField)
+		if !carries {
+			continue
+		}
+		resolved, err := realPath(listed)
+		if err != nil {
+			return false, err
+		}
+		if resolved == wanted {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // IsDirty reports whether a work tree holds changes that are not committed.
@@ -265,11 +301,29 @@ func refused(err error) bool {
 }
 
 // realPath resolves a path through symlinks so two names for one directory
-// compare equal.
+// compare equal. A path that is not there is resolved through the deepest
+// parent that is. A worktree the repository still knows can have no directory
+// left.
 func realPath(path string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", fmt.Errorf("could not resolve %s: %w", path, err)
+	prefix := filepath.Clean(path)
+	suffix := ""
+
+	for {
+		resolved, err := filepath.EvalSymlinks(prefix)
+		if err == nil {
+			return filepath.Join(resolved, suffix), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("could not resolve %s: %w", path, err)
+		}
+
+		parent := filepath.Dir(prefix)
+		if parent == prefix {
+			return filepath.Join(prefix, suffix), nil
+		}
+		// The component goes in front of the suffix, so the two halves still
+		// join back into the path that was asked about.
+		suffix = filepath.Join(filepath.Base(prefix), suffix)
+		prefix = parent
 	}
-	return filepath.Clean(resolved), nil
 }

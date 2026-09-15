@@ -31,13 +31,14 @@ type drudgersFile struct {
 
 // storedDrudger is one Drudger as it is written to file.
 type storedDrudger struct {
-	Slot          int       `json:"slot"`
-	Sandbox       string    `json:"sandbox"`
-	Workspace     string    `json:"workspace,omitempty"`
-	Task          string    `json:"task,omitempty"`
-	SandboxHealth string    `json:"sandboxHealth,omitempty"`
-	AgentHealth   string    `json:"agentHealth,omitempty"`
-	LastChecked   time.Time `json:"lastChecked"`
+	Slot            int       `json:"slot"`
+	Sandbox         string    `json:"sandbox"`
+	Workspace       string    `json:"workspace,omitempty"`
+	Task            string    `json:"task,omitempty"`
+	SandboxHealth   string    `json:"sandboxHealth,omitempty"`
+	WorkspaceHealth string    `json:"workspaceHealth,omitempty"`
+	AgentHealth     string    `json:"agentHealth,omitempty"`
+	LastChecked     time.Time `json:"lastChecked"`
 }
 
 // FileDrudgerRepository keeps each project's Drudgers in a JSON file inside
@@ -133,13 +134,14 @@ func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 	drudgers := make([]*drudger.Drudger, 0, len(stored.Drudgers))
 	for _, entry := range stored.Drudgers {
 		drudgers = append(drudgers, &drudger.Drudger{
-			Slot:          entry.Slot,
-			Sandbox:       entry.Sandbox,
-			Workspace:     entry.Workspace,
-			TaskID:        task.TaskID(entry.Task),
-			SandboxHealth: drudger.SandboxHealth(entry.SandboxHealth),
-			AgentHealth:   drudger.AgentHealth(entry.AgentHealth),
-			LastChecked:   entry.LastChecked,
+			Slot:            entry.Slot,
+			Sandbox:         entry.Sandbox,
+			Workspace:       entry.Workspace,
+			TaskID:          task.TaskID(entry.Task),
+			SandboxHealth:   drudger.SandboxHealth(entry.SandboxHealth),
+			WorkspaceHealth: drudger.WorkspaceHealth(entry.WorkspaceHealth),
+			AgentHealth:     drudger.AgentHealth(entry.AgentHealth),
+			LastChecked:     entry.LastChecked,
 		})
 	}
 	return drudgers, nil
@@ -151,13 +153,14 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 	stored := drudgersFile{Drudgers: make([]storedDrudger, 0, len(drudgers))}
 	for _, entry := range drudgers {
 		stored.Drudgers = append(stored.Drudgers, storedDrudger{
-			Slot:          entry.Slot,
-			Sandbox:       entry.Sandbox,
-			Workspace:     entry.Workspace,
-			Task:          string(entry.TaskID),
-			SandboxHealth: string(entry.SandboxHealth),
-			AgentHealth:   string(entry.AgentHealth),
-			LastChecked:   entry.LastChecked,
+			Slot:            entry.Slot,
+			Sandbox:         entry.Sandbox,
+			Workspace:       entry.Workspace,
+			Task:            string(entry.TaskID),
+			SandboxHealth:   string(entry.SandboxHealth),
+			WorkspaceHealth: string(entry.WorkspaceHealth),
+			AgentHealth:     string(entry.AgentHealth),
+			LastChecked:     entry.LastChecked,
 		})
 	}
 	slices.SortFunc(stored.Drudgers, func(first, second storedDrudger) int {
