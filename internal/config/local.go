@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"drudge/internal/common"
 )
@@ -15,6 +16,19 @@ type LocalConfig struct {
 	ProjectSlug           string `json:"projectSlug"`
 	PromptFile            string `json:"promptFile,omitempty"`
 	MaxConcurrentDrudgers int    `json:"maxConcurrentDrudgers,omitempty"`
+	// Repositories is empty for a project initialized before drudge knew about repositories.
+	Repositories []Repository `json:"repositories,omitempty"`
+}
+
+// Repository is one git repository of a project. `drg project init` writes the
+// list and a user may edit it afterwards.
+type Repository struct {
+	// Path is where the repository sits relative to the project directory. A
+	// project directory that is itself a repository records ".".
+	Path string `json:"path"`
+	// DefaultBranch is the branch work is cut from. An empty value means
+	// drudge reads it from origin/HEAD.
+	DefaultBranch string `json:"defaultBranch,omitempty"`
 }
 
 // LoadLocal reads the local config from a config file. A missing or
@@ -46,6 +60,9 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validateMaxConcurrentDrudgers(cfg.MaxConcurrentDrudgers, path); err != nil {
 		return nil, err
 	}
+	if err := validateRepositories(cfg.Repositories, path); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
 }
@@ -57,6 +74,28 @@ func (cfg *LocalConfig) Save() error {
 		return err
 	}
 	return common.WriteJSON(common.LocalConfigPath(), cfg)
+}
+
+// validateRepositories rejects a repository that names no path, and one whose
+// path reaches outside the project directory. An empty list passes, since that
+// is what an absent key unmarshals to.
+func validateRepositories(repositories []Repository, path string) error {
+	for _, repository := range repositories {
+		if repository.Path == "" {
+			return fmt.Errorf("%s has a %s entry with no %q", path, RepositoriesKey, repositoryPathKey)
+		}
+		if filepath.IsAbs(repository.Path) || escapesDir(repository.Path) {
+			return fmt.Errorf("%s has %s entry %q, a repository path must stay inside the project directory", path, RepositoriesKey, repository.Path)
+		}
+	}
+	return nil
+}
+
+// escapesDir tells whether a relative path climbs out of the directory it is
+// relative to.
+func escapesDir(value string) bool {
+	cleaned := filepath.Clean(value)
+	return cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator))
 }
 
 // ResolvePromptPath returns the path of the prompt file to hand an agent,

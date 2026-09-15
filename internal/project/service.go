@@ -5,15 +5,17 @@ import (
 	"time"
 
 	"drudge/internal/common"
+	"drudge/internal/git"
 )
 
 type ProjectService struct {
-	repo ProjectRepository
-	log  *common.Logger
+	repo   ProjectRepository
+	gitOps git.Operations
+	log    *common.Logger
 }
 
-func NewProjectService(repo ProjectRepository, log *common.Logger) *ProjectService {
-	return &ProjectService{repo: repo, log: log}
+func NewProjectService(repo ProjectRepository, gitOps git.Operations, log *common.Logger) *ProjectService {
+	return &ProjectService{repo: repo, gitOps: gitOps, log: log}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {

@@ -9,6 +9,9 @@ import (
 	"drudge/internal/project"
 )
 
+// unresolvedBranch stands in for a default branch drudge could not work out.
+const unresolvedBranch = "unresolved"
+
 var ProjectCmd = &Cmd{
 	Name:  "project",
 	Usage: "project <subcommand>",
@@ -45,10 +48,12 @@ func projectCreate(args []string) error {
 	name := args[0]
 
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository("")
-	svc := project.NewProjectService(repo, log)
+	svc, err := newProjectService(log)
+	if err != nil {
+		return err
+	}
 
-	_, err := svc.CreateProject(name)
+	_, err = svc.CreateProject(name)
 	return err
 }
 
@@ -59,22 +64,64 @@ func projectInit(args []string) error {
 
 	name := args[0]
 
+	projectDir, err := common.WorkDir()
+	if err != nil {
+		return err
+	}
+
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository("")
-	svc := project.NewProjectService(repo, log)
+	svc, err := newProjectService(log)
+	if err != nil {
+		return err
+	}
+
+	repositories, err := svc.DiscoverRepositories(projectDir)
+	if err != nil {
+		return err
+	}
 
 	proj, err := svc.CreateProject(name)
 	if err != nil {
 		return err
 	}
 
-	cfg := config.LocalConfig{ProjectSlug: proj.Slug}
+	cfg := config.LocalConfig{ProjectSlug: proj.Slug, Repositories: repositories}
 	if err := cfg.Save(); err != nil {
 		return err
 	}
 
 	log.Info("Initialized project %s in %s", name, common.DotDrudgeDirName)
+	printRepositories(log, svc, projectDir, repositories)
 	return nil
+}
+
+// printRepositories lists the repositories of a project with the branch each
+// one cuts work from. A repository whose default branch does not resolve is
+// listed as unresolved and the fix goes to stderr, leaving the recorded list
+// for the user to edit.
+func printRepositories(log *common.Logger, svc *project.ProjectService, projectDir string, repositories []config.Repository) {
+	columns := []column{
+		{Title: "REPOSITORY", Width: 30},
+		{Title: "DEFAULT BRANCH"},
+	}
+
+	resolved := svc.ResolveRepositories(projectDir, repositories)
+
+	rows := make([][]string, 0, len(resolved))
+	for _, repository := range resolved {
+		branch := repository.DefaultBranch
+		if repository.Problem != nil {
+			branch = unresolvedBranch
+		}
+		rows = append(rows, []string{repository.Repository.Path, branch})
+	}
+	printList(log, "Repositories", columns, rows)
+
+	for _, repository := range resolved {
+		if repository.Problem != nil {
+			log.Error("%s", repository.Problem)
+		}
+	}
 }
 
 func projectDelete(args []string) error {
@@ -84,9 +131,12 @@ func projectDelete(args []string) error {
 
 	lookup := args[0]
 
-	repo := persistence.NewFileProjectRepository("")
 	log := common.NewLogger("")
-	svc := project.NewProjectService(repo, log)
+	repo := persistence.NewFileProjectRepository("")
+	svc, err := newProjectService(log)
+	if err != nil {
+		return err
+	}
 
 	proj, err := svc.LookupProject(lookup)
 	if err != nil {
@@ -122,17 +172,21 @@ func projectRename(args []string) error {
 	oldName := args[0]
 	newName := args[1]
 
-	repo := persistence.NewFileProjectRepository("")
 	log := common.NewLogger("")
-	svc := project.NewProjectService(repo, log)
+	svc, err := newProjectService(log)
+	if err != nil {
+		return err
+	}
 
 	return svc.RenameProject(oldName, newName)
 }
 
 func projectList() error {
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository("")
-	svc := project.NewProjectService(repo, log)
+	svc, err := newProjectService(log)
+	if err != nil {
+		return err
+	}
 
 	projects, err := svc.ListProjects()
 	if err != nil {

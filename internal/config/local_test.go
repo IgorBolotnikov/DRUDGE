@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -45,6 +46,7 @@ func TestLoadLocal(t *testing.T) {
 		wantSlug     string
 		wantPrompt   string
 		wantDrudgers int
+		wantRepos    []Repository
 	}{
 		{
 			name:      "no file",
@@ -101,6 +103,45 @@ func TestLoadLocal(t *testing.T) {
 			raw:       `{"projectSlug": "test-project", "maxConcurrentDrudgers": -1}`,
 			wantErr:   true,
 		},
+		{
+			name:      "no repositories key",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project"}`,
+			wantSlug:  "test-project",
+			wantRepos: nil,
+		},
+		{
+			name:      "one repository",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "."}]}`,
+			wantSlug:  "test-project",
+			wantRepos: []Repository{{Path: "."}},
+		},
+		{
+			name:      "repositories with a default branch",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "api", "defaultBranch": "trunk"}, {"path": "ui"}]}`,
+			wantSlug:  "test-project",
+			wantRepos: []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
+		},
+		{
+			name:      "repository with no path",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "repositories": [{"defaultBranch": "main"}]}`,
+			wantErr:   true,
+		},
+		{
+			name:      "repository path outside the project directory",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "../elsewhere"}]}`,
+			wantErr:   true,
+		},
+		{
+			name:      "absolute repository path",
+			writeFile: true,
+			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "/srv/elsewhere"}]}`,
+			wantErr:   true,
+		},
 	}
 
 	for _, test := range tests {
@@ -130,6 +171,9 @@ func TestLoadLocal(t *testing.T) {
 			if cfg.MaxConcurrentDrudgers != test.wantDrudgers {
 				t.Errorf("MaxConcurrentDrudgers = %d, want %d", cfg.MaxConcurrentDrudgers, test.wantDrudgers)
 			}
+			if !reflect.DeepEqual(cfg.Repositories, test.wantRepos) {
+				t.Errorf("Repositories = %+v, want %+v", cfg.Repositories, test.wantRepos)
+			}
 		})
 	}
 }
@@ -153,6 +197,7 @@ func TestSave_RoundTrips(t *testing.T) {
 		ProjectSlug:           "test-project",
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
+		Repositories:          []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -162,7 +207,7 @@ func TestSave_RoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal: %v", err)
 	}
-	if *loaded != cfg {
+	if !reflect.DeepEqual(*loaded, cfg) {
 		t.Errorf("loaded = %+v, want %+v", *loaded, cfg)
 	}
 }

@@ -1,0 +1,234 @@
+package project
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"drudge/internal/common"
+	"drudge/internal/config"
+	"drudge/internal/git"
+)
+
+// fakeGit answers the git port from what a test set up and counts the calls,
+// so a test can assert that a question was never asked.
+type fakeGit struct {
+	roots    map[string]bool
+	branches map[string]string
+	calls    int
+}
+
+func (fake *fakeGit) IsRepositoryRoot(dir string) (bool, error) {
+	fake.calls++
+	return fake.roots[filepath.Clean(dir)], nil
+}
+
+func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
+	fake.calls++
+	branch, known := fake.branches[filepath.Clean(dir)]
+	if !known {
+		return "", git.ErrNoDefaultBranch
+	}
+	return branch, nil
+}
+
+// newFakeGit maps paths relative to projectDir onto what git would answer.
+func newFakeGit(projectDir string, roots []string, branches map[string]string) *fakeGit {
+	fake := &fakeGit{roots: map[string]bool{}, branches: map[string]string{}}
+	for _, root := range roots {
+		fake.roots[filepath.Join(projectDir, root)] = true
+	}
+	for path, branch := range branches {
+		fake.branches[filepath.Join(projectDir, path)] = branch
+	}
+	return fake
+}
+
+func newTestService(gitOps git.Operations) *ProjectService {
+	return NewProjectService(nil, gitOps, common.NewLogger(""))
+}
+
+func makeProjectDir(t *testing.T, subdirs []string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, subdir := range subdirs {
+		if err := os.MkdirAll(filepath.Join(dir, subdir), 0o755); err != nil {
+			t.Fatalf("could not create %s: %v", subdir, err)
+		}
+	}
+	return dir
+}
+
+func TestDiscoverRepositories(t *testing.T) {
+	tests := []struct {
+		name    string
+		subdirs []string
+		roots   []string
+		want    []config.Repository
+		wantErr bool
+	}{
+		{
+			name:  "project directory is a repository",
+			roots: []string{"."},
+			want:  []config.Repository{{Path: "."}},
+		},
+		{
+			name:    "project directory holds repositories",
+			subdirs: []string{"api", "docs", "ui"},
+			roots:   []string{"api", "ui"},
+			want:    []config.Repository{{Path: "api"}, {Path: "ui"}},
+		},
+		{
+			name:    "a repository wins over the subdirectories under it",
+			subdirs: []string{"vendor"},
+			roots:   []string{".", "vendor"},
+			want:    []config.Repository{{Path: "."}},
+		},
+		{
+			name:    "no repository anywhere",
+			subdirs: []string{"docs"},
+			wantErr: true,
+		},
+		{
+			name:    "hidden subdirectory is ignored",
+			subdirs: []string{".cache"},
+			roots:   []string{".cache"},
+			wantErr: true,
+		},
+		{
+			name:    "empty directory",
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := makeProjectDir(t, test.subdirs)
+			service := newTestService(newFakeGit(projectDir, test.roots, nil))
+
+			got, err := service.DiscoverRepositories(projectDir)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if !strings.Contains(err.Error(), projectDir) {
+					t.Errorf("error = %q, want it to name %q", err, projectDir)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DiscoverRepositories: %v", err)
+			}
+
+			if len(got) != len(test.want) {
+				t.Fatalf("DiscoverRepositories = %+v, want %+v", got, test.want)
+			}
+			for index, repository := range got {
+				if repository != test.want[index] {
+					t.Errorf("repository %d = %+v, want %+v", index, repository, test.want[index])
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultBranch(t *testing.T) {
+	tests := []struct {
+		name         string
+		repository   config.Repository
+		roots        []string
+		branches     map[string]string
+		want         string
+		wantErr      []string
+		gitLeftAlone bool
+	}{
+		{
+			name:         "the config key wins",
+			repository:   config.Repository{Path: "api", DefaultBranch: "trunk"},
+			branches:     map[string]string{"api": "main"},
+			want:         "trunk",
+			gitLeftAlone: true,
+		},
+		{
+			name:       "origin/HEAD answers",
+			repository: config.Repository{Path: "api"},
+			roots:      []string{"api"},
+			branches:   map[string]string{"api": "main"},
+			want:       "main",
+		},
+		{
+			name:       "neither answers",
+			repository: config.Repository{Path: "api"},
+			roots:      []string{"api"},
+			wantErr:    []string{"git remote set-head origin -a", config.DefaultBranchKey, "api"},
+		},
+		{
+			name:       "the path is not a repository",
+			repository: config.Repository{Path: "api"},
+			wantErr:    []string{"api", config.RepositoriesKey},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			fake := newFakeGit(projectDir, test.roots, test.branches)
+			service := newTestService(fake)
+
+			got, err := service.DefaultBranch(projectDir, test.repository)
+			if test.gitLeftAlone && fake.calls != 0 {
+				t.Errorf("git was asked %d times, want it left alone", fake.calls)
+			}
+			if len(test.wantErr) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, want := range test.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error = %q, want it to name %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DefaultBranch: %v", err)
+			}
+			if got != test.want {
+				t.Errorf("DefaultBranch = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestResolveRepositories(t *testing.T) {
+	want := []struct {
+		path        string
+		branch      string
+		wantProblem bool
+	}{
+		{path: "api", branch: "main"},
+		{path: "ui", wantProblem: true},
+		{path: "docs", wantProblem: true},
+	}
+
+	projectDir := t.TempDir()
+	service := newTestService(newFakeGit(projectDir, []string{"api", "ui"}, map[string]string{"api": "main"}))
+
+	resolved := service.ResolveRepositories(projectDir, []config.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs"}})
+
+	if len(resolved) != len(want) {
+		t.Fatalf("ResolveRepositories returned %d entries, want %d", len(resolved), len(want))
+	}
+	for index, repository := range resolved {
+		if repository.Repository.Path != want[index].path {
+			t.Errorf("entry %d is %q, want %q", index, repository.Repository.Path, want[index].path)
+		}
+		if repository.DefaultBranch != want[index].branch {
+			t.Errorf("%s resolved to %q, want %q", want[index].path, repository.DefaultBranch, want[index].branch)
+		}
+		if (repository.Problem != nil) != want[index].wantProblem {
+			t.Errorf("%s problem = %v, want a problem: %v", want[index].path, repository.Problem, want[index].wantProblem)
+		}
+	}
+}

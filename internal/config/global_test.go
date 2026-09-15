@@ -371,3 +371,78 @@ func TestLoad_NegativeSandboxTimeout_ReturnsError(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_MissingGitTimeouts_FallBackToDefaults(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Drudger: DrudgerConfig{Harness: HarnessOpencode},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	timeouts := cfg.Drudger.GitTimeouts
+	if timeouts.FetchSeconds != defaultFetchTimeoutSeconds {
+		t.Errorf("FetchSeconds = %d, want default %d", timeouts.FetchSeconds, defaultFetchTimeoutSeconds)
+	}
+	if timeouts.WorktreeSeconds != defaultWorktreeTimeoutSeconds {
+		t.Errorf("WorktreeSeconds = %d, want default %d", timeouts.WorktreeSeconds, defaultWorktreeTimeoutSeconds)
+	}
+	if timeouts.CommandSeconds != defaultGitCommandTimeoutSeconds {
+		t.Errorf("CommandSeconds = %d, want default %d", timeouts.CommandSeconds, defaultGitCommandTimeoutSeconds)
+	}
+}
+
+func TestLoad_GitTimeoutOverrides_ReturnLoadedValues(t *testing.T) {
+	home := setupHome(t)
+	writeConfig(t, home, GlobalConfig{
+		Drudger: DrudgerConfig{
+			GitTimeouts: GitTimeouts{FetchSeconds: 5, WorktreeSeconds: 60, CommandSeconds: 7},
+		},
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	timeouts := cfg.Drudger.GitTimeouts
+	if timeouts.Fetch() != 5*time.Second {
+		t.Errorf("Fetch() = %s, want %s", timeouts.Fetch(), 5*time.Second)
+	}
+	if timeouts.Worktree() != time.Minute {
+		t.Errorf("Worktree() = %s, want %s", timeouts.Worktree(), time.Minute)
+	}
+	if timeouts.Command() != 7*time.Second {
+		t.Errorf("Command() = %s, want %s", timeouts.Command(), 7*time.Second)
+	}
+}
+
+func TestLoad_NegativeGitTimeout_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "fetch", raw: `{"drudger": {"gitTimeouts": {"fetchSeconds": -1}}}`},
+		{name: "worktree", raw: `{"drudger": {"gitTimeouts": {"worktreeSeconds": -1}}}`},
+		{name: "command", raw: `{"drudger": {"gitTimeouts": {"commandSeconds": -1}}}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatalf("could not create drudge dir: %v", err)
+			}
+			if err := os.WriteFile(common.GlobalConfigPath(home), []byte(test.raw), common.DefaultFilePerm); err != nil {
+				t.Fatalf("could not write config: %v", err)
+			}
+
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected an error for a negative %s timeout", test.name)
+			}
+		})
+	}
+}

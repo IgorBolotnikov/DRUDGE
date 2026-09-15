@@ -61,6 +61,31 @@ const schemaJSON = `{
             }
           },
           "additionalProperties": false
+        },
+        "gitTimeouts": {
+          "description": "How long DRUDGE waits for a git command before it kills it. Git has no timeout of its own.",
+          "type": "object",
+          "properties": {
+            "fetchSeconds": {
+              "description": "Seconds allowed for fetching from a remote. Kept short so an unreachable remote costs seconds.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 15
+            },
+            "worktreeSeconds": {
+              "description": "Seconds allowed for creating a worktree, which is a full checkout.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 600
+            },
+            "commandSeconds": {
+              "description": "Seconds allowed for every other git command.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 60
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
