@@ -44,6 +44,13 @@ const (
 	// repository, and the repository name follows it.
 	metaKeyStashPrefix = "stash."
 
+	// Keys of where the work of the run is. The repository name follows the
+	// prefix.
+	metaKeyBranchPrefix  = "branch."
+	metaKeyBasePrefix    = "base."
+	metaKeyHeadPrefix    = "head."
+	metaKeyCommitsPrefix = "commits."
+
 	// Keys of why the vendor turned the run away, when it did.
 	metaKeyVendorError      = "vendor_error"
 	metaKeyVendorErrorClass = "vendor_error_class"
@@ -143,6 +150,7 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	for repository, commit := range taskToWrite.Stashes {
 		metadata[metaKeyStashPrefix+repository] = commit
 	}
+	writeLandings(metadata, taskToWrite.Landings)
 	if taskToWrite.VendorError != "" {
 		metadata[metaKeyVendorError] = taskToWrite.VendorError
 	}
@@ -159,6 +167,74 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 		metadata[metaKeyUpdatedAt] = taskToWrite.UpdatedAt.Format(time.RFC3339)
 	}
 	return metadata
+}
+
+// landingKeyPrefixes are the front matter key prefixes a landing is written
+// under.
+var landingKeyPrefixes = []string{metaKeyBranchPrefix, metaKeyBasePrefix, metaKeyHeadPrefix, metaKeyCommitsPrefix}
+
+// writeLandings puts the per-repository keys of every landing into the front
+// matter of a task. A part of a landing that is not filled yet is left out, so
+// a task handed to an agent carries no empty head or commit count.
+func writeLandings(metadata map[string]string, landings map[string]task.Landing) {
+	for repository, landing := range landings {
+		if landing.Branch != "" {
+			metadata[metaKeyBranchPrefix+repository] = landing.Branch
+		}
+		if landing.Base != "" {
+			metadata[metaKeyBasePrefix+repository] = landing.Base
+		}
+		if landing.Head != "" {
+			metadata[metaKeyHeadPrefix+repository] = landing.Head
+		}
+		if landing.Commits != 0 {
+			metadata[metaKeyCommitsPrefix+repository] = strconv.Itoa(landing.Commits)
+		}
+	}
+}
+
+// readLandings collects the per-repository keys of a task file into where the
+// work of its run is. Front matter carrying none of them reads as a task that
+// landed nowhere.
+func readLandings(metadata map[string]string) map[string]task.Landing {
+	landings := map[string]task.Landing{}
+
+	for key, value := range metadata {
+		repository, prefix := splitLandingKey(key)
+		if prefix == "" {
+			continue
+		}
+
+		landing := landings[repository]
+		switch prefix {
+		case metaKeyBranchPrefix:
+			landing.Branch = value
+		case metaKeyBasePrefix:
+			landing.Base = value
+		case metaKeyHeadPrefix:
+			landing.Head = value
+		case metaKeyCommitsPrefix:
+			landing.Commits, _ = strconv.Atoi(value)
+		}
+		landings[repository] = landing
+	}
+
+	if len(landings) == 0 {
+		return nil
+	}
+	return landings
+}
+
+// splitLandingKey names the repository a front matter key belongs to and the
+// prefix saying what it carries. A key that is part of no landing returns an
+// empty prefix.
+func splitLandingKey(key string) (repository string, prefix string) {
+	for _, candidate := range landingKeyPrefixes {
+		if name, found := strings.CutPrefix(key, candidate); found {
+			return name, candidate
+		}
+	}
+	return "", ""
 }
 
 func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) {
@@ -212,6 +288,7 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 			t.RecordStash(repository, value)
 		}
 	}
+	t.Landings = readLandings(metadata)
 	if vendorError, ok := metadata[metaKeyVendorError]; ok {
 		t.VendorError = vendorError
 	}

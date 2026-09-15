@@ -74,8 +74,28 @@ func (fake *fakeGit) ResetBranch(dir string, branch string, start string) error 
 	return fmt.Errorf("ResetBranch should not be called")
 }
 
+func (fake *fakeGit) DeleteBranch(dir string, branch string) error {
+	return fmt.Errorf("DeleteBranch should not be called")
+}
+
+func (fake *fakeGit) CurrentBranch(dir string) (string, error) {
+	return "", fmt.Errorf("CurrentBranch should not be called")
+}
+
+func (fake *fakeGit) BranchesContaining(dir string, commit string) ([]string, error) {
+	return nil, fmt.Errorf("BranchesContaining should not be called")
+}
+
+func (fake *fakeGit) CheckoutDetached(dir string, ref string) error {
+	return fmt.Errorf("CheckoutDetached should not be called")
+}
+
 func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
 	return git.Commit{}, fmt.Errorf("ResolveCommit should not be called")
+}
+
+func (fake *fakeGit) ResolveHeadCommit(dir string) (git.Commit, error) {
+	return git.Commit{}, fmt.Errorf("ResolveHeadCommit should not be called")
 }
 
 // newFakeGit maps paths relative to projectDir onto what git would answer.

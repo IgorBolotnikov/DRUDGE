@@ -306,6 +306,18 @@ type fakeGit struct {
 	// branchesPut are the branches a run checked out, keyed by the worktree
 	// they were put on and their name.
 	branchesPut map[string]bool
+	// currentBranches are the branches each worktree has checked out, keyed by
+	// worktree path. A worktree with no entry has a detached HEAD.
+	currentBranches map[string]string
+	// refCommits are the commits a ref resolves to, keyed by the worktree it
+	// is read in and the ref. A ref with no entry resolves to testBaseSHA.
+	refCommits map[string]string
+	// headCommits are the commits each worktree sits on, keyed by worktree
+	// path. A worktree with no entry sits on testBaseSHA.
+	headCommits map[string]string
+	// reachingBranches are the branches that reach a commit, keyed by the
+	// commit.
+	reachingBranches map[string][]string
 	// registeredWorktrees are the paths the repositories know as worktrees of
 	// their own. Adding a worktree registers its path, the way git does.
 	registeredWorktrees map[string]bool
@@ -314,6 +326,14 @@ type fakeGit struct {
 	stashes             []stashCall
 	createdBranches     []branchCall
 	resetBranches       []branchCall
+	deletedBranches     []branchRef
+	detachedWorktrees   []string
+}
+
+// branchRef is one branch a call named: where and its name.
+type branchRef struct {
+	dir    string
+	branch string
 }
 
 // addedWorktree is one call to add a worktree: the repository, where the
@@ -399,6 +419,7 @@ func (fake *fakeGit) CreateBranch(dir string, branch string, start string) error
 	}
 	fake.createdBranches = append(fake.createdBranches, branchCall{dir: dir, branch: branch, start: start})
 	fake.rememberBranch(dir, branch)
+	fake.setCommit(dir, branch, start)
 	return nil
 }
 
@@ -408,11 +429,68 @@ func (fake *fakeGit) ResetBranch(dir string, branch string, start string) error 
 	}
 	fake.resetBranches = append(fake.resetBranches, branchCall{dir: dir, branch: branch, start: start})
 	fake.rememberBranch(dir, branch)
+	fake.setCommit(dir, branch, start)
 	return nil
 }
 
+// DeleteBranch refuses a branch a worktree has checked out, which is what git
+// answers.
+func (fake *fakeGit) DeleteBranch(dir string, branch string) error {
+	if fake.currentBranches[dir] == branch {
+		return fmt.Errorf("branch %s is used by worktree at %s", branch, dir)
+	}
+	fake.deletedBranches = append(fake.deletedBranches, branchRef{dir: dir, branch: branch})
+	delete(fake.branchCommits, branch)
+	delete(fake.branchesPut, dir+" "+branch)
+	return nil
+}
+
+func (fake *fakeGit) CurrentBranch(dir string) (string, error) {
+	return fake.currentBranches[dir], nil
+}
+
+func (fake *fakeGit) BranchesContaining(dir string, commit string) ([]string, error) {
+	return fake.reachingBranches[commit], nil
+}
+
+func (fake *fakeGit) CheckoutDetached(dir string, ref string) error {
+	fake.detachedWorktrees = append(fake.detachedWorktrees, dir)
+	delete(fake.currentBranches, dir)
+	return nil
+}
+
+// ResolveCommit answers a ref the fake was told about, and every other ref
+// with testBaseSHA.
 func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
+	if commit, known := fake.refCommits[dir+" "+ref]; known {
+		return git.Commit{SHA: commit, CommittedAt: testBaseCommittedAt}, nil
+	}
 	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
+}
+
+// ResolveHeadCommit answers the commit a worktree was left on, and a worktree
+// the fake was told nothing about with testBaseSHA.
+func (fake *fakeGit) ResolveHeadCommit(dir string) (git.Commit, error) {
+	if commit, known := fake.headCommits[dir]; known {
+		return git.Commit{SHA: commit, CommittedAt: testBaseCommittedAt}, nil
+	}
+	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
+}
+
+// setHead records the commit a worktree sits on.
+func (fake *fakeGit) setHead(dir string, commit string) {
+	if fake.headCommits == nil {
+		fake.headCommits = map[string]string{}
+	}
+	fake.headCommits[dir] = commit
+}
+
+// setCommit records what a ref resolves to in a worktree.
+func (fake *fakeGit) setCommit(dir string, ref string, commit string) {
+	if fake.refCommits == nil {
+		fake.refCommits = map[string]string{}
+	}
+	fake.refCommits[dir+" "+ref] = commit
 }
 
 // registerWorktree records a path as one a repository now knows as a worktree.
@@ -423,12 +501,23 @@ func (fake *fakeGit) registerWorktree(path string) {
 	fake.registeredWorktrees[path] = true
 }
 
-// rememberBranch records a branch as one this worktree's repository now has.
-func (fake *fakeGit) rememberBranch(dir string, branch string) {
+// registerBranch records a branch as one this worktree's repository now has.
+func (fake *fakeGit) registerBranch(dir string, branch string) {
 	if fake.branchesPut == nil {
 		fake.branchesPut = map[string]bool{}
 	}
 	fake.branchesPut[dir+" "+branch] = true
+}
+
+// rememberBranch records a branch as one this worktree's repository now has,
+// checked out where it was put.
+func (fake *fakeGit) rememberBranch(dir string, branch string) {
+	fake.registerBranch(dir, branch)
+
+	if fake.currentBranches == nil {
+		fake.currentBranches = map[string]string{}
+	}
+	fake.currentBranches[dir] = branch
 }
 
 // worktreePaths returns where the fake was asked to put worktrees.

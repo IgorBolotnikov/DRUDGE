@@ -136,7 +136,7 @@ func (service *DrudgerService) describeBase(repository repositoryWorktree) strin
 	if err != nil {
 		return repository.BaseRef()
 	}
-	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), shortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
+	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), git.ShortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
 }
 
 // ensureWorkspace makes a Drudger's workspace ready for a handover and records

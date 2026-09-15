@@ -58,6 +58,10 @@ type Task struct {
 	// before this one left uncommitted.
 	Stashes map[string]string
 
+	// Landings is where the work of the current run is, keyed by repository
+	// name. A repository the run left no commits in has no entry.
+	Landings map[string]Landing
+
 	// Why the vendor turned the last run away, when it did. A refused run did
 	// no work, so this is kept apart from what the agent reported.
 	VendorError      string           // What the vendor said when it refused the run
@@ -65,6 +69,15 @@ type Task struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Landing is where the work of one run is in one repository. A handover fills
+// Branch and Base, and close-out fills Head and Commits once the run is over.
+type Landing struct {
+	Branch  string // Branch the work is on
+	Base    string // Commit the branch was cut from
+	Head    string // Commit the branch points at
+	Commits int    // How many commits the branch holds beyond Base
 }
 
 // Statuses are every status a task can carry.
@@ -100,6 +113,7 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.VendorError = ""
 	taskToRun.VendorErrorClass = ""
 	taskToRun.Stashes = nil
+	taskToRun.Landings = nil
 }
 
 // RecordStash stores the commit of the stash a handover made in one
@@ -113,6 +127,20 @@ func (taskToRun *Task) RecordStash(repository string, commit string) {
 		taskToRun.Stashes = map[string]string{}
 	}
 	taskToRun.Stashes[repository] = commit
+}
+
+// RecordLanding stores where the work of one repository is.
+func (taskToRun *Task) RecordLanding(repository string, landing Landing) {
+	if taskToRun.Landings == nil {
+		taskToRun.Landings = map[string]Landing{}
+	}
+	taskToRun.Landings[repository] = landing
+}
+
+// DropLanding forgets where a repository's work is. A run that left no commits
+// in a repository has nothing to point at.
+func (taskToRun *Task) DropLanding(repository string) {
+	delete(taskToRun.Landings, repository)
 }
 
 // HasRun reports whether an agent has ever been handed this task. A launch

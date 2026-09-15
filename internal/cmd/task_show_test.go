@@ -97,6 +97,44 @@ func TestPrintTask(t *testing.T) {
 			wantAbsent: []string{neverRunLabel, turnsLabel, costLabel},
 		},
 		{
+			name: "a run whose work landed in two repositories",
+			task: task.Task{
+				Status:     task.StatusDone,
+				CreatedAt:  now.Add(-2 * time.Hour),
+				StartedAt:  now.Add(-time.Hour),
+				FinishedAt: now.Add(-50 * time.Minute),
+				Landings: map[string]task.Landing{
+					"api": {Branch: "drudge/006684e3", Base: "9f1c2b3a4d5e6f70", Head: "1a2b3c4d5e6f7081", Commits: 3},
+					"ui":  {Branch: "drudge/006684e3", Base: "aaaaaaaaaaaaaaaa", Head: "bbbbbbbbbbbbbbbb", Commits: 1},
+				},
+			},
+			want:       []string{workLabel, "api", "ui", "drudge/006684e3", "3 commits", "1 commit", "9f1c2b3a4d5e..1a2b3c4d5e6f"},
+			wantAbsent: []string{committedNothingLabel},
+		},
+		{
+			name: "a run that committed nothing",
+			task: task.Task{
+				Status:     task.StatusFuckedUp,
+				CreatedAt:  now.Add(-2 * time.Hour),
+				StartedAt:  now.Add(-time.Hour),
+				FinishedAt: now.Add(-50 * time.Minute),
+			},
+			want: []string{workLabel, committedNothingLabel},
+		},
+		{
+			name: "a run drudge has not closed out yet",
+			task: task.Task{
+				Status:    task.StatusInProgress,
+				CreatedAt: now.Add(-2 * time.Hour),
+				StartedAt: now.Add(-time.Hour),
+				Landings: map[string]task.Landing{
+					"api": {Branch: "drudge/006684e3", Base: "9f1c2b3a4d5e6f70"},
+				},
+			},
+			want:       []string{workLabel, "drudge/006684e3"},
+			wantAbsent: []string{"commits", committedNothingLabel},
+		},
+		{
 			name: "a task carrying no ticket and no description",
 			task: task.Task{
 				Status:    task.StatusDraft,

@@ -47,8 +47,16 @@ const (
 	switchSubcommand      = "switch"
 	createBranchFlag      = "-c"
 	resetBranchFlag       = "-C"
-	showSubcommand        = "show"
-	noPatchFlag           = "--no-patch"
+	branchSubcommand      = "branch"
+	deleteBranchFlag      = "-D"
+	forEachRefSubcommand  = "for-each-ref"
+	containsFlag          = "--contains"
+	headRef               = "HEAD"
+	// refNameFormatFlag prints one ref name per line, with none of the
+	// decoration git adds for a terminal.
+	refNameFormatFlag = "--format=%(refname:short)"
+	showSubcommand    = "show"
+	noPatchFlag       = "--no-patch"
 	// commitFormatFlag prints a commit as its sha and its committer date.
 	commitFormatFlag = "--format=%H%n%cI"
 )
@@ -254,6 +262,56 @@ func (adapter *Git) switchTo(dir string, flag string, branch string, start strin
 	return nil
 }
 
+// DeleteBranch removes a branch, whatever it holds. A branch checked out in a
+// work tree of the repository fails.
+func (adapter *Git) DeleteBranch(dir string, branch string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, branchSubcommand, deleteBranchFlag, branch)
+	if err != nil {
+		return fmt.Errorf("could not delete branch %s in %s: %w: %s", branch, dir, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// CurrentBranch returns the branch a work tree has checked out. Git refuses on
+// a detached HEAD, which reads back as an empty string.
+func (adapter *Git) CurrentBranch(dir string) (string, error) {
+	stdout, _, err := adapter.run(dir, adapter.timeouts.Command, symbolicRefSubcommand, shortFlag, quietFlag, headRef)
+	if err != nil {
+		if refused(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("could not read which branch %s has checked out: %w", dir, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// BranchesContaining returns the branches of a repository that reach a commit.
+// It reads refs/heads directly, because the branch listing carries a row for a
+// detached HEAD too.
+func (adapter *Git) BranchesContaining(dir string, commit string) ([]string, error) {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, forEachRefSubcommand, refNameFormatFlag, containsFlag, commit, branchRefPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("could not list the branches of %s reaching %s: %w: %s", dir, commit, err, strings.TrimSpace(stderr))
+	}
+
+	var branches []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			branches = append(branches, name)
+		}
+	}
+	return branches, nil
+}
+
+// CheckoutDetached moves a work tree to ref with no branch on it.
+func (adapter *Git) CheckoutDetached(dir string, ref string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, switchSubcommand, detachFlag, ref)
+	if err != nil {
+		return fmt.Errorf("could not detach %s at %s: %w: %s", dir, ref, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
 // ResolveCommit returns the commit a ref points at. A ref git cannot resolve
 // fails.
 func (adapter *Git) ResolveCommit(dir string, ref string) (git.Commit, error) {
@@ -272,6 +330,12 @@ func (adapter *Git) ResolveCommit(dir string, ref string) (git.Commit, error) {
 		return git.Commit{}, fmt.Errorf("could not read when %s of %s was committed: %w", ref, dir, err)
 	}
 	return git.Commit{SHA: sha, CommittedAt: when}, nil
+}
+
+// ResolveHeadCommit returns the commit a work tree sits on. A repository with
+// no commits is an error.
+func (adapter *Git) ResolveHeadCommit(dir string) (git.Commit, error) {
+	return adapter.ResolveCommit(dir, headRef)
 }
 
 // revision returns the commit a ref points at, and an empty string when the

@@ -19,9 +19,6 @@ const branchSlugLength = 40
 // first belongs to a rerun that found the one before it holding commits.
 const branchAttempts = 20
 
-// shortSHALength is how much of a commit drudge prints.
-const shortSHALength = 12
-
 // handover is what housekeeping did to a workspace before an agent was given
 // it.
 type handover struct {
@@ -38,6 +35,8 @@ type repositoryHandover struct {
 	// Stash is the commit holding what the last Session left uncommitted, and
 	// is empty when the worktree was clean.
 	Stash string
+	// Base is the commit the branch was cut from.
+	Base string
 }
 
 // prepareWorkspace puts every repository of a workspace into the state a
@@ -59,11 +58,16 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 			return handover{}, err
 		}
 
+		base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
+		if err != nil {
+			return handover{}, err
+		}
+
 		if err := service.checkoutBranch(repository, branch); err != nil {
 			return handover{}, err
 		}
 
-		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash})
+		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash, Base: base.SHA})
 	}
 	return prepared, nil
 }
@@ -86,7 +90,7 @@ func (service *DrudgerService) stashLeftovers(slot int, repository repositoryWor
 		return "", fmt.Errorf("could not stash what the last Session left in the workspace of repository %s: %w", repository.Name, err)
 	}
 
-	service.logger.Info("Repository %s held uncommitted changes, they are stashed at %s", repository.Name, shortSHA(commit))
+	service.logger.Info("Repository %s held uncommitted changes, they are stashed at %s", repository.Name, git.ShortSHA(commit))
 	return commit, nil
 }
 
@@ -198,12 +202,4 @@ func branchSlug(title string) string {
 		return cut[:lastWord]
 	}
 	return cut
-}
-
-// shortSHA cuts a commit down to what drudge prints.
-func shortSHA(commit string) string {
-	if len(commit) <= shortSHALength {
-		return commit
-	}
-	return commit[:shortSHALength]
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -694,6 +695,87 @@ func TestResolveCommit_UnknownRef(t *testing.T) {
 	}
 }
 
+func TestResolveHeadCommit(t *testing.T) {
+	tests := []struct {
+		name string
+		// build makes the repository HEAD is read in and returns its path
+		// together with the commit the adapter is expected to report.
+		build   func(t *testing.T, root string) (dir string, want string)
+		wantErr bool
+	}{
+		{
+			name: "a repository on its default branch",
+			build: func(t *testing.T, root string) (string, string) {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				return repo, revisionOf(t, repo, "main")
+			},
+		},
+		{
+			name: "a repository on a branch of its own",
+			build: func(t *testing.T, root string) (string, string) {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				runGit(t, repo, "switch", "-q", "-c", "drudge/task-1")
+				commitFile(t, repo, "work.txt", "work")
+				return repo, revisionOf(t, repo, "drudge/task-1")
+			},
+		},
+		{
+			name: "a worktree on a branch the repository is not on",
+			build: func(t *testing.T, root string) (string, string) {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				worktree := filepath.Join(root, "slot-1")
+				addWorktree(t, repo, worktree)
+				runGit(t, worktree, "switch", "-q", "-c", "drudge/task-1")
+				commitFile(t, worktree, "work.txt", "work")
+				return worktree, revisionOf(t, worktree, "drudge/task-1")
+			},
+		},
+		{
+			name: "a detached HEAD",
+			build: func(t *testing.T, root string) (string, string) {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				commitFile(t, repo, "work.txt", "work")
+				detached := revisionOf(t, repo, "HEAD")
+				runGit(t, repo, "checkout", "-q", "--detach", detached)
+				return repo, detached
+			},
+		},
+		{
+			name: "a repository with no commits",
+			build: func(t *testing.T, root string) (string, string) {
+				repo := makeDir(t, filepath.Join(root, "repo"))
+				runGit(t, repo, "init", "-q", "-b", "main")
+				return repo, ""
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir, want := test.build(t, t.TempDir())
+
+			commit, err := newTestAdapter().ResolveHeadCommit(dir)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("expected reading HEAD in %s to fail, got %s", dir, commit.SHA)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveHeadCommit: %v", err)
+			}
+
+			if commit.SHA != want {
+				t.Errorf("HEAD is at %s, want %s", commit.SHA, want)
+			}
+			if elapsed := time.Since(commit.CommittedAt); elapsed < 0 || elapsed > time.Hour {
+				t.Errorf("expected the commit to have just been made, got %s", commit.CommittedAt)
+			}
+		})
+	}
+}
+
 // writeFile writes a file of a repository, creating none of its parents.
 func writeFile(t *testing.T, dir string, name string, content string) {
 	t.Helper()
@@ -720,4 +802,186 @@ func gitOutput(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %v in %s: %v", args, dir, err)
 	}
 	return string(out)
+}
+
+func TestDeleteBranch(t *testing.T) {
+	tests := []struct {
+		name string
+		// build puts the branch in the repository and returns the directory
+		// the deletion is asked for.
+		build   func(t *testing.T, root string, repo string) string
+		wantErr bool
+	}{
+		{
+			name: "a branch nothing has checked out",
+			build: func(t *testing.T, root string, repo string) string {
+				runGit(t, repo, "branch", "drudge/task-1", "main")
+				return repo
+			},
+		},
+		{
+			name: "a branch holding commits",
+			build: func(t *testing.T, root string, repo string) string {
+				runGit(t, repo, "branch", "drudge/task-1", "main")
+				worktree := filepath.Join(root, "slot-1")
+				runGit(t, repo, "worktree", "add", "-q", worktree, "drudge/task-1")
+				commitFile(t, worktree, "work.txt", "work")
+				runGit(t, repo, "worktree", "remove", "--force", worktree)
+				return repo
+			},
+		},
+		{
+			name: "a branch a worktree is on",
+			build: func(t *testing.T, root string, repo string) string {
+				worktree := filepath.Join(root, "slot-1")
+				runGit(t, repo, "worktree", "add", "-q", "-b", "drudge/task-1", worktree, "main")
+				return repo
+			},
+			wantErr: true,
+		},
+		{
+			name: "a branch the repository does not have",
+			build: func(t *testing.T, root string, repo string) string {
+				return repo
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			repo := initRepo(t, filepath.Join(root, "repo"), "main")
+			dir := test.build(t, root, repo)
+
+			err := newTestAdapter().DeleteBranch(dir, "drudge/task-1")
+
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected deleting the branch to fail")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteBranch: %v", err)
+			}
+			if exists, _ := newTestAdapter().BranchExists(repo, "drudge/task-1"); exists {
+				t.Error("expected the branch to be gone")
+			}
+		})
+	}
+}
+
+func TestCurrentBranch(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(t *testing.T, repo string)
+		want  string
+	}{
+		{
+			name:  "a work tree on a branch",
+			build: func(t *testing.T, repo string) {},
+			want:  "main",
+		},
+		{
+			name: "a work tree on a branch drudge made",
+			build: func(t *testing.T, repo string) {
+				runGit(t, repo, "switch", "-q", "-c", "drudge/task-1")
+			},
+			want: "drudge/task-1",
+		},
+		{
+			name: "a detached HEAD",
+			build: func(t *testing.T, repo string) {
+				runGit(t, repo, "switch", "-q", "--detach", "main")
+			},
+			want: "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := initRepo(t, filepath.Join(t.TempDir(), "repo"), "main")
+			test.build(t, repo)
+
+			got, err := newTestAdapter().CurrentBranch(repo)
+			if err != nil {
+				t.Fatalf("CurrentBranch: %v", err)
+			}
+			if got != test.want {
+				t.Errorf("CurrentBranch = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestBranchesContaining(t *testing.T) {
+	tests := []struct {
+		name string
+		// build makes the commit the branches are read for and returns it.
+		build func(t *testing.T, repo string) string
+		want  []string
+	}{
+		{
+			name: "a commit on one branch",
+			build: func(t *testing.T, repo string) string {
+				runGit(t, repo, "switch", "-q", "-c", "drudge/task-1")
+				commitFile(t, repo, "work.txt", "work")
+				runGit(t, repo, "switch", "-q", "main")
+				return revisionOf(t, repo, "drudge/task-1")
+			},
+			want: []string{"drudge/task-1"},
+		},
+		{
+			name: "a commit every branch reaches",
+			build: func(t *testing.T, repo string) string {
+				runGit(t, repo, "branch", "drudge/task-1", "main")
+				return revisionOf(t, repo, "main")
+			},
+			want: []string{"drudge/task-1", "main"},
+		},
+		{
+			name: "a commit no branch reaches",
+			build: func(t *testing.T, repo string) string {
+				runGit(t, repo, "switch", "-q", "--detach", "main")
+				commitFile(t, repo, "work.txt", "work")
+				return revisionOf(t, repo, "HEAD")
+			},
+			want: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := initRepo(t, filepath.Join(t.TempDir(), "repo"), "main")
+			commit := test.build(t, repo)
+
+			got, err := newTestAdapter().BranchesContaining(repo, commit)
+			if err != nil {
+				t.Fatalf("BranchesContaining: %v", err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Errorf("BranchesContaining = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCheckoutDetached(t *testing.T) {
+	root := t.TempDir()
+	repo := initRepo(t, filepath.Join(root, "repo"), "main")
+	worktree := filepath.Join(root, "slot-1")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "drudge/task-1", worktree, "main")
+
+	if err := newTestAdapter().CheckoutDetached(worktree, revisionOf(t, worktree, "HEAD")); err != nil {
+		t.Fatalf("CheckoutDetached: %v", err)
+	}
+
+	if branch := symbolicHead(t, worktree); branch != "" {
+		t.Errorf("expected a detached HEAD, got branch %q", branch)
+	}
+	// The branch is free once no work tree holds it.
+	if err := newTestAdapter().DeleteBranch(repo, "drudge/task-1"); err != nil {
+		t.Errorf("expected the branch to be deletable after detaching: %v", err)
+	}
 }

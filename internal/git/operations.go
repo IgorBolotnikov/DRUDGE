@@ -60,14 +60,38 @@ type Operations interface {
 	// ResetBranch moves a branch to start and checks it out. A name the
 	// repository does not have yet is created.
 	ResetBranch(dir string, branch string, start string) error
+	// DeleteBranch removes a branch, whatever it holds. A branch checked out
+	// in a work tree fails.
+	DeleteBranch(dir string, branch string) error
+	// CurrentBranch returns the branch a work tree has checked out, and an
+	// empty string for a detached HEAD.
+	CurrentBranch(dir string) (string, error)
+	// BranchesContaining returns the branches of a repository that reach a
+	// commit.
+	BranchesContaining(dir string, commit string) ([]string, error)
+	// CheckoutDetached moves a work tree to ref with no branch on it.
+	CheckoutDetached(dir string, ref string) error
 	// ResolveCommit returns the commit a ref points at.
 	ResolveCommit(dir string, ref string) (Commit, error)
+	// ResolveHeadCommit returns the commit a work tree sits on.
+	ResolveHeadCommit(dir string) (Commit, error)
 }
 
 // Commit is one commit of a repository.
 type Commit struct {
 	SHA         string
 	CommittedAt time.Time
+}
+
+// shortSHALength is how much of a commit drudge prints.
+const shortSHALength = 12
+
+// ShortSHA cuts a commit down to what drudge prints.
+func ShortSHA(commit string) string {
+	if len(commit) <= shortSHALength {
+		return commit
+	}
+	return commit[:shortSHALength]
 }
 
 // BranchHoldsNoWork reports whether a branch holds nothing base does not

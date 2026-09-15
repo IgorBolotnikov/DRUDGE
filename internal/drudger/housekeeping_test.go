@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"drudge/internal/config"
+	"drudge/internal/git"
 	"drudge/internal/task"
 )
 
@@ -126,7 +127,7 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 			if !testCase.wantWarning {
 				return
 			}
-			for _, want := range []string{testBaseSHA[:shortSHALength], testCase.wantStart} {
+			for _, want := range []string{git.ShortSHA(testBaseSHA), testCase.wantStart} {
 				if !strings.Contains(warnings, want) {
 					t.Errorf("expected the warning to name %q, got %q", want, warnings)
 				}
@@ -328,5 +329,28 @@ func TestDrudgerService_RunTask_RunsHousekeepingInEveryRepository(t *testing.T) 
 		if got, want := taskToRun.Stashes[repository], service.git.stashes[index].sha; got != want {
 			t.Errorf("expected repository %s to record stash %s, got %q", repository, want, got)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_RecordsWhereTheWorkWillBe(t *testing.T) {
+	repositories := []string{"api", "ui"}
+
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+	service := newTestServiceWith(localConfigWith(repositories...), config.DefaultConfig(), commands, taskToRun)
+
+	var err error
+	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := map[string]task.Landing{
+		"api": {Branch: testTaskBranch, Base: testBaseSHA},
+		"ui":  {Branch: testTaskBranch, Base: testBaseSHA},
+	}
+	if !maps.Equal(taskToRun.Landings, want) {
+		t.Errorf("expected the handover to record %v, got %v", want, taskToRun.Landings)
 	}
 }

@@ -1450,3 +1450,91 @@ func TestTaskFrontMatter_StashRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskFrontMatter_LandingRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	// Every case is where the work of a run is when the task is written.
+	cases := []struct {
+		name     string
+		landings map[string]task.Landing
+		// wantKeysInFile are the front matter keys the file should carry. A
+		// task that landed nowhere carries none.
+		wantKeysInFile []string
+	}{
+		{
+			name: "a task that landed nowhere",
+		},
+		{
+			name: "a handover that has not closed out yet",
+			landings: map[string]task.Landing{
+				"drudge": {Branch: "drudge/task-1-fix-login", Base: "9f1c2b3a4d5e"},
+			},
+			wantKeysInFile: []string{metaKeyBranchPrefix + "drudge", metaKeyBasePrefix + "drudge"},
+		},
+		{
+			name: "a run that committed",
+			landings: map[string]task.Landing{
+				"drudge": {Branch: "drudge/task-1-fix-login", Base: "9f1c2b3a4d5e", Head: "1a2b3c4d5e6f", Commits: 3},
+			},
+			wantKeysInFile: []string{
+				metaKeyBranchPrefix + "drudge",
+				metaKeyBasePrefix + "drudge",
+				metaKeyHeadPrefix + "drudge",
+				metaKeyCommitsPrefix + "drudge",
+			},
+		},
+		{
+			name: "a repository per entry",
+			landings: map[string]task.Landing{
+				"api": {Branch: "drudge/task-1", Base: "1111111", Head: "2222222", Commits: 1},
+				"ui":  {Branch: "drudge/task-1", Base: "3333333", Head: "4444444", Commits: 2},
+			},
+			wantKeysInFile: []string{metaKeyCommitsPrefix + "api", metaKeyCommitsPrefix + "ui"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusInProgress,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				Landings: testCase.landings,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !maps.Equal(read.Landings, testCase.landings) {
+				t.Errorf("expected the landings %v, got %v", testCase.landings, read.Landings)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			for _, key := range testCase.wantKeysInFile {
+				if !strings.Contains(string(data), key+":") {
+					t.Errorf("expected %s in the file, got %s", key, data)
+				}
+			}
+			if len(testCase.wantKeysInFile) == 0 && read.Landings != nil {
+				t.Errorf("expected a task that landed nowhere, got %v", read.Landings)
+			}
+		})
+	}
+}

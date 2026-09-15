@@ -375,6 +375,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
 	for _, repository := range prepared.Repositories {
 		taskToRun.RecordStash(repository.Name, repository.Stash)
+		taskToRun.RecordLanding(repository.Name, task.Landing{Branch: prepared.Branch, Base: repository.Base})
 	}
 
 	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)

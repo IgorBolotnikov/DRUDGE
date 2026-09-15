@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"time"
 
 	"drudge/internal/common"
+	"drudge/internal/git"
 	"drudge/internal/task"
 )
 
@@ -33,6 +36,7 @@ const (
 	costLabel      = "Cost"
 	flaggedLabel   = "Agent error"
 	refusedLabel   = "Refused"
+	workLabel      = "Work"
 )
 
 // What a task report prints in place of a field with nothing in it.
@@ -41,6 +45,7 @@ const (
 	neverRunLabel           = "never handed to an agent"
 	nothingReportedYetLabel = "nothing reported yet"
 	endedUnreportedLabel    = "ended, the agent reported nothing"
+	committedNothingLabel   = "the agent committed nothing"
 )
 
 const (
@@ -66,6 +71,10 @@ func printTask(log *common.Logger, taskToShow *task.Task, now time.Time) {
 		"",
 	}
 	lines = append(lines, taskRunLines(taskToShow)...)
+	if taskToShow.HasRun() {
+		lines = append(lines, "")
+		lines = append(lines, taskWorkLines(taskToShow)...)
+	}
 
 	for _, line := range lines {
 		// The line is already formatted and may hold a percent sign.
@@ -109,6 +118,42 @@ func taskRunLines(taskToShow *task.Task) []string {
 
 	lines := append([]string{heading}, detail...)
 	return append(lines, said...)
+}
+
+// taskWorkLines reports where the work of the last run is, one line per
+// repository. A run drudge has not closed out yet lists the branch it was
+// handed, with no range to read it by.
+func taskWorkLines(taskToShow *task.Task) []string {
+	heading := workLabel + ":"
+
+	if len(taskToShow.Landings) == 0 {
+		return []string{heading, listIndent + committedNothingLabel}
+	}
+
+	lines := []string{heading}
+	for _, repository := range slices.Sorted(maps.Keys(taskToShow.Landings)) {
+		lines = append(lines, taskLine(repository, formatLanding(taskToShow.Landings[repository])))
+	}
+	return lines
+}
+
+// formatLanding renders the branch the work of one repository is on, and the
+// range holding it once the run has closed out.
+func formatLanding(landing task.Landing) string {
+	if landing.Commits == 0 {
+		return landing.Branch
+	}
+	return fmt.Sprintf(
+		"%s (%s, %s..%s)",
+		landing.Branch, formatCommitCount(landing.Commits), git.ShortSHA(landing.Base), git.ShortSHA(landing.Head),
+	)
+}
+
+func formatCommitCount(commits int) string {
+	if commits == 1 {
+		return "1 commit"
+	}
+	return fmt.Sprintf("%d commits", commits)
 }
 
 func taskLine(label string, value string) string {
