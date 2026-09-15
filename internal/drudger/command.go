@@ -141,21 +141,26 @@ func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
 }
 
 // pickDrudgerCommand builds the commands that ensure the sandbox exists and
-// put an agent to work on the configured prompt.
-func (service *DrudgerService) pickDrudgerCommand(sandboxName string, layout projectLayout, runDir string) (sandboxPlan, error) {
+// put an agent to work on the configured prompt. The sandbox is created over
+// every mount, and the agent works in the workspace root.
+func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceRoot string, mounts []string, runDir string) (sandboxPlan, error) {
 	env := service.globalCfg.Drudger.Env
 	harness := service.globalCfg.Drudger.Harness
 
 	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
+		create := []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude}
+		create = append(create, mounts...)
+		create = append(create, sbxNameFlag, sandboxName)
+
 		return sandboxPlan{
 			inspect: service.sbxInspectCommand(),
 			create: sandboxCommand{
-				argv:    []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude, layout.Dir, sbxNameFlag, sandboxName},
+				argv:    create,
 				timeout: service.globalCfg.Drudger.SandboxTimeouts.Create(),
 			},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
-				shellBinary, shellCommandFlag, formatLauncher(layout.Dir, runDir),
+				shellBinary, shellCommandFlag, formatLauncher(workspaceRoot, runDir),
 			},
 		}, nil
 	}
@@ -248,24 +253,39 @@ func findSandbox(listing string, name string) (*sandbox, error) {
 	return nil, nil
 }
 
-// checkSandboxWorkspace guards against an agent editing the wrong repository.
-func checkSandboxWorkspace(existing *sandbox, layout projectLayout) error {
-	projectDir := filepath.Clean(layout.Dir)
+// checkSandboxWorkspace guards against an agent working in the wrong checkout.
+// A sandbox is reused only when it holds every mount the run needs, and any
+// mount beyond them is left alone.
+//
+// The runs mount is checked with the rest. A sandbox without it takes the
+// agent's stream into a path that exists only inside the container, so no run
+// directory appears on the host and the launch dies at the grace period.
+func checkSandboxWorkspace(existing *sandbox, mounts []string, slot int) error {
+	held := make(map[string]bool, len(existing.Workspaces))
 	for _, mount := range existing.Workspaces {
-		if filepath.Clean(mount) == projectDir {
-			return nil
+		held[filepath.Clean(mount)] = true
+	}
+
+	missing := make([]string, 0, len(mounts))
+	for _, mount := range mounts {
+		if !held[filepath.Clean(mount)] {
+			missing = append(missing, mount)
 		}
 	}
+	if len(missing) == 0 {
+		return nil
+	}
+
 	return fmt.Errorf(
-		"sandbox %s is mounted on %s, but this project lives in %s, delete that sandbox so DRUDGE can recreate it on the right workspace",
-		existing.Name, formatMounts(existing.Workspaces), layout.Dir,
+		"sandbox %s is mounted on %s and does not hold %s, run %s %d to delete it so DRUDGE can recreate it over this workspace",
+		existing.Name, formatMounts(existing.Workspaces), strings.Join(missing, ", "), nukeCommand, slot,
 	)
 }
 
 // formatMounts renders a sandbox's workspace mounts for an error message.
 func formatMounts(mounts []string) string {
 	if len(mounts) == 0 {
-		return "no workspace"
+		return "nothing"
 	}
 	return strings.Join(mounts, ", ")
 }

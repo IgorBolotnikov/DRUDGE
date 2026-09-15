@@ -45,10 +45,10 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToEdit := todoTask()
 
-			runDir := common.RunDir(workspace, string(taskToEdit.ID))
+			runDir := common.RunDir(projectDir, string(taskToEdit.ID))
 			if testCase.stream != "" {
 				writeStream(t, runDir, testCase.stream)
 			}
@@ -64,7 +64,7 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 			service := newTestServiceWithPool(
 				&config.LocalConfig{ProjectSlug: testProjectSlug},
 				config.DefaultConfig(),
-				&fakeCommandRunner{workspace: workspace},
+				&fakeCommandRunner{projectDir: projectDir},
 				pool,
 				taskToEdit,
 			)
@@ -92,11 +92,11 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 
 // A run refuses a draft, and an edit is what moves a draft to todo.
 func TestDrudgerService_RunTask_TakesATaskEditedIntoTodo(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	draft := todoTask()
 	draft.Status = task.StatusDraft
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, draft)
 	tasks := task.NewTaskService(service.taskRepo, common.NewLogger(""))
 

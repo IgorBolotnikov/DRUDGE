@@ -26,10 +26,10 @@ func TestDrudgerService_RemoveRun(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRemove := todoTask()
 
-			runDir := common.RunDir(workspace, string(taskToRemove.ID))
+			runDir := common.RunDir(projectDir, string(taskToRemove.ID))
 			if testCase.stream != "" {
 				writeStream(t, runDir, testCase.stream)
 			}

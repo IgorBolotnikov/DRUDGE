@@ -17,6 +17,7 @@ const (
 	ProjectsDirName  = "projects"
 	PromptsDirName   = "prompts"
 	RunsDirName      = "runs"
+	WorktreesDirName = "worktrees"
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
 	ThemeConfigName  = "theme.json"
@@ -331,10 +332,21 @@ func LocalRunDir(taskID string) string {
 	return filepath.Join(LocalRunsDir(), taskID)
 }
 
+// RunsDir returns the absolute path to the runs directory of a project.
+func RunsDir(projectDir string) string {
+	return filepath.Join(projectDir, LocalRunsDir())
+}
+
 // RunDir returns the absolute path to one task's run directory inside a
-// workspace.
-func RunDir(workspace string, taskID string) string {
-	return filepath.Join(workspace, LocalRunDir(taskID))
+// project.
+func RunDir(projectDir string, taskID string) string {
+	return filepath.Join(projectDir, LocalRunDir(taskID))
+}
+
+// WorktreesDir returns the absolute path to the directory holding the
+// workspace of every Drudger of a project.
+func WorktreesDir(projectDir string) string {
+	return filepath.Join(projectDir, DotDrudgeDirName, WorktreesDirName)
 }
 
 // RunPromptPath returns the path to the prompt file of a run directory.

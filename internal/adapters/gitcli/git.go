@@ -23,6 +23,12 @@ const (
 	shortFlag             = "--short"
 	originHeadRef         = "refs/remotes/origin/HEAD"
 	originPrefix          = "origin/"
+	remoteSubcommand      = "remote"
+	getURLSubcommand      = "get-url"
+	fetchSubcommand       = "fetch"
+	worktreeSubcommand    = "worktree"
+	addSubcommand         = "add"
+	detachFlag            = "--detach"
 )
 
 // Git runs git commands as processes.
@@ -71,6 +77,40 @@ func (adapter *Git) DefaultBranch(dir string) (string, error) {
 		return "", err
 	}
 	return strings.TrimPrefix(strings.TrimSpace(stdout), originPrefix), nil
+}
+
+// HasRemote reports whether a repository has the named remote. A directory
+// that is not a repository reports false.
+func (adapter *Git) HasRemote(dir string, remote string) (bool, error) {
+	_, _, err := adapter.run(dir, adapter.timeouts.Command, remoteSubcommand, getURLSubcommand, remote)
+	if err != nil {
+		if refused(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// Fetch updates the tracking ref of one branch of a remote. A remote git
+// cannot reach fails.
+func (adapter *Git) Fetch(dir string, remote string, branch string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Fetch, fetchSubcommand, remote, branch)
+	if err != nil {
+		return fmt.Errorf("could not fetch %s %s in %s: %w: %s", remote, branch, dir, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// AddDetachedWorktree checks a repository out at ref in a new worktree at
+// path, with no branch on it. Git creates the path, takes over an empty
+// directory, and refuses one holding files.
+func (adapter *Git) AddDetachedWorktree(dir string, path string, ref string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Worktree, worktreeSubcommand, addSubcommand, detachFlag, path, ref)
+	if err != nil {
+		return fmt.Errorf("could not create a worktree of %s at %s on %s: %w: %s", dir, path, ref, err, strings.TrimSpace(stderr))
+	}
+	return nil
 }
 
 // run executes a git command in dir.

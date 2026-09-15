@@ -287,11 +287,11 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			tracked := todoTask()
 			tracked.Status = testCase.status
 			if testCase.stream != nil {
-				runDir := common.RunDir(workspace, string(tracked.ID))
+				runDir := common.RunDir(projectDir, string(tracked.ID))
 				writeStream(t, runDir, testCase.stream...)
 				if testCase.exit != noExitFile {
 					writeExit(t, runDir, testCase.exit)
@@ -326,7 +326,7 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 }
 
 func TestDrudgerService_SessionStatus_NeverRunTaskNamesItsStatus(t *testing.T) {
-	setupWorkspace(t)
+	setupProjectDir(t)
 	tracked := todoTask()
 	service := newTestService(tracked)
 
@@ -410,9 +410,9 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(workspace, string(tracked.ID))
+			runDir := common.RunDir(projectDir, string(tracked.ID))
 			writeStream(t, runDir, testCase.stream...)
 			if testCase.exit != noExitFile {
 				writeExit(t, runDir, testCase.exit)
@@ -457,9 +457,9 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
 }
 
 func TestDrudgerService_SessionStatus_RecordsTheOutcomeOnce(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(workspace, string(tracked.ID))
+	runDir := common.RunDir(projectDir, string(tracked.ID))
 	writeStream(t, runDir, initEvent, resultEvent)
 	writeExit(t, runDir, "0\n")
 
@@ -551,9 +551,9 @@ func TestDrudgerService_SessionStatus_RollsBackARefusedRun(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(workspace, string(tracked.ID))
+			runDir := common.RunDir(projectDir, string(tracked.ID))
 			writeStream(t, runDir, testCase.stream...)
 			writeExit(t, runDir, "1\n")
 
@@ -632,9 +632,9 @@ func TestDrudgerService_SessionStatus_RecordsTheSameRefusalOnEveryCheck(t *testi
 func serviceWithAnAuthRefusal(t *testing.T) (*testService, *task.Task) {
 	t.Helper()
 
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(workspace, string(tracked.ID))
+	runDir := common.RunDir(projectDir, string(tracked.ID))
 	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
 	writeExit(t, runDir, "1\n")
 
@@ -680,10 +680,10 @@ func TestDrudgerService_SessionStatus_AnAuthRefusalNamesTheSbxCredentials(t *tes
 }
 
 func TestDrudgerService_SessionStatus_KeepsTheStartFieldsOfTheRunItRecords(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	tracked := runningTask()
 	startedAt := tracked.StartedAt
-	runDir := common.RunDir(workspace, string(tracked.ID))
+	runDir := common.RunDir(projectDir, string(tracked.ID))
 	writeStream(t, runDir, initEvent, resultEvent)
 	writeExit(t, runDir, "0\n")
 
@@ -733,9 +733,9 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(workspace, string(tracked.ID))
+			runDir := common.RunDir(projectDir, string(tracked.ID))
 			writeStream(t, runDir, testCase.stream...)
 			writeExit(t, runDir, testCase.exit)
 
@@ -783,9 +783,9 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 }
 
 func TestDrudgerService_SessionStatus_ReportsWithoutRecordingOnAHeldTask(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(workspace, string(tracked.ID))
+	runDir := common.RunDir(projectDir, string(tracked.ID))
 	writeStream(t, runDir, initEvent, resultEvent)
 	writeExit(t, runDir, "0\n")
 

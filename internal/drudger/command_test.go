@@ -10,13 +10,13 @@ import (
 	"drudge/internal/config"
 )
 
-// runTaskFor drives a run to completion in a workspace against a given
+// runTaskFor drives a run to completion in a project directory against a given
 // sandbox listing, and returns the commands it issued.
-func runTaskFor(t *testing.T, localCfg *config.LocalConfig, workspace, listing string) *fakeCommandRunner {
+func runTaskFor(t *testing.T, localCfg *config.LocalConfig, projectDir, listing string) *fakeCommandRunner {
 	t.Helper()
 	taskToRun := todoTask()
 	taskToRun.ProjectSlug = localCfg.ProjectSlug
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{listing}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{listing}}
 	service := newTestServiceWith(localCfg, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -28,15 +28,16 @@ func runTaskFor(t *testing.T, localCfg *config.LocalConfig, workspace, listing s
 }
 
 func TestDrudgerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
-	workspace := setupWorkspace(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith())
+	projectDir := setupProjectDir(t)
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith())
 
 	wantInspect := []string{"sbx", "ls", "--json"}
 	if got := commands.call(sbxLsSubcommand); !slices.Equal(got, wantInspect) {
 		t.Errorf("expected inspect %v, got %v", wantInspect, got)
 	}
 
-	wantCreate := []string{"sbx", "create", "claude", workspace, "--name", testSandbox}
+	wantCreate := append([]string{"sbx", "create", "claude"}, slotMounts(projectDir, 1)...)
+	wantCreate = append(wantCreate, "--name", testSandbox)
 	if got := commands.call(sbxCreateSubcommand); !slices.Equal(got, wantCreate) {
 		t.Errorf("expected create %v, got %v", wantCreate, got)
 	}
@@ -66,7 +67,7 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setupWorkspace(t)
+			setupProjectDir(t)
 			commands := &fakeCommandRunner{}
 			service := newTestServiceWith(
 				&config.LocalConfig{ProjectSlug: testProjectSlug},
@@ -91,15 +92,15 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 }
 
 func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
-	workspace := setupWorkspace(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith(testSandbox))
+	projectDir := setupProjectDir(t)
+	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith(testSandbox))
 
 	start := commands.call(sbxExecSubcommand)
 	launcher := start[len(start)-1]
-	runDir := common.RunDir(workspace, "task-1")
+	runDir := common.RunDir(projectDir, "task-1")
 
 	want := []string{
-		"cd '" + workspace + "' || exit 1",
+		"cd '" + slotRoot(projectDir, 1) + "' || exit 1",
 		`claude -p "$(cat '` + runDir + `/prompt.txt')"`,
 		"--output-format stream-json",
 		"--verbose",
@@ -126,15 +127,15 @@ func TestDrudgerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspaceNamed(t, testCase.dirName)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, workspace, sandboxListingWith(testSandbox))
+			projectDir := setupProjectDirNamed(t, testCase.dirName)
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith(testSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			launcher := start[len(start)-1]
 
 			// A shell must read the path back whole. Single quotes do that for
 			// everything but a single quote, which has to be broken out.
-			quoted := "'" + strings.ReplaceAll(workspace, "'", `'\''`) + "'"
+			quoted := "'" + strings.ReplaceAll(slotRoot(projectDir, 1), "'", `'\''`) + "'"
 			if !strings.Contains(launcher, "cd "+quoted+" || exit 1") {
 				t.Errorf("expected the launcher to cd to %s, got %q", quoted, launcher)
 			}
@@ -161,8 +162,8 @@ func TestDrudgerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, workspace, sandboxListingWith(testCase.wantSandbox))
+			projectDir := setupProjectDir(t)
+			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, projectDir, sandboxListingWith(testCase.wantSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			if !slices.Contains(start, testCase.wantSandbox) {
@@ -176,7 +177,7 @@ func TestDrudgerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 }
 
 func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	taskToRun.TicketID = "PROJ-123"
 	commands := &fakeCommandRunner{}
@@ -194,7 +195,7 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 		}
 	}
 
-	for _, argument := range []string{sbxBinary, sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxDetachedFlag, workspace} {
+	for _, argument := range []string{sbxBinary, sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxDetachedFlag, slotRoot(projectDir, 1)} {
 		if !strings.Contains(out, strconv.Quote(argument)) {
 			t.Errorf("expected the preview to contain the argument %q, got %q", argument, out)
 		}

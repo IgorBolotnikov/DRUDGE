@@ -17,6 +17,7 @@ import (
 type Drudger struct {
 	Slot          int           // Pool position, starting at 1
 	Sandbox       string        // Name of the real sandbox this Drudger works in
+	Workspace     string        // Directory the agent works in, holding a worktree per repository
 	TaskID        task.TaskID   // Task occupying the Drudger, empty when idle
 	SandboxHealth SandboxHealth // What drudge last saw of the sandbox
 	AgentHealth   AgentHealth   // What drudge last saw of the agent

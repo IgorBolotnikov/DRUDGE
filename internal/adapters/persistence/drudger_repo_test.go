@@ -62,6 +62,12 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 			},
 		},
 		{
+			name: "a Drudger with a workspace",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Workspace: "/home/igor/app/.drudge/worktrees/slot-1", LastChecked: lastChecked},
+			},
+		},
+		{
 			name: "a Drudger nobody has looked at yet",
 			pool: []*drudger.Drudger{
 				{Slot: 1, Sandbox: "drudge-claude-test-project-1"},
@@ -106,6 +112,9 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				}
 				if got.Sandbox != want.Sandbox {
 					t.Errorf("expected sandbox %q, got %q", want.Sandbox, got.Sandbox)
+				}
+				if got.Workspace != want.Workspace {
+					t.Errorf("expected workspace %q, got %q", want.Workspace, got.Workspace)
 				}
 				if got.TaskID != want.TaskID {
 					t.Errorf("expected task %q, got %q", want.TaskID, got.TaskID)

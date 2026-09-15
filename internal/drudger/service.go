@@ -11,6 +11,7 @@ import (
 
 	"drudge/internal/common"
 	"drudge/internal/config"
+	"drudge/internal/git"
 	"drudge/internal/task"
 )
 
@@ -40,6 +41,9 @@ const nukeCommand = "drg drudger nuke"
 // gone.
 const reclaimCommand = "drg drudger reclaim"
 
+// initCommand is what a user runs to record the repositories of a project.
+const initCommand = "drg project init"
+
 // rerunnableStatuses are the task statuses a rerun accepts. They are the ones
 // an agent has actually had.
 var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp}
@@ -51,6 +55,7 @@ type DrudgerService struct {
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
 	commands  CommandRunner
+	gitOps    git.Operations
 	// daemonRetryDelay and launchGrace default to the constants above. A test
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
@@ -60,7 +65,7 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner) *DrudgerService {
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
 	return &DrudgerService{
 		logger:           logger,
 		localCfg:         localCfg,
@@ -68,6 +73,7 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 		tasks:            tasks,
 		drudgers:         drudgers,
 		commands:         commands,
+		gitOps:           gitOps,
 		daemonRetryDelay: sbxDaemonRetryDelay,
 		launchGrace:      launchGracePeriod,
 	}
@@ -328,22 +334,31 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		}
 	}()
 
-	plan, err := service.pickDrudgerCommand(claimed.Sandbox, layout, runDir)
+	space, err := service.resolveWorkspace(layout, claimed.Workspace)
 	if err != nil {
 		return err
 	}
 
-	// The run directory is made before the sandbox steps, which take minutes on
-	// a first launch. ReclaimDrudgers frees a claimed slot that has no run
-	// directory past the grace period, so the two happen back to back here.
+	mounts := space.mounts(layout.RunsDir())
+
+	plan, err := service.pickDrudgerCommand(claimed.Sandbox, space.Root, mounts, runDir)
+	if err != nil {
+		return err
+	}
+
+	// The run directory is made before the workspace and the sandbox steps,
+	// which take minutes on a first launch. ReclaimDrudgers frees a claimed
+	// slot that has no run directory past the grace period, so the two happen
+	// back to back here.
 	if err := prepareRunDir(runDir, prompt); err != nil {
 		return err
 	}
 
-	// TODO: before an agent is spawned, create a worktree for the task from the
-	// default branch under the local worktrees dir, named wt-<task-id>, and
-	// check out a branch named feat/<ticket-id>/<slug-from-task-title> in it.
-	if err := service.ensureSandbox(projectSlug, claimed, plan, layout); err != nil {
+	if err := service.ensureWorkspace(space); err != nil {
+		return err
+	}
+
+	if err := service.ensureSandbox(projectSlug, claimed, plan, mounts); err != nil {
 		return err
 	}
 
@@ -393,7 +408,12 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, layout, runDir)
+	space, err := service.resolveWorkspace(layout, wouldUse.Workspace)
+	if err != nil {
+		return err
+	}
+
+	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, space.Root, space.mounts(layout.RunsDir()), runDir)
 	if err != nil {
 		return err
 	}
@@ -442,11 +462,11 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 
 // ensureSandbox creates the Drudger's sandbox unless it already exists.
 // Creating one that is already there fails, so the listing decides there.
-// An existing sandbox is only reused when it holds the workspace of this run.
+// An existing sandbox is only reused when it holds every mount of this run.
 //
 // What the listing says about the sandbox is recorded as the Drudger's
 // sandbox health.
-func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, layout projectLayout) error {
+func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, mounts []string) error {
 	listing, err := service.listSandboxes(plan.inspect)
 	if err != nil {
 		return fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
@@ -466,7 +486,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 		return nil
 	}
 
-	if err := checkSandboxWorkspace(existing, layout); err != nil {
+	if err := checkSandboxWorkspace(existing, mounts, claimed.Slot); err != nil {
 		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxMisplaced)
 		return err
 	}

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +24,12 @@ const (
 	testSandbox      = "drudge-claude-test-project-1"
 	testSandboxSlot2 = "drudge-claude-test-project-2"
 
-	runWorkspace = "{{workspace}}"
+	projectDirPlaceholder = "{{projectDir}}"
+
+	// testRepoPath is what a project that is itself a repository records, and
+	// testDefaultBranch is what git answers for it.
+	testRepoPath      = "."
+	testDefaultBranch = "main"
 
 	// stoppedSandboxStatus is the sbx status of a sandbox with nothing running
 	// in it.
@@ -130,16 +137,16 @@ func (repo *fakeTaskRepo) stored(id task.TaskID) *task.Task {
 const startTimeout = 0
 
 // fakeCommandRunner answers a fixed script of calls and remembers what it was
-// asked to run, in order. It swaps its workspace into the runWorkspace
-// placeholder of every output it hands back.
+// asked to run, in order. It swaps the project directory into the placeholder
+// of every output it hands back.
 type fakeCommandRunner struct {
-	workspace string
-	calls     [][]string
-	timeouts  []time.Duration
-	started   [][]string
-	outputs   []string
-	stderrs   []string
-	errs      []error
+	projectDir string
+	calls      [][]string
+	timeouts   []time.Duration
+	started    [][]string
+	outputs    []string
+	stderrs    []string
+	errs       []error
 	// onStart stands in for the agent, which writes to its run directory only
 	// after it is started. A runner without one writes an init event, which is
 	// what a real agent writes first.
@@ -206,7 +213,7 @@ func (runner *fakeCommandRunner) Run(argv []string, timeout time.Duration) (stri
 
 	var output string
 	if index < len(runner.outputs) {
-		output = inWorkspace(runner.outputs[index], runner.workspace)
+		output = inProjectDir(runner.outputs[index], runner.projectDir)
 	}
 	var stderr string
 	if index < len(runner.stderrs) {
@@ -264,6 +271,59 @@ func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
 		}
 	}
 	return 0
+}
+
+// fakeGit answers the git port the way a repository with a remote does, and
+// remembers what it was asked to do. Adding a worktree creates its directory,
+// the way git does, so a second run of the same slot finds it there.
+type fakeGit struct {
+	noRemote       bool
+	fetchErr       error
+	worktreeErr    error
+	fetched        []string
+	addedWorktrees []addedWorktree
+}
+
+// addedWorktree is one call to add a worktree: the repository, where the
+// worktree went and what it was checked out at.
+type addedWorktree struct {
+	repository string
+	path       string
+	ref        string
+}
+
+func (fake *fakeGit) IsRepositoryRoot(dir string) (bool, error) {
+	return true, nil
+}
+
+func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
+	return testDefaultBranch, nil
+}
+
+func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
+	return !fake.noRemote, nil
+}
+
+func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
+	fake.fetched = append(fake.fetched, dir)
+	return fake.fetchErr
+}
+
+func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) error {
+	fake.addedWorktrees = append(fake.addedWorktrees, addedWorktree{repository: dir, path: path, ref: ref})
+	if fake.worktreeErr != nil {
+		return fake.worktreeErr
+	}
+	return common.EnsureDir(path)
+}
+
+// worktreePaths returns where the fake was asked to put worktrees.
+func (fake *fakeGit) worktreePaths() []string {
+	paths := make([]string, 0, len(fake.addedWorktrees))
+	for _, added := range fake.addedWorktrees {
+		paths = append(paths, added.path)
+	}
+	return paths
 }
 
 // fakeDrudgerRepo keeps project's Drudgers in memory and mimics the behavior
@@ -331,6 +391,7 @@ type testService struct {
 	*DrudgerService
 	drudgers *fakeDrudgerRepo
 	taskRepo *fakeTaskRepo
+	git      *fakeGit
 }
 
 func newTestService(tasks ...*task.Task) *testService {
@@ -345,7 +406,13 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	logger := common.NewLogger("")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
 	taskRepo := &fakeTaskRepo{tasks: tasks, lockedTasks: map[task.TaskID]bool{}}
-	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger), drudgers, commands)
+	gitOps := &fakeGit{}
+	// A run needs the repositories of the project. Tests that care about the
+	// shape of a project name them.
+	if len(localCfg.Repositories) == 0 {
+		localCfg.Repositories = []config.Repository{{Path: testRepoPath}}
+	}
+	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger), drudgers, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -354,31 +421,32 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 		DrudgerService: service,
 		drudgers:       drudgers,
 		taskRepo:       taskRepo,
+		git:            gitOps,
 	}
 }
 
-func setupWorkspace(t *testing.T) string {
-	return setupWorkspaceNamed(t, "")
+func setupProjectDir(t *testing.T) string {
+	return setupProjectDirNamed(t, "")
 }
 
-func setupWorkspaceNamed(t *testing.T, name string) string {
+func setupProjectDirNamed(t *testing.T, name string) string {
 	t.Helper()
 	setupPromptDirs(t)
 
 	if name != "" {
 		if err := common.EnsureDir(name); err != nil {
-			t.Fatalf("could not create the workspace directory: %v", err)
+			t.Fatalf("could not create the project directory: %v", err)
 		}
 		if err := os.Chdir(name); err != nil {
 			t.Fatalf("Chdir: %v", err)
 		}
 	}
 
-	workspace, err := common.WorkDir()
+	projectDir, err := common.WorkDir()
 	if err != nil {
-		t.Fatalf("could not resolve the workspace: %v", err)
+		t.Fatalf("could not resolve the project directory: %v", err)
 	}
-	return workspace
+	return projectDir
 }
 
 func todoTask() *task.Task {
@@ -411,13 +479,13 @@ func testSandboxOfSlot(slot int) string {
 	return fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, slot)
 }
 
-func finishSession(t *testing.T, workspace string, taskID task.TaskID) {
+func finishSession(t *testing.T, projectDir string, taskID task.TaskID) {
 	t.Helper()
-	writeExit(t, common.RunDir(workspace, string(taskID)), "0\n")
+	writeExit(t, common.RunDir(projectDir, string(taskID)), "0\n")
 }
 
-func inWorkspace(value, workspace string) string {
-	return strings.ReplaceAll(value, runWorkspace, workspace)
+func inProjectDir(value, projectDir string) string {
+	return strings.ReplaceAll(value, projectDirPlaceholder, projectDir)
 }
 
 func sandboxListingWith(names ...string) string {
@@ -431,9 +499,32 @@ func sandboxListingStopped(names ...string) string {
 func sandboxListingIn(status string, names ...string) string {
 	entries := make([]string, 0, len(names))
 	for _, name := range names {
-		entries = append(entries, sandboxEntry(name, status, runWorkspace))
+		entries = append(entries, sandboxEntry(name, status, slotMounts(projectDirPlaceholder, slotOfSandbox(name))...))
 	}
 	return sandboxListingOf(entries...)
+}
+
+// slotMounts are the paths drudge mounts the sandbox of a slot on, for a
+// project whose single repository is the project directory itself.
+func slotMounts(projectDir string, slot int) []string {
+	return []string{
+		filepath.Join(projectDir, ".drudge", "worktrees", fmt.Sprintf("slot-%d", slot)),
+		filepath.Join(projectDir, ".git"),
+		filepath.Join(projectDir, ".drudge", "runs"),
+	}
+}
+
+// slotRoot is the directory the Drudger of a slot works in, which is the
+// worktree itself for a project that is one repository.
+func slotRoot(projectDir string, slot int) string {
+	return slotMounts(projectDir, slot)[0]
+}
+
+// slotOfSandbox reads the slot a sandbox name ends with. A name ending in
+// anything else answers 0, whose mounts match no slot.
+func slotOfSandbox(name string) int {
+	slot, _ := strconv.Atoi(name[strings.LastIndex(name, "-")+1:])
+	return slot
 }
 
 func sandboxListingMountedOn(name string, mounts ...string) string {
@@ -511,9 +602,9 @@ func TestDrudgerService_RunTask_UnknownTask(t *testing.T) {
 }
 
 func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -561,13 +652,13 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 			if testCase.lines != nil {
 				commands.onStart = func() {
-					writeStream(t, common.RunDir(workspace, string(taskToRun.ID)), testCase.lines...)
+					writeStream(t, common.RunDir(projectDir, string(taskToRun.ID)), testCase.lines...)
 				}
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
@@ -607,9 +698,9 @@ func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{testCase.listing}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
@@ -625,75 +716,91 @@ func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.
 	}
 }
 
-func TestDrudgerService_RunTask_RefusesASandboxHoldingAnotherWorkspace(t *testing.T) {
+func TestDrudgerService_RunTask_RefusesASandboxMissingAMount(t *testing.T) {
 	const otherRepo = "/some/other/repo"
+	needed := slotMounts(projectDirPlaceholder, 1)
 
 	cases := []struct {
-		name    string
-		mounts  []string
-		wantErr bool
+		name   string
+		mounts []string
+		// wantMissing are the mounts the refusal has to name. No entry means
+		// the sandbox is reused.
+		wantMissing []string
 	}{
-		{name: "the workspace of the run", mounts: []string{runWorkspace}},
-		{name: "a trailing slash is the same path", mounts: []string{runWorkspace + "/"}},
-		{name: "the workspace among several mounts", mounts: []string{otherRepo, runWorkspace}},
-		{name: "another repository", mounts: []string{otherRepo}, wantErr: true},
-		{name: "several mounts, none of them the workspace", mounts: []string{otherRepo, "/yet/another"}, wantErr: true},
-		{name: "a path the workspace is only a prefix of", mounts: []string{runWorkspace + "-old"}, wantErr: true},
-		{name: "no workspace at all", wantErr: true},
+		{name: "every mount the run needs", mounts: needed},
+		{name: "a trailing slash is the same path", mounts: withTrailingSlash(needed)},
+		{name: "a mount the run does not need is left alone", mounts: append([]string{otherRepo}, needed...)},
+		{name: "no mount at all", wantMissing: needed},
+		{name: "the project directory an older drudge mounted", mounts: []string{projectDirPlaceholder}, wantMissing: needed},
+		{name: "a path the workspace is only a prefix of", mounts: append([]string{needed[0] + "-old"}, needed[1:]...), wantMissing: needed[:1]},
+		{name: "the workspace of another slot", mounts: slotMounts(projectDirPlaceholder, 2), wantMissing: needed[:1]},
+		{name: "the git of another repository", mounts: []string{needed[0], otherRepo + "/.git", needed[2]}, wantMissing: needed[1:2]},
+		{name: "no runs directory", mounts: needed[:2], wantMissing: needed[2:]},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{
-				workspace: workspace,
-				outputs:   []string{sandboxListingMountedOn(testSandbox, testCase.mounts...)},
+				projectDir: projectDir,
+				outputs:    []string{sandboxListingMountedOn(testSandbox, testCase.mounts...)},
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
 
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatal("expected the workspace mismatch to surface")
+			if len(testCase.wantMissing) == 0 {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
 				}
-				for _, want := range append([]string{testSandbox, workspace}, testCase.mounts...) {
-					named := inWorkspace(want, workspace)
-					if !strings.Contains(err.Error(), named) {
-						t.Errorf("expected the error to name %q, got %q", named, err)
-					}
-				}
-				if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
-					t.Errorf("expected nothing to run past the listing, got %v", got)
-				}
-				if taskToRun.Status != task.StatusTodo {
-					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
-				}
-				if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
-					t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
-				}
-				if recorded := service.drudgers.atSlot(1); recorded.SandboxHealth != SandboxMisplaced {
-					t.Errorf("expected the refusal to be recorded as %q, got %q", SandboxMisplaced, recorded.SandboxHealth)
+				if recorded := service.drudgers.atSlot(1); recorded.SandboxHealth != SandboxUsable {
+					t.Errorf("expected the sandbox to be recorded as %q, got %q", SandboxUsable, recorded.SandboxHealth)
 				}
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if err == nil {
+				t.Fatal("expected the missing mount to surface")
 			}
-			if recorded := service.drudgers.atSlot(1); recorded.SandboxHealth != SandboxUsable {
-				t.Errorf("expected the sandbox to be recorded as %q, got %q", SandboxUsable, recorded.SandboxHealth)
+			named := append([]string{testSandbox, nukeCommand}, testCase.mounts...)
+			for _, want := range append(named, testCase.wantMissing...) {
+				inDir := inProjectDir(want, projectDir)
+				if !strings.Contains(err.Error(), inDir) {
+					t.Errorf("expected the error to name %q, got %q", inDir, err)
+				}
+			}
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+				t.Errorf("expected nothing to run past the listing, got %v", got)
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+				t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
+			}
+			if recorded := service.drudgers.atSlot(1); recorded.SandboxHealth != SandboxMisplaced {
+				t.Errorf("expected the refusal to be recorded as %q, got %q", SandboxMisplaced, recorded.SandboxHealth)
 			}
 		})
 	}
 }
 
+// withTrailingSlash returns the paths with a separator stuck on the end, which
+// names the same directories.
+func withTrailingSlash(paths []string) []string {
+	trailing := make([]string, 0, len(paths))
+	for _, path := range paths {
+		trailing = append(trailing, path+"/")
+	}
+	return trailing
+}
+
 func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -702,7 +809,7 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	runDir := common.RunDir(workspace, string(taskToRun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRun.ID))
 	prompt, err := common.ReadFile(common.RunPromptPath(runDir))
 	if err != nil {
 		t.Fatalf("expected the prompt to be written to the run directory: %v", err)
@@ -758,10 +865,10 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{
-				workspace:   workspace,
+				projectDir:  projectDir,
 				outputs:     testCase.outputs,
 				errs:        testCase.errs,
 				silentAgent: testCase.silentAgent,
@@ -786,7 +893,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 			// A launch creates the run directory before the sandbox steps, so
 			// it is there whatever fails afterwards.
-			exists, err := common.Exists(common.RunDir(workspace, string(taskToRun.ID)))
+			exists, err := common.Exists(common.RunDir(projectDir, string(taskToRun.ID)))
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
@@ -839,13 +946,13 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			for _, finishedTask := range testCase.finished {
-				finishSession(t, workspace, finishedTask)
+				finishSession(t, projectDir, finishedTask)
 			}
 
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWithPool(
 				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
 				config.DefaultConfig(),
@@ -925,9 +1032,9 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWithPool(
 				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
 				config.DefaultConfig(),
@@ -983,9 +1090,9 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	const namedByAnEarlierHarness = "drudge-opencode-test-project-1"
 
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(namedByAnEarlierHarness)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(namedByAnEarlierHarness)}}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
 		config.DefaultConfig(),
@@ -1012,9 +1119,9 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 }
 
 func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -1035,9 +1142,9 @@ func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T
 }
 
 func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace}
+	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
 		config.DefaultConfig(),
@@ -1072,7 +1179,7 @@ func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
 
 func TestDrudgerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 	const promptFileName = "impl.md"
-	setupWorkspace(t)
+	setupProjectDir(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "custom prompt for {{taskTitle}}: {{taskDescription}}")
 
 	taskToRun := todoTask()
@@ -1098,7 +1205,7 @@ func TestDrudgerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 
 func TestDrudgerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *testing.T) {
 	const promptFileName = "impl.md"
-	setupWorkspace(t)
+	setupProjectDir(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "nothing to substitute here")
 
 	service := newTestServiceWith(
@@ -1133,7 +1240,7 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "the sandbox is there on the workspace of the run",
+			name:       "the sandbox is there on the projectDir of the run",
 			listing:    sandboxListingWith(testSandbox),
 			wantHealth: SandboxUsable,
 		},
@@ -1165,12 +1272,12 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{
-				workspace: workspace,
-				outputs:   []string{testCase.listing},
-				errs:      []error{testCase.listErr, testCase.createErr},
+				projectDir: projectDir,
+				outputs:    []string{testCase.listing},
+				errs:       []error{testCase.listErr, testCase.createErr},
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
@@ -1258,13 +1365,13 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{
-				workspace: workspace,
-				outputs:   testCase.outputs,
-				stderrs:   testCase.stderrs,
-				errs:      testCase.errs,
+				projectDir: projectDir,
+				outputs:    testCase.outputs,
+				stderrs:    testCase.stderrs,
+				errs:       testCase.errs,
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
@@ -1301,7 +1408,7 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 }
 
 func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 
 	// A task the vendor refused, which put it back in todo and left the whole
 	// finished run behind.
@@ -1309,11 +1416,11 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 	taskToRun.VendorError = authRefusedText
 	taskToRun.VendorErrorClass = task.VendorErrorAuth
 
-	runDir := common.RunDir(workspace, string(taskToRun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRun.ID))
 	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
 	writeExit(t, runDir, "1\n")
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -1363,14 +1470,14 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRerun := todoTask()
 			taskToRerun.Status = testCase.status
 			if testCase.finishedRun {
-				finishSession(t, workspace, taskToRerun.ID)
+				finishSession(t, projectDir, taskToRerun.ID)
 			}
 
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
 
 			var err error
@@ -1406,18 +1513,18 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 }
 
 func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRerun := todoTask()
 	taskToRerun.Status = task.StatusInProgress
 
 	// A stream with no exit file beside it is an agent that is still writing.
-	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
 	writeStream(t, runDir, initEvent)
 
 	working := idleDrudger(1)
 	working.TaskID = taskToRerun.ID
 
-	commands := &fakeCommandRunner{workspace: workspace}
+	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
 		config.DefaultConfig(),
@@ -1454,17 +1561,17 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 }
 
 func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRerun := todoTask()
 	taskToRerun.Status = task.StatusInProgress
 
 	// The agent died without writing an exit file, so its run directory reads
 	// as unfinished. A reclaim has already cleared its slot, and that idle
 	// slot is what says the agent is gone.
-	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
 	writeStream(t, runDir, initEvent)
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
 		config.DefaultConfig(),
@@ -1488,18 +1595,18 @@ func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) 
 }
 
 func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRerun := todoTask()
 	taskToRerun.Status = task.StatusFuckedUp
 	taskToRerun.SessionResult = "gave up"
 	taskToRerun.SessionTurns = 12
 	taskToRerun.FinishedAt = time.Now().UTC()
 
-	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
 	writeStream(t, runDir, initEvent, resultEvent)
 	writeExit(t, runDir, "1\n")
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
 
 	var err error
@@ -1528,10 +1635,10 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 }
 
 func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	var err error
@@ -1541,7 +1648,7 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	}
 	firstRun := slices.Clone(commands.calls)
 
-	finishSession(t, workspace, taskToRun.ID)
+	finishSession(t, projectDir, taskToRun.ID)
 	taskToRun.Status = task.StatusFuckedUp
 	commands.calls = nil
 	commands.started = nil
@@ -1557,15 +1664,15 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 }
 
 func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRerun := todoTask()
 	taskToRerun.Status = task.StatusFuckedUp
 
-	runDir := common.RunDir(workspace, string(taskToRerun.ID))
+	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
 	writeStream(t, runDir, initEvent, resultEvent)
 	writeExit(t, runDir, "0\n")
 
-	commands := &fakeCommandRunner{workspace: workspace}
+	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
 		config.DefaultConfig(),
@@ -1667,17 +1774,17 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 
 			commands := &fakeCommandRunner{
-				workspace: workspace,
-				outputs:   []string{testCase.listing},
-				errs:      []error{nil, testCase.createErr},
+				projectDir: projectDir,
+				outputs:    []string{testCase.listing},
+				errs:       []error{nil, testCase.createErr},
 			}
 			if len(testCase.stream) > 0 {
 				commands.onStart = func() {
-					runDir := common.RunDir(workspace, string(taskToRun.ID))
+					runDir := common.RunDir(projectDir, string(taskToRun.ID))
 					writeStream(t, runDir, testCase.stream...)
 					writeExit(t, runDir, testCase.exit)
 				}
@@ -1772,14 +1879,14 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 
 			claimed := busyDrudger(1)
 			claimed.SandboxHealth = SandboxUsable
 			claimed.LastChecked = claimedAt
 
 			if !testCase.noRunDir {
-				runDir := common.RunDir(workspace, string(claimed.TaskID))
+				runDir := common.RunDir(projectDir, string(claimed.TaskID))
 				writeStream(t, runDir, testCase.stream...)
 				if testCase.exit != noExitFile {
 					writeExit(t, runDir, testCase.exit)
@@ -1939,7 +2046,7 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 
 			heldFor := testCase.heldFor
 			if heldFor == 0 {
@@ -1952,14 +2059,14 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 			claimed.LastChecked = claimedAt
 
 			if !testCase.noRunDir {
-				runDir := common.RunDir(workspace, string(claimed.TaskID))
+				runDir := common.RunDir(projectDir, string(claimed.TaskID))
 				writeStream(t, runDir, testCase.stream...)
 				if testCase.exit != noExitFile {
 					writeExit(t, runDir, testCase.exit)
 				}
 			}
 
-			commands := &fakeCommandRunner{workspace: workspace, outputs: []string{testCase.listing}}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			pool := []*Drudger{claimed, idleDrudger(2)}
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
 
@@ -2015,7 +2122,7 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 }
 
 func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 
 	held := todoTask()
 	held.Status = task.StatusInProgress
@@ -2023,10 +2130,10 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 	claimed.TaskID = held.ID
 	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
 
-	runDir := common.RunDir(workspace, string(held.ID))
+	runDir := common.RunDir(projectDir, string(held.ID))
 	writeStream(t, runDir, initEvent, assistantEvent)
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingStopped(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingStopped(testSandbox)}}
 	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed}, held)
 
 	var freed []FreedSlot
@@ -2058,7 +2165,7 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 }
 
 func TestDrudgerService_ReclaimDrudgers_RefusesToGuessWithoutAListing(t *testing.T) {
-	setupWorkspace(t)
+	setupProjectDir(t)
 
 	claimed := busyDrudger(1)
 	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
@@ -2080,7 +2187,7 @@ func TestDrudgerService_ReclaimDrudgers_RefusesToGuessWithoutAListing(t *testing
 }
 
 func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T) {
-	setupWorkspace(t)
+	setupProjectDir(t)
 
 	pool := []*Drudger{idleDrudger(1), idleDrudger(2)}
 	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
@@ -2097,9 +2204,9 @@ func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T)
 }
 
 func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith()}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 	globalCfg := config.DefaultConfig()
 	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, taskToRun)
@@ -2126,8 +2233,8 @@ func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testi
 }
 
 func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testing.T) {
-	workspace := setupWorkspace(t)
-	commands := &fakeCommandRunner{workspace: workspace}
+	projectDir := setupProjectDir(t)
+	commands := &fakeCommandRunner{projectDir: projectDir}
 	globalCfg := config.DefaultConfig()
 	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
 	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, []*Drudger{idleDrudger(1)})
@@ -2144,9 +2251,9 @@ func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testi
 }
 
 func TestDrudgerService_RunTask_RefusesASecondLaunchOfATaskAlreadyRunning(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
 	// The launch that got there first, landing after this one read the task as
@@ -2173,9 +2280,9 @@ func TestDrudgerService_RunTask_RefusesASecondLaunchOfATaskAlreadyRunning(t *tes
 }
 
 func TestDrudgerService_RunTask_GivesUpOnATaskAnotherCommandHolds(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 	service.taskRepo.lockedTasks[taskToRun.ID] = true
 
@@ -2196,12 +2303,12 @@ func TestDrudgerService_RunTask_GivesUpOnATaskAnotherCommandHolds(t *testing.T) 
 }
 
 func TestDrudgerService_RunTask_RunsATaskWhileAnotherTaskIsHeld(t *testing.T) {
-	workspace := setupWorkspace(t)
+	projectDir := setupProjectDir(t)
 	held := todoTask()
 	other := todoTask()
 	other.ID = "task-2"
 
-	commands := &fakeCommandRunner{workspace: workspace, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, held, other)
 	service.taskRepo.lockedTasks[held.ID] = true
 

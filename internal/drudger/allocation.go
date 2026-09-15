@@ -124,12 +124,19 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 			created := &Drudger{
 				Slot:        slot,
 				Sandbox:     formatDrudgerName(projectSlug, slot, service.globalCfg.Drudger.Harness),
+				Workspace:   layout.WorkspaceRoot(slot),
 				TaskID:      taskID,
 				LastChecked: now,
 			}
 			return created, append(drudgers, created), nil
 		}
 		if existing.Idle() {
+			// A Drudger recorded before drudge gave Drudgers a workspace has
+			// none stored, and no directory on disk yet for a stored value to
+			// protect.
+			if existing.Workspace == "" {
+				existing.Workspace = layout.WorkspaceRoot(slot)
+			}
 			existing.TaskID = taskID
 			existing.LastChecked = now
 			return existing, drudgers, nil

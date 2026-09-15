@@ -40,7 +40,7 @@ func newCommandDeps() (*commandDeps, error) {
 		localCfg: localCfg,
 		log:      log,
 		tasks:    tasks,
-		drudger:  drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner),
+		drudger:  drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner, newGitOperations(globalCfg)),
 	}, nil
 }
 

@@ -1,6 +1,7 @@
 package project
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,18 @@ func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
 		return "", git.ErrNoDefaultBranch
 	}
 	return branch, nil
+}
+
+func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
+	return false, fmt.Errorf("HasRemote should not be called")
+}
+
+func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
+	return fmt.Errorf("Fetch should not be called")
+}
+
+func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) error {
+	return fmt.Errorf("AddDetachedWorktree should not be called")
 }
 
 // newFakeGit maps paths relative to projectDir onto what git would answer.

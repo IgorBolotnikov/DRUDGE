@@ -128,12 +128,12 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			workspace := setupWorkspace(t)
+			projectDir := setupProjectDir(t)
 			for _, finishedID := range testCase.finished {
-				finishSession(t, workspace, finishedID)
+				finishSession(t, projectDir, finishedID)
 			}
 
-			commands := &fakeCommandRunner{workspace: workspace, errs: []error{testCase.removeErr}}
+			commands := &fakeCommandRunner{projectDir: projectDir, errs: []error{testCase.removeErr}}
 			occupied := busyTask(testCase.slot)
 			if testCase.taskStatus != "" {
 				occupied.Status = testCase.taskStatus
@@ -188,7 +188,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 }
 
 func TestDrudgerService_NukeDrudger_UnsupportedEnvironment(t *testing.T) {
-	setupWorkspace(t)
+	setupProjectDir(t)
 	commands := &fakeCommandRunner{}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},

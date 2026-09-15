@@ -5,6 +5,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,4 +183,137 @@ func TestDefaultBranch(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHasRemote(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(t *testing.T, root string) string
+		want  bool
+	}{
+		{
+			name:  "clone of a repository",
+			build: func(t *testing.T, root string) string { return cloneRepo(t, root, "main", "clone") },
+			want:  true,
+		},
+		{
+			name:  "repository with no remote",
+			build: func(t *testing.T, root string) string { return initRepo(t, filepath.Join(root, "repo"), "main") },
+			want:  false,
+		},
+		{
+			name: "repository with another remote",
+			build: func(t *testing.T, root string) string {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				runGit(t, repo, "remote", "add", "upstream", filepath.Join(root, "elsewhere"))
+				return repo
+			},
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := test.build(t, t.TempDir())
+
+			got, err := newTestAdapter().HasRemote(dir, git.OriginRemote)
+			if err != nil {
+				t.Fatalf("HasRemote: %v", err)
+			}
+			if got != test.want {
+				t.Errorf("HasRemote(%s) = %v, want %v", dir, got, test.want)
+			}
+		})
+	}
+}
+
+func TestFetch_MovesTheTrackingRef(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+	source := filepath.Join(root, "source")
+	runGit(t, source, "-c", "user.email=drudge@test", "-c", "user.name=drudge", "commit", "-q", "--allow-empty", "-m", "second")
+
+	if err := newTestAdapter().Fetch(clone, git.OriginRemote, "main"); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	if got, want := revisionOf(t, clone, "refs/remotes/origin/main"), revisionOf(t, source, "refs/heads/main"); got != want {
+		t.Errorf("origin/main is at %s, want %s", got, want)
+	}
+}
+
+func TestFetch_UnreachableRemote(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+	runGit(t, clone, "remote", "set-url", "origin", filepath.Join(root, "gone"))
+
+	if err := newTestAdapter().Fetch(clone, git.OriginRemote, "main"); err == nil {
+		t.Fatal("expected a fetch from a remote that is not there to fail")
+	}
+}
+
+func TestAddDetachedWorktree(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  string
+	}{
+		{name: "a local branch", ref: "main"},
+		{name: "a tracking ref", ref: "origin/main"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			clone := cloneRepo(t, root, "main", "clone")
+			worktree := filepath.Join(root, "workspace", "slot-1")
+
+			if err := newTestAdapter().AddDetachedWorktree(clone, worktree, test.ref); err != nil {
+				t.Fatalf("AddDetachedWorktree: %v", err)
+			}
+
+			if got, want := revisionOf(t, worktree, "HEAD"), revisionOf(t, clone, test.ref); got != want {
+				t.Errorf("the worktree is at %s, want %s", got, want)
+			}
+			// A worktree on a branch would keep that branch from being checked
+			// out anywhere else, which is what an idle Drudger must not do.
+			if branch := symbolicHead(t, worktree); branch != "" {
+				t.Errorf("expected a detached HEAD, got branch %s", branch)
+			}
+		})
+	}
+}
+
+func TestAddDetachedWorktree_PathHoldingFiles(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+	taken := makeDir(t, filepath.Join(root, "taken"))
+	if err := os.WriteFile(filepath.Join(taken, "leftover.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("could not write the leftover file: %v", err)
+	}
+
+	if err := newTestAdapter().AddDetachedWorktree(clone, taken, "main"); err == nil {
+		t.Fatal("expected a worktree over a directory holding files to fail")
+	}
+}
+
+// revisionOf returns the commit a ref points at.
+func revisionOf(t *testing.T, dir string, ref string) string {
+	t.Helper()
+	command := osexec.Command("git", "rev-parse", ref)
+	command.Dir = dir
+	out, err := command.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s in %s: %v", ref, dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// symbolicHead returns the branch a work tree has checked out, and an empty
+// string when its HEAD is detached.
+func symbolicHead(t *testing.T, dir string) string {
+	t.Helper()
+	command := osexec.Command("git", "symbolic-ref", "--short", "-q", "HEAD")
+	command.Dir = dir
+	out, _ := command.Output()
+	return strings.TrimSpace(string(out))
 }

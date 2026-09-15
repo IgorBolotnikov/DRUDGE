@@ -82,17 +82,22 @@ func (service *ProjectService) ResolveRepositories(projectDir string, repositori
 	return resolved
 }
 
-// DefaultBranch works out the branch a repository's work is cut from. The
+// DefaultBranch works out the branch a repository's work is cut from.
+func (service *ProjectService) DefaultBranch(projectDir string, repository config.Repository) (string, error) {
+	return DefaultBranchOf(service.gitOps, projectDir, repository)
+}
+
+// DefaultBranchOf works out the branch a repository's work is cut from. The
 // defaultBranch key of the repository wins, and git is left alone when it is
 // set. Otherwise the branch comes from origin/HEAD. A repository that answers
 // neither fails with both fixes named.
-func (service *ProjectService) DefaultBranch(projectDir string, repository config.Repository) (string, error) {
+func DefaultBranchOf(gitOps git.Operations, projectDir string, repository config.Repository) (string, error) {
 	if repository.DefaultBranch != "" {
 		return repository.DefaultBranch, nil
 	}
 
 	dir := filepath.Join(projectDir, repository.Path)
-	isRepository, err := service.gitOps.IsRepositoryRoot(dir)
+	isRepository, err := gitOps.IsRepositoryRoot(dir)
 	if err != nil {
 		return "", err
 	}
@@ -100,7 +105,7 @@ func (service *ProjectService) DefaultBranch(projectDir string, repository confi
 		return "", fmt.Errorf("%s is not a git repository, fix the %q entry for %q in the local config", dir, config.RepositoriesKey, repository.Path)
 	}
 
-	branch, err := service.gitOps.DefaultBranch(dir)
+	branch, err := gitOps.DefaultBranch(dir)
 	if errors.Is(err, git.ErrNoDefaultBranch) {
 		return "", fmt.Errorf(
 			"could not work out the default branch of %s, run `git remote set-head origin -a` in it, or set %q for it in the local config",
