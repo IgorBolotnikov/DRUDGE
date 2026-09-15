@@ -199,6 +199,8 @@ func (service *DrudgerService) checkoutBranch(repository repositoryWorktree, bra
 // branchFor names the branch the work on a task goes on. It takes the whole
 // task, because a branch name configurable per project is the next slice.
 func branchFor(taskToRun *task.Task) string {
+	// TODO: need to make it fully configurable and take the branch template
+	// from the local config
 	name := branchPrefix + task.ShortID(taskToRun.ID)
 	if slug := branchSlug(taskToRun.Title); slug != "" {
 		name += "-" + slug
