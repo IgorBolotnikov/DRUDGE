@@ -40,6 +40,10 @@ const (
 	metaKeySessionDuration = "session_duration_ms"
 	metaKeySessionCostUSD  = "session_cost_usd"
 
+	// metaKeyStashPrefix starts the key of the stash a handover made in one
+	// repository, and the repository name follows it.
+	metaKeyStashPrefix = "stash."
+
 	// Keys of why the vendor turned the run away, when it did.
 	metaKeyVendorError      = "vendor_error"
 	metaKeyVendorErrorClass = "vendor_error_class"
@@ -136,6 +140,9 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.SessionCostUSD != 0 {
 		metadata[metaKeySessionCostUSD] = strconv.FormatFloat(taskToWrite.SessionCostUSD, 'f', -1, 64)
 	}
+	for repository, commit := range taskToWrite.Stashes {
+		metadata[metaKeyStashPrefix+repository] = commit
+	}
 	if taskToWrite.VendorError != "" {
 		metadata[metaKeyVendorError] = taskToWrite.VendorError
 	}
@@ -199,6 +206,11 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if sessionCostUSD, ok := metadata[metaKeySessionCostUSD]; ok {
 		t.SessionCostUSD, _ = strconv.ParseFloat(sessionCostUSD, 64)
+	}
+	for key, value := range metadata {
+		if repository, found := strings.CutPrefix(key, metaKeyStashPrefix); found {
+			t.RecordStash(repository, value)
+		}
 	}
 	if vendorError, ok := metadata[metaKeyVendorError]; ok {
 		t.VendorError = vendorError

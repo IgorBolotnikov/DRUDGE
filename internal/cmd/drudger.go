@@ -152,7 +152,7 @@ func drudgerReclaim(args []string) error {
 	}
 
 	for _, entry := range freed {
-		deps.log.Info("Drudger %d (%s) was holding task %s with no agent in it, %s", entry.Slot, entry.Sandbox, shortTaskID(entry.TaskID), entry.Reason)
+		deps.log.Info("Drudger %d (%s) was holding task %s with no agent in it, %s", entry.Slot, entry.Sandbox, task.ShortID(entry.TaskID), entry.Reason)
 	}
 	deps.log.Info("Those slots are free. Start a task over with %s <task-id>.", taskRerunCommand)
 	return nil
@@ -216,7 +216,7 @@ func occupyingTask(entry *drudger.Drudger) string {
 	if entry.Idle() {
 		return idleLabel
 	}
-	return shortTaskID(entry.TaskID)
+	return task.ShortID(entry.TaskID)
 }
 
 // formatHealth renders what drudge last saw of a Drudger. Only a Drudger whose

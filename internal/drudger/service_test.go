@@ -15,6 +15,7 @@ import (
 
 	"drudge/internal/common"
 	"drudge/internal/config"
+	"drudge/internal/git"
 	"drudge/internal/task"
 )
 
@@ -34,7 +35,17 @@ const (
 	// stoppedSandboxStatus is the sbx status of a sandbox with nothing running
 	// in it.
 	stoppedSandboxStatus = "stopped"
+
+	// testStashPrefix starts every commit the fake git answers a stash with,
+	// and the number of the stash follows it.
+	testStashPrefix = "stash-sha-"
+
+	// testBaseSHA is the commit the fake git resolves every ref to.
+	testBaseSHA = "9f1c2b3a4d5e6f7089a1b2c3d4e5f60718293a4b"
 )
+
+// testBaseCommittedAt is when the commit the fake git resolves was made.
+var testBaseCommittedAt = time.Date(2025, 3, 4, 10, 0, 0, 0, time.UTC)
 
 // fakeTaskRepo stores tasks the way the file repository does. A lookup hands
 // back a copy, and an update hands the stored task to change under a lock the
@@ -277,11 +288,25 @@ func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
 // remembers what it was asked to do. Adding a worktree creates its directory,
 // the way git does, so a second run of the same slot finds it there.
 type fakeGit struct {
-	noRemote       bool
-	fetchErr       error
-	worktreeErr    error
-	fetched        []string
-	addedWorktrees []addedWorktree
+	noRemote    bool
+	fetchErr    error
+	worktreeErr error
+	stashErr    error
+	branchErr   error
+	// dirtyWorktrees are the worktree paths holding uncommitted changes. A
+	// stash takes a path out of it.
+	dirtyWorktrees map[string]bool
+	// branchCommits is how many commits a branch already holds beyond the
+	// default branch, keyed by branch name and shared by every repository.
+	branchCommits map[string]int
+	// branchesPut are the branches a run checked out, keyed by the worktree
+	// they were put on and their name.
+	branchesPut     map[string]bool
+	fetched         []string
+	addedWorktrees  []addedWorktree
+	stashes         []stashCall
+	createdBranches []branchCall
+	resetBranches   []branchCall
 }
 
 // addedWorktree is one call to add a worktree: the repository, where the
@@ -290,6 +315,22 @@ type addedWorktree struct {
 	repository string
 	path       string
 	ref        string
+}
+
+// stashCall is one worktree put aside: where, under what message, and the
+// commit the fake answered with.
+type stashCall struct {
+	dir     string
+	message string
+	sha     string
+}
+
+// branchCall is one branch put on a worktree: where, its name and what it was
+// cut from.
+type branchCall struct {
+	dir    string
+	branch string
+	start  string
 }
 
 func (fake *fakeGit) IsRepositoryRoot(dir string) (bool, error) {
@@ -317,6 +358,59 @@ func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) er
 	return common.EnsureDir(path)
 }
 
+func (fake *fakeGit) IsDirty(dir string) (bool, error) {
+	return fake.dirtyWorktrees[dir], nil
+}
+
+func (fake *fakeGit) Stash(dir string, message string) (string, error) {
+	if fake.stashErr != nil {
+		return "", fake.stashErr
+	}
+	sha := fmt.Sprintf("%s%d", testStashPrefix, len(fake.stashes)+1)
+	fake.stashes = append(fake.stashes, stashCall{dir: dir, message: message, sha: sha})
+	delete(fake.dirtyWorktrees, dir)
+	return sha, nil
+}
+
+func (fake *fakeGit) BranchExists(dir string, branch string) (bool, error) {
+	_, known := fake.branchCommits[branch]
+	return known || fake.branchesPut[dir+" "+branch], nil
+}
+
+func (fake *fakeGit) CommitCount(dir string, base string, tip string) (int, error) {
+	return fake.branchCommits[tip], nil
+}
+
+func (fake *fakeGit) CreateBranch(dir string, branch string, start string) error {
+	if fake.branchErr != nil {
+		return fake.branchErr
+	}
+	fake.createdBranches = append(fake.createdBranches, branchCall{dir: dir, branch: branch, start: start})
+	fake.rememberBranch(dir, branch)
+	return nil
+}
+
+func (fake *fakeGit) ResetBranch(dir string, branch string, start string) error {
+	if fake.branchErr != nil {
+		return fake.branchErr
+	}
+	fake.resetBranches = append(fake.resetBranches, branchCall{dir: dir, branch: branch, start: start})
+	fake.rememberBranch(dir, branch)
+	return nil
+}
+
+func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
+	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
+}
+
+// rememberBranch records a branch as one this worktree's repository now has.
+func (fake *fakeGit) rememberBranch(dir string, branch string) {
+	if fake.branchesPut == nil {
+		fake.branchesPut = map[string]bool{}
+	}
+	fake.branchesPut[dir+" "+branch] = true
+}
+
 // worktreePaths returns where the fake was asked to put worktrees.
 func (fake *fakeGit) worktreePaths() []string {
 	paths := make([]string, 0, len(fake.addedWorktrees))
@@ -324,6 +418,16 @@ func (fake *fakeGit) worktreePaths() []string {
 		paths = append(paths, added.path)
 	}
 	return paths
+}
+
+// branchesOf returns the name of each branch call, in the order they were
+// made.
+func branchesOf(calls []branchCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, call := range calls {
+		names = append(names, call.branch)
+	}
+	return names
 }
 
 // fakeDrudgerRepo keeps project's Drudgers in memory and mimics the behavior
@@ -550,6 +654,17 @@ func captureOutput(f func()) string {
 	f()
 	writer.Close()
 	os.Stdout = orig
+	out, _ := io.ReadAll(reader)
+	return string(out)
+}
+
+func captureErrors(f func()) string {
+	orig := os.Stderr
+	reader, writer, _ := os.Pipe()
+	os.Stderr = writer
+	f()
+	writer.Close()
+	os.Stderr = orig
 	out, _ := io.ReadAll(reader)
 	return string(out)
 }

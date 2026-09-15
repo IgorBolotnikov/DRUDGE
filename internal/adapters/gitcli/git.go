@@ -6,6 +6,7 @@ import (
 	"fmt"
 	osexec "os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +30,30 @@ const (
 	worktreeSubcommand    = "worktree"
 	addSubcommand         = "add"
 	detachFlag            = "--detach"
+	statusSubcommand      = "status"
+	porcelainFlag         = "--porcelain"
+	stashSubcommand       = "stash"
+	pushSubcommand        = "push"
+	includeUntrackedFlag  = "--include-untracked"
+	messageFlag           = "-m"
+	stashRef              = "refs/stash"
+	branchRefPrefix       = "refs/heads/"
+	verifyFlag            = "--verify"
+	quietFlag             = "-q"
+	revListSubcommand     = "rev-list"
+	countFlag             = "--count"
+	switchSubcommand      = "switch"
+	createBranchFlag      = "-c"
+	resetBranchFlag       = "-C"
+	showSubcommand        = "show"
+	noPatchFlag           = "--no-patch"
+	// commitFormatFlag prints a commit as its sha and its committer date.
+	commitFormatFlag = "--format=%H%n%cI"
 )
+
+// commitRange is the two-dot range git reads "commits in tip that base does
+// not have" from.
+const commitRange = "%s..%s"
 
 // Git runs git commands as processes.
 type Git struct {
@@ -111,6 +135,120 @@ func (adapter *Git) AddDetachedWorktree(dir string, path string, ref string) err
 		return fmt.Errorf("could not create a worktree of %s at %s on %s: %w: %s", dir, path, ref, err, strings.TrimSpace(stderr))
 	}
 	return nil
+}
+
+// IsDirty reports whether a work tree holds changes that are not committed.
+// Untracked files count and ignored files do not, which is what git reports by
+// default.
+func (adapter *Git) IsDirty(dir string) (bool, error) {
+	stdout, _, err := adapter.run(dir, adapter.timeouts.Command, statusSubcommand, porcelainFlag)
+	if err != nil {
+		return false, fmt.Errorf("could not read the status of %s: %w", dir, err)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
+// Stash puts the uncommitted changes of a work tree aside under a message and
+// returns the commit holding them. The stash the repository already had is
+// read first, so a work tree git found nothing to stash returns an empty
+// commit rather than the commit of somebody else's stash.
+func (adapter *Git) Stash(dir string, message string) (string, error) {
+	before, err := adapter.revision(dir, stashRef)
+	if err != nil {
+		return "", err
+	}
+
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, stashSubcommand, pushSubcommand, includeUntrackedFlag, messageFlag, message)
+	if err != nil {
+		return "", fmt.Errorf("could not stash the changes in %s: %w: %s", dir, err, strings.TrimSpace(stderr))
+	}
+
+	after, err := adapter.revision(dir, stashRef)
+	if err != nil {
+		return "", err
+	}
+	if after == before {
+		return "", nil
+	}
+	return after, nil
+}
+
+// BranchExists reports whether a repository has a branch of this name.
+func (adapter *Git) BranchExists(dir string, branch string) (bool, error) {
+	commit, err := adapter.revision(dir, branchRefPrefix+branch)
+	if err != nil {
+		return false, err
+	}
+	return commit != "", nil
+}
+
+// CommitCount returns how many commits tip holds that base does not. A ref git
+// cannot resolve fails.
+func (adapter *Git) CommitCount(dir string, base string, tip string) (int, error) {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, revListSubcommand, countFlag, fmt.Sprintf(commitRange, base, tip))
+	if err != nil {
+		return 0, fmt.Errorf("could not count the commits of %s beyond %s in %s: %w: %s", tip, base, dir, err, strings.TrimSpace(stderr))
+	}
+
+	count, err := strconv.Atoi(strings.TrimSpace(stdout))
+	if err != nil {
+		return 0, fmt.Errorf("git answered %q when asked how many commits %s holds beyond %s in %s", strings.TrimSpace(stdout), tip, base, dir)
+	}
+	return count, nil
+}
+
+// CreateBranch creates a branch at start and checks it out. A name the
+// repository already has fails.
+func (adapter *Git) CreateBranch(dir string, branch string, start string) error {
+	return adapter.switchTo(dir, createBranchFlag, branch, start)
+}
+
+// ResetBranch moves a branch to start and checks it out. A name the repository
+// does not have yet is created.
+func (adapter *Git) ResetBranch(dir string, branch string, start string) error {
+	return adapter.switchTo(dir, resetBranchFlag, branch, start)
+}
+
+// switchTo checks a branch out at start, creating it the way flag says.
+func (adapter *Git) switchTo(dir string, flag string, branch string, start string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, switchSubcommand, flag, branch, start)
+	if err != nil {
+		return fmt.Errorf("could not check out branch %s at %s in %s: %w: %s", branch, start, dir, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// ResolveCommit returns the commit a ref points at. A ref git cannot resolve
+// fails.
+func (adapter *Git) ResolveCommit(dir string, ref string) (git.Commit, error) {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, showSubcommand, noPatchFlag, commitFormatFlag, ref)
+	if err != nil {
+		return git.Commit{}, fmt.Errorf("could not resolve %s in %s: %w: %s", ref, dir, err, strings.TrimSpace(stderr))
+	}
+
+	sha, committedAt, found := strings.Cut(strings.TrimSpace(stdout), "\n")
+	if !found {
+		return git.Commit{}, fmt.Errorf("git described %s in %s as %q, which is not a commit and a date", ref, dir, strings.TrimSpace(stdout))
+	}
+
+	when, err := time.Parse(time.RFC3339, strings.TrimSpace(committedAt))
+	if err != nil {
+		return git.Commit{}, fmt.Errorf("could not read when %s of %s was committed: %w", ref, dir, err)
+	}
+	return git.Commit{SHA: sha, CommittedAt: when}, nil
+}
+
+// revision returns the commit a ref points at, and an empty string when the
+// repository has no such ref.
+func (adapter *Git) revision(dir string, ref string) (string, error) {
+	stdout, _, err := adapter.run(dir, adapter.timeouts.Command, revParseSubcommand, verifyFlag, quietFlag, ref)
+	if err != nil {
+		if refused(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("could not resolve %s in %s: %w", ref, dir, err)
+	}
+	return strings.TrimSpace(stdout), nil
 }
 
 // run executes a git command in dir.

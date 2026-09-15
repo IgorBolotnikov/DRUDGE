@@ -205,7 +205,7 @@ func taskList(args []string) error {
 	}
 	rows := make([][]string, 0, len(tasks))
 	for _, t := range tasks {
-		rows = append(rows, []string{string(t.Status), shortTaskID(t.ID), t.Title, t.TicketID})
+		rows = append(rows, []string{string(t.Status), task.ShortID(t.ID), t.Title, t.TicketID})
 	}
 
 	printList(log, "Tasks", columns, rows)

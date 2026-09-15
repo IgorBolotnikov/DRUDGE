@@ -3,8 +3,6 @@ package cmd
 import (
 	"strings"
 	"testing"
-
-	"drudge/internal/task"
 )
 
 func TestListLines(t *testing.T) {
@@ -103,26 +101,6 @@ func TestListLines(t *testing.T) {
 				if got[index] != testCase.want[index] {
 					t.Errorf("line %d: expected %q, got %q", index, testCase.want[index], got[index])
 				}
-			}
-		})
-	}
-}
-
-func TestShortTaskID(t *testing.T) {
-	cases := []struct {
-		name string
-		id   string
-		want string
-	}{
-		{name: "a full uuid is cut to its leading characters", id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", want: "a1b2c3d4"},
-		{name: "an id already short enough is left alone", id: "abc123", want: "abc123"},
-		{name: "an empty id stays empty", id: "", want: ""},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := shortTaskID(task.TaskID(testCase.id)); got != testCase.want {
-				t.Errorf("expected %q, got %q", testCase.want, got)
 			}
 		})
 	}

@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1376,5 +1377,76 @@ func TestFileTaskRepository_DeleteTask_UnknownTask(t *testing.T) {
 	}
 	if lockLeft {
 		t.Error("expected no lock file to be left behind for an unknown task")
+	}
+}
+
+func TestTaskFrontMatter_StashRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	// Every case is what a handover stashed before the task was handed over.
+	cases := []struct {
+		name    string
+		stashes map[string]string
+		// wantKeysInFile are the front matter keys the file should carry. A
+		// task that stashed nothing carries none.
+		wantKeysInFile []string
+	}{
+		{
+			name: "a task whose worktrees were all clean",
+		},
+		{
+			name:           "one repository",
+			stashes:        map[string]string{"drudge": "9f1c2b3a4d5e"},
+			wantKeysInFile: []string{metaKeyStashPrefix + "drudge"},
+		},
+		{
+			name:           "a repository per entry",
+			stashes:        map[string]string{"api": "1111111", "ui": "2222222"},
+			wantKeysInFile: []string{metaKeyStashPrefix + "api", metaKeyStashPrefix + "ui"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusTodo,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				Stashes: testCase.stashes,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !maps.Equal(read.Stashes, testCase.stashes) {
+				t.Errorf("expected the stashes %v, got %v", testCase.stashes, read.Stashes)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			for _, key := range testCase.wantKeysInFile {
+				if !strings.Contains(string(data), key+":") {
+					t.Errorf("expected %s in the file, got %s", key, data)
+				}
+			}
+			if len(testCase.wantKeysInFile) == 0 && strings.Contains(string(data), metaKeyStashPrefix) {
+				t.Errorf("expected no stash entry in the file, got %s", data)
+			}
+		})
 	}
 }

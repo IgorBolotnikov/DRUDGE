@@ -46,6 +46,34 @@ func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) er
 	return fmt.Errorf("AddDetachedWorktree should not be called")
 }
 
+func (fake *fakeGit) IsDirty(dir string) (bool, error) {
+	return false, fmt.Errorf("IsDirty should not be called")
+}
+
+func (fake *fakeGit) Stash(dir string, message string) (string, error) {
+	return "", fmt.Errorf("Stash should not be called")
+}
+
+func (fake *fakeGit) BranchExists(dir string, branch string) (bool, error) {
+	return false, fmt.Errorf("BranchExists should not be called")
+}
+
+func (fake *fakeGit) CommitCount(dir string, base string, tip string) (int, error) {
+	return 0, fmt.Errorf("CommitCount should not be called")
+}
+
+func (fake *fakeGit) CreateBranch(dir string, branch string, start string) error {
+	return fmt.Errorf("CreateBranch should not be called")
+}
+
+func (fake *fakeGit) ResetBranch(dir string, branch string, start string) error {
+	return fmt.Errorf("ResetBranch should not be called")
+}
+
+func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
+	return git.Commit{}, fmt.Errorf("ResolveCommit should not be called")
+}
+
 // newFakeGit maps paths relative to projectDir onto what git would answer.
 func newFakeGit(projectDir string, roots []string, branches map[string]string) *fakeGit {
 	fake := &fakeGit{roots: map[string]bool{}, branches: map[string]string{}}

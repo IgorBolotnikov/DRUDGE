@@ -18,6 +18,7 @@ const gitDirName = ".git"
 // working directory and holds the worktree of every repository the project
 // has.
 type slotWorkspace struct {
+	Slot         int
 	Root         string
 	Repositories []repositoryWorktree
 }
@@ -35,13 +36,24 @@ type repositoryWorktree struct {
 	// Worktree is this slot's checkout of the repository.
 	Worktree      string
 	DefaultBranch string
+	// Remote says whether the repository has an origin to fetch from.
+	Remote bool
 }
 
-// resolveWorkspace works out where the Drudger with this workspace root works
-// and what each of its repositories cuts work from. It reads git and writes
-// nothing, so a dry run can ask for it. A project with no repositories
-// recorded is refused.
-func (service *DrudgerService) resolveWorkspace(layout projectLayout, root string) (slotWorkspace, error) {
+// BaseRef is what a repository cuts work from. A repository with a remote
+// cuts from the tracking ref, which is never checked out anywhere and so can
+// be moved by a fetch.
+func (repository repositoryWorktree) BaseRef() string {
+	if repository.Remote {
+		return git.OriginRemote + "/" + repository.DefaultBranch
+	}
+	return repository.DefaultBranch
+}
+
+// resolveWorkspace works out where a Drudger works and what each of its
+// repositories cuts work from. It reads git and writes nothing, so a dry run
+// can ask for it. A project with no repositories recorded is refused.
+func (service *DrudgerService) resolveWorkspace(layout projectLayout, drudger *Drudger) (slotWorkspace, error) {
 	repositories := service.localCfg.Repositories
 	if len(repositories) == 0 {
 		return slotWorkspace{}, fmt.Errorf(
@@ -51,9 +63,9 @@ func (service *DrudgerService) resolveWorkspace(layout projectLayout, root strin
 		)
 	}
 
-	space := slotWorkspace{Root: root, Repositories: make([]repositoryWorktree, 0, len(repositories))}
+	space := slotWorkspace{Slot: drudger.Slot, Root: drudger.Workspace, Repositories: make([]repositoryWorktree, 0, len(repositories))}
 	for _, repository := range repositories {
-		resolved, err := service.resolveRepository(layout, root, repository)
+		resolved, err := service.resolveRepository(layout, space.Root, repository)
 		if err != nil {
 			return slotWorkspace{}, err
 		}
@@ -71,12 +83,18 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 	}
 
 	dir := filepath.Join(layout.Dir, repository.Path)
+	remote, err := service.gitOps.HasRemote(dir, git.OriginRemote)
+	if err != nil {
+		return repositoryWorktree{}, err
+	}
+
 	return repositoryWorktree{
 		Name:          filepath.Base(dir),
 		Dir:           dir,
 		GitDir:        filepath.Join(dir, gitDirName),
 		Worktree:      filepath.Join(root, repository.Path),
 		DefaultBranch: branch,
+		Remote:        remote,
 	}, nil
 }
 
@@ -93,44 +111,20 @@ func (space slotWorkspace) mounts(runsDir string) []string {
 	return append(paths, runsDir)
 }
 
-// ensureWorkspace creates the worktree of every repository that has none yet,
-// detached at the default branch so an idle Drudger owns no branch. A worktree
-// that is already there is left as the last Session left it.
-func (service *DrudgerService) ensureWorkspace(space slotWorkspace) error {
-	for _, repository := range space.Repositories {
-		present, err := common.Exists(repository.Worktree)
-		if err != nil {
-			return err
-		}
-		if present {
-			continue
-		}
-		if err := service.createWorktree(repository); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// createWorktree checks a repository out at its default branch in a new
-// worktree. A repository with a remote is fetched first. A fetch that fails
-// only warns, because the checkout is still correct at the tracking ref as it
-// stands.
-func (service *DrudgerService) createWorktree(repository repositoryWorktree) error {
-	remote, err := service.gitOps.HasRemote(repository.Dir, git.OriginRemote)
+// ensureWorktree checks a repository out in the worktree of a slot when it has
+// none yet, detached at the base the repository cuts work from so an idle
+// Drudger owns no branch. A worktree that is already there is left as the last
+// Session left it.
+func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) error {
+	present, err := common.Exists(repository.Worktree)
 	if err != nil {
 		return err
 	}
-
-	ref := repository.DefaultBranch
-	if remote {
-		if err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch); err != nil {
-			service.logger.Error("Could not fetch %s of repository %s, its workspace is cut from the tracking ref DRUDGE already had: %v", repository.DefaultBranch, repository.Name, err)
-		}
-		ref = git.OriginRemote + "/" + repository.DefaultBranch
+	if present {
+		return nil
 	}
 
-	if err := service.gitOps.AddDetachedWorktree(repository.Dir, repository.Worktree, ref); err != nil {
+	if err := service.gitOps.AddDetachedWorktree(repository.Dir, repository.Worktree, repository.BaseRef()); err != nil {
 		return fmt.Errorf("could not create the workspace of repository %s: %w", repository.Name, err)
 	}
 	return nil

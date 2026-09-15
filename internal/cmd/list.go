@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"drudge/internal/common"
-	"drudge/internal/task"
 )
 
 const (
@@ -98,12 +97,4 @@ func fitColumn(value string, width int) string {
 		return string(runes[:width])
 	}
 	return string(runes[:width-len(listEllipsis)]) + listEllipsis
-}
-
-func shortTaskID(id task.TaskID) string {
-	text := string(id)
-	if len(text) > task.ShortIDLength {
-		return text[:task.ShortIDLength]
-	}
-	return text
 }

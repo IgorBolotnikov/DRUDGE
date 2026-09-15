@@ -11,6 +11,16 @@ import (
 // print. Short enough to be readable and long enough to avoid collisions.
 const ShortIDLength = 8
 
+// ShortID cuts a task id down to what the interfaces print. An id already
+// that short is left alone.
+func ShortID(id TaskID) string {
+	text := string(id)
+	if len(text) > ShortIDLength {
+		return text[:ShortIDLength]
+	}
+	return text
+}
+
 type TaskService struct {
 	repo TaskRepository
 	log  *common.Logger

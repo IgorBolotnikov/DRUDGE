@@ -53,6 +53,11 @@ type Task struct {
 	SessionDuration time.Duration // How long the agent worked
 	SessionCostUSD  float64       // What the run cost
 
+	// Stashes is the commit of the stash a handover made in each repository
+	// of the workspace, keyed by repository name. It holds what the run
+	// before this one left uncommitted.
+	Stashes map[string]string
+
 	// Why the vendor turned the last run away, when it did. A refused run did
 	// no work, so this is kept apart from what the agent reported.
 	VendorError      string           // What the vendor said when it refused the run
@@ -94,6 +99,20 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.SessionCostUSD = 0
 	taskToRun.VendorError = ""
 	taskToRun.VendorErrorClass = ""
+	taskToRun.Stashes = nil
+}
+
+// RecordStash stores the commit of the stash a handover made in one
+// repository. An empty commit records nothing, which is what a worktree that
+// was already clean gets.
+func (taskToRun *Task) RecordStash(repository string, commit string) {
+	if commit == "" {
+		return
+	}
+	if taskToRun.Stashes == nil {
+		taskToRun.Stashes = map[string]string{}
+	}
+	taskToRun.Stashes[repository] = commit
 }
 
 // HasRun reports whether an agent has ever been handed this task. A launch

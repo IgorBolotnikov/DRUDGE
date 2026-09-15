@@ -334,7 +334,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		}
 	}()
 
-	space, err := service.resolveWorkspace(layout, claimed.Workspace)
+	space, err := service.resolveWorkspace(layout, claimed)
 	if err != nil {
 		return err
 	}
@@ -350,7 +350,8 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	if err := service.ensureWorkspace(space); err != nil {
+	prepared, err := service.prepareWorkspace(space, taskToRun)
+	if err != nil {
 		return err
 	}
 
@@ -368,8 +369,12 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	launched = true
 
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
+	for _, repository := range prepared.Repositories {
+		taskToRun.RecordStash(repository.Name, repository.Stash)
+	}
 
 	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)
+	service.logger.Info("Branch: %s", prepared.Branch)
 	service.logger.Info("Run directory: %s", runDir)
 	return nil
 }
@@ -404,7 +409,7 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	space, err := service.resolveWorkspace(layout, wouldUse.Workspace)
+	space, err := service.resolveWorkspace(layout, wouldUse)
 	if err != nil {
 		return err
 	}
