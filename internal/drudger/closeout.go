@@ -58,7 +58,7 @@ func (service *DrudgerService) workspaceOfTask(projectSlug string, taskID task.T
 
 	holder := drudgerHoldingTask(drudgers, taskID)
 	if holder == nil {
-		return slotWorkspace{}, fmt.Errorf("no Drudger of project %s holds task %s, so where its agent worked is recorded nowhere", projectSlug, taskID)
+		return slotWorkspace{}, fmt.Errorf("no Drudger of project %s holds task %s", projectSlug, taskID)
 	}
 	return service.resolveWorkspace(layout, holder)
 }
@@ -123,15 +123,15 @@ func (service *DrudgerService) branchOfWork(repository repositoryWorktree, landi
 		return landing.Branch, nil
 	}
 
-	reaching, err := service.gitOps.BranchesContaining(repository.Worktree, head.SHA)
+	branches, err := service.gitOps.BranchesContaining(repository.Worktree, head.SHA)
 	if err != nil {
 		return "", err
 	}
-	if slices.Contains(reaching, landing.Branch) {
+	if slices.Contains(branches, landing.Branch) {
 		return landing.Branch, nil
 	}
-	if len(reaching) > 0 {
-		return reaching[0], nil
+	if len(branches) > 0 {
+		return branches[0], nil
 	}
 	return service.rescueBranch(repository, landing.Branch, head.SHA)
 }
@@ -145,11 +145,11 @@ func (service *DrudgerService) rescueBranch(repository repositoryWorktree, hande
 	for attempt := 1; attempt <= branchAttempts; attempt++ {
 		candidate := attemptBranch(wanted, attempt)
 
-		taken, err := service.gitOps.BranchExists(repository.Worktree, candidate)
+		isTaken, err := service.gitOps.BranchExists(repository.Worktree, candidate)
 		if err != nil {
 			return "", err
 		}
-		if taken {
+		if isTaken {
 			continue
 		}
 
@@ -178,11 +178,11 @@ func (service *DrudgerService) dropEmptyBranch(repository repositoryWorktree, la
 		return nil
 	}
 
-	empty, err := git.BranchHoldsNoWork(service.gitOps, repository.Worktree, landing.Base, landing.Branch)
+	isEmpty, err := git.BranchHoldsNoWork(service.gitOps, repository.Worktree, landing.Base, landing.Branch)
 	if err != nil {
 		return err
 	}
-	if !empty {
+	if !isEmpty {
 		return nil
 	}
 
