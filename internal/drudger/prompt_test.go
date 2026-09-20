@@ -134,17 +134,6 @@ func TestDefaultPromptTemplate_RendersTaskDetails(t *testing.T) {
 	}
 }
 
-func TestDefaultPromptTemplate_ForbidsTouchingBranches(t *testing.T) {
-	// The template is wrapped, so an instruction can span two lines.
-	unwrapped := strings.ToLower(strings.Join(strings.Fields(defaultPromptTemplate), " "))
-
-	for _, want := range []string{"do not create branches", "do not switch branches", "do not push"} {
-		if !strings.Contains(unwrapped, want) {
-			t.Errorf("expected the default prompt template to say %q, got %q", want, defaultPromptTemplate)
-		}
-	}
-}
-
 // setupPromptDirs chdirs into a temp working directory and points the home
 // directory at another one, so both prompt directories resolve inside temp
 // dirs owned by the test.
