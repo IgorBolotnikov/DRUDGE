@@ -100,8 +100,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 }
 
 // repositoryDirs maps the name of every repository of a project to where it
-// lives. A branch is a ref of the repository itself, so a caller working on
-// branches needs no worktree and reads no git.
+// lives.
 func (service *DrudgerService) repositoryDirs(layout projectLayout) map[string]string {
 	dirs := make(map[string]string, len(service.localCfg.Repositories))
 	for _, repository := range service.localCfg.Repositories {
