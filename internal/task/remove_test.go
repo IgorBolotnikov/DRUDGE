@@ -16,11 +16,20 @@ type fakeSessionKeeper struct {
 	hasRun     bool
 	runFailure error
 	runRemoved TaskID
+	// branchFailure is what the keeper answers when it is asked to clean up
+	// the branches of the task.
+	branchFailure   error
+	branchesCleaned TaskID
 }
 
 func (keeper *fakeSessionKeeper) RemoveRun(taskID TaskID) (bool, error) {
 	keeper.runRemoved = taskID
 	return keeper.hasRun, keeper.runFailure
+}
+
+func (keeper *fakeSessionKeeper) RemoveEmptyBranches(removed *Task) error {
+	keeper.branchesCleaned = removed.ID
+	return keeper.branchFailure
 }
 
 // fakeConfirmation answers a removal the way a user would, and records the
@@ -102,6 +111,9 @@ func TestTaskService_RemoveTask(t *testing.T) {
 			if keeper.runRemoved != wantRunRemoved {
 				t.Errorf("expected the run directory of task %q to be removed, got %q", wantRunRemoved, keeper.runRemoved)
 			}
+			if keeper.branchesCleaned != wantRunRemoved {
+				t.Errorf("expected the branches of task %q to be cleaned up, got %q", wantRunRemoved, keeper.branchesCleaned)
+			}
 		})
 	}
 }
@@ -157,6 +169,19 @@ func TestTaskService_RemoveTask_TakesATaskWhoseSessionHasFinished(t *testing.T) 
 	service := NewTaskService(repo, common.NewLogger(""))
 
 	keeper := &fakeSessionKeeper{hasRun: true}
+	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := repo.GetTask(testProjectSlug, editableTaskID); err == nil {
+		t.Error("expected the task to be gone")
+	}
+}
+
+func TestTaskService_RemoveTask_RemovesATaskWhoseBranchesStayBehind(t *testing.T) {
+	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
+	service := NewTaskService(repo, common.NewLogger(""))
+	keeper := &fakeSessionKeeper{branchFailure: errors.New("branch drudge/006684e3 is used by worktree at slot-1")}
+
 	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

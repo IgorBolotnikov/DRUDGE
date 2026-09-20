@@ -303,6 +303,11 @@ type fakeGit struct {
 	// branchCommits is how many commits a branch already holds beyond the
 	// default branch, keyed by branch name and shared by every repository.
 	branchCommits map[string]int
+	// repositoryCommits is how many commits a ref holds beyond its base in one
+	// repository, keyed by the repository and the ref. It answers before
+	// branchCommits, so a branch can hold work in one repository and nothing
+	// in another.
+	repositoryCommits map[string]int
 	// branchesPut are the branches a run checked out, keyed by the worktree
 	// they were put on and their name.
 	branchesPut map[string]bool
@@ -430,6 +435,9 @@ func (fake *fakeGit) BranchExists(dir string, branch string) (bool, error) {
 }
 
 func (fake *fakeGit) CommitCount(dir string, base string, tip string) (int, error) {
+	if count, isKnown := fake.repositoryCommits[dir+" "+tip]; isKnown {
+		return count, nil
+	}
 	return fake.branchCommits[tip], nil
 }
 

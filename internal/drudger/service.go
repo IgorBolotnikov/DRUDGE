@@ -206,29 +206,6 @@ func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChan
 	)
 }
 
-// RemoveRun deletes the run directory of a task and reports whether the task
-// had one.
-func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
-	layout, err := service.layout()
-	if err != nil {
-		return false, err
-	}
-
-	runDir := layout.RunDir(taskID)
-	hasRunDir, err := common.Exists(runDir)
-	if err != nil {
-		return false, err
-	}
-	if !hasRunDir {
-		return false, nil
-	}
-
-	if err := common.RemoveAll(runDir); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // workingDrudger returns the Drudger whose agent is working on a task, and nil
 // when none is.
 //

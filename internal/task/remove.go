@@ -14,6 +14,9 @@ type RunKeeper interface {
 	// RemoveRun deletes the run directory of a task and reports whether the
 	// task had one.
 	RemoveRun(taskID TaskID) (bool, error)
+	// RemoveEmptyBranches deletes the branches of a task that hold no commits
+	// beyond the base they were cut from, and reports the ones it keeps.
+	RemoveEmptyBranches(removed *Task) error
 }
 
 // SessionKeeper answers for the Sessions of a task. The drudger service
@@ -69,6 +72,12 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 	service.log.Info("Removed task [%s] %s", found.ID, found.Title)
 	if hasRun {
 		service.log.Info("Its run directory went with it")
+	}
+
+	// The task file is already gone. A cleanup that fails is reported and the
+	// removal stands.
+	if err := sessions.RemoveEmptyBranches(found); err != nil {
+		service.log.Error("Task %s is removed, but the branches it left could not be cleaned up: %v", found.ID, err)
 	}
 	return nil
 }

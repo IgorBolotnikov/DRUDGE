@@ -13,6 +13,7 @@ func taskRemove(args []string) error {
 		fmt.Println(taskRmUsage)
 		fmt.Println()
 		fmt.Println("Delete a task and the run directory of its Sessions. It asks first.")
+		fmt.Println("The branches of the task that hold no commits go with it, and the ones holding work stay.")
 		fmt.Println("A task an agent is still working on is refused, so kill its Drudger before removing it.")
 		fmt.Println("The task ID may be the short one a listing prints, as long as it names a single task.")
 		fmt.Println()

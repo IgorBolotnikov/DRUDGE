@@ -90,13 +90,30 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 	}
 
 	return repositoryWorktree{
-		Name:          filepath.Base(dir),
+		Name:          repositoryNameOf(dir),
 		Dir:           dir,
 		GitDir:        filepath.Join(dir, gitDirName),
 		Worktree:      filepath.Join(root, repository.Path),
 		DefaultBranch: branch,
 		HasRemote:     hasRemote,
 	}, nil
+}
+
+// repositoryDirs maps the name of every repository of a project to where it
+// lives. A branch is a ref of the repository itself, so a caller working on
+// branches needs no worktree and reads no git.
+func (service *DrudgerService) repositoryDirs(layout projectLayout) map[string]string {
+	dirs := make(map[string]string, len(service.localCfg.Repositories))
+	for _, repository := range service.localCfg.Repositories {
+		dir := filepath.Join(layout.Dir, repository.Path)
+		dirs[repositoryNameOf(dir)] = dir
+	}
+	return dirs
+}
+
+// repositoryNameOf is the name a repository at a path is recorded under.
+func repositoryNameOf(dir string) string {
+	return filepath.Base(dir)
 }
 
 // mounts lists the host paths a Drudger's sandbox is created over: the
