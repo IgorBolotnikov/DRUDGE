@@ -80,7 +80,7 @@ func handoverStashMessage(slot int, taskToRun *task.Task) string {
 
 // pickTaskBranch names the branch this handover puts on every repository of a
 // workspace. A rerun is the same task, so it meets the branches its earlier
-// attempts left. The name is the first in the series holding no work in any
+// attempts left. The name is the first in the series holding no commits in any
 // repository, which leaves every attempt that committed something reachable by
 // its own branch.
 func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *task.Task) (string, error) {
@@ -89,11 +89,11 @@ func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *ta
 	for attempt := 1; attempt <= branchAttempts; attempt++ {
 		candidate := attemptBranch(wanted, attempt)
 
-		isFree, err := service.branchHoldsNoWorkAnywhere(space, candidate)
+		hasCommits, err := service.branchHasCommitsAnywhere(space, candidate)
 		if err != nil {
 			return "", err
 		}
-		if isFree {
+		if !hasCommits {
 			return candidate, nil
 		}
 	}
@@ -104,24 +104,24 @@ func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *ta
 	)
 }
 
-// branchHoldsNoWorkAnywhere reports whether a branch holds nothing any
+// branchHasCommitsAnywhere reports whether a branch holds commits any
 // repository of a workspace does not already have on its base.
-func (service *DrudgerService) branchHoldsNoWorkAnywhere(space slotWorkspace, branch string) (bool, error) {
+func (service *DrudgerService) branchHasCommitsAnywhere(space slotWorkspace, branch string) (bool, error) {
 	for _, repository := range space.Repositories {
-		isFree, err := git.BranchHoldsNoWork(service.gitOps, repository.Dir, repository.BaseRef(), branch)
+		hasCommits, err := git.BranchHasCommits(service.gitOps, repository.Dir, repository.BaseRef(), branch)
 		if err != nil {
 			return false, err
 		}
-		if !isFree {
-			return false, nil
+		if hasCommits {
+			return true, nil
 		}
 	}
-	return true, nil
+	return false, nil
 }
 
 // checkoutBranch checks a branch out in the worktree of a repository, cut from
 // the base the repository works off. A branch that is already there is moved
-// to that base, which the caller has established holds no work.
+// to that base, which the caller has established holds no commits of its own.
 func (service *DrudgerService) checkoutBranch(repository repositoryWorktree, branch string) error {
 	base := repository.BaseRef()
 

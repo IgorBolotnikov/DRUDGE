@@ -173,7 +173,7 @@ func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 	}
 }
 
-func TestDrudgerService_RerunTask_ReusesABranchThatHoldsNoWork(t *testing.T) {
+func TestDrudgerService_RerunTask_ReusesABranchThatHoldsNoCommits(t *testing.T) {
 	cases := []struct {
 		name string
 		// existing is how many commits each branch already there holds beyond

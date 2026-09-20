@@ -75,13 +75,13 @@ func (service *DrudgerService) removeEmptyBranch(name string, dir string, landin
 		return
 	}
 
-	isEmpty, err := git.BranchHoldsNoWork(service.gitOps, dir, landing.Base, landing.Branch)
+	hasCommits, err := git.BranchHasCommits(service.gitOps, dir, landing.Base, landing.Branch)
 	if err != nil {
 		service.logger.Error("Could not read what branch %s of repository %s holds: %v", landing.Branch, name, err)
 		return
 	}
-	if !isEmpty {
-		service.logger.Info("Branch %s of repository %s holds work, it stays", landing.Branch, name)
+	if hasCommits {
+		service.logger.Info("Branch %s of repository %s holds commits, it stays", landing.Branch, name)
 		return
 	}
 

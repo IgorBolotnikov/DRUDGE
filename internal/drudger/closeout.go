@@ -187,11 +187,11 @@ func (service *DrudgerService) dropEmptyBranch(repository repositoryWorktree, la
 		return nil
 	}
 
-	isEmpty, err := git.BranchHoldsNoWork(service.gitOps, repository.Worktree, landing.Base, landing.Branch)
+	hasCommits, err := git.BranchHasCommits(service.gitOps, repository.Worktree, landing.Base, landing.Branch)
 	if err != nil {
 		return err
 	}
-	if !isEmpty {
+	if hasCommits {
 		return nil
 	}
 

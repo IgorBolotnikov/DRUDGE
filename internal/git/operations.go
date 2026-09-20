@@ -101,20 +101,20 @@ func ShortSHA(commit string) string {
 	return commit[:shortSHALength]
 }
 
-// BranchHoldsNoWork reports whether a branch holds nothing base does not
-// already have. A branch that is not there holds nothing.
-func BranchHoldsNoWork(operations Operations, dir string, base string, branch string) (bool, error) {
+// BranchHasCommits reports whether a branch holds commits base does not
+// already have. A branch that is not there holds none.
+func BranchHasCommits(operations Operations, dir string, base string, branch string) (bool, error) {
 	hasBranch, err := operations.BranchExists(dir, branch)
 	if err != nil {
 		return false, err
 	}
 	if !hasBranch {
-		return true, nil
+		return false, nil
 	}
 
 	count, err := operations.CommitCount(dir, base, branch)
 	if err != nil {
 		return false, err
 	}
-	return count == 0, nil
+	return count > 0, nil
 }
