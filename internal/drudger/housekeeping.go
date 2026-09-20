@@ -53,7 +53,7 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 
 	prepared := handover{Branch: branch, Repositories: make([]repositoryHandover, 0, len(space.Repositories))}
 	for _, repository := range space.Repositories {
-		stash, err := service.stashLeftovers(space.Slot, repository, taskToRun)
+		stash, err := service.stashWorktree(repository, handoverStashMessage(space.Slot, taskToRun))
 		if err != nil {
 			return handover{}, err
 		}
@@ -72,31 +72,9 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 	return prepared, nil
 }
 
-// stashLeftovers puts whatever the last Session left uncommitted in a worktree
-// aside and returns the commit holding it. A clean worktree returns an empty
-// commit. Untracked files go into the stash, so files the last agent never
-// committed stay out of this task's branch.
-func (service *DrudgerService) stashLeftovers(slot int, repository repositoryWorktree, taskToRun *task.Task) (string, error) {
-	dirty, err := service.gitOps.IsDirty(repository.Worktree)
-	if err != nil {
-		return "", err
-	}
-	if !dirty {
-		return "", nil
-	}
-
-	commit, err := service.gitOps.Stash(repository.Worktree, stashMessage(slot, taskToRun))
-	if err != nil {
-		return "", fmt.Errorf("could not stash what the last Session left in the workspace of repository %s: %w", repository.Name, err)
-	}
-
-	service.logger.Info("Repository %s held uncommitted changes, they are stashed at %s", repository.Name, git.ShortSHA(commit))
-	return commit, nil
-}
-
-// stashMessage says which slot made a stash and which task it was made for, so
-// a stash list tells the user where an entry came from.
-func stashMessage(slot int, taskToRun *task.Task) string {
+// handoverStashMessage says which slot made a stash and which task it was made
+// for, so a stash list tells the user where an entry came from.
+func handoverStashMessage(slot int, taskToRun *task.Task) string {
 	return fmt.Sprintf("drudge: slot %d before task %s %s", slot, task.ShortID(taskToRun.ID), taskToRun.Title)
 }
 

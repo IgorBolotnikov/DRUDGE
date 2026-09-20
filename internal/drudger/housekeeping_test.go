@@ -312,11 +312,7 @@ func TestDrudgerService_RunTask_RunsHousekeepingInEveryRepository(t *testing.T) 
 		t.Errorf("expected every repository to be fetched, got %v", service.git.fetched)
 	}
 
-	stashed := make([]string, 0, len(service.git.stashes))
-	for _, stash := range service.git.stashes {
-		stashed = append(stashed, stash.dir)
-	}
-	if !slices.Equal(stashed, worktrees) {
+	if stashed := stashedDirs(service.git.stashes); !slices.Equal(stashed, worktrees) {
 		t.Errorf("expected every worktree to be stashed, got %v", stashed)
 	}
 

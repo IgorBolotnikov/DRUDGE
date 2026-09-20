@@ -12,25 +12,34 @@ import (
 // branch reaches.
 const rescueBranchSuffix = "-rescue"
 
-// closeOutRun completes what a task says about where the work of its run is.
-// The handover recorded a branch and a base per repository. This adds the
-// commit that branch ended at and how many commits it holds beyond the base. A
-// repository the run left no commits in loses its entry and the branch made
-// for it. The caller writes the task back.
+// finishRun records where the work of a finished run landed and parks the
+// workspace it ran in. The caller writes the task back.
 //
-// A workspace it cannot read is reported and leaves the task with what the
-// handover recorded, so reading git never costs the outcome of the run.
-func (service *DrudgerService) closeOutRun(projectSlug string, finished *task.Task) {
-	if len(finished.Landings) == 0 {
-		return
-	}
-
+// Close-out runs first. It reads where the agent left each worktree, and
+// parking moves them.
+//
+// A workspace it cannot read is reported and the task keeps what the handover
+// recorded. Reading git never costs the outcome of the run.
+func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task) {
 	space, err := service.workspaceOfTask(projectSlug, finished.ID)
 	if err != nil {
-		service.logger.Error("The Session of task %s is over, but where its work is could not be read: %v", finished.ID, err)
+		service.logger.Error("The Session of task %s is over, but the workspace it ran in could not be read: %v", finished.ID, err)
 		return
 	}
 
+	service.closeOutRun(space, finished)
+
+	if err := service.parkWorkspace(space, finished); err != nil {
+		service.logger.Error("The Session of task %s is over, but the workspace it ran in could not be parked: %v", finished.ID, err)
+	}
+}
+
+// closeOutRun records where the work of the run is in each repository of the
+// workspace. A repository the task has no landing for is skipped.
+//
+// A repository that cannot be read is reported and the rest are still closed
+// out.
+func (service *DrudgerService) closeOutRun(space slotWorkspace, finished *task.Task) {
 	for _, repository := range space.Repositories {
 		landing, handedOver := finished.Landings[repository.Name]
 		if !handedOver {

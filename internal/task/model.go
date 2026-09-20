@@ -53,9 +53,10 @@ type Task struct {
 	SessionDuration time.Duration // How long the agent worked
 	SessionCostUSD  float64       // What the run cost
 
-	// Stashes is the commit of the stash a handover made in each repository
-	// of the workspace, keyed by repository name. It holds what the run
-	// before this one left uncommitted.
+	// Stashes is the commit of the last stash made in each repository of the
+	// workspace, keyed by repository name. A handover stashes what the run
+	// before this one left uncommitted, and parking stashes what this run
+	// left.
 	Stashes map[string]string
 
 	// Landings is where the work of the current run is, keyed by repository
@@ -116,9 +117,9 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.Landings = nil
 }
 
-// RecordStash stores the commit of the stash a handover made in one
-// repository. An empty commit records nothing, which is what a worktree that
-// was already clean gets.
+// RecordStash stores the commit of the stash made in one repository. An empty
+// commit records nothing, which is what a worktree that was already clean
+// gets.
 func (taskToRun *Task) RecordStash(repository string, commit string) {
 	if commit == "" {
 		return

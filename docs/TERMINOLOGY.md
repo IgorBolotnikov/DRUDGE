@@ -8,6 +8,8 @@ A Drudger is a slot, a sandbox and a workspace. The workspace holds a git worktr
 
 A Drudger is either occupied with a Task or idle. It goes idle when a Session ends, whether that Session got shit done or fucked up, and it stays around afterwards ready for the next Task. An agent killed before its Session ends leaves the Drudger occupied by a Task with nothing working on it. Reclaiming puts that Drudger back to idle. Drudgers are created as they are needed and live until the pool is deliberately shrunk.
 
+Parking frees the idle Drudger which holds no branch: whatever the Session left uncommitted is stashed, and every worktree is detached back to the base its repository cuts work from.
+
 The agent and the sandbox break independently, so a Drudger has one state for each of them. A perfectly good sandbox can hold a broken agent.
 
 A Drudger answers whether it is able to work. How the work itself is going is a Session question.

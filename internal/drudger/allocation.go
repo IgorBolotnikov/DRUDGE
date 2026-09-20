@@ -265,16 +265,16 @@ const (
 )
 
 // ReclaimDrudgers clears the claim of every Drudger of a project whose agent
-// is gone, and returns the slots it cleared.
+// is gone, parks every Drudger that holds no task, and returns the slots it
+// cleared.
 //
 // A slot is claimed by a launch and freed once its run directory holds an exit
 // file. The last line of the launcher script writes that file, so an agent
 // killed before that line leaves the slot claimed. A claimed slot counts
 // against the concurrency limit.
 //
-// This only rewrites the Drudgers file. It kills no process, removes no
-// sandbox, writes nothing in a run directory and leaves the task record as it
-// is.
+// Apart from the worktrees it parks, this only rewrites the Drudgers file and
+// nothing else.
 func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot, error) {
 	layout, err := service.layout()
 	if err != nil {
@@ -287,6 +287,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 	}
 
 	var freed []FreedSlot
+	var pool []*Drudger
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		now := time.Now().UTC()
 		if err := reclaimFinished(drudgers, layout, now); err != nil {
@@ -297,11 +298,14 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 			return nil, err
 		}
 		freed = stuck
+		pool = drudgers
 		return drudgers, nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not reclaim the Drudgers of project %s: %w", projectSlug, err)
 	}
+
+	service.parkIdleDrudgers(projectSlug, layout, pool)
 	return freed, nil
 }
 

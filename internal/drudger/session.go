@@ -162,7 +162,7 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 			return task.ErrTaskUnchanged
 		}
 		recordSessionEnd(onDisk, finished, report)
-		service.closeOutRun(projectSlug, onDisk)
+		service.finishRun(projectSlug, onDisk)
 		recorded = true
 		return nil
 	})

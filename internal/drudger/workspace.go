@@ -139,6 +139,27 @@ func (service *DrudgerService) describeBase(repository repositoryWorktree) strin
 	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), git.ShortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
 }
 
+// stashWorktree puts whatever a worktree holds uncommitted aside under a
+// message and returns the commit holding it. A clean worktree is left alone
+// and returns an empty commit.
+func (service *DrudgerService) stashWorktree(repository repositoryWorktree, message string) (string, error) {
+	isDirty, err := service.gitOps.IsDirty(repository.Worktree)
+	if err != nil {
+		return "", err
+	}
+	if !isDirty {
+		return "", nil
+	}
+
+	commit, err := service.gitOps.Stash(repository.Worktree, message)
+	if err != nil {
+		return "", fmt.Errorf("could not stash what is uncommitted in the workspace of repository %s: %w", repository.Name, err)
+	}
+
+	service.logger.Info("Repository %s held uncommitted changes, they are stashed at %s", repository.Name, git.ShortSHA(commit))
+	return commit, nil
+}
+
 // ensureWorkspace makes a Drudger's workspace ready for a handover and records
 // what it saw. Every repository has its base fetched and gets a worktree when
 // the slot has none. A worktree no agent can be given stops the run and names
