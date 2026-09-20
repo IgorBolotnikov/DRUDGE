@@ -41,8 +41,8 @@ func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task
 // out.
 func (service *DrudgerService) closeOutRun(space slotWorkspace, finished *task.Task) {
 	for _, repository := range space.Repositories {
-		landing, handedOver := finished.Landings[repository.Name]
-		if !handedOver {
+		landing, hasLanding := finished.Landings[repository.Name]
+		if !hasLanding {
 			continue
 		}
 		if err := service.closeOutRepository(finished, repository, landing); err != nil {
@@ -179,11 +179,11 @@ func (service *DrudgerService) rescueBranch(repository repositoryWorktree, hande
 // A branch the agent deleted, and one holding commits of its own, are left
 // alone.
 func (service *DrudgerService) dropEmptyBranch(repository repositoryWorktree, landing task.Landing, head string) error {
-	present, err := service.gitOps.BranchExists(repository.Worktree, landing.Branch)
+	hasBranch, err := service.gitOps.BranchExists(repository.Worktree, landing.Branch)
 	if err != nil {
 		return err
 	}
-	if !present {
+	if !hasBranch {
 		return nil
 	}
 

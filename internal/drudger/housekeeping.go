@@ -89,11 +89,11 @@ func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *ta
 	for attempt := 1; attempt <= branchAttempts; attempt++ {
 		candidate := attemptBranch(wanted, attempt)
 
-		free, err := service.branchHoldsNoWorkAnywhere(space, candidate)
+		isFree, err := service.branchHoldsNoWorkAnywhere(space, candidate)
 		if err != nil {
 			return "", err
 		}
-		if free {
+		if isFree {
 			return candidate, nil
 		}
 	}
@@ -108,11 +108,11 @@ func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *ta
 // repository of a workspace does not already have on its base.
 func (service *DrudgerService) branchHoldsNoWorkAnywhere(space slotWorkspace, branch string) (bool, error) {
 	for _, repository := range space.Repositories {
-		free, err := git.BranchHoldsNoWork(service.gitOps, repository.Dir, repository.BaseRef(), branch)
+		isFree, err := git.BranchHoldsNoWork(service.gitOps, repository.Dir, repository.BaseRef(), branch)
 		if err != nil {
 			return false, err
 		}
-		if !free {
+		if !isFree {
 			return false, nil
 		}
 	}
@@ -125,12 +125,12 @@ func (service *DrudgerService) branchHoldsNoWorkAnywhere(space slotWorkspace, br
 func (service *DrudgerService) checkoutBranch(repository repositoryWorktree, branch string) error {
 	base := repository.BaseRef()
 
-	exists, err := service.gitOps.BranchExists(repository.Dir, branch)
+	hasBranch, err := service.gitOps.BranchExists(repository.Dir, branch)
 	if err != nil {
 		return err
 	}
 
-	if exists {
+	if hasBranch {
 		err = service.gitOps.ResetBranch(repository.Worktree, branch, base)
 	} else {
 		err = service.gitOps.CreateBranch(repository.Worktree, branch, base)

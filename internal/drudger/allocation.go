@@ -138,8 +138,8 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 	}
 
 	for slot := 1; slot <= limit; slot++ {
-		existing, known := bySlot[slot]
-		if !known {
+		existing, isKnown := bySlot[slot]
+		if !isKnown {
 			created := &Drudger{
 				Slot:        slot,
 				Sandbox:     formatDrudgerName(projectSlug, slot, service.globalCfg.Drudger.Harness),
@@ -232,7 +232,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, layout proj
 	}
 
 	var reclaimed []*Drudger
-	stored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
+	isStored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		if err := reclaimFinished(drudgers, layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
@@ -242,7 +242,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, layout proj
 	if err != nil {
 		return nil, err
 	}
-	if !stored {
+	if !isStored {
 		service.logger.Info("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", projectSlug)
 		return asRead, nil
 	}
@@ -349,11 +349,11 @@ func freeStuckSlots(drudgers []*Drudger, layout projectLayout, running map[strin
 func stuckClaimReason(claimed *Drudger, layout projectLayout, running map[string]bool, now time.Time) (string, error) {
 	runDir := layout.RunDir(claimed.TaskID)
 
-	present, err := common.Exists(runDir)
+	hasRunDir, err := common.Exists(runDir)
 	if err != nil {
 		return "", err
 	}
-	if !present {
+	if !hasRunDir {
 		// A launch creates the run directory right after it claims the slot,
 		// so a claim older than the grace period has no launch behind it.
 		if now.Sub(claimed.LastChecked) <= launchGracePeriod {
@@ -366,11 +366,11 @@ func stuckClaimReason(claimed *Drudger, layout projectLayout, running map[string
 	// still be creating the sandbox, which takes minutes on a first run. The
 	// sandbox status only proves a dead agent once the agent has written
 	// something.
-	written, err := streamHasContent(runDir)
+	hasContent, err := streamHasContent(runDir)
 	if err != nil {
 		return "", err
 	}
-	if !written || running[claimed.Sandbox] {
+	if !hasContent || running[claimed.Sandbox] {
 		return "", nil
 	}
 	return stuckSandboxNotRunning, nil

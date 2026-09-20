@@ -89,11 +89,11 @@ func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfi
 
 // loadPromptTemplate reads a prompt template from path.
 func loadPromptTemplate(path string) (string, error) {
-	exists, err := common.Exists(path)
+	isPresent, err := common.Exists(path)
 	if err != nil {
 		return "", err
 	}
-	if !exists {
+	if !isPresent {
 		return "", fmt.Errorf("prompt file %s does not exist", path)
 	}
 

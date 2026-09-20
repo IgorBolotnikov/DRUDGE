@@ -132,14 +132,14 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 		record = service.rollBackRefusedRun
 	}
 
-	current, recorded, err := record(projectSlug, tracked, report)
+	current, isRecorded, err := record(projectSlug, tracked, report)
 	if err != nil {
 		return nil, err
 	}
 
 	// The health of the agent belongs to the run this report came from. A task
 	// that moved on since is held by a Drudger running something else.
-	if recorded {
+	if isRecorded {
 		service.recordAgentHealth(projectSlug, tracked.ID, agentHealthOf(report.Status))
 	}
 	return current, nil
@@ -152,9 +152,9 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 	finished := taskStatusOf(report.Status)
 
 	var current *task.Task
-	recorded := false
+	isRecorded := false
 
-	stored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
+	isStored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
 		current = onDisk
 		// Another command may have recorded this Session, or put the task on a
 		// new one, while this check was reading the run directory.
@@ -163,19 +163,19 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		}
 		recordSessionEnd(onDisk, finished, report)
 		service.finishRun(projectSlug, onDisk)
-		recorded = true
+		isRecorded = true
 		return nil
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, finished, err)
 	}
-	if !stored {
+	if !isStored {
 		return service.reportWithoutRecording(tracked), false, nil
 	}
-	if recorded {
+	if isRecorded {
 		service.logger.Info("Task [%s] %s is %s, its Session is over", current.ID, current.Title, current.Status)
 	}
-	return current, recorded, nil
+	return current, isRecorded, nil
 }
 
 // sameRun reports whether a stored task still carries the run a report was read
@@ -219,9 +219,9 @@ func recordSessionEnd(tracked *task.Task, finished task.TaskStatus, report Sessi
 // should keep saying so.
 func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, bool, error) {
 	var current *task.Task
-	recorded := false
+	isRecorded := false
 
-	stored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
+	isStored, err := service.tasks.TryUpdateTask(projectSlug, tracked.ID, func(onDisk *task.Task) error {
 		current = onDisk
 		// A launch since this check read the run directory put the task on a
 		// run the refusal says nothing about.
@@ -231,21 +231,21 @@ func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *t
 		onDisk.Status = task.StatusTodo
 		onDisk.VendorErrorClass = report.Result.VendorErrorClass
 		onDisk.VendorError = report.Result.Text
-		recorded = true
+		isRecorded = true
 		return nil
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("the vendor refused the run of task %s, but the task could not be put back to %q: %w", tracked.ID, task.StatusTodo, err)
 	}
-	if !stored {
+	if !isStored {
 		return service.reportWithoutRecording(tracked), false, nil
 	}
-	if recorded {
+	if isRecorded {
 		service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", current.ID, current.Title, current.VendorErrorClass, current.VendorError)
 		service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
 		service.logger.Info("%s", vendorErrorAdvice(current.VendorErrorClass))
 	}
-	return current, recorded, nil
+	return current, isRecorded, nil
 }
 
 // vendorErrorAdvice tells the user what to do about a refusal.
@@ -281,11 +281,11 @@ func taskStatusOf(status SessionStatus) task.TaskStatus {
 }
 
 func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
-	present, err := common.Exists(runDir)
+	hasRunDir, err := common.Exists(runDir)
 	if err != nil {
 		return SessionReport{}, err
 	}
-	if !present {
+	if !hasRunDir {
 		return SessionReport{}, fmt.Errorf("%w at %s", errNoRunDirectory, runDir)
 	}
 
@@ -304,11 +304,11 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 	}
 	report.Result = sessionResultOf(outcome)
 
-	finished, err := sessionFinished(runDir)
+	hasFinished, err := sessionFinished(runDir)
 	if err != nil {
 		return SessionReport{}, err
 	}
-	if !finished {
+	if !hasFinished {
 		report.Status = statusOfRunning(report.LastWrite, now)
 		return report, nil
 	}
@@ -324,11 +324,11 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 // ran. Content in the event stream is that evidence. So is an exit file, which
 // the launcher script writes after the agent exits.
 func agentStarted(runDir string) (bool, error) {
-	written, err := streamHasContent(runDir)
+	hasContent, err := streamHasContent(runDir)
 	if err != nil {
 		return false, err
 	}
-	if written {
+	if hasContent {
 		return true, nil
 	}
 	return sessionFinished(runDir)
@@ -336,11 +336,11 @@ func agentStarted(runDir string) (bool, error) {
 
 // sessionFinished reports whether a Session has stopped.
 func sessionFinished(runDir string) (bool, error) {
-	finished, err := common.Exists(common.RunExitPath(runDir))
+	hasExitFile, err := common.Exists(common.RunExitPath(runDir))
 	if err != nil {
 		return false, fmt.Errorf("could not tell whether the Session in run directory %s has finished: %w", runDir, err)
 	}
-	return finished, nil
+	return hasExitFile, nil
 }
 
 // statusOfRunning judges a Session that has not written its exit file.

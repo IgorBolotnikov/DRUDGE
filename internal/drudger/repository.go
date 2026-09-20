@@ -13,5 +13,5 @@ type DrudgerRepository interface {
 	// TryUpdateDrudgers works like UpdateDrudgers, but gives up when someone
 	// else holds the lock. stored says whether the Drudgers went through change
 	// and were written back.
-	TryUpdateDrudgers(projectSlug string, change func(drudgers []*Drudger) ([]*Drudger, error)) (stored bool, err error)
+	TryUpdateDrudgers(projectSlug string, change func(drudgers []*Drudger) ([]*Drudger, error)) (isStored bool, err error)
 }

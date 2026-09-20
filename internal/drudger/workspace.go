@@ -37,15 +37,15 @@ type repositoryWorktree struct {
 	// Worktree is this slot's checkout of the repository.
 	Worktree      string
 	DefaultBranch string
-	// Remote says whether the repository has an origin to fetch from.
-	Remote bool
+	// HasRemote says whether the repository has an origin to fetch from.
+	HasRemote bool
 }
 
 // BaseRef is what a repository cuts work from. A repository with a remote
 // cuts from the tracking ref, which is never checked out anywhere and so can
 // be moved by a fetch.
 func (repository repositoryWorktree) BaseRef() string {
-	if repository.Remote {
+	if repository.HasRemote {
 		return git.OriginRemote + "/" + repository.DefaultBranch
 	}
 	return repository.DefaultBranch
@@ -84,7 +84,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 	}
 
 	dir := filepath.Join(layout.Dir, repository.Path)
-	remote, err := service.gitOps.HasRemote(dir, git.OriginRemote)
+	hasRemote, err := service.gitOps.HasRemote(dir, git.OriginRemote)
 	if err != nil {
 		return repositoryWorktree{}, err
 	}
@@ -95,7 +95,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, root stri
 		GitDir:        filepath.Join(dir, gitDirName),
 		Worktree:      filepath.Join(root, repository.Path),
 		DefaultBranch: branch,
-		Remote:        remote,
+		HasRemote:     hasRemote,
 	}, nil
 }
 
@@ -117,7 +117,7 @@ func (space slotWorkspace) mounts(runsDir string) []string {
 // commit the work is cut from, because that base is still a correct one to
 // branch from.
 func (service *DrudgerService) fetchBase(repository repositoryWorktree) {
-	if !repository.Remote {
+	if !repository.HasRemote {
 		return
 	}
 
@@ -192,21 +192,21 @@ func (service *DrudgerService) ensureWorkspace(projectSlug string, space slotWor
 // registered with no directory behind it is a worktree that was deleted, and a
 // directory it has not registered is a path something else took.
 func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) (WorkspaceHealth, error) {
-	present, err := common.Exists(repository.Worktree)
+	isPresent, err := common.Exists(repository.Worktree)
 	if err != nil {
 		return "", err
 	}
-	registered, err := service.gitOps.HasWorktree(repository.Dir, repository.Worktree)
+	isRegistered, err := service.gitOps.HasWorktree(repository.Dir, repository.Worktree)
 	if err != nil {
 		return "", err
 	}
 
 	switch {
-	case present && registered:
+	case isPresent && isRegistered:
 		return WorkspaceUsable, nil
-	case present:
+	case isPresent:
 		return WorkspaceMisplaced, nil
-	case registered:
+	case isRegistered:
 		return WorkspaceGone, nil
 	}
 

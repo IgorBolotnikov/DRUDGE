@@ -99,7 +99,7 @@ func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, err
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and
 // prints what the agent would be given, and writes nothing.
-func (service *DrudgerService) RunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
+func (service *DrudgerService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
 	taskToRun, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return err
 	}
 
-	if dryRun {
+	if isDryRun {
 		if err := acceptRunnable(taskToRun); err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func acceptRunnable(taskToRun *task.Task) error {
 }
 
 // RerunTask hands a task back to a Drudger and starts it over from scratch.
-func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, dryRun bool) error {
+func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
 	taskToRerun, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
 		return err
@@ -146,7 +146,7 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 		return service.acceptRerunnable(projectSlug, layout, candidate)
 	}
 
-	if dryRun {
+	if isDryRun {
 		if err := accept(taskToRerun); err != nil {
 			return err
 		}
@@ -215,11 +215,11 @@ func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
 	}
 
 	runDir := layout.RunDir(taskID)
-	found, err := common.Exists(runDir)
+	hasRunDir, err := common.Exists(runDir)
 	if err != nil {
 		return false, err
 	}
-	if !found {
+	if !hasRunDir {
 		return false, nil
 	}
 
@@ -236,11 +236,11 @@ func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
 // directory with no exit file, which on its own reads as a Session still
 // working.
 func (service *DrudgerService) workingDrudger(projectSlug string, layout projectLayout, taskID task.TaskID) (*Drudger, error) {
-	live, err := service.sessionStillRunning(layout, taskID)
+	isLive, err := service.sessionStillRunning(layout, taskID)
 	if err != nil {
 		return nil, err
 	}
-	if !live {
+	if !isLive {
 		return nil, nil
 	}
 
@@ -282,25 +282,25 @@ func formatStatuses(statuses []task.TaskStatus) string {
 // Only commands working on this same task wait that long, which is what a
 // second launch of it should do.
 func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, layout projectLayout, accept func(*task.Task) error) error {
-	started := false
+	isStarted := false
 
-	stored, err := service.tasks.TryUpdateTask(projectSlug, taskID, func(taskToRun *task.Task) error {
+	isStored, err := service.tasks.TryUpdateTask(projectSlug, taskID, func(taskToRun *task.Task) error {
 		if err := accept(taskToRun); err != nil {
 			return err
 		}
 		if err := service.startAgent(projectSlug, taskToRun, layout); err != nil {
 			return err
 		}
-		started = true
+		isStarted = true
 		return nil
 	})
 	if err != nil {
-		if started {
+		if isStarted {
 			return fmt.Errorf("an agent is already working on task %s, but the task could not be marked as %q: %w", taskID, task.StatusInProgress, err)
 		}
 		return err
 	}
-	if !stored {
+	if !isStored {
 		return fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", taskID)
 	}
 	return nil
@@ -323,10 +323,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	launched := false
+	isLaunched := false
 	defer func() {
 		// Manually release the drudger in case it failed to start.
-		if !launched {
+		if !isLaunched {
 			e := service.releaseDrudger(projectSlug, claimed.Slot, taskID)
 			if e != nil {
 				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", claimed.Slot, projectSlug, e)
@@ -370,7 +370,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	if err := service.confirmLaunch(runDir, claimed.Sandbox, taskID); err != nil {
 		return err
 	}
-	launched = true
+	isLaunched = true
 
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
 	for _, repository := range prepared.Repositories {
@@ -438,11 +438,11 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 	deadline := time.Now().Add(service.launchGrace)
 
 	for {
-		started, err := agentStarted(runDir)
+		hasStarted, err := agentStarted(runDir)
 		if err != nil {
 			return err
 		}
-		if started {
+		if hasStarted {
 			return nil
 		}
 		if !time.Now().Before(deadline) {

@@ -308,17 +308,17 @@ func formatDrudgerName(projectSlug string, drudgerSlot int, harness config.Harne
 // becomes a hyphen, and multiple consecutive hyphens collapse into one.
 func normaliseNameSlug(projectSlug string) string {
 	var name strings.Builder
-	afterSeparator := false
+	isAfterSeparator := false
 
 	for _, char := range strings.ToLower(projectSlug) {
 		if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '.' {
 			name.WriteRune(char)
-			afterSeparator = false
+			isAfterSeparator = false
 			continue
 		}
-		if !afterSeparator {
+		if !isAfterSeparator {
 			name.WriteByte('-')
-			afterSeparator = true
+			isAfterSeparator = true
 		}
 	}
 

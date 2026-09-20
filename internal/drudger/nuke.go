@@ -14,7 +14,7 @@ import (
 // Nuking is refused if Drudger Session is still running. Forcing goes through
 // anyway, which kills the agent along with the sandbox and fucks up the task.
 // If Session is finished, it works the same way allocation does.
-func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force bool) error {
+func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
 	layout, err := service.layout()
 	if err != nil {
 		return err
@@ -33,7 +33,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force b
 		if doomed == nil {
 			return nil, fmt.Errorf("project %s has no Drudger in slot %d, list the Drudgers to see the slots they have", projectSlug, slot)
 		}
-		if !doomed.Idle() && !force {
+		if !doomed.Idle() && !isForced {
 			return nil, fmt.Errorf("Drudger %d (%s) is working on task %s, wait for that Session to finish or force the removal to kill it regardless (beware that it will fuck up the task)", doomed.Slot, doomed.Sandbox, doomed.TaskID)
 		}
 
@@ -69,7 +69,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, force b
 // recordKilledTask marks the task whose agent died with its Drudger.
 func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.TaskID) error {
 	var killed *task.Task
-	recorded := false
+	isRecorded := false
 
 	err := service.tasks.UpdateTask(projectSlug, taskID, func(stored *task.Task) error {
 		killed = stored
@@ -80,13 +80,13 @@ func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.
 		}
 		stored.Status = task.StatusFuckedUp
 		stored.FinishedAt = time.Now().UTC()
-		recorded = true
+		isRecorded = true
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("the Drudger is gone, but task %s could not be marked %q: %w", taskID, task.StatusFuckedUp, err)
 	}
-	if !recorded {
+	if !isRecorded {
 		return nil
 	}
 
