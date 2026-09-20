@@ -30,6 +30,9 @@ const (
 	fetchSubcommand       = "fetch"
 	worktreeSubcommand    = "worktree"
 	addSubcommand         = "add"
+	removeSubcommand      = "remove"
+	pruneSubcommand       = "prune"
+	forceFlag             = "--force"
 	listSubcommand        = "list"
 	detachFlag            = "--detach"
 	statusSubcommand      = "status"
@@ -147,6 +150,27 @@ func (adapter *Git) AddDetachedWorktree(dir string, path string, ref string) err
 	_, stderr, err := adapter.run(dir, adapter.timeouts.Worktree, worktreeSubcommand, addSubcommand, detachFlag, path, ref)
 	if err != nil {
 		return fmt.Errorf("could not create a worktree of %s at %s on %s: %w: %s", dir, path, ref, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// RemoveWorktree deletes the directory of a worktree and the registration the
+// repository holds for it.
+func (adapter *Git) RemoveWorktree(dir string, path string) error {
+	// Forcing covers a worktree holding uncommitted changes, which git refuses
+	// to remove otherwise.
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Worktree, worktreeSubcommand, removeSubcommand, forceFlag, path)
+	if err != nil {
+		return fmt.Errorf("could not remove the worktree of %s at %s: %w: %s", dir, path, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// PruneWorktrees drops the registrations of worktrees whose directory is gone.
+func (adapter *Git) PruneWorktrees(dir string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Worktree, worktreeSubcommand, pruneSubcommand)
+	if err != nil {
+		return fmt.Errorf("could not prune the worktrees of %s: %w: %s", dir, err, strings.TrimSpace(stderr))
 	}
 	return nil
 }

@@ -2,10 +2,12 @@ package drudger
 
 import (
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
+	"drudge/internal/common"
 	"drudge/internal/config"
 	"drudge/internal/task"
 )
@@ -210,6 +212,193 @@ func TestDrudgerService_NukeDrudger_UnsupportedEnvironment(t *testing.T) {
 	}
 	if service.drudgers.atSlot(1) == nil {
 		t.Error("expected the Drudger to stay in the pool")
+	}
+}
+
+func TestDrudgerService_NukeDrudger_TakesTheWorkspace(t *testing.T) {
+	cases := []struct {
+		name string
+		// An empty list stands for the single repository most cases work with.
+		repositories []string
+		// leave puts the worktrees in the state the nuke finds them in, keyed
+		// by repository name.
+		leave func(fake *fakeGit, worktrees map[string]string)
+		// absent are the repositories whose worktree directory is gone from
+		// disk before the nuke runs.
+		absent []string
+
+		// wantRemovedIn names the repositories whose worktree the nuke
+		// deletes, and wantStashedIn the ones it stashes first.
+		wantRemovedIn []string
+		wantStashedIn []string
+	}{
+		{
+			name:          "a clean workspace goes with no stash",
+			wantRemovedIn: []string{testRepositoryName},
+		},
+		{
+			name: "a dirty worktree is stashed before it goes",
+			leave: func(fake *fakeGit, worktrees map[string]string) {
+				fake.leaveDirty(worktrees[testRepositoryName])
+			},
+			wantRemovedIn: []string{testRepositoryName},
+			wantStashedIn: []string{testRepositoryName},
+		},
+		{
+			name:         "every repository of a workspace goes",
+			repositories: []string{"api", "ui"},
+			leave: func(fake *fakeGit, worktrees map[string]string) {
+				fake.leaveDirty(worktrees["ui"])
+			},
+			wantRemovedIn: []string{"api", "ui"},
+			wantStashedIn: []string{"ui"},
+		},
+		{
+			name:   "a worktree that is already gone is pruned all the same",
+			absent: []string{testRepositoryName},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repositories := testCase.repositories
+			if len(repositories) == 0 {
+				repositories = []string{testRepositoryName}
+			}
+
+			projectDir := setupProjectDir(t)
+			doomed := handedOverTask(repositories...)
+			pool := []*Drudger{holdingDrudger(projectDir, doomed.ID)}
+			commands := &fakeCommandRunner{projectDir: projectDir}
+			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), commands, pool, doomed)
+
+			worktrees := worktreesOf(projectDir, repositories)
+			makeWorktrees(t, worktrees)
+			for _, repository := range testCase.absent {
+				if err := os.RemoveAll(worktrees[repository]); err != nil {
+					t.Fatalf("could not delete the worktree %s: %v", worktrees[repository], err)
+				}
+			}
+			if testCase.leave != nil {
+				testCase.leave(service.git, worktrees)
+			}
+
+			var err error
+			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, true) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			wantRemoved := pathsOf(worktrees, testCase.wantRemovedIn)
+			if !slices.Equal(service.git.removedWorktrees, wantRemoved) {
+				t.Errorf("expected the worktrees %v to be removed, got %v", wantRemoved, service.git.removedWorktrees)
+			}
+
+			wantPruned := pathsIn(projectDir, repositories...)
+			if !slices.Equal(service.git.prunedRepositories, wantPruned) {
+				t.Errorf("expected the repositories %v to be pruned, got %v", wantPruned, service.git.prunedRepositories)
+			}
+
+			wantStashed := pathsOf(worktrees, testCase.wantStashedIn)
+			if got := stashedDirs(service.git.stashes); !slices.Equal(got, wantStashed) {
+				t.Errorf("expected the worktrees %v to be stashed, got %v", wantStashed, got)
+			}
+			for index, repository := range testCase.wantStashedIn {
+				want := service.git.stashes[index].sha
+				if got := doomed.Stashes[repository]; got != want {
+					t.Errorf("expected repository %s to record stash %s, got %q", repository, want, got)
+				}
+			}
+
+			for _, worktree := range worktrees {
+				isPresent, err := common.Exists(worktree)
+				if err != nil {
+					t.Fatalf("could not read %s: %v", worktree, err)
+				}
+				if isPresent {
+					t.Errorf("expected the worktree %s to be gone", worktree)
+				}
+			}
+			if service.drudgers.atSlot(1) != nil {
+				t.Error("expected the Drudger to leave the pool")
+			}
+		})
+	}
+}
+
+func TestDrudgerService_NukeDrudger_TakesTheWorkspaceBeforeTheSandbox(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	commands := &fakeCommandRunner{projectDir: projectDir, errs: []error{errors.New("sbx said no")}}
+	pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
+	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
+
+	var err error
+	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	if err == nil {
+		t.Fatal("expected the failed sandbox removal to be reported")
+	}
+
+	wantRemoved := []string{slotWorktree(projectDir, 1)}
+	if !slices.Equal(service.git.removedWorktrees, wantRemoved) {
+		t.Errorf("expected the worktree to go before the sandbox, got %v", service.git.removedWorktrees)
+	}
+}
+
+func TestDrudgerService_NukeDrudger_KeepsTheWorkspaceOfALiveSession(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	tracked := handedOverTask(testRepositoryName)
+	writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, assistantEvent)
+
+	commands := &fakeCommandRunner{projectDir: projectDir}
+	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
+	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool, tracked)
+	service.gitOps = &refusingGit{t: t}
+
+	var err error
+	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	if err == nil {
+		t.Fatal("expected a working Drudger to be refused")
+	}
+	if commands.calls != nil {
+		t.Errorf("expected nothing to be run, got %v", commands.calls)
+	}
+}
+
+func TestDrudgerService_NukeDrudger_RunsNoGitWithoutAWorkspace(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	commands := &fakeCommandRunner{projectDir: projectDir}
+	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, []*Drudger{idleDrudger(1)})
+	service.gitOps = &refusingGit{t: t}
+
+	var err error
+	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if service.drudgers.atSlot(1) != nil {
+		t.Error("expected the Drudger to leave the pool")
+	}
+}
+
+func TestDrudgerService_NukeDrudger_ReportsAWorkspaceItCannotTakeApart(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	commands := &fakeCommandRunner{projectDir: projectDir}
+	pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
+	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service.git.removalErr = errors.New("git said no")
+	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
+
+	var err error
+	reported := captureErrors(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	if err != nil {
+		t.Fatalf("expected the nuke to go through, got %v", err)
+	}
+	if !strings.Contains(reported, "git said no") {
+		t.Errorf("expected the failure to be reported, got %q", reported)
+	}
+	if service.drudgers.atSlot(1) != nil {
+		t.Error("expected the Drudger to leave the pool")
 	}
 }
 

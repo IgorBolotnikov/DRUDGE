@@ -284,6 +284,14 @@ func (fake *refusingGit) AddDetachedWorktree(dir string, path string, ref string
 	return fake.refuse("AddDetachedWorktree")
 }
 
+func (fake *refusingGit) RemoveWorktree(dir string, path string) error {
+	return fake.refuse("RemoveWorktree")
+}
+
+func (fake *refusingGit) PruneWorktrees(dir string) error {
+	return fake.refuse("PruneWorktrees")
+}
+
 func (fake *refusingGit) HasWorktree(dir string, path string) (bool, error) {
 	return false, fake.refuse("HasWorktree")
 }

@@ -160,6 +160,33 @@ func (service *DrudgerService) stashWorktree(repository repositoryWorktree, mess
 	return commit, nil
 }
 
+// nukeWorktree takes the worktree of one repository out of a workspace and
+// returns the commit holding whatever it had uncommitted. A worktree that is
+// not on disk is only pruned, which clears the registration its repository
+// still holds.
+//
+// A stash that fails leaves the worktree where it is, so work an agent never
+// committed is not deleted unsaved.
+func (service *DrudgerService) nukeWorktree(repository repositoryWorktree, message string) (string, error) {
+	isPresent, err := common.Exists(repository.Worktree)
+	if err != nil {
+		return "", err
+	}
+
+	var stash string
+	if isPresent {
+		stash, err = service.stashWorktree(repository, message)
+		if err != nil {
+			return "", err
+		}
+		if err := service.gitOps.RemoveWorktree(repository.Dir, repository.Worktree); err != nil {
+			return stash, err
+		}
+	}
+
+	return stash, service.gitOps.PruneWorktrees(repository.Dir)
+}
+
 // ensureWorkspace makes a Drudger's workspace ready for a handover and records
 // what it saw. Every repository has its base fetched and gets a worktree when
 // the slot has none. A worktree no agent can be given stops the run and names

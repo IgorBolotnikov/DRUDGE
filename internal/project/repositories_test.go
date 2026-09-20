@@ -46,6 +46,14 @@ func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) er
 	return fmt.Errorf("AddDetachedWorktree should not be called")
 }
 
+func (fake *fakeGit) RemoveWorktree(dir string, path string) error {
+	return fmt.Errorf("RemoveWorktree should not be called")
+}
+
+func (fake *fakeGit) PruneWorktrees(dir string) error {
+	return fmt.Errorf("PruneWorktrees should not be called")
+}
+
 func (fake *fakeGit) HasWorktree(dir string, path string) (bool, error) {
 	return false, fmt.Errorf("HasWorktree should not be called")
 }

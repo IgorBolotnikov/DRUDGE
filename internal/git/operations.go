@@ -38,6 +38,13 @@ type Operations interface {
 	// AddDetachedWorktree checks a repository out at ref in a new worktree at
 	// path, with no branch on it. A path holding files fails.
 	AddDetachedWorktree(dir string, path string, ref string) error
+	// RemoveWorktree deletes the directory of a worktree and the registration
+	// the repository holds for it, whatever the worktree holds uncommitted. A
+	// path the repository does not know as a worktree fails.
+	RemoveWorktree(dir string, path string) error
+	// PruneWorktrees drops the registrations of worktrees whose directory is
+	// gone. A repository with nothing to prune succeeds.
+	PruneWorktrees(dir string) error
 	// HasWorktree reports whether path is registered as a worktree of the
 	// repository. A worktree whose directory was deleted stays registered
 	// until it is pruned, so this answers what the repository knows and not

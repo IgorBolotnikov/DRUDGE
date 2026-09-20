@@ -8,12 +8,15 @@ import (
 	"drudge/internal/task"
 )
 
-// NukeDrudger destroys a Drudger: deletes its sandbox and removes the entry
-// from the store.
+// NukeDrudger destroys a Drudger: takes its workspace apart, deletes its
+// sandbox and removes the entry from the store.
 //
 // Nuking is refused if Drudger Session is still running. Forcing goes through
 // anyway, which kills the agent along with the sandbox and fucks up the task.
 // If Session is finished, it works the same way allocation does.
+//
+// The branches the Drudger's tasks made are left alone. A workspace that
+// cannot be taken apart is reported and the Drudger goes regardless.
 func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
 	layout, err := service.layout()
 	if err != nil {
@@ -22,6 +25,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 
 	var sandboxName string
 	var killedTaskID task.TaskID
+	var stashes map[string]string
 
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		// Reclaim to get the up-to-date state of all Drudgers.
@@ -41,6 +45,10 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 		if err != nil {
 			return nil, err
 		}
+
+		// The workspace is taken apart under the lock too, so nothing can
+		// hand a task to this Drudger while its worktrees are going.
+		stashes = service.nukeWorkspace(projectSlug, layout, doomed)
 
 		// The sandbox is removed under the lock, so that nothing can claim this
 		// Drudger in the meantime.
@@ -63,11 +71,51 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 	if killedTaskID == "" {
 		return nil
 	}
-	return service.recordKilledTask(projectSlug, killedTaskID)
+	return service.recordKilledTask(projectSlug, killedTaskID, stashes)
 }
 
-// recordKilledTask marks the task whose agent died with its Drudger.
-func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.TaskID) error {
+// nukeWorkspace takes a Drudger's workspace apart and returns the commit the
+// uncommitted changes of each repository were stashed at, keyed by repository
+// name. A repository it cannot take apart is reported and the rest are still
+// taken apart.
+func (service *DrudgerService) nukeWorkspace(projectSlug string, layout projectLayout, doomed *Drudger) map[string]string {
+	// The worktree paths worked out from an empty root land in the project's
+	// own checkout, which a nuke would delete.
+	if doomed.Workspace == "" {
+		return nil
+	}
+
+	space, err := service.resolveWorkspace(layout, doomed)
+	if err != nil {
+		service.logger.Error("Drudger %d of project %s is being nuked, but the workspace it works in could not be read: %v", doomed.Slot, projectSlug, err)
+		return nil
+	}
+
+	stashes := map[string]string{}
+	for _, repository := range space.Repositories {
+		stash, err := service.nukeWorktree(repository, nukeStashMessage(space.Slot, doomed.TaskID))
+		if stash != "" {
+			stashes[repository.Name] = stash
+		}
+		if err != nil {
+			service.logger.Error("Drudger %d of project %s is being nuked, but its worktree of repository %s could not be taken out: %v", doomed.Slot, projectSlug, repository.Name, err)
+		}
+	}
+	return stashes
+}
+
+// nukeStashMessage names the slot a nuke stashed a worktree from, and the task
+// its agent was working on when there is one.
+func nukeStashMessage(slot int, taskID task.TaskID) string {
+	if taskID == "" {
+		return fmt.Sprintf("drudge: slot %d nuked", slot)
+	}
+	return fmt.Sprintf("drudge: slot %d nuked during task %s", slot, task.ShortID(taskID))
+}
+
+// recordKilledTask marks the task whose agent died with its Drudger and keeps
+// the stashes the nuke made in the workspace it ran in.
+func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.TaskID, stashes map[string]string) error {
 	var killed *task.Task
 	isRecorded := false
 
@@ -75,9 +123,18 @@ func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.
 		killed = stored
 		// A task the slot was read against may have moved on since. Only a task
 		// still recorded as running was what the dead agent was working on.
-		if stored.Status != task.StatusInProgress {
+		hasMovedOn := stored.Status != task.StatusInProgress
+		if hasMovedOn && len(stashes) == 0 {
 			return task.ErrTaskUnchanged
 		}
+
+		for repository, commit := range stashes {
+			stored.RecordStash(repository, commit)
+		}
+		if hasMovedOn {
+			return nil
+		}
+
 		stored.Status = task.StatusFuckedUp
 		stored.FinishedAt = time.Now().UTC()
 		isRecorded = true

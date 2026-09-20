@@ -985,3 +985,117 @@ func TestCheckoutDetached(t *testing.T) {
 		t.Errorf("expected the branch to be deletable after detaching: %v", err)
 	}
 }
+
+func TestRemoveWorktree(t *testing.T) {
+	tests := []struct {
+		name string
+		// leave puts the worktree in the state the removal finds it in.
+		leave func(t *testing.T, worktree string)
+	}{
+		{
+			name:  "a clean worktree",
+			leave: func(t *testing.T, worktree string) {},
+		},
+		{
+			name: "a worktree holding uncommitted changes",
+			leave: func(t *testing.T, worktree string) {
+				writeFile(t, worktree, "tracked.txt", "edited")
+				runGit(t, worktree, "add", "tracked.txt")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			clone := cloneRepo(t, root, "main", "clone")
+			worktree := filepath.Join(root, "workspace", "slot-1")
+			addWorktree(t, clone, worktree)
+			test.leave(t, worktree)
+
+			adapter := newTestAdapter()
+			if err := adapter.RemoveWorktree(clone, worktree); err != nil {
+				t.Fatalf("RemoveWorktree: %v", err)
+			}
+
+			if _, err := os.Stat(worktree); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("expected the worktree directory to be gone, got %v", err)
+			}
+			isKnown, err := adapter.HasWorktree(clone, worktree)
+			if err != nil {
+				t.Fatalf("HasWorktree: %v", err)
+			}
+			if isKnown {
+				t.Error("expected the repository to forget the worktree")
+			}
+		})
+	}
+}
+
+func TestRemoveWorktree_APathThatIsNotAWorktree(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+
+	if err := newTestAdapter().RemoveWorktree(clone, filepath.Join(root, "workspace", "slot-1")); err == nil {
+		t.Fatal("expected removing a path the repository does not know to fail")
+	}
+}
+
+func TestPruneWorktrees(t *testing.T) {
+	tests := []struct {
+		name string
+		// build returns the path the repository is asked about afterwards.
+		build func(t *testing.T, root string, clone string) string
+		// wantKnown says whether the repository still knows the path once the
+		// prune is over.
+		wantKnown bool
+	}{
+		{
+			name: "a worktree whose directory was deleted",
+			build: func(t *testing.T, root string, clone string) string {
+				worktree := filepath.Join(root, "workspace", "slot-1")
+				addWorktree(t, clone, worktree)
+				if err := os.RemoveAll(worktree); err != nil {
+					t.Fatalf("could not delete the worktree: %v", err)
+				}
+				return worktree
+			},
+		},
+		{
+			name: "a worktree that is still there",
+			build: func(t *testing.T, root string, clone string) string {
+				worktree := filepath.Join(root, "workspace", "slot-1")
+				addWorktree(t, clone, worktree)
+				return worktree
+			},
+			wantKnown: true,
+		},
+		{
+			name: "a repository with no worktrees to prune",
+			build: func(t *testing.T, root string, clone string) string {
+				return filepath.Join(root, "workspace", "slot-1")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			clone := cloneRepo(t, root, "main", "clone")
+			path := test.build(t, root, clone)
+
+			adapter := newTestAdapter()
+			if err := adapter.PruneWorktrees(clone); err != nil {
+				t.Fatalf("PruneWorktrees: %v", err)
+			}
+
+			isKnown, err := adapter.HasWorktree(clone, path)
+			if err != nil {
+				t.Fatalf("HasWorktree: %v", err)
+			}
+			if isKnown != test.wantKnown {
+				t.Errorf("expected the repository to know %s: %v, got %v", path, test.wantKnown, isKnown)
+			}
+		})
+	}
+}

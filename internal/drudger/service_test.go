@@ -321,13 +321,17 @@ type fakeGit struct {
 	// registeredWorktrees are the paths the repositories know as worktrees of
 	// their own. Adding a worktree registers its path, the way git does.
 	registeredWorktrees map[string]bool
-	fetched             []string
-	addedWorktrees      []addedWorktree
-	stashes             []stashCall
-	createdBranches     []branchCall
-	resetBranches       []branchCall
-	deletedBranches     []branchRef
-	detachedWorktrees   []string
+	// removalErr fails every attempt to remove a worktree.
+	removalErr         error
+	fetched            []string
+	addedWorktrees     []addedWorktree
+	removedWorktrees   []string
+	prunedRepositories []string
+	stashes            []stashCall
+	createdBranches    []branchCall
+	resetBranches      []branchCall
+	deletedBranches    []branchRef
+	detachedWorktrees  []string
 }
 
 // branchRef is one branch a call named: where and its name.
@@ -384,6 +388,22 @@ func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) er
 	}
 	fake.registerWorktree(path)
 	return common.EnsureDir(path)
+}
+
+// RemoveWorktree takes the directory off disk, the way git does, so a test
+// can read that a worktree is gone.
+func (fake *fakeGit) RemoveWorktree(dir string, path string) error {
+	if fake.removalErr != nil {
+		return fake.removalErr
+	}
+	fake.removedWorktrees = append(fake.removedWorktrees, path)
+	delete(fake.registeredWorktrees, path)
+	return os.RemoveAll(path)
+}
+
+func (fake *fakeGit) PruneWorktrees(dir string) error {
+	fake.prunedRepositories = append(fake.prunedRepositories, dir)
+	return nil
 }
 
 func (fake *fakeGit) HasWorktree(dir string, path string) (bool, error) {
