@@ -1066,10 +1066,62 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected the prompt to be written to the run directory: %v", err)
 	}
-	for _, want := range []string{taskToRun.Title, taskToRun.Description} {
+	for _, want := range []string{taskToRun.Title, taskToRun.Description, testTaskBranch} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("expected the prompt file to contain %q, got %q", want, prompt)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_FillsTheWorkspacePlaceholders(t *testing.T) {
+	const promptFileName = "branches.md"
+
+	cases := []struct {
+		name              string
+		repositories      []config.Repository
+		wantDefaultBranch string
+	}{
+		{
+			name:              "one repository",
+			repositories:      []config.Repository{{Path: testRepoPath}},
+			wantDefaultBranch: testDefaultBranch,
+		},
+		{
+			name:              "repositories sharing a default branch name it once",
+			repositories:      []config.Repository{{Path: "api"}, {Path: "ui"}},
+			wantDefaultBranch: testDefaultBranch,
+		},
+		{
+			name:              "repositories with different default branches name both",
+			repositories:      []config.Repository{{Path: "api"}, {Path: "ui", DefaultBranch: "trunk"}},
+			wantDefaultBranch: testDefaultBranch + ", trunk",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			writePromptFile(t, common.LocalPromptsDir(), promptFileName, "{{taskTitle}} {{taskDescription}} on {{branch}} off {{defaultBranch}}")
+
+			taskToRun := todoTask()
+			service := newTestServiceWith(
+				&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName, Repositories: testCase.repositories},
+				config.DefaultConfig(),
+				&fakeCommandRunner{},
+				taskToRun,
+			)
+
+			var err error
+			out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			want := fmt.Sprintf("%s %s on %s off %s", taskToRun.Title, taskToRun.Description, testTaskBranch, testCase.wantDefaultBranch)
+			if !strings.Contains(out, want) {
+				t.Errorf("expected dry run output to contain %q, got %q", want, out)
+			}
+		})
 	}
 }
 

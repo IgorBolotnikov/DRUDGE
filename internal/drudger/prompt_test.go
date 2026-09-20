@@ -16,6 +16,7 @@ func TestRenderPrompt(t *testing.T) {
 		name            string
 		template        string
 		taskToRun       *task.Task
+		workspace       promptWorkspace
 		want            string
 		wantErrContains string
 	}{
@@ -50,6 +51,20 @@ func TestRenderPrompt(t *testing.T) {
 			want:      "Fix login\nfirst line\n\nsecond line",
 		},
 		{
+			name:      "substitutes the workspace placeholders",
+			template:  "{{taskTitle}} {{taskDescription}} on {{branch}} off {{defaultBranch}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			workspace: promptWorkspace{Branch: "drudge/task-1-fix-login", DefaultBranch: "main"},
+			want:      "Fix login SSO is broken on drudge/task-1-fix-login off main",
+		},
+		{
+			name:      "workspace placeholders may be absent from the template",
+			template:  "{{taskTitle}}: {{taskDescription}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			workspace: promptWorkspace{Branch: "drudge/task-1-fix-login", DefaultBranch: "main"},
+			want:      "Fix login: SSO is broken",
+		},
+		{
 			name:            "missing title placeholder is an error",
 			template:        "desc: {{taskDescription}}",
 			taskToRun:       &task.Task{Title: "Fix login", Description: "SSO is broken"},
@@ -71,7 +86,7 @@ func TestRenderPrompt(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := renderPrompt(testCase.template, testCase.taskToRun)
+			got, err := renderPrompt(testCase.template, testCase.taskToRun, testCase.workspace)
 
 			if testCase.wantErrContains != "" {
 				if err == nil {
@@ -104,18 +119,29 @@ func TestDefaultPromptTemplate_HasRequiredPlaceholders(t *testing.T) {
 func TestDefaultPromptTemplate_RendersTaskDetails(t *testing.T) {
 	taskToRun := &task.Task{Title: "Fix login", Description: "SSO is broken", TicketID: "PROJ-123"}
 
-	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun)
+	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun, promptWorkspace{Branch: testTaskBranch, DefaultBranch: testDefaultBranch})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID} {
+	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID, testTaskBranch} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("expected rendered default prompt to contain %q, got %q", want, prompt)
 		}
 	}
 	if strings.Contains(prompt, "{{") {
 		t.Errorf("expected no placeholders left in the rendered default prompt, got %q", prompt)
+	}
+}
+
+func TestDefaultPromptTemplate_ForbidsTouchingBranches(t *testing.T) {
+	// The template is wrapped, so an instruction can span two lines.
+	unwrapped := strings.ToLower(strings.Join(strings.Fields(defaultPromptTemplate), " "))
+
+	for _, want := range []string{"do not create branches", "do not switch branches", "do not push"} {
+		if !strings.Contains(unwrapped, want) {
+			t.Errorf("expected the default prompt template to say %q, got %q", want, defaultPromptTemplate)
+		}
 	}
 }
 

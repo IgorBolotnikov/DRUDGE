@@ -17,12 +17,21 @@ const (
 	placeholderTaskTitle       = "{{taskTitle}}"
 	placeholderTaskDescription = "{{taskDescription}}"
 	placeholderTicketID        = "{{ticketID}}"
-	// TODO: pass a defualt branch as an optional placeholder
-	placeholderDefaultBranch = "{{defaultBranch}}"
+	placeholderBranch          = "{{branch}}"
+	placeholderDefaultBranch   = "{{defaultBranch}}"
 )
 
 // requiredPlaceholders must be present in every prompt template.
 var requiredPlaceholders = []string{placeholderTaskTitle, placeholderTaskDescription}
+
+// promptWorkspace is what a prompt may say about the workspace a run happens
+// in.
+type promptWorkspace struct {
+	// Branch is the branch housekeeping puts every repository on.
+	Branch string
+	// DefaultBranch names what the repositories cut work from.
+	DefaultBranch string
+}
 
 const defaultPromptTemplate = `Implement the following task end to end.
 
@@ -49,11 +58,14 @@ Before you finish, always run self-review of the code you wrote and cleanup
 any slop.
 
 When you are done, make sure the project builds, all tests pass and the code
-is formatted. Commit your work on a new branch and leave the review to a human.`
+is formatted. The branch for this task, {{branch}}, is already checked out.
+Commit your work on it. Do not create branches, do not switch branches and do
+not push.`
 
-// renderPrompt fills a prompt template in with a task's details. A template
-// missing a required placeholder is a hard error
-func renderPrompt(template string, taskToRun *task.Task) (string, error) {
+// renderPrompt fills a prompt template in with a task's details and the
+// workspace it runs in. A template missing a required placeholder is a hard
+// error.
+func renderPrompt(template string, taskToRun *task.Task, workspace promptWorkspace) (string, error) {
 	for _, placeholder := range requiredPlaceholders {
 		if !strings.Contains(template, placeholder) {
 			return "", fmt.Errorf("prompt template is missing the required %s placeholder", placeholder)
@@ -64,6 +76,8 @@ func renderPrompt(template string, taskToRun *task.Task) (string, error) {
 		placeholderTaskTitle, taskToRun.Title,
 		placeholderTaskDescription, taskToRun.Description,
 		placeholderTicketID, taskToRun.TicketID,
+		placeholderBranch, workspace.Branch,
+		placeholderDefaultBranch, workspace.DefaultBranch,
 	)
 	return replacer.Replace(template), nil
 }

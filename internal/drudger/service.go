@@ -287,12 +287,6 @@ func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, la
 // in progress. The caller writes the task back.
 func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
 	taskID := taskToRun.ID
-
-	prompt, _, err := service.renderTaskPrompt(taskToRun)
-	if err != nil {
-		return err
-	}
-
 	runDir := layout.RunDir(taskID)
 
 	claimed, err := service.claimDrudger(projectSlug, taskID, layout)
@@ -327,11 +321,21 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	branch, err := service.pickTaskBranch(space, taskToRun)
+	if err != nil {
+		return err
+	}
+
+	prompt, _, err := service.renderTaskPrompt(taskToRun, space, branch)
+	if err != nil {
+		return err
+	}
+
 	if err := prepareRunDir(runDir, prompt); err != nil {
 		return err
 	}
 
-	prepared, err := service.prepareWorkspace(space, taskToRun)
+	prepared, err := service.prepareWorkspace(space, taskToRun, branch)
 	if err != nil {
 		return err
 	}
@@ -361,15 +365,16 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	return nil
 }
 
-// renderTaskPrompt renders the prompt an agent is given for a task, and names
-// where the template came from.
-func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task) (prompt string, promptSource string, err error) {
+// renderTaskPrompt renders the prompt an agent is given for a task in a
+// workspace put on branch, and names where the template came from.
+func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slotWorkspace, branch string) (prompt string, promptSource string, err error) {
 	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
 	if err != nil {
 		return "", "", err
 	}
 
-	prompt, err = renderPrompt(promptTemplate, taskToRun)
+	workspace := promptWorkspace{Branch: branch, DefaultBranch: space.defaultBranch()}
+	prompt, err = renderPrompt(promptTemplate, taskToRun, workspace)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", promptSource, err)
 	}
@@ -379,11 +384,6 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task) (prompt st
 // describeRun prints the Drudger, the prompt and the commands a run would use,
 // and writes nothing.
 func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
-	prompt, promptSource, err := service.renderTaskPrompt(taskToRun)
-	if err != nil {
-		return err
-	}
-
 	runDir := layout.RunDir(taskToRun.ID)
 
 	wouldUse, err := service.previewDrudger(projectSlug, taskToRun.ID, layout)
@@ -397,6 +397,16 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 	}
 
 	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, space.Root, space.mounts(layout.RunsDir()), runDir)
+	if err != nil {
+		return err
+	}
+
+	branch, err := service.pickTaskBranch(space, taskToRun)
+	if err != nil {
+		return err
+	}
+
+	prompt, promptSource, err := service.renderTaskPrompt(taskToRun, space, branch)
 	if err != nil {
 		return err
 	}

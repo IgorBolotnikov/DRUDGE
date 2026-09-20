@@ -39,18 +39,13 @@ type repositoryHandover struct {
 	Base string
 }
 
-// prepareWorkspace puts every repository of a workspace into the state a
-// handover needs. Whatever the last Session left uncommitted is stashed and
-// the task's branch is checked out. It reports what it did.
+// prepareWorkspace puts every repository of a workspace onto branch, which is
+// the state a handover needs. Whatever the last Session left uncommitted is
+// stashed first. It reports what it did.
 //
 // A step that fails stops the handover. An agent is never given a workspace
 // that is not in the state it was meant to be.
-func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *task.Task) (handover, error) {
-	branch, err := service.pickTaskBranch(space, taskToRun)
-	if err != nil {
-		return handover{}, err
-	}
-
+func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *task.Task, branch string) (handover, error) {
 	prepared := handover{Branch: branch, Repositories: make([]repositoryHandover, 0, len(space.Repositories))}
 	for _, repository := range space.Repositories {
 		stash, err := service.stashWorktree(repository, handoverStashMessage(space.Slot, taskToRun))

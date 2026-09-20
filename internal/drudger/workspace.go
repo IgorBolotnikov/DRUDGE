@@ -3,6 +3,8 @@ package drudger
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"drudge/internal/common"
@@ -49,6 +51,18 @@ func (repository repositoryWorktree) BaseRef() string {
 		return git.OriginRemote + "/" + repository.DefaultBranch
 	}
 	return repository.DefaultBranch
+}
+
+// defaultBranch names what the repositories of a workspace cut work from.
+// Repositories sharing one default branch render as that single name.
+func (space slotWorkspace) defaultBranch() string {
+	names := make([]string, 0, len(space.Repositories))
+	for _, repository := range space.Repositories {
+		if !slices.Contains(names, repository.DefaultBranch) {
+			names = append(names, repository.DefaultBranch)
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // resolveWorkspace works out where a Drudger works and what each of its
