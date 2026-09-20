@@ -165,14 +165,14 @@ func TestResolvePromptTemplate(t *testing.T) {
 	globalPathSuffix := filepath.Join(common.DotDrudgeDirName, common.PromptsDirName, globalFileName)
 
 	cases := []struct {
-		name             string
-		localPromptFile  string
-		globalPromptFile string
-		writeLocalFile   bool
-		writeGlobalFile  bool
-		want             string
-		wantSource       string
-		wantErrContains  string
+		name                  string
+		localPromptFile       string
+		globalPromptFile      string
+		shouldWriteLocalFile  bool
+		shouldWriteGlobalFile bool
+		want                  string
+		wantSource            string
+		wantErrContains       string
 	}{
 		{
 			name:       "falls back to the default when neither config names a file",
@@ -180,27 +180,27 @@ func TestResolvePromptTemplate(t *testing.T) {
 			wantSource: promptSourceDefault,
 		},
 		{
-			name:            "reads the local prompt file",
-			localPromptFile: localFileName,
-			writeLocalFile:  true,
-			want:            localTemplate,
-			wantSource:      localPathSuffix,
+			name:                 "reads the local prompt file",
+			localPromptFile:      localFileName,
+			shouldWriteLocalFile: true,
+			want:                 localTemplate,
+			wantSource:           localPathSuffix,
 		},
 		{
-			name:             "reads the global prompt file",
-			globalPromptFile: globalFileName,
-			writeGlobalFile:  true,
-			want:             globalTemplate,
-			wantSource:       globalPathSuffix,
+			name:                  "reads the global prompt file",
+			globalPromptFile:      globalFileName,
+			shouldWriteGlobalFile: true,
+			want:                  globalTemplate,
+			wantSource:            globalPathSuffix,
 		},
 		{
-			name:             "local prompt file wins over the global one",
-			localPromptFile:  localFileName,
-			globalPromptFile: globalFileName,
-			writeLocalFile:   true,
-			writeGlobalFile:  true,
-			want:             localTemplate,
-			wantSource:       localPathSuffix,
+			name:                  "local prompt file wins over the global one",
+			localPromptFile:       localFileName,
+			globalPromptFile:      globalFileName,
+			shouldWriteLocalFile:  true,
+			shouldWriteGlobalFile: true,
+			want:                  localTemplate,
+			wantSource:            localPathSuffix,
 		},
 		{
 			name:            "missing local prompt file is an error",
@@ -213,21 +213,21 @@ func TestResolvePromptTemplate(t *testing.T) {
 			wantErrContains:  globalPathSuffix,
 		},
 		{
-			name:             "missing local prompt file does not fall back to the global one",
-			localPromptFile:  localFileName,
-			globalPromptFile: globalFileName,
-			writeGlobalFile:  true,
-			wantErrContains:  localPathSuffix,
+			name:                  "missing local prompt file does not fall back to the global one",
+			localPromptFile:       localFileName,
+			globalPromptFile:      globalFileName,
+			shouldWriteGlobalFile: true,
+			wantErrContains:       localPathSuffix,
 		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := setupPromptDirs(t)
-			if testCase.writeLocalFile {
+			if testCase.shouldWriteLocalFile {
 				writePromptFile(t, common.LocalPromptsDir(), localFileName, localTemplate)
 			}
-			if testCase.writeGlobalFile {
+			if testCase.shouldWriteGlobalFile {
 				writePromptFile(t, common.PromptsDir(home), globalFileName, globalTemplate)
 			}
 

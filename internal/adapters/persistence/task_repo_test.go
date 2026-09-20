@@ -800,12 +800,12 @@ func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
 
 	// Every case is what one recorded run left on a task.
 	cases := []struct {
-		name     string
-		failed   bool
-		result   string
-		turns    int
-		duration time.Duration
-		costUSD  float64
+		name      string
+		hasFailed bool
+		result    string
+		turns     int
+		duration  time.Duration
+		costUSD   float64
 		// wantKeysInFile are the front matter keys the file should carry. A
 		// zero field is left out to have no empty entries in the file.
 		wantKeysInFile []string
@@ -828,12 +828,12 @@ func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
 			},
 		},
 		{
-			name:     "a run the agent flagged as an error",
-			failed:   true,
-			result:   "Could not build",
-			turns:    2,
-			duration: 4 * time.Second,
-			costUSD:  0.02,
+			name:      "a run the agent flagged as an error",
+			hasFailed: true,
+			result:    "Could not build",
+			turns:     2,
+			duration:  4 * time.Second,
+			costUSD:   0.02,
 			wantKeysInFile: []string{
 				metaKeySessionFailed,
 				metaKeySessionResult,
@@ -860,11 +860,11 @@ func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
 				ProjectSlug: "test-project",
 				CreatedAt:   time.Now().UTC(),
 
-				SessionFailed:   testCase.failed,
-				SessionResult:   testCase.result,
-				SessionTurns:    testCase.turns,
-				SessionDuration: testCase.duration,
-				SessionCostUSD:  testCase.costUSD,
+				HasSessionFailed: testCase.hasFailed,
+				SessionResult:    testCase.result,
+				SessionTurns:     testCase.turns,
+				SessionDuration:  testCase.duration,
+				SessionCostUSD:   testCase.costUSD,
 			}
 
 			path := filepath.Join(home, "task.md")
@@ -878,8 +878,8 @@ func TestTaskFrontMatter_OutcomeRoundTrip(t *testing.T) {
 				t.Fatalf("parseTaskFromFile: %v", err)
 			}
 
-			if read.SessionFailed != written.SessionFailed {
-				t.Errorf("expected the error flag %v, got %v", written.SessionFailed, read.SessionFailed)
+			if read.HasSessionFailed != written.HasSessionFailed {
+				t.Errorf("expected the error flag %v, got %v", written.HasSessionFailed, read.HasSessionFailed)
 			}
 			if read.SessionResult != written.SessionResult {
 				t.Errorf("expected result %q, got %q", written.SessionResult, read.SessionResult)
@@ -1142,24 +1142,24 @@ func TestFileTaskRepository_TryUpdateTask_LocksOneTaskAtATime(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			// Take the lock the way another drudge process would during a launch.
-			unlock, held, err := lockFile(repo.taskLockPath(locked.ID), waitForLock)
+			unlock, hasLock, err := lockFile(repo.taskLockPath(locked.ID), waitForLock)
 			if err != nil {
 				t.Fatalf("could not take the lock the test holds: %v", err)
 			}
-			if !held {
+			if !hasLock {
 				t.Fatal("expected the waiting lock to be taken")
 			}
 			defer unlock()
 
-			stored, err := repo.TryUpdateTask("test-project", testCase.update, func(taskToUpdate *task.Task) error {
+			isStored, err := repo.TryUpdateTask("test-project", testCase.update, func(taskToUpdate *task.Task) error {
 				taskToUpdate.Status = task.StatusInProgress
 				return nil
 			})
 			if err != nil {
 				t.Fatalf("TryUpdateTask: %v", err)
 			}
-			if stored != testCase.wantStore {
-				t.Fatalf("expected the update to be stored: %v, got %v", testCase.wantStore, stored)
+			if isStored != testCase.wantStore {
+				t.Fatalf("expected the update to be stored: %v, got %v", testCase.wantStore, isStored)
 			}
 
 			reread, err := repo.GetTask("test-project", testCase.update)
@@ -1228,11 +1228,11 @@ func TestFileTaskRepository_UpdateTask_RenamesTheFileAfterATitleChange(t *testin
 	}
 
 	newPath := filepath.Join(repo.taskDir(), taskFileName(created.ID, "Fix logout bug"))
-	if exists, _ := common.Exists(newPath); !exists {
+	if isPresent, _ := common.Exists(newPath); !isPresent {
 		entries, _ := os.ReadDir(repo.taskDir())
 		t.Fatalf("expected the task file to be named after the new title, got %v", entries)
 	}
-	if exists, _ := common.Exists(oldPath); exists {
+	if isPresent, _ := common.Exists(oldPath); isPresent {
 		t.Error("expected the file named after the old title to be gone")
 	}
 
@@ -1250,8 +1250,8 @@ func TestFileTaskRepository_DeleteTask(t *testing.T) {
 		name string
 		// refusal is what the accept callback answers with.
 		refusal error
-		// lockHeld stands for another command working on the task.
-		lockHeld bool
+		// isLockHeld stands for another command working on the task.
+		isLockHeld bool
 
 		wantRemoved bool
 		wantErr     bool
@@ -1266,8 +1266,8 @@ func TestFileTaskRepository_DeleteTask(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "a task another command holds the lock on",
-			lockHeld: true,
+			name:       "a task another command holds the lock on",
+			isLockHeld: true,
 		},
 	}
 
@@ -1284,15 +1284,15 @@ func TestFileTaskRepository_DeleteTask(t *testing.T) {
 			repo := NewFileTaskRepository("test-project")
 			stored := storeTask(t, repo, "Fix login bug")
 
-			if testCase.lockHeld {
-				unlock, held, err := lockFile(repo.taskLockPath(stored.ID), waitForLock)
-				if err != nil || !held {
+			if testCase.isLockHeld {
+				unlock, hasLock, err := lockFile(repo.taskLockPath(stored.ID), waitForLock)
+				if err != nil || !hasLock {
 					t.Fatalf("could not take the lock the test holds: %v", err)
 				}
 				defer unlock()
 			}
 
-			removed, err := repo.DeleteTask("test-project", stored.ID, func(taskToRemove *task.Task) error {
+			isRemoved, err := repo.DeleteTask("test-project", stored.ID, func(taskToRemove *task.Task) error {
 				if taskToRemove.Title != stored.Title {
 					t.Errorf("expected the stored task to reach accept, got title %q", taskToRemove.Title)
 				}
@@ -1302,14 +1302,14 @@ func TestFileTaskRepository_DeleteTask(t *testing.T) {
 			if testCase.wantErr != (err != nil) {
 				t.Fatalf("expected an error: %v, got %v", testCase.wantErr, err)
 			}
-			if removed != testCase.wantRemoved {
-				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, removed)
+			if isRemoved != testCase.wantRemoved {
+				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, isRemoved)
 			}
 
 			_, lookupErr := repo.GetTask("test-project", stored.ID)
-			gone := lookupErr != nil
-			if gone != testCase.wantRemoved {
-				t.Errorf("expected the task to be gone: %v, got %v", testCase.wantRemoved, gone)
+			isGone := lookupErr != nil
+			if isGone != testCase.wantRemoved {
+				t.Errorf("expected the task to be gone: %v, got %v", testCase.wantRemoved, isGone)
 			}
 		})
 	}
@@ -1371,11 +1371,11 @@ func TestFileTaskRepository_DeleteTask_UnknownTask(t *testing.T) {
 		t.Fatal("expected an unknown task to be reported")
 	}
 
-	lockLeft, err := common.Exists(repo.taskLockPath("nope"))
+	isLockLeft, err := common.Exists(repo.taskLockPath("nope"))
 	if err != nil {
 		t.Fatalf("could not check the lock file: %v", err)
 	}
-	if lockLeft {
+	if isLockLeft {
 		t.Error("expected no lock file to be left behind for an unknown task")
 	}
 }

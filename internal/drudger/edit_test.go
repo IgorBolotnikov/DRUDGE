@@ -16,30 +16,30 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 		// stands for a task no agent has been given.
 		stream string
 		exit   string
-		// holder says whether a Drudger is recorded against the task.
-		holder  bool
-		wantErr bool
+		// hasHolder says whether a Drudger is recorded against the task.
+		hasHolder bool
+		wantErr   bool
 	}{
 		{
-			name:    "an agent still writing",
-			stream:  initEvent,
-			holder:  true,
-			wantErr: true,
+			name:      "an agent still writing",
+			stream:    initEvent,
+			hasHolder: true,
+			wantErr:   true,
 		},
 		{
-			name:   "a Session that has finished",
-			stream: initEvent,
-			exit:   "0\n",
-			holder: true,
+			name:      "a Session that has finished",
+			stream:    initEvent,
+			exit:      "0\n",
+			hasHolder: true,
 		},
 		{
-			name:   "a task no agent has been given",
-			holder: false,
+			name:      "a task no agent has been given",
+			hasHolder: false,
 		},
 		{
-			name:   "a run whose slot was reclaimed",
-			stream: initEvent,
-			holder: false,
+			name:      "a run whose slot was reclaimed",
+			stream:    initEvent,
+			hasHolder: false,
 		},
 	}
 
@@ -57,7 +57,7 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 			}
 
 			pool := []*Drudger{idleDrudger(1)}
-			if testCase.holder {
+			if testCase.hasHolder {
 				pool[0].TaskID = taskToEdit.ID
 			}
 

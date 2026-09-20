@@ -166,8 +166,8 @@ func (adapter *Git) HasWorktree(dir string, path string) (bool, error) {
 	}
 
 	for _, line := range strings.Split(stdout, "\n") {
-		listed, carries := strings.CutPrefix(strings.TrimSpace(line), worktreeField)
-		if !carries {
+		listed, hasPrefix := strings.CutPrefix(strings.TrimSpace(line), worktreeField)
+		if !hasPrefix {
 			continue
 		}
 		resolved, err := realPath(listed)
@@ -320,8 +320,8 @@ func (adapter *Git) ResolveCommit(dir string, ref string) (git.Commit, error) {
 		return git.Commit{}, fmt.Errorf("could not resolve %s in %s: %w: %s", ref, dir, err, strings.TrimSpace(stderr))
 	}
 
-	sha, committedAt, found := strings.Cut(strings.TrimSpace(stdout), "\n")
-	if !found {
+	sha, committedAt, hasCommittedAt := strings.Cut(strings.TrimSpace(stdout), "\n")
+	if !hasCommittedAt {
 		return git.Commit{}, fmt.Errorf("git described %s in %s as %q, which is not a commit and a date", ref, dir, strings.TrimSpace(stdout))
 	}
 

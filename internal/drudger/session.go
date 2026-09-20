@@ -201,7 +201,7 @@ func recordSessionEnd(tracked *task.Task, finished task.TaskStatus, report Sessi
 		tracked.SessionID = report.SessionID
 	}
 	if result := report.Result; result != nil {
-		tracked.SessionFailed = result.IsError
+		tracked.HasSessionFailed = result.IsError
 		tracked.SessionResult = result.Text
 		tracked.SessionTurns = result.NumTurns
 		tracked.SessionDuration = result.Duration

@@ -97,11 +97,11 @@ func ShortSHA(commit string) string {
 // BranchHoldsNoWork reports whether a branch holds nothing base does not
 // already have. A branch that is not there holds nothing.
 func BranchHoldsNoWork(operations Operations, dir string, base string, branch string) (bool, error) {
-	present, err := operations.BranchExists(dir, branch)
+	hasBranch, err := operations.BranchExists(dir, branch)
 	if err != nil {
 		return false, err
 	}
-	if !present {
+	if !hasBranch {
 		return true, nil
 	}
 

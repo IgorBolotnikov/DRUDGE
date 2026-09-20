@@ -61,11 +61,11 @@ func TestParseTaskRemoveArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			taskID, force, err := parseTaskRemoveArgs(testCase.args)
+			taskID, isForced, err := parseTaskRemoveArgs(testCase.args)
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got task ID %q and force %v", taskID, force)
+					t.Fatalf("expected an error, got task ID %q and force %v", taskID, isForced)
 				}
 				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
 					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
@@ -79,8 +79,8 @@ func TestParseTaskRemoveArgs(t *testing.T) {
 			if taskID != testCase.wantTaskID {
 				t.Errorf("expected task ID %q, got %q", testCase.wantTaskID, taskID)
 			}
-			if force != testCase.wantForce {
-				t.Errorf("expected force %v, got %v", testCase.wantForce, force)
+			if isForced != testCase.wantForce {
+				t.Errorf("expected force %v, got %v", testCase.wantForce, isForced)
 			}
 		})
 	}

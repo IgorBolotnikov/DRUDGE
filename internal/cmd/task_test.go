@@ -88,11 +88,11 @@ func TestParseTaskRunArgs(t *testing.T) {
 				usage = taskRunUsage
 			}
 
-			taskID, dryRun, err := parseTaskRunArgs(testCase.args, subcommand, usage)
+			taskID, isDryRun, err := parseTaskRunArgs(testCase.args, subcommand, usage)
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got task ID %q and dry run %v", taskID, dryRun)
+					t.Fatalf("expected an error, got task ID %q and dry run %v", taskID, isDryRun)
 				}
 				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
 					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
@@ -106,8 +106,8 @@ func TestParseTaskRunArgs(t *testing.T) {
 			if taskID != testCase.wantTaskID {
 				t.Errorf("expected task ID %q, got %q", testCase.wantTaskID, taskID)
 			}
-			if dryRun != testCase.wantDryRun {
-				t.Errorf("expected dry run %v, got %v", testCase.wantDryRun, dryRun)
+			if isDryRun != testCase.wantDryRun {
+				t.Errorf("expected dry run %v, got %v", testCase.wantDryRun, isDryRun)
 			}
 		})
 	}

@@ -276,11 +276,11 @@ func TestFileDrudgerRepository_TryUpdateDrudgers_GivesUpOnALockHeldElsewhere(t *
 
 	// Take the lock the way another drudge process would during a launch.
 	lockPath := filepath.Join(filepath.Dir(drudgersPath), drudgersLockFileName)
-	unlock, locked, err := lockFile(lockPath, waitForLock)
+	unlock, hasLock, err := lockFile(lockPath, waitForLock)
 	if err != nil {
 		t.Fatalf("could not take the lock the test holds: %v", err)
 	}
-	if !locked {
+	if !hasLock {
 		t.Fatal("expected the waiting lock to be taken")
 	}
 
@@ -289,11 +289,11 @@ func TestFileDrudgerRepository_TryUpdateDrudgers_GivesUpOnALockHeldElsewhere(t *
 		return drudgers, nil
 	}
 
-	took, err := repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
+	isStored, err := repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
 	if err != nil {
 		t.Fatalf("expected a held lock to be no error, got %v", err)
 	}
-	if took {
+	if isStored {
 		t.Fatal("expected the update to give up on a lock someone else holds")
 	}
 
@@ -307,11 +307,11 @@ func TestFileDrudgerRepository_TryUpdateDrudgers_GivesUpOnALockHeldElsewhere(t *
 
 	unlock()
 
-	took, err = repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
+	isStored, err = repo.TryUpdateDrudgers(drudgerTestProject, freeTheSlot)
 	if err != nil {
 		t.Fatalf("TryUpdateDrudgers: %v", err)
 	}
-	if !took {
+	if !isStored {
 		t.Fatal("expected the update to take a free lock")
 	}
 

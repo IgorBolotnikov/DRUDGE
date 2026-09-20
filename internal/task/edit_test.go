@@ -262,7 +262,7 @@ func TestTaskService_EditTask_TakesAStatusDrudgeMaintainsUnderForce(t *testing.T
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
 			service := NewTaskService(repo, common.NewLogger(""))
 
-			changes := EditTaskDto{Status: pointerTo(managed), AllowManagedStatus: true}
+			changes := EditTaskDto{Status: pointerTo(managed), AllowsManagedStatus: true}
 			if _, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{}); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -278,7 +278,7 @@ func TestTaskService_EditTask_RefusesAnUnknownStatus(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
-	changes := EditTaskDto{Status: pointerTo(TaskStatus("almost-done")), AllowManagedStatus: true}
+	changes := EditTaskDto{Status: pointerTo(TaskStatus("almost-done")), AllowsManagedStatus: true}
 	_, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{})
 	if err == nil {
 		t.Fatal("expected an unknown status to be refused")

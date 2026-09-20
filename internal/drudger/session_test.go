@@ -431,8 +431,8 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
 			if recorded.Status != testCase.wantStatus {
 				t.Errorf("expected task status %q, got %q", testCase.wantStatus, recorded.Status)
 			}
-			if recorded.SessionFailed != testCase.wantFailed {
-				t.Errorf("expected the error flag %v, got %v", testCase.wantFailed, recorded.SessionFailed)
+			if recorded.HasSessionFailed != testCase.wantFailed {
+				t.Errorf("expected the error flag %v, got %v", testCase.wantFailed, recorded.HasSessionFailed)
 			}
 			if recorded.SessionResult != testCase.wantResult {
 				t.Errorf("expected result %q, got %q", testCase.wantResult, recorded.SessionResult)
@@ -590,7 +590,7 @@ func TestDrudgerService_SessionStatus_ARefusedRunRecordsNoWork(t *testing.T) {
 	service, tracked := serviceWithAnAuthRefusal(t)
 	recorded := checkRefusedTask(t, service, tracked.ID)
 
-	if recorded.SessionFailed {
+	if recorded.HasSessionFailed {
 		t.Error("expected no error flag on a run that did no work")
 	}
 	if recorded.SessionResult != "" {

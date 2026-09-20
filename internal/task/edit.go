@@ -22,9 +22,9 @@ type EditTaskDto struct {
 	TicketID    *string
 	Status      *TaskStatus
 
-	// AllowManagedStatus lets the edit set one of ManagedStatuses. The CLI
+	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
-	AllowManagedStatus bool
+	AllowsManagedStatus bool
 }
 
 // HasChanges reports whether the edit names a field to change.
@@ -57,7 +57,7 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 	}
 
 	var edited *Task
-	stored, err := service.repo.TryUpdateTask(projectSlug, found.ID, func(taskToEdit *Task) error {
+	isStored, err := service.repo.TryUpdateTask(projectSlug, found.ID, func(taskToEdit *Task) error {
 		if err := sessions.RefuseWhileWorking(projectSlug, taskToEdit); err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 	if err != nil {
 		return nil, err
 	}
-	if !stored {
+	if !isStored {
 		return nil, fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
 
@@ -94,7 +94,7 @@ func validateEdit(changes EditTaskDto) error {
 	if !KnownStatus(wanted) {
 		return fmt.Errorf("invalid status %q, must be one of: %s", wanted, FormatStatuses(Statuses))
 	}
-	if slices.Contains(ManagedStatuses, wanted) && !changes.AllowManagedStatus {
+	if slices.Contains(ManagedStatuses, wanted) && !changes.AllowsManagedStatus {
 		return fmt.Errorf("status %q is one drudge writes itself when a Session starts and ends, force the edit to set it by hand", wanted)
 	}
 	return nil

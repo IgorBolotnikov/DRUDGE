@@ -57,7 +57,7 @@ func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
 		arg := args[index]
 		switch {
 		case arg == forceFlag || arg == forceFlagShort:
-			changes.AllowManagedStatus = true
+			changes.AllowsManagedStatus = true
 		case slices.Contains(editValueFlags, arg):
 			if index+1 >= len(args) {
 				return "", changes, fmt.Errorf("%s needs a value, %s", arg, taskEditUsage)

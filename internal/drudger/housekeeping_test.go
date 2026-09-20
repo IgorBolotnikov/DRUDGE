@@ -19,11 +19,11 @@ const testTaskBranch = "drudge/task-1-fix-login"
 func TestDrudgerService_RunTask_StashesOnlyADirtyWorktree(t *testing.T) {
 	cases := []struct {
 		name      string
-		dirty     bool
+		isDirty   bool
 		wantStash bool
 	}{
-		{name: "a clean worktree is left alone", dirty: false},
-		{name: "a dirty worktree is put aside", dirty: true, wantStash: true},
+		{name: "a clean worktree is left alone", isDirty: false},
+		{name: "a dirty worktree is put aside", isDirty: true, wantStash: true},
 	}
 
 	for _, testCase := range cases {
@@ -33,7 +33,7 @@ func TestDrudgerService_RunTask_StashesOnlyADirtyWorktree(t *testing.T) {
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
 			worktree := slotRoot(projectDir, 1)
-			if testCase.dirty {
+			if testCase.isDirty {
 				service.git.dirtyWorktrees = map[string]bool{worktree: true}
 			}
 
@@ -75,14 +75,14 @@ func TestDrudgerService_RunTask_StashesOnlyADirtyWorktree(t *testing.T) {
 func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 	cases := []struct {
 		name        string
-		noRemote    bool
+		hasNoRemote bool
 		fetchErr    error
 		wantFetches int
 		wantStart   string
 		wantWarning bool
 	}{
 		{name: "a repository with a remote branches off the fetched default", wantFetches: 1, wantStart: "origin/main"},
-		{name: "a repository with no remote branches off the local default", noRemote: true, wantStart: "main"},
+		{name: "a repository with no remote branches off the local default", hasNoRemote: true, wantStart: "main"},
 		{name: "a fetch that fails leaves the run going", fetchErr: errors.New("could not reach origin"), wantFetches: 1, wantStart: "origin/main", wantWarning: true},
 	}
 
@@ -92,7 +92,7 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
-			service.git.noRemote = testCase.noRemote
+			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
 			var err error
@@ -240,14 +240,14 @@ func TestDrudgerService_RerunTask_ReusesABranchThatHoldsNoWork(t *testing.T) {
 func TestDrudgerService_RunTask_HousekeepingFailureStopsTheRun(t *testing.T) {
 	cases := []struct {
 		name      string
-		dirty     bool
+		isDirty   bool
 		stashErr  error
 		branchErr error
 		wantInErr string
 	}{
 		{
 			name:      "a stash that fails",
-			dirty:     true,
+			isDirty:   true,
 			stashErr:  errors.New("git stash refused"),
 			wantInErr: "stash",
 		},
@@ -266,7 +266,7 @@ func TestDrudgerService_RunTask_HousekeepingFailureStopsTheRun(t *testing.T) {
 			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
 			service.git.stashErr = testCase.stashErr
 			service.git.branchErr = testCase.branchErr
-			if testCase.dirty {
+			if testCase.isDirty {
 				service.git.dirtyWorktrees = map[string]bool{slotRoot(projectDir, 1): true}
 			}
 

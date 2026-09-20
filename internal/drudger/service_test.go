@@ -166,9 +166,9 @@ type fakeCommandRunner struct {
 	// after it is started. A runner without one writes an init event, which is
 	// what a real agent writes first.
 	onStart func()
-	// silentAgent stands for a start that forked and died, leaving an empty
+	// isAgentSilent stands for a start that forked and died, leaving an empty
 	// run directory behind.
-	silentAgent bool
+	isAgentSilent bool
 }
 
 func (runner *fakeCommandRunner) Start(argv []string) error {
@@ -180,7 +180,7 @@ func (runner *fakeCommandRunner) Start(argv []string) error {
 	switch {
 	case runner.onStart != nil:
 		runner.onStart()
-	case !runner.silentAgent:
+	case !runner.isAgentSilent:
 		writeInitEventOf(argv)
 	}
 	return nil
@@ -204,12 +204,12 @@ func streamPathIn(argv []string) string {
 	if len(lines) < 2 {
 		return ""
 	}
-	_, redirected, found := strings.Cut(lines[1], " > ")
-	if !found {
+	_, redirected, hasRedirect := strings.Cut(lines[1], " > ")
+	if !hasRedirect {
 		return ""
 	}
-	quoted, _, found := strings.Cut(redirected, " 2> ")
-	if !found {
+	quoted, _, hasRedirect := strings.Cut(redirected, " 2> ")
+	if !hasRedirect {
 		return ""
 	}
 	return shellUnquote(quoted)
@@ -292,7 +292,7 @@ func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
 // remembers what it was asked to do. Adding a worktree creates its directory,
 // the way git does, so a second run of the same slot finds it there.
 type fakeGit struct {
-	noRemote    bool
+	hasNoRemote bool
 	fetchErr    error
 	worktreeErr error
 	stashErr    error
@@ -369,7 +369,7 @@ func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
 }
 
 func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
-	return !fake.noRemote, nil
+	return !fake.hasNoRemote, nil
 }
 
 func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
@@ -405,8 +405,8 @@ func (fake *fakeGit) Stash(dir string, message string) (string, error) {
 }
 
 func (fake *fakeGit) BranchExists(dir string, branch string) (bool, error) {
-	_, known := fake.branchCommits[branch]
-	return known || fake.branchesPut[dir+" "+branch], nil
+	_, isKnown := fake.branchCommits[branch]
+	return isKnown || fake.branchesPut[dir+" "+branch], nil
 }
 
 func (fake *fakeGit) CommitCount(dir string, base string, tip string) (int, error) {
@@ -462,7 +462,7 @@ func (fake *fakeGit) CheckoutDetached(dir string, ref string) error {
 // ResolveCommit answers a ref the fake was told about, and every other ref
 // with testBaseSHA.
 func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
-	if commit, known := fake.refCommits[dir+" "+ref]; known {
+	if commit, isKnown := fake.refCommits[dir+" "+ref]; isKnown {
 		return git.Commit{SHA: commit, CommittedAt: testBaseCommittedAt}, nil
 	}
 	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
@@ -471,7 +471,7 @@ func (fake *fakeGit) ResolveCommit(dir string, ref string) (git.Commit, error) {
 // ResolveHeadCommit answers the commit a worktree was left on, and a worktree
 // the fake was told nothing about with testBaseSHA.
 func (fake *fakeGit) ResolveHeadCommit(dir string) (git.Commit, error) {
-	if commit, known := fake.headCommits[dir]; known {
+	if commit, isKnown := fake.headCommits[dir]; isKnown {
 		return git.Commit{SHA: commit, CommittedAt: testBaseCommittedAt}, nil
 	}
 	return git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}, nil
@@ -543,9 +543,9 @@ func branchesOf(calls []branchCall) []string {
 // of a real repo.
 type fakeDrudgerRepo struct {
 	drudgers []*Drudger
-	// lockHeld stands for another drudge command holding the lock, which is
+	// isLockHeld stands for another drudge command holding the lock, which is
 	// what a caller that would rather not wait runs into.
-	lockHeld bool
+	isLockHeld bool
 	// updates counts the writes the repo was asked to make.
 	updates int
 }
@@ -565,7 +565,7 @@ func (repo *fakeDrudgerRepo) UpdateDrudgers(projectSlug string, change func([]*D
 }
 
 func (repo *fakeDrudgerRepo) TryUpdateDrudgers(projectSlug string, change func([]*Drudger) ([]*Drudger, error)) (bool, error) {
-	if repo.lockHeld {
+	if repo.isLockHeld {
 		return false, nil
 	}
 	return true, repo.UpdateDrudgers(projectSlug, change)
@@ -1052,10 +1052,10 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 		name    string
 		outputs []string
 		errs    []error
-		// silentAgent stands for a launch that forked and died without
+		// isAgentSilent stands for a launch that forked and died without
 		// starting an agent.
-		silentAgent bool
-		wantRuns    int
+		isAgentSilent bool
+		wantRuns      int
 	}{
 		{
 			name:     "the listing fails",
@@ -1080,10 +1080,10 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			wantRuns: 2,
 		},
 		{
-			name:        "the agent never comes up",
-			outputs:     []string{sandboxListingWith(testSandbox)},
-			silentAgent: true,
-			wantRuns:    2,
+			name:          "the agent never comes up",
+			outputs:       []string{sandboxListingWith(testSandbox)},
+			isAgentSilent: true,
+			wantRuns:      2,
 		},
 	}
 
@@ -1092,10 +1092,10 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{
-				projectDir:  projectDir,
-				outputs:     testCase.outputs,
-				errs:        testCase.errs,
-				silentAgent: testCase.silentAgent,
+				projectDir:    projectDir,
+				outputs:       testCase.outputs,
+				errs:          testCase.errs,
+				isAgentSilent: testCase.isAgentSilent,
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
 
@@ -1117,11 +1117,11 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 			// A launch creates the run directory before the sandbox steps, so
 			// it is there whatever fails afterwards.
-			exists, err := common.Exists(common.RunDir(projectDir, string(taskToRun.ID)))
+			isPresent, err := common.Exists(common.RunDir(projectDir, string(taskToRun.ID)))
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
-			if !exists {
+			if !isPresent {
 				t.Error("expected the run directory of the claimed slot to be there")
 			}
 		})
@@ -1279,10 +1279,10 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 					t.Errorf("expected the warning to name the config key, got %q", warnings)
 				}
 				for _, entry := range testCase.pool {
-					named := strings.Contains(warnings, entry.Sandbox)
+					isNamed := strings.Contains(warnings, entry.Sandbox)
 					wanted := slices.Contains(testCase.wantNamed, entry.Slot)
-					if named != wanted {
-						t.Errorf("expected slot %d named in the warning: %t, got %t (warning %q)", entry.Slot, wanted, named, warnings)
+					if isNamed != wanted {
+						t.Errorf("expected slot %d named in the warning: %t, got %t (warning %q)", entry.Slot, wanted, isNamed, warnings)
 					}
 				}
 			}
@@ -1653,11 +1653,11 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	finished, err := sessionFinished(runDir)
+	hasFinished, err := sessionFinished(runDir)
 	if err != nil {
 		t.Fatalf("could not check the run directory: %v", err)
 	}
-	if finished {
+	if hasFinished {
 		t.Error("expected the exit code of the previous run to be gone")
 	}
 
@@ -1680,12 +1680,12 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 	cases := []struct {
 		name   string
 		status task.TaskStatus
-		// finishedRun says whether the task has a run directory holding a run
+		// hasFinishedRun says whether the task has a run directory holding a run
 		// that is over, which is what an in-progress task needs to start again.
-		finishedRun bool
-		wantErr     bool
+		hasFinishedRun bool
+		wantErr        bool
 	}{
-		{name: "reruns an in-progress task whose Session is over", status: task.StatusInProgress, finishedRun: true},
+		{name: "reruns an in-progress task whose Session is over", status: task.StatusInProgress, hasFinishedRun: true},
 		{name: "reruns a fucked-up task", status: task.StatusFuckedUp},
 		{name: "refuses a draft task", status: task.StatusDraft, wantErr: true},
 		{name: "refuses a todo task", status: task.StatusTodo, wantErr: true},
@@ -1697,7 +1697,7 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRerun := todoTask()
 			taskToRerun.Status = testCase.status
-			if testCase.finishedRun {
+			if testCase.hasFinishedRun {
 				finishSession(t, projectDir, taskToRerun.ID)
 			}
 
@@ -2052,10 +2052,10 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 		// it exited with. noExitFile stands for a Session that is still going.
 		stream []string
 		exit   string
-		// noRunDir stands for a claim whose run directory was never created.
-		noRunDir bool
-		// lockHeld stands for another drudge command holding the Drudgers lock.
-		lockHeld bool
+		// hasNoRunDir stands for a claim whose run directory was never created.
+		hasNoRunDir bool
+		// isLockHeld stands for another drudge command holding the Drudgers lock.
+		isLockHeld bool
 
 		// wantTask is the task the Drudger of slot 1 still holds, empty when
 		// the slot was freed.
@@ -2086,18 +2086,18 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			wantAgent: AgentUnchecked,
 		},
 		{
-			name:      "a claim with no run directory is left alone",
-			noRunDir:  true,
-			wantTask:  busyTaskID(1),
-			wantAgent: AgentUnchecked,
+			name:        "a claim with no run directory is left alone",
+			hasNoRunDir: true,
+			wantTask:    busyTaskID(1),
+			wantAgent:   AgentUnchecked,
 		},
 		{
-			name:      "a list that cannot take the lock reports what it read",
-			stream:    []string{initEvent, resultEvent},
-			exit:      "0\n",
-			lockHeld:  true,
-			wantTask:  busyTaskID(1),
-			wantAgent: AgentUnchecked,
+			name:       "a list that cannot take the lock reports what it read",
+			stream:     []string{initEvent, resultEvent},
+			exit:       "0\n",
+			isLockHeld: true,
+			wantTask:   busyTaskID(1),
+			wantAgent:  AgentUnchecked,
 		},
 	}
 
@@ -2109,7 +2109,7 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			claimed.SandboxHealth = SandboxUsable
 			claimed.LastChecked = claimedAt
 
-			if !testCase.noRunDir {
+			if !testCase.hasNoRunDir {
 				runDir := common.RunDir(projectDir, string(claimed.TaskID))
 				writeStream(t, runDir, testCase.stream...)
 				if testCase.exit != noExitFile {
@@ -2120,7 +2120,7 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			pool := []*Drudger{idleDrudger(2), claimed}
 			commands := &fakeCommandRunner{}
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
-			service.drudgers.lockHeld = testCase.lockHeld
+			service.drudgers.isLockHeld = testCase.isLockHeld
 
 			var listed []*Drudger
 			var err error
@@ -2170,8 +2170,8 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 
 			// A record that was not re-examined keeps the timestamp it had,
 			// because restamping it would claim a look that never happened.
-			looked := recorded.LastChecked.After(claimedAt)
-			if looked != testCase.wantLooked {
+			hasLooked := recorded.LastChecked.After(claimedAt)
+			if hasLooked != testCase.wantLooked {
 				t.Errorf("expected re-examined to be %v, got last checked %s against a claim at %s", testCase.wantLooked, recorded.LastChecked, claimedAt)
 			}
 
@@ -2190,8 +2190,8 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 		// it exited with. noExitFile stands for a Session that has not ended.
 		stream []string
 		exit   string
-		// noRunDir stands for a claim whose run directory was never created.
-		noRunDir bool
+		// hasNoRunDir stands for a claim whose run directory was never created.
+		hasNoRunDir bool
 		// heldFor is how long the slot has been claimed. It defaults to an
 		// hour, which is well past the grace period.
 		heldFor time.Duration
@@ -2245,19 +2245,19 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 			wantAgent: AgentUnchecked,
 		},
 		{
-			name:       "a claim with no run directory loses its slot",
-			noRunDir:   true,
-			listing:    sandboxListingWith(testSandbox),
-			wantReason: stuckNoRunDirectory,
-			wantAgent:  AgentUnchecked,
+			name:        "a claim with no run directory loses its slot",
+			hasNoRunDir: true,
+			listing:     sandboxListingWith(testSandbox),
+			wantReason:  stuckNoRunDirectory,
+			wantAgent:   AgentUnchecked,
 		},
 		{
-			name:      "a claim with no run directory yet keeps its slot",
-			noRunDir:  true,
-			heldFor:   time.Second,
-			listing:   sandboxListingWith(testSandbox),
-			wantHolds: true,
-			wantAgent: AgentUnchecked,
+			name:        "a claim with no run directory yet keeps its slot",
+			hasNoRunDir: true,
+			heldFor:     time.Second,
+			listing:     sandboxListingWith(testSandbox),
+			wantHolds:   true,
+			wantAgent:   AgentUnchecked,
 		},
 		{
 			name:      "a Session that has ended frees its slot the ordinary way",
@@ -2282,7 +2282,7 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 			claimed.SandboxHealth = SandboxUsable
 			claimed.LastChecked = claimedAt
 
-			if !testCase.noRunDir {
+			if !testCase.hasNoRunDir {
 				runDir := common.RunDir(projectDir, string(claimed.TaskID))
 				writeStream(t, runDir, testCase.stream...)
 				if testCase.exit != noExitFile {
@@ -2379,11 +2379,11 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 
 	// The run directory holds what the dead agent wrote, and a reclaim does
 	// not touch it.
-	present, err := common.Exists(runDir)
+	isPresent, err := common.Exists(runDir)
 	if err != nil {
 		t.Fatalf("could not check the run directory: %v", err)
 	}
-	if !present {
+	if !isPresent {
 		t.Error("expected the run directory to be left where it is")
 	}
 }

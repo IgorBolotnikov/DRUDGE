@@ -56,11 +56,11 @@ var SetupCmd = &Cmd{
 			},
 		}
 
-		wrote, err := common.WriteJSONIfNotExists(configPath, globalCfg)
+		didWrite, err := common.WriteJSONIfNotExists(configPath, globalCfg)
 		if err != nil {
 			return err
 		}
-		if wrote {
+		if didWrite {
 			fmt.Printf("Created %s\n", configPath)
 		} else {
 			fmt.Printf("Config already exists at %s, skipping\n", configPath)
@@ -72,11 +72,11 @@ var SetupCmd = &Cmd{
 			"theme":     theme.DefaultTheme(),
 			"overrides": map[string]any{},
 		}
-		wrote, err = common.WriteJSONIfNotExists(themePath, themeCfg)
+		didWrite, err = common.WriteJSONIfNotExists(themePath, themeCfg)
 		if err != nil {
 			return err
 		}
-		if wrote {
+		if didWrite {
 			fmt.Printf("Created %s\n", themePath)
 		} else {
 			fmt.Printf("Theme config already exists at %s, skipping\n", themePath)

@@ -36,19 +36,19 @@ func TestDrudgerService_RemoveRun(t *testing.T) {
 
 			service := newTestService(taskToRemove)
 
-			hadRun, err := service.RemoveRun(taskToRemove.ID)
+			hasRun, err := service.RemoveRun(taskToRemove.ID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if hadRun != testCase.wantRun {
-				t.Errorf("expected a run directory to be reported: %v, got %v", testCase.wantRun, hadRun)
+			if hasRun != testCase.wantRun {
+				t.Errorf("expected a run directory to be reported: %v, got %v", testCase.wantRun, hasRun)
 			}
 
-			left, err := common.Exists(runDir)
+			isLeft, err := common.Exists(runDir)
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
-			if left {
+			if isLeft {
 				t.Error("expected the run directory to be gone")
 			}
 		})

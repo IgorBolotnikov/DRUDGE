@@ -468,11 +468,11 @@ func TestStash_TakesEverythingTheAgentLeft(t *testing.T) {
 	if commit != revisionOf(t, repo, "refs/stash") {
 		t.Errorf("expected the commit of the stash, got %q", commit)
 	}
-	dirty, err := adapter.IsDirty(repo)
+	isDirty, err := adapter.IsDirty(repo)
 	if err != nil {
 		t.Fatalf("IsDirty: %v", err)
 	}
-	if dirty {
+	if isDirty {
 		t.Error("expected the work tree to be clean after the stash")
 	}
 	if _, err := os.Stat(filepath.Join(repo, "notes.txt")); !os.IsNotExist(err) {
@@ -558,14 +558,14 @@ func TestCommitCount(t *testing.T) {
 		// commits is how many commits are made on the branch after it is cut
 		// from main.
 		commits int
-		// moveBase says whether main moves on after the branch was cut.
-		moveBase bool
-		want     int
+		// shouldMoveBase says whether main moves on after the branch was cut.
+		shouldMoveBase bool
+		want           int
 	}{
 		{name: "a branch holding nothing of its own", commits: 0, want: 0},
 		{name: "a branch holding two commits", commits: 2, want: 2},
-		{name: "a branch left behind by the default branch", commits: 0, moveBase: true, want: 0},
-		{name: "a branch holding one commit while the default branch moved", commits: 1, moveBase: true, want: 1},
+		{name: "a branch left behind by the default branch", commits: 0, shouldMoveBase: true, want: 0},
+		{name: "a branch holding one commit while the default branch moved", commits: 1, shouldMoveBase: true, want: 1},
 	}
 
 	for _, test := range tests {
@@ -576,7 +576,7 @@ func TestCommitCount(t *testing.T) {
 				commitFile(t, repo, fmt.Sprintf("work-%d.txt", index), "work")
 			}
 			runGit(t, repo, "switch", "main")
-			if test.moveBase {
+			if test.shouldMoveBase {
 				commitFile(t, repo, "other.txt", "other")
 			}
 
@@ -865,7 +865,7 @@ func TestDeleteBranch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DeleteBranch: %v", err)
 			}
-			if exists, _ := newTestAdapter().BranchExists(repo, "drudge/task-1"); exists {
+			if isPresent, _ := newTestAdapter().BranchExists(repo, "drudge/task-1"); isPresent {
 				t.Error("expected the branch to be gone")
 			}
 		})

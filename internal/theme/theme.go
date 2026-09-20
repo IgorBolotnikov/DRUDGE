@@ -128,12 +128,12 @@ func Load(name string) (*Theme, error) {
 	cfgPath := common.ThemeConfigPath(home)
 	var cfg config
 
-	exists, statErr := common.Exists(cfgPath)
+	isPresent, statErr := common.Exists(cfgPath)
 	if statErr != nil {
 		return nil, fmt.Errorf("could not read theme config: %w", statErr)
 	}
 
-	if exists {
+	if isPresent {
 		if err := common.ReadJSON(cfgPath, &cfg); err != nil {
 			return nil, fmt.Errorf("could not parse theme config: %w", err)
 		}

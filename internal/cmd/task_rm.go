@@ -21,7 +21,7 @@ func taskRemove(args []string) error {
 		return nil
 	}
 
-	taskID, force, err := parseTaskRemoveArgs(args)
+	taskID, isForced, err := parseTaskRemoveArgs(args)
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func taskRemove(args []string) error {
 		return err
 	}
 
-	return deps.tasks.RemoveTask(deps.localCfg.ProjectSlug, taskID, force, deps.drudger, confirmTaskRemoval)
+	return deps.tasks.RemoveTask(deps.localCfg.ProjectSlug, taskID, isForced, deps.drudger, confirmTaskRemoval)
 }
 
 // confirmTaskRemoval asks the user whether a task should go.
@@ -42,12 +42,12 @@ func confirmTaskRemoval(taskToRemove *task.Task) (bool, error) {
 // parseTaskRemoveArgs reads the task id and the force flag a removal takes.
 func parseTaskRemoveArgs(args []string) (task.TaskID, bool, error) {
 	var taskID string
-	force := false
+	isForced := false
 
 	for _, arg := range args {
 		switch {
 		case arg == forceFlag || arg == forceFlagShort:
-			force = true
+			isForced = true
 		case strings.HasPrefix(arg, "-"):
 			return "", false, fmt.Errorf("unknown flag %q, %s", arg, taskRmUsage)
 		case taskID == "":
@@ -61,5 +61,5 @@ func parseTaskRemoveArgs(args []string) (task.TaskID, bool, error) {
 		return "", false, fmt.Errorf("task ID is required, %s", taskRmUsage)
 	}
 
-	return task.TaskID(taskID), force, nil
+	return task.TaskID(taskID), isForced, nil
 }

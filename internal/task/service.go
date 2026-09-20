@@ -81,9 +81,9 @@ func (service *TaskService) UpdateTask(projectSlug string, id TaskID, change fun
 }
 
 // TryUpdateTask updates a task the way UpdateTask does and gives up when
-// another command holds the lock on it. stored says whether the task was
+// another command holds the lock on it. isStored says whether the task was
 // written back.
-func (service *TaskService) TryUpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) (stored bool, err error) {
+func (service *TaskService) TryUpdateTask(projectSlug string, id TaskID, change func(taskToUpdate *Task) error) (isStored bool, err error) {
 	if id == "" {
 		return false, ErrNoTaskID
 	}

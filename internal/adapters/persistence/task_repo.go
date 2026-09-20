@@ -132,8 +132,8 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	if taskToWrite.SessionID != "" {
 		metadata[metaKeySessionID] = taskToWrite.SessionID
 	}
-	if taskToWrite.SessionFailed {
-		metadata[metaKeySessionFailed] = strconv.FormatBool(taskToWrite.SessionFailed)
+	if taskToWrite.HasSessionFailed {
+		metadata[metaKeySessionFailed] = strconv.FormatBool(taskToWrite.HasSessionFailed)
 	}
 	if taskToWrite.SessionResult != "" {
 		metadata[metaKeySessionResult] = taskToWrite.SessionResult
@@ -230,7 +230,7 @@ func readLandings(metadata map[string]string) map[string]task.Landing {
 // empty prefix.
 func splitLandingKey(key string) (repository string, prefix string) {
 	for _, candidate := range landingKeyPrefixes {
-		if name, found := strings.CutPrefix(key, candidate); found {
+		if name, hasPrefix := strings.CutPrefix(key, candidate); hasPrefix {
 			return name, candidate
 		}
 	}
@@ -268,7 +268,7 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 		t.SessionID = sessionID
 	}
 	if sessionFailed, ok := metadata[metaKeySessionFailed]; ok {
-		t.SessionFailed, _ = strconv.ParseBool(sessionFailed)
+		t.HasSessionFailed, _ = strconv.ParseBool(sessionFailed)
 	}
 	if sessionResult, ok := metadata[metaKeySessionResult]; ok {
 		t.SessionResult = sessionResult
@@ -284,7 +284,7 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 		t.SessionCostUSD, _ = strconv.ParseFloat(sessionCostUSD, 64)
 	}
 	for key, value := range metadata {
-		if repository, found := strings.CutPrefix(key, metaKeyStashPrefix); found {
+		if repository, hasPrefix := strings.CutPrefix(key, metaKeyStashPrefix); hasPrefix {
 			t.RecordStash(repository, value)
 		}
 	}
@@ -314,11 +314,11 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error) {
 	tasksDir := r.taskDir()
 
-	exists, err := common.Exists(tasksDir)
+	isPresent, err := common.Exists(tasksDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not check tasks directory: %w", err)
 	}
-	if !exists {
+	if !isPresent {
 		return nil, nil
 	}
 
@@ -508,25 +508,25 @@ func (r *FileTaskRepository) UpdateTask(projectSlug string, id task.TaskID, chan
 
 // TryUpdateTask updates a task the way UpdateTask does, and gives up when
 // another process holds the lock on it.
-func (r *FileTaskRepository) TryUpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) (stored bool, err error) {
+func (r *FileTaskRepository) TryUpdateTask(projectSlug string, id task.TaskID, change func(*task.Task) error) (isStored bool, err error) {
 	return r.updateTask(id, change, giveUpOnLock)
 }
 
-// updateTask runs one read, change and write of a task under its lock. stored
+// updateTask runs one read, change and write of a task under its lock. isStored
 // says whether it got all the way through, which it always does when it was
 // told to wait for the lock.
-func (r *FileTaskRepository) updateTask(id task.TaskID, change func(*task.Task) error, wait bool) (stored bool, err error) {
+func (r *FileTaskRepository) updateTask(id task.TaskID, change func(*task.Task) error, shouldWait bool) (isStored bool, err error) {
 	// The task is looked up before the lock is taken, so an id that names no
 	// task is reported without leaving a lock file behind for it.
 	if _, err := r.exactTaskFile(id); err != nil {
 		return false, err
 	}
 
-	unlock, gotLock, err := lockFile(r.taskLockPath(id), wait)
+	unlock, hasLock, err := lockFile(r.taskLockPath(id), shouldWait)
 	if err != nil {
 		return false, err
 	}
-	if !gotLock {
+	if !hasLock {
 		return false, nil
 	}
 	defer unlock()
@@ -578,7 +578,7 @@ func (r *FileTaskRepository) renameAfterTitleChange(found taskFile, title string
 // the lock guarding it. accept runs against the stored task under that lock,
 // and a task accept refuses stays where it is. It gives up when another
 // process holds the lock.
-func (r *FileTaskRepository) DeleteTask(projectSlug string, id task.TaskID, accept func(*task.Task) error) (removed bool, err error) {
+func (r *FileTaskRepository) DeleteTask(projectSlug string, id task.TaskID, accept func(*task.Task) error) (isRemoved bool, err error) {
 	// The task is looked up before the lock is taken, so an id that names no
 	// task is reported without leaving a lock file behind for it.
 	if _, err := r.exactTaskFile(id); err != nil {
@@ -586,11 +586,11 @@ func (r *FileTaskRepository) DeleteTask(projectSlug string, id task.TaskID, acce
 	}
 
 	lockPath := r.taskLockPath(id)
-	unlock, gotLock, err := lockFile(lockPath, giveUpOnLock)
+	unlock, hasLock, err := lockFile(lockPath, giveUpOnLock)
 	if err != nil {
 		return false, err
 	}
-	if !gotLock {
+	if !hasLock {
 		return false, nil
 	}
 	defer unlock()

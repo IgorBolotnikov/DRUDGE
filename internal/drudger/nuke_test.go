@@ -23,10 +23,10 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 	removalFailed := errors.New("sbx said no")
 
 	cases := []struct {
-		name  string
-		pool  []*Drudger
-		slot  int
-		force bool
+		name     string
+		pool     []*Drudger
+		slot     int
+		isForced bool
 		// finished are the Sessions that have written their exit file before
 		// the nuke.
 		finished  []task.TaskID
@@ -68,7 +68,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			name:           "forcing a working Drudger kills its agent",
 			pool:           []*Drudger{busyDrudger(1)},
 			slot:           1,
-			force:          true,
+			isForced:       true,
 			wantRemoved:    testSandboxOfSlot(1),
 			wantSlotsLeft:  []int{},
 			wantTaskStatus: task.StatusFuckedUp,
@@ -108,7 +108,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			name:           "forcing a Drudger whose task moved on leaves the task alone",
 			pool:           []*Drudger{busyDrudger(1)},
 			slot:           1,
-			force:          true,
+			isForced:       true,
 			taskStatus:     task.StatusTodo,
 			wantRemoved:    testSandboxOfSlot(1),
 			wantSlotsLeft:  []int{},
@@ -118,7 +118,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			name:            "a failed removal of a forced Drudger leaves its task alone",
 			pool:            []*Drudger{busyDrudger(1)},
 			slot:            1,
-			force:           true,
+			isForced:        true,
 			removeErr:       removalFailed,
 			wantRemoved:     testSandboxOfSlot(1),
 			wantSlotsLeft:   []int{1},
@@ -147,7 +147,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			)
 
 			var err error
-			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, testCase.slot, testCase.force) })
+			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, testCase.slot, testCase.isForced) })
 
 			if testCase.wantErrContains == "" && err != nil {
 				t.Fatalf("unexpected error: %v", err)

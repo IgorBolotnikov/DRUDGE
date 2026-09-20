@@ -72,14 +72,14 @@ func (repo *FileDrudgerRepository) UpdateDrudgers(projectSlug string, change fun
 // TryUpdateDrudgers runs change the way UpdateDrudgers does, but gives up
 // when someone else holds the lock. It reports whether the Drudgers were
 // stored.
-func (repo *FileDrudgerRepository) TryUpdateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error)) (stored bool, err error) {
+func (repo *FileDrudgerRepository) TryUpdateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error)) (isStored bool, err error) {
 	return repo.updateDrudgers(projectSlug, change, giveUpOnLock)
 }
 
 // updateDrudgers reads the project's Drudgers under the lock, hands them to
-// change and writes back what it returns. stored says whether it got all the
+// change and writes back what it returns. isStored says whether it got all the
 // way through, which it always does when it was told to wait for the lock.
-func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error), wait bool) (stored bool, err error) {
+func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change func([]*drudger.Drudger) ([]*drudger.Drudger, error), shouldWait bool) (isStored bool, err error) {
 	projectDir, err := repo.resolveProjectDir(projectSlug)
 	if err != nil {
 		return false, err
@@ -88,11 +88,11 @@ func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change fun
 		return false, err
 	}
 
-	unlock, gotLock, err := lockFile(filepath.Join(projectDir, drudgersLockFileName), wait)
+	unlock, hasLock, err := lockFile(filepath.Join(projectDir, drudgersLockFileName), shouldWait)
 	if err != nil {
 		return false, err
 	}
-	if !gotLock {
+	if !hasLock {
 		return false, nil
 	}
 	defer unlock()
@@ -118,11 +118,11 @@ func (repo *FileDrudgerRepository) updateDrudgers(projectSlug string, change fun
 // readDrudgersFile parses the Drudgers from a file ans returns their pool.
 // If file is missing, it returns nil which also means a pool is empty.
 func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
-	exists, err := common.Exists(path)
+	isPresent, err := common.Exists(path)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
+	if !isPresent {
 		return nil, nil
 	}
 

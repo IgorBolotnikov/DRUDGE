@@ -107,7 +107,7 @@ func taskRunLines(taskToShow *task.Task) []string {
 			taskLine(turnsLabel, strconv.Itoa(taskToShow.SessionTurns)),
 			taskLine(durationLabel, taskToShow.SessionDuration.Round(time.Second).String()),
 			taskLine(costLabel, fmt.Sprintf("$%.4f", taskToShow.SessionCostUSD)),
-			taskLine(flaggedLabel, yesOrNo(taskToShow.SessionFailed)),
+			taskLine(flaggedLabel, yesOrNo(taskToShow.HasSessionFailed)),
 		)
 		said = textBlock("The agent said:", taskToShow.SessionResult)
 	case taskToShow.RunFinished():
@@ -184,8 +184,8 @@ func orNone(value string) string {
 	return value
 }
 
-func yesOrNo(value bool) string {
-	if value {
+func yesOrNo(isYes bool) string {
+	if isYes {
 		return yesLabel
 	}
 	return noLabel

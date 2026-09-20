@@ -81,7 +81,7 @@ func HasForceFlag(args []string) bool {
 
 // ConfirmDeletion asks the user to confirm deleting a resource and reports
 // what they answered. Anything but y or Y calls the deletion off.
-func ConfirmDeletion(resource string) (confirmed bool, err error) {
+func ConfirmDeletion(resource string) (isConfirmed bool, err error) {
 	fmt.Printf("This will permanently delete %s\nAre you sure? [y/N]: ", resource)
 	var response string
 	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {

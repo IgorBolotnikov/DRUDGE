@@ -18,21 +18,21 @@ var CleanupCmd = &Cmd{
 
 		drudgeDir := common.DrudgeDir(home)
 
-		exists, err := common.Exists(drudgeDir)
+		isPresent, err := common.Exists(drudgeDir)
 		if err != nil {
 			return err
 		}
-		if !exists {
+		if !isPresent {
 			fmt.Printf("Nothing to clean up, %s does not exist\n", drudgeDir)
 			return nil
 		}
 
 		if !HasForceFlag(args) {
-			confirmed, err := ConfirmDeletion(drudgeDir)
+			isConfirmed, err := ConfirmDeletion(drudgeDir)
 			if err != nil {
 				return err
 			}
-			if !confirmed {
+			if !isConfirmed {
 				fmt.Println("Aborted")
 				return nil
 			}

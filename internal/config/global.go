@@ -143,14 +143,14 @@ func Load() (*GlobalConfig, error) {
 
 	cfgPath := common.GlobalConfigPath(home)
 
-	exists, statErr := common.Exists(cfgPath)
+	isPresent, statErr := common.Exists(cfgPath)
 	if statErr != nil {
 		return DefaultConfig(), nil
 	}
 
 	var cfg GlobalConfig
 
-	if exists {
+	if isPresent {
 		if err := common.ReadJSON(cfgPath, &cfg); err != nil {
 			return nil, fmt.Errorf("could not parse global config: %w", err)
 		}

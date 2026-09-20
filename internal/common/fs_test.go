@@ -68,13 +68,13 @@ func TestFormatFrontMatter_Sorted(t *testing.T) {
 
 	lines := strings.Split(result, "\n")
 	var metaLines []string
-	inMeta := false
+	isInMeta := false
 	for _, line := range lines {
 		if line == "---" {
-			inMeta = !inMeta
+			isInMeta = !isInMeta
 			continue
 		}
-		if inMeta && line != "" {
+		if isInMeta && line != "" {
 			metaLines = append(metaLines, line)
 		}
 	}
@@ -525,10 +525,10 @@ func TestWriteFile_ConcurrentReadSeesOneWholeVersion(t *testing.T) {
 	}()
 
 	var badRead string
-	for writing := true; writing; {
+	for isWriting := true; isWriting; {
 		select {
 		case <-writesDone:
-			writing = false
+			isWriting = false
 		default:
 		}
 

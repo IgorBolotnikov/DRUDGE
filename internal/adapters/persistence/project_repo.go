@@ -54,11 +54,11 @@ func (r *FileProjectRepository) DeleteProject(slug string) error {
 		return err
 	}
 
-	exists, err := common.Exists(projectDir)
+	isPresent, err := common.Exists(projectDir)
 	if err != nil {
 		return err
 	}
-	if !exists {
+	if !isPresent {
 		fmt.Printf("Nothing to delete, %q does not exist\n", slug)
 		return nil
 	}
@@ -106,9 +106,9 @@ func (r *FileProjectRepository) RenameProject(slug string, newName string) error
 		return err
 	}
 
-	if exists, err := common.Exists(newDir); err != nil {
+	if isPresent, err := common.Exists(newDir); err != nil {
 		return err
-	} else if exists {
+	} else if isPresent {
 		return fmt.Errorf("project with slug %q already exists, cannot rename", newSlug)
 	}
 

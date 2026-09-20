@@ -12,52 +12,52 @@ import (
 // the run directory both come from it.
 type fakeSessionKeeper struct {
 	fakeSessionGuard
-	// hadRun is what the keeper reports about the run directory of the task.
-	hadRun     bool
+	// hasRun is what the keeper reports about the run directory of the task.
+	hasRun     bool
 	runFailure error
 	runRemoved TaskID
 }
 
 func (keeper *fakeSessionKeeper) RemoveRun(taskID TaskID) (bool, error) {
 	keeper.runRemoved = taskID
-	return keeper.hadRun, keeper.runFailure
+	return keeper.hasRun, keeper.runFailure
 }
 
 // fakeConfirmation answers a removal the way a user would, and records the
 // task it was asked about.
 type fakeConfirmation struct {
-	approved bool
-	failure  error
-	asked    TaskID
+	isApproved bool
+	failure    error
+	asked      TaskID
 }
 
 func (confirmation *fakeConfirmation) answer(taskToRemove *Task) (bool, error) {
 	confirmation.asked = taskToRemove.ID
-	return confirmation.approved, confirmation.failure
+	return confirmation.isApproved, confirmation.failure
 }
 
 func TestTaskService_RemoveTask(t *testing.T) {
 	cases := []struct {
-		name  string
-		force bool
+		name     string
+		isForced bool
 		// approved is what the user answers when the removal asks.
-		approved bool
-		// hadRun says whether the task left a run directory behind.
-		hadRun bool
+		isApproved bool
+		// hasRun says whether the task left a run directory behind.
+		hasRun bool
 
 		wantRemoved bool
 		wantAsked   bool
 	}{
 		{
 			name:        "a confirmed removal",
-			approved:    true,
+			isApproved:  true,
 			wantRemoved: true,
 			wantAsked:   true,
 		},
 		{
 			name:        "a confirmed removal of a task that ran",
-			approved:    true,
-			hadRun:      true,
+			isApproved:  true,
+			hasRun:      true,
 			wantRemoved: true,
 			wantAsked:   true,
 		},
@@ -67,7 +67,7 @@ func TestTaskService_RemoveTask(t *testing.T) {
 		},
 		{
 			name:        "a forced removal",
-			force:       true,
+			isForced:    true,
 			wantRemoved: true,
 		},
 	}
@@ -76,23 +76,23 @@ func TestTaskService_RemoveTask(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
 			service := NewTaskService(repo, common.NewLogger(""))
-			keeper := &fakeSessionKeeper{hadRun: testCase.hadRun}
-			confirmation := &fakeConfirmation{approved: testCase.approved}
+			keeper := &fakeSessionKeeper{hasRun: testCase.hasRun}
+			confirmation := &fakeConfirmation{isApproved: testCase.isApproved}
 
-			err := service.RemoveTask(testProjectSlug, editableTaskID, testCase.force, keeper, confirmation.answer)
+			err := service.RemoveTask(testProjectSlug, editableTaskID, testCase.isForced, keeper, confirmation.answer)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
 			_, lookupErr := repo.GetTask(testProjectSlug, editableTaskID)
-			removed := lookupErr != nil
-			if removed != testCase.wantRemoved {
-				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, removed)
+			isRemoved := lookupErr != nil
+			if isRemoved != testCase.wantRemoved {
+				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, isRemoved)
 			}
 
-			asked := confirmation.asked != ""
-			if asked != testCase.wantAsked {
-				t.Errorf("expected the removal to ask the user: %v, got %v", testCase.wantAsked, asked)
+			wasAsked := confirmation.asked != ""
+			if wasAsked != testCase.wantAsked {
+				t.Errorf("expected the removal to ask the user: %v, got %v", testCase.wantAsked, wasAsked)
 			}
 
 			wantRunRemoved := TaskID("")
@@ -130,7 +130,7 @@ func TestTaskService_RemoveTask_RefusesATaskAnAgentIsWorkingOn(t *testing.T) {
 
 	keeper := &fakeSessionKeeper{}
 	keeper.refusal = errors.New("Drudger 1 (drudge-claude-demo-1) is still working on this task")
-	confirmation := &fakeConfirmation{approved: true}
+	confirmation := &fakeConfirmation{isApproved: true}
 
 	err := service.RemoveTask(testProjectSlug, editableTaskID, false, keeper, confirmation.answer)
 	if err == nil {
@@ -156,7 +156,7 @@ func TestTaskService_RemoveTask_TakesATaskWhoseSessionHasFinished(t *testing.T) 
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
-	keeper := &fakeSessionKeeper{hadRun: true}
+	keeper := &fakeSessionKeeper{hasRun: true}
 	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

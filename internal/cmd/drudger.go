@@ -178,7 +178,7 @@ func drudgerNuke(args []string) error {
 		return nil
 	}
 
-	slot, force, err := parseDrudgerNukeArgs(args)
+	slot, isForced, err := parseDrudgerNukeArgs(args)
 	if err != nil {
 		return err
 	}
@@ -188,17 +188,17 @@ func drudgerNuke(args []string) error {
 		return err
 	}
 
-	return deps.drudger.NukeDrudger(deps.localCfg.ProjectSlug, slot, force)
+	return deps.drudger.NukeDrudger(deps.localCfg.ProjectSlug, slot, isForced)
 }
 
 func parseDrudgerNukeArgs(args []string) (int, bool, error) {
 	var slot string
-	force := false
+	isForced := false
 
 	for _, arg := range args {
 		switch {
 		case arg == forceFlag || arg == forceFlagShort:
-			force = true
+			isForced = true
 		case strings.HasPrefix(arg, "-"):
 			return 0, false, fmt.Errorf("unknown flag %q, %s", arg, drudgerNukeUsage)
 		case slot == "":
@@ -216,7 +216,7 @@ func parseDrudgerNukeArgs(args []string) (int, bool, error) {
 	if err != nil || parsed < 1 {
 		return 0, false, fmt.Errorf("%q is not a Drudger slot, slots are whole numbers starting at 1", slot)
 	}
-	return parsed, force, nil
+	return parsed, isForced, nil
 }
 
 func occupyingTask(entry *drudger.Drudger) string {

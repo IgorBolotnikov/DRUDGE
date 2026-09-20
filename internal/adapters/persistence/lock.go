@@ -22,23 +22,23 @@ const (
 // callback. If the process dies, then lock is released by the kernel.
 //
 // With waitForLock it waits for a lock someone else holds and always comes
-// back with it. With giveUpOnLock it comes back at once, and gotLock says
+// back with it. With giveUpOnLock it comes back at once, and hasLock says
 // whether the lock was free. A caller that did not get the lock gets a nil
 // release callback.
-func lockFile(path string, wait bool) (unlock func(), gotLock bool, err error) {
+func lockFile(path string, shouldWait bool) (unlock func(), hasLock bool, err error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, common.DefaultFilePerm)
 	if err != nil {
 		return nil, false, fmt.Errorf("could not open the lock file %s: %w", path, err)
 	}
 
 	lockMode := syscall.LOCK_EX
-	if !wait {
+	if !shouldWait {
 		lockMode |= syscall.LOCK_NB
 	}
 
 	if err := syscall.Flock(int(file.Fd()), lockMode); err != nil {
 		file.Close()
-		if !wait && errors.Is(err, syscall.EWOULDBLOCK) {
+		if !shouldWait && errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("could not lock %s: %w", path, err)

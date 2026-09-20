@@ -146,11 +146,11 @@ func projectDelete(args []string) error {
 	name := proj.Name
 
 	if !HasForceFlag(args) {
-		confirmed, err := ConfirmDeletion(fmt.Sprintf("project %q", name))
+		isConfirmed, err := ConfirmDeletion(fmt.Sprintf("project %q", name))
 		if err != nil {
 			return err
 		}
-		if !confirmed {
+		if !isConfirmed {
 			fmt.Println("Aborted")
 			return nil
 		}

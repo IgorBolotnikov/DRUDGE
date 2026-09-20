@@ -54,13 +54,13 @@ func TestParseTaskEditArgs(t *testing.T) {
 			name:        "the force flag",
 			args:        []string{"abc123", "--status", "done", "--force"},
 			wantTaskID:  "abc123",
-			wantChanges: task.EditTaskDto{Status: pointerTo(task.StatusDone), AllowManagedStatus: true},
+			wantChanges: task.EditTaskDto{Status: pointerTo(task.StatusDone), AllowsManagedStatus: true},
 		},
 		{
 			name:        "the short force flag",
 			args:        []string{"abc123", "--status", "done", "-f"},
 			wantTaskID:  "abc123",
-			wantChanges: task.EditTaskDto{Status: pointerTo(task.StatusDone), AllowManagedStatus: true},
+			wantChanges: task.EditTaskDto{Status: pointerTo(task.StatusDone), AllowsManagedStatus: true},
 		},
 		{
 			name:        "the task ID after the flags",
@@ -153,7 +153,7 @@ func showChanges(changes task.EditTaskDto) string {
 		showFlag(descriptionFlag, changes.Description),
 		showFlag(ticketFlag, changes.TicketID),
 		showFlag(statusFlag, changes.Status),
-		fmt.Sprintf("%s %v", forceFlag, changes.AllowManagedStatus),
+		fmt.Sprintf("%s %v", forceFlag, changes.AllowsManagedStatus),
 	}
 	return strings.Join(fields, ", ")
 }

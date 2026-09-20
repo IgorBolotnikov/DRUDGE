@@ -252,7 +252,7 @@ func taskRun(args []string) error {
 		return nil
 	}
 
-	taskID, dryRun, err := parseTaskRunArgs(args, runSubcommand, taskRunUsage)
+	taskID, isDryRun, err := parseTaskRunArgs(args, runSubcommand, taskRunUsage)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func taskRun(args []string) error {
 		return err
 	}
 
-	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
+	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, isDryRun)
 }
 
 // taskRerun hands a task back to a Drudger and starts it over.
@@ -278,7 +278,7 @@ func taskRerun(args []string) error {
 		return nil
 	}
 
-	taskID, dryRun, err := parseTaskRunArgs(args, rerunSubcommand, taskRerunUsage)
+	taskID, isDryRun, err := parseTaskRunArgs(args, rerunSubcommand, taskRerunUsage)
 	if err != nil {
 		return err
 	}
@@ -288,7 +288,7 @@ func taskRerun(args []string) error {
 		return err
 	}
 
-	return deps.drudger.RerunTask(deps.localCfg.ProjectSlug, taskID, dryRun)
+	return deps.drudger.RerunTask(deps.localCfg.ProjectSlug, taskID, isDryRun)
 }
 
 // taskSessionStatus reports how the last Session of a task is going.
@@ -348,12 +348,12 @@ func parseTaskIDArgs(args []string, subcommand, usage string) (task.TaskID, erro
 // the user typed.
 func parseTaskRunArgs(args []string, subcommand, usage string) (task.TaskID, bool, error) {
 	var taskID string
-	dryRun := false
+	isDryRun := false
 
 	for _, arg := range args {
 		switch {
 		case arg == dryRunFlag:
-			dryRun = true
+			isDryRun = true
 		case strings.HasPrefix(arg, "-"):
 			return "", false, fmt.Errorf("unknown flag %q, %s", arg, usage)
 		case taskID == "":
@@ -367,7 +367,7 @@ func parseTaskRunArgs(args []string, subcommand, usage string) (task.TaskID, boo
 		return "", false, fmt.Errorf("task ID is required, %s", usage)
 	}
 
-	return task.TaskID(taskID), dryRun, nil
+	return task.TaskID(taskID), isDryRun, nil
 }
 
 // invalidStatusError names a status drudge does not understand, and lists the

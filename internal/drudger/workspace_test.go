@@ -96,13 +96,13 @@ func TestDrudgerService_RunTask_CreatesAWorktreePerRepository(t *testing.T) {
 func TestDrudgerService_RunTask_CutsAWorktreeFromTheDefaultBranch(t *testing.T) {
 	cases := []struct {
 		name        string
-		noRemote    bool
+		hasNoRemote bool
 		fetchErr    error
 		wantFetched bool
 		wantRef     string
 	}{
 		{name: "a repository with a remote is fetched first", wantFetched: true, wantRef: "origin/main"},
-		{name: "a repository with no remote takes its local default branch", noRemote: true, wantRef: "main"},
+		{name: "a repository with no remote takes its local default branch", hasNoRemote: true, wantRef: "main"},
 		{name: "a fetch that fails leaves the run going", fetchErr: errors.New("could not reach origin"), wantFetched: true, wantRef: "origin/main"},
 	}
 
@@ -112,7 +112,7 @@ func TestDrudgerService_RunTask_CutsAWorktreeFromTheDefaultBranch(t *testing.T) 
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
-			service.git.noRemote = testCase.noRemote
+			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
 			var err error
@@ -238,9 +238,9 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 		name string
 		// present says whether the worktree has a directory, and registered
 		// whether the repository knows the path as a worktree.
-		present    bool
-		registered bool
-		wantHealth WorkspaceHealth
+		isPresent    bool
+		isRegistered bool
+		wantHealth   WorkspaceHealth
 		// wantInErr is empty when the run goes through.
 		wantInErr []string
 	}{
@@ -249,20 +249,20 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 			wantHealth: WorkspaceUsable,
 		},
 		{
-			name:       "the worktree the last Session left is handed over again",
-			present:    true,
-			registered: true,
-			wantHealth: WorkspaceUsable,
+			name:         "the worktree the last Session left is handed over again",
+			isPresent:    true,
+			isRegistered: true,
+			wantHealth:   WorkspaceUsable,
 		},
 		{
-			name:       "a worktree with no directory left stops the run",
-			registered: true,
-			wantHealth: WorkspaceGone,
-			wantInErr:  []string{testRepositoryName, nukeCommand + " 1"},
+			name:         "a worktree with no directory left stops the run",
+			isRegistered: true,
+			wantHealth:   WorkspaceGone,
+			wantInErr:    []string{testRepositoryName, nukeCommand + " 1"},
 		},
 		{
 			name:       "a directory the repository does not know stops the run",
-			present:    true,
+			isPresent:  true,
 			wantHealth: WorkspaceMisplaced,
 			wantInErr:  []string{testRepositoryName, nukeCommand + " 1"},
 		},
@@ -275,12 +275,12 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, taskToRun)
 			worktree := filepath.Join(slotRoot(projectDir, 1), testRepositoryName)
-			if testCase.present {
+			if testCase.isPresent {
 				if err := common.EnsureDir(worktree); err != nil {
 					t.Fatalf("could not create the worktree directory: %v", err)
 				}
 			}
-			if testCase.registered {
+			if testCase.isRegistered {
 				service.git.registerWorktree(worktree)
 			}
 

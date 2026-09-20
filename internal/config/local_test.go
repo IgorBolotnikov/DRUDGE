@@ -39,115 +39,115 @@ func writeLocalConfig(t *testing.T, raw string) {
 
 func TestLoadLocal(t *testing.T) {
 	tests := []struct {
-		name         string
-		raw          string
-		writeFile    bool
-		wantErr      bool
-		wantSlug     string
-		wantPrompt   string
-		wantDrudgers int
-		wantRepos    []Repository
+		name            string
+		raw             string
+		shouldWriteFile bool
+		wantErr         bool
+		wantSlug        string
+		wantPrompt      string
+		wantDrudgers    int
+		wantRepos       []Repository
 	}{
 		{
-			name:      "no file",
-			writeFile: false,
-			wantErr:   true,
+			name:            "no file",
+			shouldWriteFile: false,
+			wantErr:         true,
 		},
 		{
-			name:      "slug only",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project"}`,
-			wantSlug:  "test-project",
+			name:            "slug only",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project"}`,
+			wantSlug:        "test-project",
 		},
 		{
-			name:         "all fields",
-			writeFile:    true,
-			raw:          `{"projectSlug": "test-project", "promptFile": "impl.md", "maxConcurrentDrudgers": 5}`,
-			wantSlug:     "test-project",
-			wantPrompt:   "impl.md",
-			wantDrudgers: 5,
+			name:            "all fields",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "promptFile": "impl.md", "maxConcurrentDrudgers": 5}`,
+			wantSlug:        "test-project",
+			wantPrompt:      "impl.md",
+			wantDrudgers:    5,
 		},
 		{
-			name:      "missing slug",
-			writeFile: true,
-			raw:       `{"promptFile": "impl.md"}`,
-			wantErr:   true,
+			name:            "missing slug",
+			shouldWriteFile: true,
+			raw:             `{"promptFile": "impl.md"}`,
+			wantErr:         true,
 		},
 		{
-			name:      "empty slug",
-			writeFile: true,
-			raw:       `{"projectSlug": ""}`,
-			wantErr:   true,
+			name:            "empty slug",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": ""}`,
+			wantErr:         true,
 		},
 		{
-			name:      "invalid json",
-			writeFile: true,
-			raw:       `{not json`,
-			wantErr:   true,
+			name:            "invalid json",
+			shouldWriteFile: true,
+			raw:             `{not json`,
+			wantErr:         true,
 		},
 		{
-			name:      "prompt file in a subdirectory",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "promptFile": "sub/impl.md"}`,
-			wantErr:   true,
+			name:            "prompt file in a subdirectory",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "promptFile": "sub/impl.md"}`,
+			wantErr:         true,
 		},
 		{
-			name:      "prompt file escaping the prompts directory",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "promptFile": "../impl.md"}`,
-			wantErr:   true,
+			name:            "prompt file escaping the prompts directory",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "promptFile": "../impl.md"}`,
+			wantErr:         true,
 		},
 		{
-			name:      "negative Drudger limit",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "maxConcurrentDrudgers": -1}`,
-			wantErr:   true,
+			name:            "negative Drudger limit",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "maxConcurrentDrudgers": -1}`,
+			wantErr:         true,
 		},
 		{
-			name:      "no repositories key",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project"}`,
-			wantSlug:  "test-project",
-			wantRepos: nil,
+			name:            "no repositories key",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project"}`,
+			wantSlug:        "test-project",
+			wantRepos:       nil,
 		},
 		{
-			name:      "one repository",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "."}]}`,
-			wantSlug:  "test-project",
-			wantRepos: []Repository{{Path: "."}},
+			name:            "one repository",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "."}]}`,
+			wantSlug:        "test-project",
+			wantRepos:       []Repository{{Path: "."}},
 		},
 		{
-			name:      "repositories with a default branch",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "api", "defaultBranch": "trunk"}, {"path": "ui"}]}`,
-			wantSlug:  "test-project",
-			wantRepos: []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
+			name:            "repositories with a default branch",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "defaultBranch": "trunk"}, {"path": "ui"}]}`,
+			wantSlug:        "test-project",
+			wantRepos:       []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 		},
 		{
-			name:      "repository with no path",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "repositories": [{"defaultBranch": "main"}]}`,
-			wantErr:   true,
+			name:            "repository with no path",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"defaultBranch": "main"}]}`,
+			wantErr:         true,
 		},
 		{
-			name:      "repository path outside the project directory",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "../elsewhere"}]}`,
-			wantErr:   true,
+			name:            "repository path outside the project directory",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "../elsewhere"}]}`,
+			wantErr:         true,
 		},
 		{
-			name:      "absolute repository path",
-			writeFile: true,
-			raw:       `{"projectSlug": "test-project", "repositories": [{"path": "/srv/elsewhere"}]}`,
-			wantErr:   true,
+			name:            "absolute repository path",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "/srv/elsewhere"}]}`,
+			wantErr:         true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			setupLocalDir(t)
-			if test.writeFile {
+			if test.shouldWriteFile {
 				writeLocalConfig(t, test.raw)
 			}
 

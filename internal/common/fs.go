@@ -140,11 +140,11 @@ func WriteJSON(path string, v any) error {
 // WriteJSONIfNotExists writes v as JSON to path only if path doesn't already
 // exist. Returns whether it wrote the file.
 func WriteJSONIfNotExists(path string, v any) (bool, error) {
-	exists, err := Exists(path)
+	isPresent, err := Exists(path)
 	if err != nil {
 		return false, err
 	}
-	if exists {
+	if isPresent {
 		return false, nil
 	}
 	if err := WriteJSON(path, v); err != nil {

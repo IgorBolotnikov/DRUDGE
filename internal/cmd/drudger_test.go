@@ -256,7 +256,7 @@ func TestParseDrudgerNukeArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			slot, force, err := parseDrudgerNukeArgs(testCase.args)
+			slot, isForced, err := parseDrudgerNukeArgs(testCase.args)
 
 			if testCase.wantErr {
 				if err == nil {
@@ -270,8 +270,8 @@ func TestParseDrudgerNukeArgs(t *testing.T) {
 			if slot != testCase.wantSlot {
 				t.Errorf("expected slot %d, got %d", testCase.wantSlot, slot)
 			}
-			if force != testCase.wantForce {
-				t.Errorf("expected force %v, got %v", testCase.wantForce, force)
+			if isForced != testCase.wantForce {
+				t.Errorf("expected force %v, got %v", testCase.wantForce, isForced)
 			}
 		})
 	}

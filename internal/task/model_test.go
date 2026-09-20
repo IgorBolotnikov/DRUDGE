@@ -84,7 +84,7 @@ func TestTask_StartRun_ClearsTheLastRun(t *testing.T) {
 		Status:           StatusFuckedUp,
 		StartedAt:        time.Date(2025, 3, 4, 9, 0, 0, 0, time.UTC),
 		FinishedAt:       time.Date(2025, 3, 4, 9, 5, 0, 0, time.UTC),
-		SessionFailed:    true,
+		HasSessionFailed: true,
 		SessionResult:    "could not find the login form",
 		SessionTurns:     7,
 		SessionDuration:  time.Minute,

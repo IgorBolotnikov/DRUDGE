@@ -92,9 +92,9 @@ func TestTaskService_UpdateTask(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			called := false
+			wasCalled := false
 			repo := &mockRepo{updateTaskFn: func(projectSlug string, id TaskID, change func(*Task) error) error {
-				called = true
+				wasCalled = true
 				return testCase.repoErr
 			}}
 			service := NewTaskService(repo, common.NewLogger(""))
@@ -109,8 +109,8 @@ func TestTaskService_UpdateTask(t *testing.T) {
 			if !testCase.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if called != testCase.wantCall {
-				t.Errorf("expected the repository to be called: %v, got %v", testCase.wantCall, called)
+			if wasCalled != testCase.wantCall {
+				t.Errorf("expected the repository to be called: %v, got %v", testCase.wantCall, wasCalled)
 			}
 		})
 	}
@@ -123,13 +123,13 @@ func TestTaskService_TryUpdateTask_RefusesAnEmptyID(t *testing.T) {
 	}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
-	stored, err := service.TryUpdateTask("test", "", func(taskToUpdate *Task) error {
+	isStored, err := service.TryUpdateTask("test", "", func(taskToUpdate *Task) error {
 		return nil
 	})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if stored {
+	if isStored {
 		t.Error("expected nothing to be stored")
 	}
 }
@@ -329,9 +329,9 @@ func TestTaskService_GetTask_HandsTheIDToTheRepository(t *testing.T) {
 }
 
 func TestTaskService_GetTask_RefusesAnEmptyID(t *testing.T) {
-	called := false
+	wasCalled := false
 	repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
-		called = true
+		wasCalled = true
 		return nil, nil
 	}}
 	service := NewTaskService(repo, common.NewLogger(""))
@@ -340,7 +340,7 @@ func TestTaskService_GetTask_RefusesAnEmptyID(t *testing.T) {
 	if !errors.Is(err, ErrNoTaskID) {
 		t.Fatalf("expected %v, got %v", ErrNoTaskID, err)
 	}
-	if called {
+	if wasCalled {
 		t.Error("expected no lookup for an empty id")
 	}
 }

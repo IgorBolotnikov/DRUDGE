@@ -27,8 +27,8 @@ func (fake *fakeGit) IsRepositoryRoot(dir string) (bool, error) {
 
 func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
 	fake.calls++
-	branch, known := fake.branches[filepath.Clean(dir)]
-	if !known {
+	branch, isKnown := fake.branches[filepath.Clean(dir)]
+	if !isKnown {
 		return "", git.ErrNoDefaultBranch
 	}
 	return branch, nil
@@ -200,20 +200,20 @@ func TestDiscoverRepositories(t *testing.T) {
 
 func TestDefaultBranch(t *testing.T) {
 	tests := []struct {
-		name         string
-		repository   config.Repository
-		roots        []string
-		branches     map[string]string
-		want         string
-		wantErr      []string
-		gitLeftAlone bool
+		name           string
+		repository     config.Repository
+		roots          []string
+		branches       map[string]string
+		want           string
+		wantErr        []string
+		isGitLeftAlone bool
 	}{
 		{
-			name:         "the config key wins",
-			repository:   config.Repository{Path: "api", DefaultBranch: "trunk"},
-			branches:     map[string]string{"api": "main"},
-			want:         "trunk",
-			gitLeftAlone: true,
+			name:           "the config key wins",
+			repository:     config.Repository{Path: "api", DefaultBranch: "trunk"},
+			branches:       map[string]string{"api": "main"},
+			want:           "trunk",
+			isGitLeftAlone: true,
 		},
 		{
 			name:       "origin/HEAD answers",
@@ -242,7 +242,7 @@ func TestDefaultBranch(t *testing.T) {
 			service := newTestService(fake)
 
 			got, err := service.DefaultBranch(projectDir, test.repository)
-			if test.gitLeftAlone && fake.calls != 0 {
+			if test.isGitLeftAlone && fake.calls != 0 {
 				t.Errorf("git was asked %d times, want it left alone", fake.calls)
 			}
 			if len(test.wantErr) > 0 {

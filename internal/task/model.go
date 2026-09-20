@@ -47,11 +47,11 @@ type Task struct {
 
 	// What the agent reported when its run ended. All of it stays zero until
 	// drudge observes a finished run.
-	SessionFailed   bool          // Whether the agent flagged its own run as an error
-	SessionResult   string        // The last thing the agent said
-	SessionTurns    int           // How many turns the agent took
-	SessionDuration time.Duration // How long the agent worked
-	SessionCostUSD  float64       // What the run cost
+	HasSessionFailed bool          // Whether the agent flagged its own run as an error
+	SessionResult    string        // The last thing the agent said
+	SessionTurns     int           // How many turns the agent took
+	SessionDuration  time.Duration // How long the agent worked
+	SessionCostUSD   float64       // What the run cost
 
 	// Stashes is the commit of the last stash made in each repository of the
 	// workspace, keyed by repository name. A handover stashes what the run
@@ -106,7 +106,7 @@ func (taskToRun *Task) StartRun(startedAt time.Time, sessionID string) {
 	taskToRun.SessionID = sessionID
 
 	taskToRun.FinishedAt = time.Time{}
-	taskToRun.SessionFailed = false
+	taskToRun.HasSessionFailed = false
 	taskToRun.SessionResult = ""
 	taskToRun.SessionTurns = 0
 	taskToRun.SessionDuration = 0

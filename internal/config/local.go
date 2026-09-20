@@ -36,11 +36,11 @@ type Repository struct {
 func LoadLocal() (*LocalConfig, error) {
 	path := common.LocalConfigPath()
 
-	exists, err := common.Exists(path)
+	isPresent, err := common.Exists(path)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
+	if !isPresent {
 		// TODO: don't hardcode the commands inject them in the string template
 		// otherwise it'll bite us in the arse when we want to change the commands
 		return nil, fmt.Errorf("no project initialized in current directory (%s not found), run `drg project init <name>` first", path)
