@@ -46,7 +46,7 @@ const taskIDListSeparator = ","
 
 const (
 	taskUsage     = "usage: drg task <new|list|next|show|edit|rm|run|rerun|status>"
-	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>]"
+	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>] [" + parentFlag + " <id>]"
 	taskNextUsage = "usage: drg task next"
 	taskShowUsage = "usage: drg task show <task-id>"
 	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
@@ -71,9 +71,6 @@ const (
 // taskRerunCommand is what a user types to start a task over. Other commands
 // name it when starting a task over is the next step.
 const taskRerunCommand = "drg task rerun"
-
-// taskTitleWidth is how much room a listing gives a task title.
-const taskTitleWidth = 40
 
 func runTask(args []string) error {
 	if len(args) < 1 {
@@ -183,65 +180,6 @@ func taskNew(args []string) error {
 
 	_, err = svc.CreateTask(dto)
 	return err
-}
-
-func taskList(args []string) error {
-	// TODO: make a util for printing out help text
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(taskListUsage)
-		fmt.Println()
-		fmt.Println("List tasks in the current project.")
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Printf("  %s <status>  Filter by status (%s)\n", statusFlag, task.FormatStatuses(task.Statuses))
-		fmt.Printf("  %s <ticket>  Filter by ticket ID\n", ticketFlag)
-		return nil
-	}
-
-	var filter task.ListTasksFilter
-	if statusValue, hasStatus := parseFlagValue(args, statusFlag); hasStatus {
-		status := task.TaskStatus(statusValue)
-		if !task.KnownStatus(status) {
-			return invalidStatusError(status)
-		}
-		filter.Status = &status
-	}
-	if ticketID, hasTicket := parseFlagValue(args, ticketFlag); hasTicket {
-		filter.TicketID = &ticketID
-	}
-
-	cfg, err := config.LoadLocal()
-	if err != nil {
-		return err
-	}
-
-	log := common.NewLogger("")
-	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
-	svc := task.NewTaskService(repo, log)
-
-	tasks, err := svc.ListTasks(cfg.ProjectSlug, filter)
-	if err != nil {
-		return fmt.Errorf("could not list tasks: %w", err)
-	}
-
-	if len(tasks) == 0 {
-		log.Info("No tasks found")
-		return nil
-	}
-
-	columns := []column{
-		{Title: "STATUS", Width: 15},
-		{Title: "ID", Width: task.ShortIDLength},
-		{Title: "TITLE", Width: taskTitleWidth},
-		{Title: "TICKET"},
-	}
-	rows := make([][]string, 0, len(tasks))
-	for _, t := range tasks {
-		rows = append(rows, []string{string(t.Status), task.ShortID(t.ID), t.Title, t.TicketID})
-	}
-
-	printList(log, "Tasks", columns, rows)
-	return nil
 }
 
 // taskShow prints everything drudge knows about one task.
