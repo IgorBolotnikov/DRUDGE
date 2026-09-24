@@ -130,32 +130,9 @@ func parseTaskIDList(value string) []task.TaskID {
 }
 
 func taskNew(args []string) error {
-	for _, flag := range []string{blockFlag, unblockFlag} {
-		if hasFlag(args, flag) {
-			return fmt.Errorf("drg task new takes no %s, name the blockers of a new task with %s", flag, blockedByFlag)
-		}
-	}
-
-	title, hasTitle := parseFlagValue(args, titleFlag)
-	if !hasTitle || title == "" {
-		return fmt.Errorf("%s is required", titleFlag)
-	}
-
-	description, hasDesc := parseFlagValue(args, descriptionFlag)
-	if !hasDesc {
-		return fmt.Errorf("%s is required", descriptionFlag)
-	}
-
-	ticketID, _ := parseFlagValue(args, ticketFlag)
-	blockedBy, _ := parseFlagValue(args, blockedByFlag)
-	parentID, _ := parseFlagValue(args, parentFlag)
-	statusValue, hasStatus := parseFlagValue(args, statusFlag)
-	status := task.StatusDraft
-	if hasStatus {
-		status = task.TaskStatus(statusValue)
-		if !task.KnownStatus(status) {
-			return invalidStatusError(status)
-		}
+	dto, err := parseTaskNewArgs(args)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := config.LoadLocal()
@@ -167,19 +144,52 @@ func taskNew(args []string) error {
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, log)
 
-	dto := task.CreateTaskDto{
+	dto.ProjectSlug = cfg.ProjectSlug
+	dto.CreatedAt = time.Now().UTC()
+
+	_, err = svc.CreateTask(dto)
+	return err
+}
+
+// parseTaskNewArgs reads the fields of a new task. It leaves the project slug
+// and the creation time for the caller to fill in.
+func parseTaskNewArgs(args []string) (task.CreateTaskDto, error) {
+	for _, flag := range []string{blockFlag, unblockFlag} {
+		if hasFlag(args, flag) {
+			return task.CreateTaskDto{}, fmt.Errorf("drg task new takes no %s, name the blockers of a new task with %s", flag, blockedByFlag)
+		}
+	}
+
+	title, hasTitle := parseFlagValue(args, titleFlag)
+	if !hasTitle || title == "" {
+		return task.CreateTaskDto{}, fmt.Errorf("%s is required", titleFlag)
+	}
+
+	description, hasDesc := parseFlagValue(args, descriptionFlag)
+	if !hasDesc {
+		return task.CreateTaskDto{}, fmt.Errorf("%s is required", descriptionFlag)
+	}
+
+	ticketID, _ := parseFlagValue(args, ticketFlag)
+	blockedBy, _ := parseFlagValue(args, blockedByFlag)
+	parentID, _ := parseFlagValue(args, parentFlag)
+	statusValue, hasStatus := parseFlagValue(args, statusFlag)
+	status := task.StatusDraft
+	if hasStatus {
+		status = task.TaskStatus(statusValue)
+		if !task.KnownStatus(status) {
+			return task.CreateTaskDto{}, invalidStatusError(status)
+		}
+	}
+
+	return task.CreateTaskDto{
 		Title:        title,
 		Description:  description,
 		Status:       status,
 		TicketID:     ticketID,
-		ProjectSlug:  cfg.ProjectSlug,
 		BlockedBy:    parseTaskIDList(blockedBy),
-		CreatedAt:    time.Now().UTC(),
 		ParentTaskID: task.TaskID(parentID),
-	}
-
-	_, err = svc.CreateTask(dto)
-	return err
+	}, nil
 }
 
 // taskShow prints everything drudge knows about one task.

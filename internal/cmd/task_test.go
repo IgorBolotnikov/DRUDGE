@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,107 @@ func TestTaskNew_RefusesEditOnlyBlockerFlags(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), flag) || !strings.Contains(err.Error(), blockedByFlag) {
 				t.Errorf("expected the error to name %s and %s, got %q", flag, blockedByFlag, err)
+			}
+		})
+	}
+}
+
+func TestParseTaskNewArgs(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantDto task.CreateTaskDto
+		wantErr bool
+		// wantErrText is a fragment the error must carry, checked when set.
+		wantErrText string
+	}{
+		{
+			name:    "a title and a description",
+			args:    []string{"--title", "Fix logout", "--description", "SSO logs nobody out"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "an empty description",
+			args:    []string{"--title", "Fix logout", "--description", ""},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a known status",
+			args:    []string{"--title", "Fix logout", "--description", "", "--status", "todo"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusTodo, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a ticket",
+			args:    []string{"--title", "Fix logout", "--description", "", "--ticket", "R-004-01"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusDraft, TicketID: "R-004-01", BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a list of blockers",
+			args:    []string{"--title", "Fix logout", "--description", "", "--blocked-by", "9c8d7e6f, 1a2b3c4d"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusDraft, BlockedBy: []task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+		},
+		{
+			name:    "a parent",
+			args:    []string{"--title", "Fix logout", "--description", "", "--parent", "9c8d7e6f"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusDraft, BlockedBy: []task.TaskID{}, ParentTaskID: "9c8d7e6f"},
+		},
+		{
+			name:        "no title",
+			args:        []string{"--description", "SSO logs nobody out"},
+			wantErr:     true,
+			wantErrText: "--title is required",
+		},
+		{
+			name:        "an empty title",
+			args:        []string{"--title", "", "--description", "SSO logs nobody out"},
+			wantErr:     true,
+			wantErrText: "--title is required",
+		},
+		{
+			name:        "no description",
+			args:        []string{"--title", "Fix logout"},
+			wantErr:     true,
+			wantErrText: "--description is required",
+		},
+		{
+			name:        "an unknown status",
+			args:        []string{"--title", "Fix logout", "--description", "", "--status", "someday"},
+			wantErr:     true,
+			wantErrText: `invalid status "someday"`,
+		},
+		{
+			name:        "blockers to add",
+			args:        []string{"--title", "Fix logout", "--description", "", "--block", "9c8d"},
+			wantErr:     true,
+			wantErrText: "drg task new takes no --block, name the blockers of a new task with --blocked-by",
+		},
+		{
+			name:        "blockers to remove",
+			args:        []string{"--title", "Fix logout", "--description", "", "--unblock", "9c8d"},
+			wantErr:     true,
+			wantErrText: "drg task new takes no --unblock, name the blockers of a new task with --blocked-by",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dto, err := parseTaskNewArgs(testCase.args)
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got %+v", dto)
+				}
+				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
+					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(dto, testCase.wantDto) {
+				t.Errorf("expected %+v, got %+v", testCase.wantDto, dto)
 			}
 		})
 	}
