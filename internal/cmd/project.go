@@ -248,7 +248,8 @@ func projectRename(args []string) error {
 	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
 		fmt.Println(projectRenameUsage)
 		fmt.Println()
-		fmt.Println("Give a project a new name. Its slug follows the new name, and a slug another project holds is refused.")
+		fmt.Println("Give a project a new name. Its slug and its files stay, so directories linked to it keep working.")
+		fmt.Println("The project may be named by its name or its slug. A name another project goes by is refused.")
 		return nil
 	}
 
@@ -291,7 +292,7 @@ func projectList(args []string) error {
 	}
 
 	if len(projects) == 0 {
-		log.Info("No projects found")
+		log.Info("No projects yet, run drg project init <name> in a project directory to create one")
 		return nil
 	}
 

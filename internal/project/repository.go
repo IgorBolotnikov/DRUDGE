@@ -12,8 +12,6 @@ type CreateProjectDto struct {
 type ProjectRepository interface {
 	CreateProject(dto CreateProjectDto) (*Project, error)
 	ListProjects() ([]*Project, error)
-	LookupProject(slug string) (*Project, error)
 	RenameProject(slug string, newName string) error
 	DeleteProject(slug string) error
-	ProjectExists(slug string) bool
 }

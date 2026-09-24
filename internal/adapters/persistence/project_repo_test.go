@@ -71,6 +71,19 @@ func TestFileProjectRepository_Project_ListProjects_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestFileProjectRepository_Project_ListProjects_NoProjectsDir(t *testing.T) {
+	repo := NewFileProjectRepository(filepath.Join(t.TempDir(), "projects"))
+
+	projects, err := repo.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+
+	if len(projects) != 0 {
+		t.Errorf("expected 0 projects, got %d", len(projects))
+	}
+}
+
 func TestFileProjectRepository_Project_ListProjects_Single(t *testing.T) {
 	repo, dir := newTestRepo(t)
 
@@ -171,112 +184,46 @@ func TestFileProjectRepository_Project_ListProjects_SkipsBrokenProjects(t *testi
 	}
 }
 
-func TestFileProjectRepository_Project_LookupProject_BySlug(t *testing.T) {
+func TestFileProjectRepository_Project_RenameProject_KeepsTheSlugAndTheDirectory(t *testing.T) {
 	repo, dir := newTestRepo(t)
 
-	dto := newTestDto(dir, "Lookup Test", "lookup-test")
+	dto := newTestDto(dir, "Old Name", "old-name")
 	if _, err := repo.CreateProject(dto); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-
-	proj, err := repo.LookupProject("lookup-test")
-	if err != nil {
-		t.Fatalf("LookupProject: %v", err)
+	taskFile := filepath.Join(dir, "old-name", "tasks", "task.md")
+	if err := os.MkdirAll(filepath.Dir(taskFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(taskFile, []byte("a task"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	if proj.Slug != "lookup-test" || proj.Name != "Lookup Test" {
-		t.Errorf("unexpected project: %+v", proj)
-	}
-}
-
-func TestFileProjectRepository_Project_LookupProject_NotFound(t *testing.T) {
-	repo, _ := newTestRepo(t)
-
-	_, err := repo.LookupProject("nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent project")
-	}
-}
-
-func TestFileProjectRepository_Project_RenameProject_Collision(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	// Create two projects
-	dto1 := newTestDto(dir, "Alpha", "alpha")
-	dto2 := newTestDto(dir, "Beta", "beta")
-	if _, err := repo.CreateProject(dto1); err != nil {
-		t.Fatalf("CreateProject alpha: %v", err)
-	}
-	if _, err := repo.CreateProject(dto2); err != nil {
-		t.Fatalf("CreateProject beta: %v", err)
-	}
-
-	// Try to rename alpha to beta — should fail
-	err := repo.RenameProject("alpha", "Beta")
-	if err == nil {
-		t.Fatal("expected error for collision")
-	}
-}
-
-func TestFileProjectRepository_Project_RenameProject_SameSlug(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	dto := newTestDto(dir, "old-name", "old-name")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	if err := repo.RenameProject("old-name", "old-name"); err != nil {
+	if err := repo.RenameProject("old-name", "New Name"); err != nil {
 		t.Fatalf("RenameProject: %v", err)
 	}
 
-	// Read updated project.json
+	if _, err := os.Stat(filepath.Join(dir, "new-name")); !os.IsNotExist(err) {
+		t.Errorf("expected no directory for the new name, got %v", err)
+	}
+	if _, err := os.Stat(taskFile); err != nil {
+		t.Errorf("expected the tasks of the project to stay where they are: %v", err)
+	}
+
 	var proj project.Project
 	if err := common.ReadJSON(filepath.Join(dir, "old-name", ProjectConfigFile), &proj); err != nil {
 		t.Fatalf("ReadJSON: %v", err)
 	}
-
-	if proj.Name != "old-name" {
-		t.Errorf("expected 'old-name', got %q", proj.Name)
-	}
-	if proj.Slug != "old-name" {
-		t.Errorf("expected slug 'old-name' (unchanged), got %q", proj.Slug)
+	want := project.Project{Name: "New Name", Slug: "old-name", Location: dto.Location, CreatedAt: dto.CreatedAt}
+	if !proj.CreatedAt.Equal(want.CreatedAt) || proj.Name != want.Name || proj.Slug != want.Slug || proj.Location != want.Location {
+		t.Errorf("expected %+v, got %+v", want, proj)
 	}
 }
 
-func TestFileProjectRepository_Project_RenameProject_DirMoved(t *testing.T) {
-	repo, dir := newTestRepo(t)
+func TestFileProjectRepository_Project_RenameProject_NotFound(t *testing.T) {
+	repo, _ := newTestRepo(t)
 
-	dto := newTestDto(dir, "Old Name", "old-name-123")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	if err := repo.RenameProject("old-name-123", "New Name"); err != nil {
-		t.Fatalf("RenameProject: %v", err)
-	}
-
-	// Old dir should be gone
-	_, err := os.Stat(filepath.Join(dir, "old-name-123"))
-	if !os.IsNotExist(err) {
-		t.Error("old directory should be removed")
-	}
-
-	// New dir should exist with updated data
-	_, err = os.Stat(filepath.Join(dir, "new-name"))
-	if err != nil {
-		t.Fatal("new directory should exist")
-	}
-
-	var proj project.Project
-	if err := common.ReadJSON(filepath.Join(dir, "new-name", ProjectConfigFile), &proj); err != nil {
-		t.Fatalf("ReadJSON: %v", err)
-	}
-
-	if proj.Slug != "new-name" {
-		t.Errorf("expected slug 'new-name', got %q", proj.Slug)
-	}
-	if proj.Name != "New Name" {
-		t.Errorf("expected name 'New Name', got %q", proj.Name)
+	if err := repo.RenameProject("nonexistent", "New Name"); err == nil {
+		t.Fatal("expected error for nonexistent project")
 	}
 }

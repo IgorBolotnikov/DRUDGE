@@ -2,6 +2,7 @@
 package persistence
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,49 +71,14 @@ func (r *FileProjectRepository) DeleteProject(slug string) error {
 	return nil
 }
 
-func (r *FileProjectRepository) LookupProject(slug string) (*project.Project, error) {
-	entries, err := r.readProjectEntries()
-	if err != nil {
-		return nil, fmt.Errorf("could not list projects: %w", err)
-	}
-
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		proj, err := r.readProjectFile(slug)
-		if err != nil {
-			continue
-		}
-		if e.Name() == slug || proj.Name == slug {
-			return proj, nil
-		}
-	}
-
-	return nil, fmt.Errorf("project %q not found", slug)
-}
-
+// RenameProject writes a new name into the project file of a project. The
+// slug and the project directory stay, because the local config of every
+// linked directory names the project by its slug.
 func (r *FileProjectRepository) RenameProject(slug string, newName string) error {
-	newSlug := common.SlugFrom(newName)
-	if slug == newSlug {
-		return nil
-	}
-	oldDir, err := r.resolveProjectDir(slug)
+	projFile, err := r.resolveProjectFile(slug)
 	if err != nil {
 		return err
 	}
-	newDir, err := r.resolveProjectDir(newSlug)
-	if err != nil {
-		return err
-	}
-
-	if isPresent, err := common.Exists(newDir); err != nil {
-		return err
-	} else if isPresent {
-		return fmt.Errorf("project with slug %q already exists, cannot rename", newSlug)
-	}
-
-	projFile := filepath.Join(oldDir, ProjectConfigFile)
 
 	proj, err := r.readProjectFile(slug)
 	if err != nil {
@@ -120,29 +86,19 @@ func (r *FileProjectRepository) RenameProject(slug string, newName string) error
 	}
 
 	proj.Name = newName
-	proj.Slug = newSlug
-	proj.Location = newDir
-
 	if err := r.saveProject(projFile, proj); err != nil {
 		return fmt.Errorf("could not write project file: %w", err)
 	}
-
-	if err := os.Rename(oldDir, newDir); err != nil {
-		// Rollback: restore old slug in project file
-		proj.Slug = slug
-		proj.Location = oldDir
-		err := r.saveProject(projFile, proj)
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("could not rename directory %s -> %s: %w", oldDir, newDir, err)
-	}
-
 	return nil
 }
 
+// ListProjects reads every project in the projects directory. A projects
+// directory that does not exist yet holds no projects.
 func (r *FileProjectRepository) ListProjects() ([]*project.Project, error) {
 	entries, err := r.readProjectEntries()
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("could not list projects: %w", err)
 	}
@@ -161,11 +117,6 @@ func (r *FileProjectRepository) ListProjects() ([]*project.Project, error) {
 	}
 
 	return projects, nil
-}
-
-func (r *FileProjectRepository) ProjectExists(slug string) bool {
-	_, err := r.readProjectFile(slug)
-	return err == nil
 }
 
 func (r *FileProjectRepository) readProjectEntries() ([]os.DirEntry, error) {

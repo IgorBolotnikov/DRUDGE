@@ -210,3 +210,17 @@ func TestPrintRepositories(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectList_NoProjects(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var err error
+	output := captureOutput(func() { err = projectList(nil) })
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "No projects yet") || !strings.Contains(output, "drg project init <name>") {
+		t.Errorf("expected the listing to say there are no projects and how to create one, got:\n%s", output)
+	}
+}
