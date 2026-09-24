@@ -267,3 +267,17 @@ func TestRunTask_UnknownSubcommand(t *testing.T) {
 		t.Fatal("expected an error for an unknown task subcommand")
 	}
 }
+
+func TestTaskNew_RefusesEditOnlyBlockerFlags(t *testing.T) {
+	for _, flag := range []string{blockFlag, unblockFlag} {
+		t.Run(flag, func(t *testing.T) {
+			err := taskNew([]string{"--title", "Wire the service", "--description", "", flag, "9c8d"})
+			if err == nil {
+				t.Fatalf("expected drg task new to refuse %s", flag)
+			}
+			if !strings.Contains(err.Error(), flag) || !strings.Contains(err.Error(), blockedByFlag) {
+				t.Errorf("expected the error to name %s and %s, got %q", flag, blockedByFlag, err)
+			}
+		})
+	}
+}

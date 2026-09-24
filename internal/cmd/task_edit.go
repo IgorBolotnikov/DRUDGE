@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"drudge/internal/common"
 	"drudge/internal/task"
 )
 
@@ -13,7 +14,11 @@ import (
 const editOptionLine = "  %-26s %s\n"
 
 // editValueFlags are the flags drg task edit reads a value after.
-var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag, blockedByFlag}
+var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag, blockedByFlag, blockFlag, unblockFlag}
+
+// blockerFlags are the flags that change the blockers of a task. An edit takes
+// one of them.
+var blockerFlags = []string{blockedByFlag, blockFlag, unblockFlag}
 
 // taskEdit changes the fields a user owns on one task.
 func taskEdit(args []string) error {
@@ -29,6 +34,8 @@ func taskEdit(args []string) error {
 		fmt.Printf(editOptionLine, ticketFlag+" <ticket>", "Ticket the task came from, empty to clear it")
 		fmt.Printf(editOptionLine, statusFlag+" <status>", "New status ("+task.FormatStatuses(task.Statuses)+")")
 		fmt.Printf(editOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for, replacing the list, empty to clear it")
+		fmt.Printf(editOptionLine, blockFlag+" <id>[,<id>...]", "Tasks to add to the ones this task waits for")
+		fmt.Printf(editOptionLine, unblockFlag+" <id>[,<id>...]", "Tasks to remove from the ones this task waits for")
 		fmt.Printf(editOptionLine, forceFlag, "Set a status drudge maintains itself ("+task.FormatStatuses(task.ManagedStatuses)+")")
 		return nil
 	}
@@ -53,6 +60,7 @@ func taskEdit(args []string) error {
 func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
 	var taskID string
 	var changes task.EditTaskDto
+	var seenBlockerFlags []string
 
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -62,6 +70,9 @@ func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
 		case slices.Contains(editValueFlags, arg):
 			if index+1 >= len(args) {
 				return "", changes, fmt.Errorf("%s needs a value, %s", arg, taskEditUsage)
+			}
+			if slices.Contains(blockerFlags, arg) && !slices.Contains(seenBlockerFlags, arg) {
+				seenBlockerFlags = append(seenBlockerFlags, arg)
 			}
 			index++
 			setEditedField(&changes, arg, args[index])
@@ -76,6 +87,9 @@ func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
 
 	if taskID == "" {
 		return "", changes, fmt.Errorf("task ID is required, %s", taskEditUsage)
+	}
+	if len(seenBlockerFlags) > 1 {
+		return "", changes, fmt.Errorf("%s cannot be used together, change the blockers one way per edit", common.JoinNames(seenBlockerFlags))
 	}
 	if !changes.HasChanges() {
 		return "", changes, fmt.Errorf("nothing to change, %s", taskEditUsage)
@@ -99,5 +113,11 @@ func setEditedField(changes *task.EditTaskDto, flag string, value string) {
 	case blockedByFlag:
 		blockedBy := parseTaskIDList(value)
 		changes.BlockedBy = &blockedBy
+	case blockFlag:
+		block := parseTaskIDList(value)
+		changes.Block = &block
+	case unblockFlag:
+		unblock := parseTaskIDList(value)
+		changes.Unblock = &unblock
 	}
 }

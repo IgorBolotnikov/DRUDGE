@@ -98,6 +98,60 @@ func TestParseTaskEditArgs(t *testing.T) {
 			wantChanges: task.EditTaskDto{BlockedBy: &[]task.TaskID{}},
 		},
 		{
+			name:        "blockers to add",
+			args:        []string{"abc123", "--block", "9c8d7e6f,1a2b3c4d"},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Block: &[]task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+		},
+		{
+			name:        "blockers to remove",
+			args:        []string{"abc123", "--unblock", "9c8d7e6f,1a2b3c4d"},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Unblock: &[]task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+		},
+		{
+			name:        "the blocker list and blockers to add",
+			args:        []string{"abc123", "--blocked-by", "9c8d", "--block", "1a2b"},
+			wantErr:     true,
+			wantErrText: "--blocked-by and --block cannot be used together",
+		},
+		{
+			name:        "blockers to add and the blocker list",
+			args:        []string{"abc123", "--block", "1a2b", "--blocked-by", "9c8d"},
+			wantErr:     true,
+			wantErrText: "--block and --blocked-by cannot be used together",
+		},
+		{
+			name:        "the blocker list and blockers to remove",
+			args:        []string{"abc123", "--blocked-by", "9c8d", "--unblock", "1a2b"},
+			wantErr:     true,
+			wantErrText: "--blocked-by and --unblock cannot be used together",
+		},
+		{
+			name:        "blockers to remove and the blocker list",
+			args:        []string{"abc123", "--unblock", "1a2b", "--blocked-by", "9c8d"},
+			wantErr:     true,
+			wantErrText: "--unblock and --blocked-by cannot be used together",
+		},
+		{
+			name:        "blockers to add and blockers to remove",
+			args:        []string{"abc123", "--block", "9c8d", "--unblock", "1a2b"},
+			wantErr:     true,
+			wantErrText: "--block and --unblock cannot be used together",
+		},
+		{
+			name:        "blockers to remove and blockers to add",
+			args:        []string{"abc123", "--unblock", "1a2b", "--block", "9c8d"},
+			wantErr:     true,
+			wantErrText: "--unblock and --block cannot be used together",
+		},
+		{
+			name:        "all three blocker flags",
+			args:        []string{"abc123", "--unblock", "1a2b", "--block", "9c8d", "--blocked-by", "7e6d"},
+			wantErr:     true,
+			wantErrText: "--unblock, --block and --blocked-by cannot be used together",
+		},
+		{
 			name:    "no arguments",
 			args:    nil,
 			wantErr: true,
@@ -171,7 +225,9 @@ func showChanges(changes task.EditTaskDto) string {
 		showFlag(descriptionFlag, changes.Description),
 		showFlag(ticketFlag, changes.TicketID),
 		showFlag(statusFlag, changes.Status),
-		showBlockers(changes.BlockedBy),
+		showBlockers(blockedByFlag, changes.BlockedBy),
+		showBlockers(blockFlag, changes.Block),
+		showBlockers(unblockFlag, changes.Unblock),
 		fmt.Sprintf("%s %v", forceFlag, changes.AllowsManagedStatus),
 	}
 	return strings.Join(fields, ", ")
@@ -185,9 +241,9 @@ func showFlag[Value ~string](flag string, value *Value) string {
 	return flag + " " + strconv.Quote(string(*value))
 }
 
-func showBlockers(blockedBy *[]task.TaskID) string {
-	if blockedBy == nil {
-		return blockedByFlag + " unset"
+func showBlockers(flag string, ids *[]task.TaskID) string {
+	if ids == nil {
+		return flag + " unset"
 	}
-	return fmt.Sprintf("%s %q", blockedByFlag, *blockedBy)
+	return fmt.Sprintf("%s %q", flag, *ids)
 }

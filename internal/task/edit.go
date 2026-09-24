@@ -24,6 +24,10 @@ type EditTaskDto struct {
 	// BlockedBy replaces the whole list of blockers. The ids may be prefixes,
 	// and an empty list clears it.
 	BlockedBy *[]TaskID
+	// Block adds to the list of blockers and Unblock removes from it. An edit
+	// takes one of BlockedBy, Block and Unblock.
+	Block   *[]TaskID
+	Unblock *[]TaskID
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
@@ -32,7 +36,8 @@ type EditTaskDto struct {
 
 // HasChanges reports whether the edit names a field to change.
 func (changes EditTaskDto) HasChanges() bool {
-	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil || changes.BlockedBy != nil
+	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil ||
+		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil
 }
 
 // SessionGuard refuses a change to a task whose agent is still working.
@@ -66,6 +71,20 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 		}
 		changes.BlockedBy = &blockedBy
 	}
+	if changes.Block != nil {
+		block, err := service.resolveBlockers(projectSlug, found.ID, *changes.Block)
+		if err != nil {
+			return nil, err
+		}
+		changes.Block = &block
+	}
+	if changes.Unblock != nil {
+		unblock, err := service.resolveUnblocked(projectSlug, found, *changes.Unblock)
+		if err != nil {
+			return nil, err
+		}
+		changes.Unblock = &unblock
+	}
 
 	var edited *Task
 	isStored, err := service.repo.TryUpdateTask(projectSlug, found.ID, func(taskToEdit *Task) error {
@@ -95,6 +114,10 @@ func validateEdit(changes EditTaskDto) error {
 
 	if changes.Title != nil && strings.TrimSpace(*changes.Title) == "" {
 		return errors.New("a task title cannot be blank")
+	}
+
+	if err := validateBlockerEdit(changes); err != nil {
+		return err
 	}
 
 	if changes.Status == nil {
@@ -127,5 +150,11 @@ func applyEdit(taskToEdit *Task, changes EditTaskDto) {
 	}
 	if changes.BlockedBy != nil {
 		taskToEdit.BlockedBy = *changes.BlockedBy
+	}
+	if changes.Block != nil {
+		taskToEdit.BlockedBy = addBlockers(taskToEdit.BlockedBy, *changes.Block)
+	}
+	if changes.Unblock != nil {
+		taskToEdit.BlockedBy = removeBlockers(taskToEdit.BlockedBy, *changes.Unblock)
 	}
 }

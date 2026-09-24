@@ -36,6 +36,8 @@ const (
 	ticketFlag      = "--ticket"
 	statusFlag      = "--status"
 	blockedByFlag   = "--blocked-by"
+	blockFlag       = "--block"
+	unblockFlag     = "--unblock"
 )
 
 // taskIDListSeparator splits a flag value holding several task ids.
@@ -127,6 +129,12 @@ func parseTaskIDList(value string) []task.TaskID {
 }
 
 func taskNew(args []string) error {
+	for _, flag := range []string{blockFlag, unblockFlag} {
+		if hasFlag(args, flag) {
+			return fmt.Errorf("drg task new takes no %s, name the blockers of a new task with %s", flag, blockedByFlag)
+		}
+	}
+
 	title, hasTitle := parseFlagValue(args, titleFlag)
 	if !hasTitle || title == "" {
 		return fmt.Errorf("%s is required", titleFlag)

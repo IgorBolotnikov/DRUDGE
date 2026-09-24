@@ -1,9 +1,12 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"drudge/internal/common"
 )
 
 // Blocker is one task another task waits for. Task is nil when the id names no
@@ -67,6 +70,78 @@ func (service *TaskService) resolveBlockers(projectSlug string, dependentID Task
 		}
 	}
 	return resolved, nil
+}
+
+// resolveUnblocked turns the ids a user named into the full ids of blockers
+// dependent carries. An id is first matched against those blockers, which
+// lets a user drop a blocker whose task is gone. It refuses an id that names
+// no task or several, and a task dependent is not blocked by.
+func (service *TaskService) resolveUnblocked(projectSlug string, dependent *Task, ids []TaskID) ([]TaskID, error) {
+	var resolved []TaskID
+	for _, id := range ids {
+		matches := slices.DeleteFunc(slices.Clone(dependent.BlockedBy), func(blockerID TaskID) bool {
+			return !strings.HasPrefix(string(blockerID), string(id))
+		})
+		if len(matches) == 1 {
+			resolved = append(resolved, matches[0])
+			continue
+		}
+
+		found, err := service.repo.FindTask(projectSlug, string(id))
+		if err != nil {
+			return nil, fmt.Errorf("could not unblock %q: %w", id, err)
+		}
+		return nil, fmt.Errorf("task %s is not blocked by %s %s", ShortID(dependent.ID), ShortID(found.ID), found.Title)
+	}
+	return resolved, nil
+}
+
+// validateBlockerEdit refuses an edit that changes the blockers in more than
+// one way, or that adds or removes an empty list.
+func validateBlockerEdit(changes EditTaskDto) error {
+	var named []string
+	if changes.BlockedBy != nil {
+		named = append(named, "the blocker list")
+	}
+	if changes.Block != nil {
+		named = append(named, "the blockers to add")
+	}
+	if changes.Unblock != nil {
+		named = append(named, "the blockers to remove")
+	}
+	if len(named) > 1 {
+		return fmt.Errorf("an edit changes the blockers one way at a time, got %s", common.JoinNames(named))
+	}
+
+	if changes.Block != nil && len(*changes.Block) == 0 {
+		return errors.New("name at least one task to add as a blocker")
+	}
+	if changes.Unblock != nil && len(*changes.Unblock) == 0 {
+		return errors.New("name at least one task to remove from the blockers")
+	}
+	return nil
+}
+
+// addBlockers appends the ids blockedBy does not hold yet.
+func addBlockers(blockedBy []TaskID, added []TaskID) []TaskID {
+	for _, id := range added {
+		if !slices.Contains(blockedBy, id) {
+			blockedBy = append(blockedBy, id)
+		}
+	}
+	return blockedBy
+}
+
+// removeBlockers returns blockedBy without the removed ids, and nil when none
+// are left.
+func removeBlockers(blockedBy []TaskID, removed []TaskID) []TaskID {
+	var kept []TaskID
+	for _, id := range blockedBy {
+		if !slices.Contains(removed, id) {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 // blockingPath follows BlockedBy from start and returns the chain of tasks

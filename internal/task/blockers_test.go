@@ -294,3 +294,193 @@ func TestTaskService_Blockers(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskService_EditTask_BlockAndUnblock(t *testing.T) {
+	backlog := func() []*Task {
+		return []*Task{
+			backlogTask(migrationTaskID, "Add the migration", StatusDone),
+			backlogTask(repositoryTaskID, "Wire the repository", StatusTodo),
+			backlogTask(endpointTaskID, "Add the endpoint", StatusTodo),
+			backlogTask(docsTaskID, "Write the docs", StatusTodo),
+		}
+	}
+
+	cases := []struct {
+		name string
+		// others replaces the backlog stored next to the edited task when set.
+		others         []*Task
+		storedBlockers []TaskID
+		changes        EditTaskDto
+		wantBlockedBy  []TaskID
+		// wantErrText are fragments a refusal must carry. A case without them
+		// expects the edit to go through.
+		wantErrText []string
+	}{
+		{
+			name:          "adding to an empty list",
+			changes:       EditTaskDto{Block: &[]TaskID{migrationTaskID}},
+			wantBlockedBy: []TaskID{migrationTaskID},
+		},
+		{
+			name:           "adding to a full list",
+			storedBlockers: []TaskID{migrationTaskID, repositoryTaskID},
+			changes:        EditTaskDto{Block: &[]TaskID{docsTaskID, endpointTaskID}},
+			wantBlockedBy:  []TaskID{migrationTaskID, repositoryTaskID, docsTaskID, endpointTaskID},
+		},
+		{
+			name:           "adding an id already on the list",
+			storedBlockers: []TaskID{migrationTaskID},
+			changes:        EditTaskDto{Block: &[]TaskID{"9c8d", docsTaskID}},
+			wantBlockedBy:  []TaskID{migrationTaskID, docsTaskID},
+		},
+		{
+			name:          "adding by a prefix",
+			changes:       EditTaskDto{Block: &[]TaskID{"7e6d"}},
+			wantBlockedBy: []TaskID{docsTaskID},
+		},
+		{
+			name:        "adding a prefix that matches nothing",
+			changes:     EditTaskDto{Block: &[]TaskID{"ffffffff"}},
+			wantErrText: []string{"ffffffff", "not found"},
+		},
+		{
+			name:        "adding a prefix that is ambiguous",
+			changes:     EditTaskDto{Block: &[]TaskID{"1a2b"}},
+			wantErrText: []string{"1a2b", "Wire the repository", "Add the endpoint"},
+		},
+		{
+			name: "adding a blocker that makes a cycle",
+			others: []*Task{
+				backlogTask(migrationTaskID, "Add the migration", StatusTodo, editableTaskID),
+			},
+			changes:     EditTaskDto{Block: &[]TaskID{migrationTaskID}},
+			wantErrText: []string{"task 006684e3 cannot be blocked by 9c8d7e6f, that would make a cycle:\n  9c8d7e6f  Add the migration\n  006684e3  Fix login"},
+		},
+		{
+			name:        "adding nothing",
+			changes:     EditTaskDto{Block: &[]TaskID{}},
+			wantErrText: []string{"name at least one task to add"},
+		},
+		{
+			name:           "removing one of several",
+			storedBlockers: []TaskID{migrationTaskID, repositoryTaskID, docsTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{repositoryTaskID}},
+			wantBlockedBy:  []TaskID{migrationTaskID, docsTaskID},
+		},
+		{
+			name:           "removing the last one",
+			storedBlockers: []TaskID{migrationTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{migrationTaskID}},
+			wantBlockedBy:  nil,
+		},
+		{
+			name:           "removing by a prefix",
+			storedBlockers: []TaskID{migrationTaskID, docsTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{"7e6d"}},
+			wantBlockedBy:  []TaskID{migrationTaskID},
+		},
+		{
+			name:           "removing by a prefix that is unique among the blockers",
+			storedBlockers: []TaskID{repositoryTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{"1a2b"}},
+			wantBlockedBy:  nil,
+		},
+		{
+			name:           "removing a blocker that names no stored task",
+			others:         []*Task{},
+			storedBlockers: []TaskID{migrationTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{"9c8d"}},
+			wantBlockedBy:  nil,
+		},
+		{
+			name:           "removing one that is not there",
+			storedBlockers: []TaskID{migrationTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{docsTaskID}},
+			wantErrText:    []string{"task 006684e3 is not blocked by 7e6d5c4b"},
+		},
+		{
+			name:           "removing a prefix that matches nothing",
+			storedBlockers: []TaskID{migrationTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{"ffffffff"}},
+			wantErrText:    []string{"ffffffff", "not found"},
+		},
+		{
+			name:           "removing a prefix that is ambiguous among the blockers",
+			storedBlockers: []TaskID{repositoryTaskID, endpointTaskID},
+			changes:        EditTaskDto{Unblock: &[]TaskID{"1a2b"}},
+			wantErrText:    []string{"1a2b", "Wire the repository", "Add the endpoint"},
+		},
+		{
+			name:        "removing nothing",
+			changes:     EditTaskDto{Unblock: &[]TaskID{}},
+			wantErrText: []string{"name at least one task to remove"},
+		},
+		{
+			name: "replacing the list and adding",
+			changes: EditTaskDto{
+				BlockedBy: &[]TaskID{migrationTaskID},
+				Block:     &[]TaskID{docsTaskID},
+			},
+			wantErrText: []string{"the blocker list", "the blockers to add"},
+		},
+		{
+			name: "replacing the list and removing",
+			changes: EditTaskDto{
+				BlockedBy: &[]TaskID{migrationTaskID},
+				Unblock:   &[]TaskID{docsTaskID},
+			},
+			wantErrText: []string{"the blocker list", "the blockers to remove"},
+		},
+		{
+			name: "adding and removing",
+			changes: EditTaskDto{
+				Block:   &[]TaskID{migrationTaskID},
+				Unblock: &[]TaskID{docsTaskID},
+			},
+			wantErrText: []string{"the blockers to add", "the blockers to remove"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stored := editableTask()
+			stored.BlockedBy = testCase.storedBlockers
+			others := testCase.others
+			if others == nil {
+				others = backlog()
+			}
+			repo := &fakeTaskRepo{tasks: append([]*Task{stored}, others...)}
+			service := NewTaskService(repo, common.NewLogger(""))
+
+			edited, err := service.EditTask(testProjectSlug, editableTaskID, testCase.changes, &fakeSessionGuard{})
+
+			if testCase.wantErrText != nil {
+				if err == nil {
+					t.Fatal("expected the edit to be refused")
+				}
+				for _, want := range testCase.wantErrText {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("expected the error to carry %q, got %q", want, err)
+					}
+				}
+				if repo.writes != 0 {
+					t.Errorf("expected a refused edit to write nothing, got %d writes", repo.writes)
+				}
+				if !slices.Equal(stored.BlockedBy, testCase.storedBlockers) {
+					t.Errorf("expected the blockers to stay %v, got %v", testCase.storedBlockers, stored.BlockedBy)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(edited.BlockedBy, testCase.wantBlockedBy) {
+				t.Errorf("expected the blockers %#v, got %#v", testCase.wantBlockedBy, edited.BlockedBy)
+			}
+			if repo.writes != 1 {
+				t.Errorf("expected one write, got %d", repo.writes)
+			}
+		})
+	}
+}
