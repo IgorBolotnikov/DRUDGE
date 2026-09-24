@@ -12,3 +12,6 @@ CLAUDE.md
 
 # DRUDGE project files
 .drudge
+
+# release builds
+/dist
