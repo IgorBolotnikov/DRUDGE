@@ -53,6 +53,12 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 	dto.BlockedBy = blockedBy
 
+	parentID, err := service.resolveParent(dto.ProjectSlug, "", dto.ParentTaskID)
+	if err != nil {
+		return nil, err
+	}
+	dto.ParentTaskID = parentID
+
 	task, err := service.repo.CreateTask(dto)
 	if err != nil {
 		return nil, fmt.Errorf("could not create task: %w", err)

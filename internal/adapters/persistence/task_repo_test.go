@@ -1645,3 +1645,90 @@ func TestFileTaskRepository_CreateTask_StoresBlockers(t *testing.T) {
 		t.Errorf("expected the blockers %v, got %v", blockedBy, read.BlockedBy)
 	}
 }
+
+func TestTaskFrontMatter_ParentRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	cases := []struct {
+		name   string
+		parent task.TaskID
+		// wantLineInFile is the parent_task_id line the file should carry. An
+		// ungrouped task carries none.
+		wantLineInFile string
+	}{
+		{
+			name: "an ungrouped task",
+		},
+		{
+			name:           "a task with a parent",
+			parent:         "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+			wantLineInFile: metaKeyParentTaskID + ": 9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Status:      task.StatusTodo,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				ParentTaskID: testCase.parent,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+			if read.ParentTaskID != testCase.parent {
+				t.Errorf("expected the parent %q, got %q", testCase.parent, read.ParentTaskID)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if testCase.wantLineInFile != "" && !strings.Contains(string(data), testCase.wantLineInFile+"\n") {
+				t.Errorf("expected %q in the file, got %s", testCase.wantLineInFile, data)
+			}
+			if testCase.wantLineInFile == "" && strings.Contains(string(data), metaKeyParentTaskID) {
+				t.Errorf("expected no %s entry in the file, got %s", metaKeyParentTaskID, data)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_CreateTask_StoresParent(t *testing.T) {
+	setupTaskTestHome(t)
+
+	repo := NewFileTaskRepository("test-project")
+	const parentID task.TaskID = "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f"
+
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:        "Wire the repository",
+		Status:       task.StatusTodo,
+		ProjectSlug:  "test-project",
+		ParentTaskID: parentID,
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	read, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if read.ParentTaskID != parentID {
+		t.Errorf("expected the parent %q, got %q", parentID, read.ParentTaskID)
+	}
+}

@@ -98,6 +98,18 @@ func TestParseTaskEditArgs(t *testing.T) {
 			wantChanges: task.EditTaskDto{BlockedBy: &[]task.TaskID{}},
 		},
 		{
+			name:        "a parent",
+			args:        []string{"abc123", "--parent", "9c8d7e6f"},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{ParentTaskID: pointerTo(task.TaskID("9c8d7e6f"))},
+		},
+		{
+			name:        "the parent cleared",
+			args:        []string{"abc123", "--parent", ""},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{ParentTaskID: pointerTo(task.TaskID(""))},
+		},
+		{
 			name:        "blockers to add",
 			args:        []string{"abc123", "--block", "9c8d7e6f,1a2b3c4d"},
 			wantTaskID:  "abc123",

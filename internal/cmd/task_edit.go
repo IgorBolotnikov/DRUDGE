@@ -14,7 +14,7 @@ import (
 const editOptionLine = "  %-26s %s\n"
 
 // editValueFlags are the flags drg task edit reads a value after.
-var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag, blockedByFlag, blockFlag, unblockFlag}
+var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag, blockedByFlag, blockFlag, unblockFlag, parentFlag}
 
 // blockerFlags are the flags that change the blockers of a task. An edit takes
 // one of them.
@@ -36,6 +36,7 @@ func taskEdit(args []string) error {
 		fmt.Printf(editOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for, replacing the list, empty to clear it")
 		fmt.Printf(editOptionLine, blockFlag+" <id>[,<id>...]", "Tasks to add to the ones this task waits for")
 		fmt.Printf(editOptionLine, unblockFlag+" <id>[,<id>...]", "Tasks to remove from the ones this task waits for")
+		fmt.Printf(editOptionLine, parentFlag+" <id>", "Task this task belongs to, empty to ungroup it")
 		fmt.Printf(editOptionLine, forceFlag, "Set a status drudge maintains itself ("+task.FormatStatuses(task.ManagedStatuses)+")")
 		return nil
 	}
@@ -119,5 +120,8 @@ func setEditedField(changes *task.EditTaskDto, flag string, value string) {
 	case unblockFlag:
 		unblock := parseTaskIDList(value)
 		changes.Unblock = &unblock
+	case parentFlag:
+		parentID := task.TaskID(value)
+		changes.ParentTaskID = &parentID
 	}
 }

@@ -39,6 +39,8 @@ const (
 	refusedLabel   = "Refused"
 	workLabel      = "Work"
 	blockedByLabel = "Blocked by"
+	parentLabel    = "Parent"
+	childrenLabel  = "Children"
 )
 
 // What a task report prints in place of a field with nothing in it.
@@ -51,9 +53,9 @@ const (
 	missingTaskLabel        = "no such task"
 )
 
-// blockerLine lays out one blocker of a task report, the status padded to the
-// longest status there is.
-const blockerLine = "%s%s  %-11s  %s"
+// relatedTaskLine lays out one task a task report links to, the status padded
+// to the longest status there is.
+const relatedTaskLine = "%s%s  %-11s  %s"
 
 const (
 	yesLabel = "yes"
@@ -61,9 +63,9 @@ const (
 )
 
 // printTask prints everything drudge knows about one task: what it asks for,
-// where it stands, what blocks it and what its last run left behind. The
-// description prints in full.
-func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork, now time.Time) {
+// where it stands, what blocks it, what it belongs to, what belongs to it and
+// what its last run left behind. The description prints in full.
+func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork, family task.Family, now time.Time) {
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, string(taskToShow.Status)),
@@ -73,6 +75,7 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
 	}
 	lines = append(lines, blockerLines(blockers, unmerged)...)
+	lines = append(lines, familyLines(family)...)
 	lines = append(lines,
 		"",
 		"Description:",
@@ -101,16 +104,37 @@ func blockerLines(blockers []task.Blocker, unmerged map[task.TaskID][]drudger.Un
 
 	lines := []string{"", blockedByLabel + ":"}
 	for _, blocker := range blockers {
-		if blocker.Task == nil {
-			lines = append(lines, listIndent+task.ShortID(blocker.ID)+"  "+missingTaskLabel)
-			continue
-		}
-		lines = append(lines, fmt.Sprintf(blockerLine, listIndent, task.ShortID(blocker.ID), blocker.Task.Status, blocker.Task.Title))
+		lines = append(lines, relatedLine(blocker.ID, blocker.Task))
 		for _, line := range drudger.FormatUnmergedWork(unmerged[blocker.ID]) {
 			lines = append(lines, listIndent+listIndent+line)
 		}
 	}
 	return lines
+}
+
+// familyLines lists the task a task belongs to and the tasks belonging to it,
+// each under a heading of its own. A section with no task in it gets no lines.
+func familyLines(family task.Family) []string {
+	var lines []string
+	if family.ParentID != "" {
+		lines = append(lines, "", parentLabel+":", relatedLine(family.ParentID, family.Parent))
+	}
+	if len(family.Children) > 0 {
+		lines = append(lines, "", childrenLabel+":")
+		for _, child := range family.Children {
+			lines = append(lines, relatedLine(child.ID, child))
+		}
+	}
+	return lines
+}
+
+// relatedLine renders one task a task report links to. related is nil when id
+// names no stored task.
+func relatedLine(id task.TaskID, related *task.Task) string {
+	if related == nil {
+		return listIndent + task.ShortID(id) + "  " + missingTaskLabel
+	}
+	return fmt.Sprintf(relatedTaskLine, listIndent, task.ShortID(id), related.Status, related.Title)
 }
 
 // taskRunLines reports what the last run left on a task. A task no agent has

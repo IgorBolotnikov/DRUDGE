@@ -31,6 +31,9 @@ model Task
   // Full ids of the tasks this task waits for, comma-separated
   // Stored under the blocked_by key and left out when empty
   blockedBy
+  // Full id of the task this task belongs to. Grouping is one level deep
+  // Stored under the parent_task_id key and left out when empty
+  parentTaskId
 
   createdAt
   updatedAt

@@ -38,6 +38,7 @@ const (
 	blockedByFlag   = "--blocked-by"
 	blockFlag       = "--block"
 	unblockFlag     = "--unblock"
+	parentFlag      = "--parent"
 )
 
 // taskIDListSeparator splits a flag value holding several task ids.
@@ -49,7 +50,7 @@ const (
 	taskNextUsage = "usage: drg task next"
 	taskShowUsage = "usage: drg task show <task-id>"
 	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
-		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + forceFlag + "]"
+		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + parentFlag + " <id>] [" + forceFlag + "]"
 	taskRmUsage     = "usage: drg task rm <task-id> [" + forceFlag + "]"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
@@ -150,6 +151,7 @@ func taskNew(args []string) error {
 
 	ticketID, _ := parseFlagValue(args, ticketFlag)
 	blockedBy, _ := parseFlagValue(args, blockedByFlag)
+	parentID, _ := parseFlagValue(args, parentFlag)
 	statusValue, hasStatus := parseFlagValue(args, statusFlag)
 	status := task.StatusDraft
 	if hasStatus {
@@ -169,13 +171,14 @@ func taskNew(args []string) error {
 	svc := task.NewTaskService(repo, log)
 
 	dto := task.CreateTaskDto{
-		Title:       title,
-		Description: description,
-		Status:      status,
-		TicketID:    ticketID,
-		ProjectSlug: cfg.ProjectSlug,
-		BlockedBy:   parseTaskIDList(blockedBy),
-		CreatedAt:   time.Now().UTC(),
+		Title:        title,
+		Description:  description,
+		Status:       status,
+		TicketID:     ticketID,
+		ProjectSlug:  cfg.ProjectSlug,
+		BlockedBy:    parseTaskIDList(blockedBy),
+		CreatedAt:    time.Now().UTC(),
+		ParentTaskID: task.TaskID(parentID),
 	}
 
 	_, err = svc.CreateTask(dto)
@@ -276,7 +279,12 @@ func taskShow(args []string) error {
 		return err
 	}
 
-	printTask(deps.log, found, blockers, unmerged, time.Now().UTC())
+	family, err := deps.tasks.Family(deps.localCfg.ProjectSlug, found)
+	if err != nil {
+		return err
+	}
+
+	printTask(deps.log, found, blockers, unmerged, family, time.Now().UTC())
 	return nil
 }
 

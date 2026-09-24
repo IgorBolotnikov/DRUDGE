@@ -30,13 +30,14 @@ const (
 
 // Front matter keys of a task file.
 const (
-	metaKeyID          = "id"
-	metaKeyTitle       = "title"
-	metaKeyStatus      = "status"
-	metaKeyTicketID    = "ticket_id"
-	metaKeyProjectSlug = "project_slug"
-	metaKeySessionID   = "session_id"
-	metaKeyBlockedBy   = "blocked_by"
+	metaKeyID           = "id"
+	metaKeyTitle        = "title"
+	metaKeyStatus       = "status"
+	metaKeyTicketID     = "ticket_id"
+	metaKeyProjectSlug  = "project_slug"
+	metaKeySessionID    = "session_id"
+	metaKeyBlockedBy    = "blocked_by"
+	metaKeyParentTaskID = "parent_task_id"
 
 	// Keys of what the agent reported when its run ended.
 	metaKeySessionFailed   = "session_failed"
@@ -105,14 +106,15 @@ func (r *FileTaskRepository) CreateTask(dto task.CreateTaskDto) (*task.Task, err
 	taskFilePath := filepath.Join(tasksDir, taskFileName(id, dto.Title))
 
 	created := &task.Task{
-		ID:          id,
-		Title:       dto.Title,
-		Description: dto.Description,
-		Status:      dto.Status,
-		TicketID:    dto.TicketID,
-		ProjectSlug: r.Project,
-		BlockedBy:   dto.BlockedBy,
-		CreatedAt:   dto.CreatedAt,
+		ID:           id,
+		Title:        dto.Title,
+		Description:  dto.Description,
+		Status:       dto.Status,
+		TicketID:     dto.TicketID,
+		ProjectSlug:  r.Project,
+		BlockedBy:    dto.BlockedBy,
+		CreatedAt:    dto.CreatedAt,
+		ParentTaskID: dto.ParentTaskID,
 	}
 
 	if err := common.WriteFileWithFrontMatter(taskFilePath, taskFrontMatter(created), created.Description); err != nil {
@@ -140,6 +142,9 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	}
 	if len(taskToWrite.BlockedBy) != 0 {
 		metadata[metaKeyBlockedBy] = joinTaskIDs(taskToWrite.BlockedBy)
+	}
+	if taskToWrite.ParentTaskID != "" {
+		metadata[metaKeyParentTaskID] = string(taskToWrite.ParentTaskID)
 	}
 	if taskToWrite.HasSessionFailed {
 		metadata[metaKeySessionFailed] = strconv.FormatBool(taskToWrite.HasSessionFailed)
@@ -298,6 +303,9 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if blockedBy, ok := metadata[metaKeyBlockedBy]; ok {
 		t.BlockedBy = splitTaskIDs(blockedBy)
+	}
+	if parentTaskID, ok := metadata[metaKeyParentTaskID]; ok {
+		t.ParentTaskID = task.TaskID(parentTaskID)
 	}
 	if sessionFailed, ok := metadata[metaKeySessionFailed]; ok {
 		t.HasSessionFailed, _ = strconv.ParseBool(sessionFailed)

@@ -24,12 +24,13 @@ type fakeTaskRepo struct {
 
 func (repo *fakeTaskRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
 	created := &Task{
-		ID:          createdTaskID,
-		Title:       dto.Title,
-		Status:      dto.Status,
-		ProjectSlug: dto.ProjectSlug,
-		BlockedBy:   dto.BlockedBy,
-		CreatedAt:   dto.CreatedAt,
+		ID:           createdTaskID,
+		Title:        dto.Title,
+		Status:       dto.Status,
+		ProjectSlug:  dto.ProjectSlug,
+		BlockedBy:    dto.BlockedBy,
+		CreatedAt:    dto.CreatedAt,
+		ParentTaskID: dto.ParentTaskID,
 	}
 	repo.tasks = append(repo.tasks, created)
 	return created, nil

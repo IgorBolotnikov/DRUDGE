@@ -8,7 +8,7 @@ import (
 )
 
 // ErrNoChanges reports an edit that names no field to change.
-var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status and the blockers")
+var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status, the blockers and the parent")
 
 // ManagedStatuses are the statuses that describe a Session. Drudge writes them
 // itself when a run starts and when it ends.
@@ -28,6 +28,9 @@ type EditTaskDto struct {
 	Block *[]TaskID
 	// Unblock removes the IDs from the list of blockers.
 	Unblock *[]TaskID
+	// ParentTaskID groups the task under another one. The id may be a prefix,
+	// and an empty id ungroups the task.
+	ParentTaskID *TaskID
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
@@ -37,7 +40,7 @@ type EditTaskDto struct {
 // HasChanges reports whether the edit names a field to change.
 func (changes EditTaskDto) HasChanges() bool {
 	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil ||
-		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil
+		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil || changes.ParentTaskID != nil
 }
 
 // SessionGuard refuses a change to a task whose agent is still working.
@@ -84,6 +87,13 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 			return nil, err
 		}
 		changes.Unblock = &unblock
+	}
+	if changes.ParentTaskID != nil {
+		parentID, err := service.resolveParent(projectSlug, found.ID, *changes.ParentTaskID)
+		if err != nil {
+			return nil, err
+		}
+		changes.ParentTaskID = &parentID
 	}
 
 	var edited *Task
@@ -156,5 +166,8 @@ func applyEdit(taskToEdit *Task, changes EditTaskDto) {
 	}
 	if changes.Unblock != nil {
 		taskToEdit.BlockedBy = removeBlockers(taskToEdit.BlockedBy, *changes.Unblock)
+	}
+	if changes.ParentTaskID != nil {
+		taskToEdit.ParentTaskID = *changes.ParentTaskID
 	}
 }

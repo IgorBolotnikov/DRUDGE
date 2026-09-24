@@ -18,6 +18,7 @@ func TestPrintTask(t *testing.T) {
 		name     string
 		task     task.Task
 		blockers []task.Blocker
+		family   task.Family
 		unmerged map[task.TaskID][]drudger.UnmergedWork
 		want     []string
 		// wantAbsent is what the report must leave out for this task.
@@ -32,7 +33,7 @@ func TestPrintTask(t *testing.T) {
 				CreatedAt:   now.Add(-2 * time.Hour),
 			},
 			want:       []string{"todo", "R-003-09", longDescription, neverRunLabel, neverLabel},
-			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel},
+			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel, parentLabel, childrenLabel},
 		},
 		{
 			name: "a task an agent is working on",
@@ -183,6 +184,53 @@ func TestPrintTask(t *testing.T) {
 			},
 		},
 		{
+			name: "a task belonging to another task",
+			task: task.Task{
+				Status:       task.StatusTodo,
+				CreatedAt:    now.Add(-2 * time.Hour),
+				ParentTaskID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+			},
+			family: task.Family{
+				ParentID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+				Parent:   &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Dependency tracking", Status: task.StatusInProgress},
+			},
+			want: []string{
+				"\n" + parentLabel + ":\n" +
+					"  9c8d7e6f  in-progress  Dependency tracking\n",
+			},
+			wantAbsent: []string{childrenLabel},
+		},
+		{
+			name: "a task whose parent is gone",
+			task: task.Task{
+				Status:       task.StatusTodo,
+				CreatedAt:    now.Add(-2 * time.Hour),
+				ParentTaskID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+			},
+			family: task.Family{ParentID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f"},
+			want: []string{
+				"\n" + parentLabel + ":\n" +
+					"  9c8d7e6f  " + missingTaskLabel + "\n",
+			},
+		},
+		{
+			name: "a task other tasks belong to",
+			task: task.Task{
+				Status:    task.StatusTodo,
+				CreatedAt: now.Add(-2 * time.Hour),
+			},
+			family: task.Family{Children: []*task.Task{
+				{ID: "2b3c4d5e-dbe9-4316-8aba-8a67a8f01f8f", Title: "Pick the next task", Status: task.StatusTodo},
+				{ID: "7e6d5c4b-dbe9-4316-8aba-8a67a8f01f8f", Title: "Refuse a cycle", Status: task.StatusDone},
+			}},
+			want: []string{
+				"\n" + childrenLabel + ":\n" +
+					"  2b3c4d5e  todo         Pick the next task\n" +
+					"  7e6d5c4b  done         Refuse a cycle\n",
+			},
+			wantAbsent: []string{parentLabel},
+		},
+		{
 			name: "a task carrying no ticket and no description",
 			task: task.Task{
 				Status:    task.StatusDraft,
@@ -199,7 +247,7 @@ func TestPrintTask(t *testing.T) {
 			taskToShow.Title = "Fix login"
 			log := common.NewLogger("")
 
-			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, testCase.unmerged, now) })
+			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, testCase.unmerged, testCase.family, now) })
 
 			for _, want := range append(testCase.want, string(taskToShow.ID), taskToShow.Title) {
 				if !strings.Contains(out, want) {
