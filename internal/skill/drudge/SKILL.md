@@ -1,18 +1,18 @@
 ---
-name: drudge
-description: Create, change, list, show and remove drudge tasks with the drg CLI. Load it before you write a spec, plan or ticket into drudge tasks, or before you change or remove existing ones.
+name: DRUDGE
+description: Create, change, list, show and remove DRUDGE tasks with the drg CLI. Load it before you write a spec, plan or ticket into DRUDGE tasks, or before you change or remove existing ones.
 ---
 
-# Writing drudge tasks with `drg`
+# Writing DRUDGE tasks with `drg`
 
-`drg` stores the tasks of the project linked to the current directory. A Drudger picks up a task and works from its description alone, so the description is the whole prompt the agent gets.
+`drg` stores the tasks of the project linked to the current directory. A drudger picks up a task and works from its description alone, so the description is the whole prompt the agent gets.
 
 This skill covers `drg task new`, `edit`, `list`, `show` and `rm`. Run `drg task <subcommand> --help` for the exact flags of each.
 
 ## Words
 
-- A ticket ID names the external work item, like `R-006` or `ABC-123`. Every task split out of it carries that ID.
-- The pieces a spec is split into are tasks.
+- A "ticket ID" names the external work item, like `ABC-123`. Every task split out of it carries that ID.
+- "Tasks" are the pieces a spec is split into.
 
 ## Rules
 

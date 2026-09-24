@@ -17,8 +17,8 @@ func TestDrudge_StartsWithFrontMatterNamingDrudge(t *testing.T) {
 	if !strings.HasPrefix(content, "---\n") || !isFound {
 		t.Fatalf("expected the skill to start with a front matter block, got %q", content)
 	}
-	if !strings.Contains(frontMatter, "name: drudge\n") {
-		t.Errorf("expected the front matter to name drudge, got %q", frontMatter)
+	if !strings.Contains(frontMatter, "name: DRUDGE\n") {
+		t.Errorf("expected the front matter to name DRUDGE, got %q", frontMatter)
 	}
 	if !strings.Contains(frontMatter, "description: ") {
 		t.Errorf("expected the front matter to carry a description, got %q", frontMatter)
@@ -27,7 +27,7 @@ func TestDrudge_StartsWithFrontMatterNamingDrudge(t *testing.T) {
 
 func TestInstallDrudge(t *testing.T) {
 	skillPath := func(home string) string {
-		return filepath.Join(home, ".claude", "skills", "drudge", "SKILL.md")
+		return filepath.Join(home, ".claude", "skills", "DRUDGE", "SKILL.md")
 	}
 
 	tests := []struct {

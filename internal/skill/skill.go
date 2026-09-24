@@ -17,7 +17,7 @@ const (
 	claudeDirName   = ".claude"
 	skillsDirName   = "skills"
 	skillFileName   = "SKILL.md"
-	drudgeSkillName = "drudge"
+	drudgeSkillName = "DRUDGE"
 )
 
 //go:embed drudge/SKILL.md
