@@ -52,24 +52,15 @@ func (service *TaskService) Unblocked(projectSlug string, finished *Task) ([]*Ta
 			unblocked = append(unblocked, dependent)
 		}
 	}
-	slices.SortFunc(unblocked, func(first, second *Task) int {
-		if byAge := first.CreatedAt.Compare(second.CreatedAt); byAge != 0 {
-			return byAge
-		}
-		return strings.Compare(string(first.ID), string(second.ID))
-	})
+	slices.SortFunc(unblocked, compareByAge)
 	return unblocked, nil
 }
 
 // isOnlyBlockedBy reports whether every blocker of dependent other than
 // finishedID is a stored task that is done.
 func isOnlyBlockedBy(tasksByID map[TaskID]*Task, dependent *Task, finishedID TaskID) bool {
-	for _, blockerID := range dependent.BlockedBy {
-		if blockerID == finishedID {
-			continue
-		}
-		blocker, ok := tasksByID[blockerID]
-		if !ok || blocker.Status != StatusDone {
+	for _, blockerID := range holdingBlockers(tasksByID, dependent) {
+		if blockerID != finishedID {
 			return false
 		}
 	}

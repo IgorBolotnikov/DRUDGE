@@ -44,8 +44,9 @@ const (
 const taskIDListSeparator = ","
 
 const (
-	taskUsage     = "usage: drg task <new|list|show|edit|rm|run|rerun|status>"
+	taskUsage     = "usage: drg task <new|list|next|show|edit|rm|run|rerun|status>"
 	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>]"
+	taskNextUsage = "usage: drg task next"
 	taskShowUsage = "usage: drg task show <task-id>"
 	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
 		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + forceFlag + "]"
@@ -83,6 +84,8 @@ func runTask(args []string) error {
 		return taskNew(args[1:])
 	case "list":
 		return taskList(args[1:])
+	case "next":
+		return taskNext(args[1:])
 	case showSubcommand:
 		return taskShow(args[1:])
 	case editSubcommand:
