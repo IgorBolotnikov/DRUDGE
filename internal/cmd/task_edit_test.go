@@ -12,8 +12,11 @@ import (
 
 func TestParseTaskEditArgs(t *testing.T) {
 	cases := []struct {
-		name        string
-		args        []string
+		name string
+		args []string
+		// files are written to the directory the parsing runs in, by name.
+		files       map[string]string
+		stdin       string
 		wantTaskID  task.TaskID
 		wantChanges task.EditTaskDto
 		wantErr     bool
@@ -164,6 +167,67 @@ func TestParseTaskEditArgs(t *testing.T) {
 			wantErrText: "--unblock, --block and --blocked-by cannot be used together",
 		},
 		{
+			name:        "a description file",
+			args:        []string{"abc123", "--description-file", "description.md"},
+			files:       map[string]string{"description.md": "SSO logs nobody out"},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Description: pointerTo("SSO logs nobody out")},
+		},
+		{
+			name:        "a description from stdin",
+			args:        []string{"abc123", "--description-file", "-"},
+			stdin:       "SSO logs nobody out",
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Description: pointerTo("SSO logs nobody out")},
+		},
+		{
+			name:        "a description ending in a newline",
+			args:        []string{"abc123", "--description-file", "-"},
+			stdin:       "SSO logs nobody out\n\n",
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Description: pointerTo("SSO logs nobody out\n")},
+		},
+		{
+			name:        "a description with a code block and dollar signs",
+			args:        []string{"abc123", "--description-file", "-"},
+			stdin:       literalDescription + "\n",
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{Description: pointerTo(literalDescription)},
+		},
+		{
+			name:        "a description and a description file",
+			args:        []string{"abc123", "--description-file", "-", "--description", "SSO logs nobody out"},
+			stdin:       "SSO logs nobody out",
+			wantErr:     true,
+			wantErrText: "--description and --description-file cannot be used together",
+		},
+		{
+			name:        "a missing description file",
+			args:        []string{"abc123", "--description-file", "missing.md"},
+			wantErr:     true,
+			wantErrText: `"missing.md"`,
+		},
+		{
+			name:        "an empty description file",
+			args:        []string{"abc123", "--description-file", "description.md"},
+			files:       map[string]string{"description.md": ""},
+			wantErr:     true,
+			wantErrText: `"description.md" holds no description`,
+		},
+		{
+			name:        "a whitespace-only description from stdin",
+			args:        []string{"abc123", "--description-file", "-"},
+			stdin:       " \n\t\n",
+			wantErr:     true,
+			wantErrText: "stdin holds no description",
+		},
+		{
+			name:        "a description file flag with no path",
+			args:        []string{"abc123", "--description-file"},
+			wantErr:     true,
+			wantErrText: "--description-file needs a path",
+		},
+		{
 			name:    "no arguments",
 			args:    nil,
 			wantErr: true,
@@ -201,7 +265,9 @@ func TestParseTaskEditArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			taskID, changes, err := parseTaskEditArgs(testCase.args)
+			writeFiles(t, testCase.files)
+
+			taskID, changes, err := parseTaskEditArgs(testCase.args, strings.NewReader(testCase.stdin))
 
 			if testCase.wantErr {
 				if err == nil {

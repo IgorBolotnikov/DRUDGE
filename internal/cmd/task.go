@@ -3,6 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -31,14 +34,23 @@ const (
 
 // Flags a task command reads a value after.
 const (
-	titleFlag       = "--title"
-	descriptionFlag = "--description"
-	ticketFlag      = "--ticket"
-	statusFlag      = "--status"
-	blockedByFlag   = "--blocked-by"
-	blockFlag       = "--block"
-	unblockFlag     = "--unblock"
-	parentFlag      = "--parent"
+	titleFlag           = "--title"
+	descriptionFlag     = "--description"
+	descriptionFileFlag = "--description-file"
+	ticketFlag          = "--ticket"
+	statusFlag          = "--status"
+	blockedByFlag       = "--blocked-by"
+	blockFlag           = "--block"
+	unblockFlag         = "--unblock"
+	parentFlag          = "--parent"
+)
+
+// stdinPath is the description file path that reads stdin.
+const stdinPath = "-"
+
+var (
+	errDescriptionFileNeedsPath = errors.New(descriptionFileFlag + " needs a path, or " + stdinPath + " to read stdin")
+	errTwoDescriptions          = errors.New(descriptionFlag + " and " + descriptionFileFlag + " cannot be used together")
 )
 
 // taskIDListSeparator splits a flag value holding several task ids.
@@ -49,7 +61,7 @@ const (
 	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>] [" + parentFlag + " <id>]"
 	taskNextUsage = "usage: drg task next"
 	taskShowUsage = "usage: drg task show <task-id>"
-	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
+	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" + descriptionFileFlag + " <path>] [" +
 		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + parentFlag + " <id>] [" + forceFlag + "]"
 	taskRmUsage     = "usage: drg task rm <task-id> [" + forceFlag + "]"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
@@ -129,8 +141,37 @@ func parseTaskIDList(value string) []task.TaskID {
 	return ids
 }
 
+// readDescriptionFile reads a description from the file at path, or from stdin
+// when path is stdinPath. It trims the one trailing newline a heredoc adds and
+// refuses content that is blank.
+func readDescriptionFile(path string, stdin io.Reader) (string, error) {
+	var content []byte
+	var err error
+	source := "stdin"
+	if path == stdinPath {
+		if content, err = io.ReadAll(stdin); err != nil {
+			return "", fmt.Errorf("cannot read the description from stdin: %w", err)
+		}
+	} else {
+		source = fmt.Sprintf("description file %q", path)
+		if content, err = os.ReadFile(path); err != nil {
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				err = pathErr.Err
+			}
+			return "", fmt.Errorf("cannot read the %s: %w", source, err)
+		}
+	}
+
+	description := strings.TrimSuffix(string(content), "\n")
+	if strings.TrimSpace(description) == "" {
+		return "", fmt.Errorf("%s holds no description", source)
+	}
+	return description, nil
+}
+
 func taskNew(args []string) error {
-	dto, err := parseTaskNewArgs(args)
+	dto, err := parseTaskNewArgs(args, os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -153,7 +194,7 @@ func taskNew(args []string) error {
 
 // parseTaskNewArgs reads the fields of a new task. It leaves the project slug
 // and the creation time for the caller to fill in.
-func parseTaskNewArgs(args []string) (task.CreateTaskDto, error) {
+func parseTaskNewArgs(args []string, stdin io.Reader) (task.CreateTaskDto, error) {
 	for _, flag := range []string{blockFlag, unblockFlag} {
 		if hasFlag(args, flag) {
 			return task.CreateTaskDto{}, fmt.Errorf("drg task new takes no %s, name the blockers of a new task with %s", flag, blockedByFlag)
@@ -166,8 +207,19 @@ func parseTaskNewArgs(args []string) (task.CreateTaskDto, error) {
 	}
 
 	description, hasDesc := parseFlagValue(args, descriptionFlag)
-	if !hasDesc {
-		return task.CreateTaskDto{}, fmt.Errorf("%s is required", descriptionFlag)
+	descriptionPath, hasDescPath := parseFlagValue(args, descriptionFileFlag)
+	switch {
+	case hasFlag(args, descriptionFileFlag) && !hasDescPath:
+		return task.CreateTaskDto{}, errDescriptionFileNeedsPath
+	case hasDesc && hasDescPath:
+		return task.CreateTaskDto{}, errTwoDescriptions
+	case hasDescPath:
+		var err error
+		if description, err = readDescriptionFile(descriptionPath, stdin); err != nil {
+			return task.CreateTaskDto{}, err
+		}
+	case !hasDesc:
+		return task.CreateTaskDto{}, fmt.Errorf("%s or %s is required", descriptionFlag, descriptionFileFlag)
 	}
 
 	ticketID, _ := parseFlagValue(args, ticketFlag)

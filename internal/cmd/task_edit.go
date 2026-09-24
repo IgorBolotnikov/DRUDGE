@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"slices"
 	"strings"
 
@@ -31,6 +33,7 @@ func taskEdit(args []string) error {
 		fmt.Println("Options:")
 		fmt.Printf(editOptionLine, titleFlag+" <title>", "New title")
 		fmt.Printf(editOptionLine, descriptionFlag+" <text>", "New description, the prompt the agent is handed")
+		fmt.Printf(editOptionLine, descriptionFileFlag+" <path>", "File to read the new description from, "+stdinPath+" to read stdin")
 		fmt.Printf(editOptionLine, ticketFlag+" <ticket>", "Ticket the task came from, empty to clear it")
 		fmt.Printf(editOptionLine, statusFlag+" <status>", "New status ("+task.FormatStatuses(task.Statuses)+")")
 		fmt.Printf(editOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for, replacing the list, empty to clear it")
@@ -41,7 +44,7 @@ func taskEdit(args []string) error {
 		return nil
 	}
 
-	taskID, changes, err := parseTaskEditArgs(args)
+	taskID, changes, err := parseTaskEditArgs(args, os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -58,16 +61,24 @@ func taskEdit(args []string) error {
 // parseTaskEditArgs reads the task id and the fields an edit changes. A flag
 // given an empty value clears its field, and a flag left out leaves its field
 // as it stands.
-func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
+func parseTaskEditArgs(args []string, stdin io.Reader) (task.TaskID, task.EditTaskDto, error) {
 	var taskID string
 	var changes task.EditTaskDto
 	var seenBlockerFlags []string
+	var descriptionPath string
+	var hasDescPath bool
 
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
 		case arg == forceFlag || arg == forceFlagShort:
 			changes.AllowsManagedStatus = true
+		case arg == descriptionFileFlag:
+			if index+1 >= len(args) {
+				return "", changes, errDescriptionFileNeedsPath
+			}
+			index++
+			descriptionPath, hasDescPath = args[index], true
 		case slices.Contains(editValueFlags, arg):
 			if index+1 >= len(args) {
 				return "", changes, fmt.Errorf("%s needs a value, %s", arg, taskEditUsage)
@@ -91,6 +102,16 @@ func parseTaskEditArgs(args []string) (task.TaskID, task.EditTaskDto, error) {
 	}
 	if len(seenBlockerFlags) > 1 {
 		return "", changes, fmt.Errorf("%s cannot be used together, change the blockers one way per edit", common.JoinNames(seenBlockerFlags))
+	}
+	if hasDescPath {
+		if changes.Description != nil {
+			return "", changes, errTwoDescriptions
+		}
+		description, err := readDescriptionFile(descriptionPath, stdin)
+		if err != nil {
+			return "", changes, err
+		}
+		changes.Description = &description
 	}
 	if !changes.HasChanges() {
 		return "", changes, fmt.Errorf("nothing to change, %s", taskEditUsage)

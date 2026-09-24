@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -285,8 +286,11 @@ func TestTaskNew_RefusesEditOnlyBlockerFlags(t *testing.T) {
 
 func TestParseTaskNewArgs(t *testing.T) {
 	cases := []struct {
-		name    string
-		args    []string
+		name string
+		args []string
+		// files are written to the directory the parsing runs in, by name.
+		files   map[string]string
+		stdin   string
 		wantDto task.CreateTaskDto
 		wantErr bool
 		// wantErrText is a fragment the error must carry, checked when set.
@@ -338,7 +342,64 @@ func TestParseTaskNewArgs(t *testing.T) {
 			name:        "no description",
 			args:        []string{"--title", "Fix logout"},
 			wantErr:     true,
-			wantErrText: "--description is required",
+			wantErrText: "--description or --description-file is required",
+		},
+		{
+			name:    "a description file",
+			args:    []string{"--title", "Fix logout", "--description-file", "description.md"},
+			files:   map[string]string{"description.md": "SSO logs nobody out"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a description from stdin",
+			args:    []string{"--title", "Fix logout", "--description-file", "-"},
+			stdin:   "SSO logs nobody out",
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a description ending in a newline",
+			args:    []string{"--title", "Fix logout", "--description-file", "-"},
+			stdin:   "SSO logs nobody out\n\n",
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out\n", Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:    "a description with a code block and dollar signs",
+			args:    []string{"--title", "Fix logout", "--description-file", "-"},
+			stdin:   literalDescription + "\n",
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: literalDescription, Status: task.StatusDraft, BlockedBy: []task.TaskID{}},
+		},
+		{
+			name:        "a description and a description file",
+			args:        []string{"--title", "Fix logout", "--description", "SSO logs nobody out", "--description-file", "-"},
+			stdin:       "SSO logs nobody out",
+			wantErr:     true,
+			wantErrText: "--description and --description-file cannot be used together",
+		},
+		{
+			name:        "a missing description file",
+			args:        []string{"--title", "Fix logout", "--description-file", "missing.md"},
+			wantErr:     true,
+			wantErrText: `"missing.md"`,
+		},
+		{
+			name:        "an empty description file",
+			args:        []string{"--title", "Fix logout", "--description-file", "description.md"},
+			files:       map[string]string{"description.md": ""},
+			wantErr:     true,
+			wantErrText: `"description.md" holds no description`,
+		},
+		{
+			name:        "a whitespace-only description from stdin",
+			args:        []string{"--title", "Fix logout", "--description-file", "-"},
+			stdin:       " \n\t\n",
+			wantErr:     true,
+			wantErrText: "stdin holds no description",
+		},
+		{
+			name:        "a description file flag with no path",
+			args:        []string{"--title", "Fix logout", "--description-file"},
+			wantErr:     true,
+			wantErrText: "--description-file needs a path",
 		},
 		{
 			name:        "an unknown status",
@@ -362,7 +423,9 @@ func TestParseTaskNewArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			dto, err := parseTaskNewArgs(testCase.args)
+			writeFiles(t, testCase.files)
+
+			dto, err := parseTaskNewArgs(testCase.args, strings.NewReader(testCase.stdin))
 
 			if testCase.wantErr {
 				if err == nil {
@@ -381,5 +444,19 @@ func TestParseTaskNewArgs(t *testing.T) {
 				t.Errorf("expected %+v, got %+v", testCase.wantDto, dto)
 			}
 		})
+	}
+}
+
+// literalDescription holds what a shell would expand or a heredoc might break.
+const literalDescription = "Run `make drg task list` and check $HOME.\n\n```sh\necho \"$1\" '$2' \\$3\n```"
+
+// writeFiles runs the test in a fresh directory holding the given files.
+func writeFiles(t *testing.T, files map[string]string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	for name, content := range files {
+		if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
 	}
 }
