@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"drudge/internal/adapters/persistence"
-	"drudge/internal/common"
-	"drudge/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
 // unresolvedBranch stands in for a default branch drudge could not work out.

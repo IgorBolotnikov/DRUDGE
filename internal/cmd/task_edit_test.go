@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func TestParseTaskEditArgs(t *testing.T) {

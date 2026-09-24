@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // Where Claude Code looks for a personal skill: a directory named after the

@@ -9,7 +9,7 @@ import (
 	"io/fs"
 	"os"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // TODO: this whole file has to be revisited after a live testing

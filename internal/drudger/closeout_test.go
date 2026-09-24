@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // testHeadSHA is where a worktree sits once its agent has committed.

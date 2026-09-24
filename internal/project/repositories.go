@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"drudge/internal/config"
-	"drudge/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 // selfPath is the recorded path of a project directory that is itself a

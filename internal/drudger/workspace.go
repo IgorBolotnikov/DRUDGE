@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
-	"drudge/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
 // gitDirName is the repository directory a sandbox mounts alongside a

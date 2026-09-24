@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/config"
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // testTaskBranch is the branch the task todoTask returns gets.

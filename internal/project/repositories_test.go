@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 // fakeGit answers the git port from what a test set up and counts the calls,

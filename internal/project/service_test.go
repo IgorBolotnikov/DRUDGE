@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // fakeProjectRepo holds projects in memory.

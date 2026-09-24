@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // setupLocalDir chdirs into a temp dir so the relative drudge paths the

@@ -7,7 +7,7 @@ import (
 	"os"
 	"regexp"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Canonical roles in the theme palette.

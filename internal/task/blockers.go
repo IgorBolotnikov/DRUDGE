@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Blocker is one task another task waits for. Task is nil when the id names no

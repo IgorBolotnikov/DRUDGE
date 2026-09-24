@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 func TestBundledThemesHaveAllRoles(t *testing.T) {

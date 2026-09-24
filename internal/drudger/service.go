@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // TODO: Now dridger logis is couples with sbx quirks. At some point I need to

@@ -3,7 +3,7 @@ package drudger
 import (
 	"time"
 
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // Drudger is an agent running in a reusable sandbox over a workspace of git

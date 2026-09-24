@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/adapters/exec"
-	"drudge/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 // Pieces of a git invocation.

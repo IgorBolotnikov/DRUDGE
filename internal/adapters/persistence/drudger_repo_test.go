@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/drudger"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 const drudgerTestProject = "test-project"

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // NukeDrudger destroys a Drudger: takes its workspace apart, deletes its

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/adapters/persistence"
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 var TaskCmd = &Cmd{

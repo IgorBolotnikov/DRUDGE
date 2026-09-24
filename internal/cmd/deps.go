@@ -1,15 +1,15 @@
 package cmd
 
 import (
-	"drudge/internal/adapters/exec"
-	"drudge/internal/adapters/gitcli"
-	"drudge/internal/adapters/persistence"
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/drudger"
-	"drudge/internal/git"
-	"drudge/internal/project"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 type commandDeps struct {

@@ -6,7 +6,7 @@ import (
 	"os"
 	"slices"
 
-	"drudge/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 type Cmd struct {

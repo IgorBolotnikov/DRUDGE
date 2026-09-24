@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/skill"
-	"drudge/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/skill"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 var SetupCmd = &Cmd{

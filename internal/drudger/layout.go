@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // slotDirPrefix names the workspace directory of a Drudger slot, and the slot

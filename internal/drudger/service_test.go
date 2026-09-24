@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 const (

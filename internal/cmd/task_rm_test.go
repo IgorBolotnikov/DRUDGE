@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func TestParseTaskRemoveArgs(t *testing.T) {

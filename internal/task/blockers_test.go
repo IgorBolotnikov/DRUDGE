@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Tasks of a backlog the blocker tests link together. editableTask is the one

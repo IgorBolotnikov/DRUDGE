@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 type ProjectService struct {

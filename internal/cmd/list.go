@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 const (

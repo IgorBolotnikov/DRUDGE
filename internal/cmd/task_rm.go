@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // taskRemove deletes one task and the run directory of its Sessions.

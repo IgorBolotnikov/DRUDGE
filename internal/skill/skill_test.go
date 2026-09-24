@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 func TestDrudge_StartsWithFrontMatterNamingDrudge(t *testing.T) {

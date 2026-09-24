@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 )
 
 const (

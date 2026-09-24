@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
 const testDirPerm = 0o755

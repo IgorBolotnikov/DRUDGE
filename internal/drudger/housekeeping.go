@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode"
 
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // branchPrefix groups every branch drudge makes under one name.

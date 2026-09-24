@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func (service *DrudgerService) claimDrudger(projectSlug string, taskID task.TaskID, layout projectLayout) (*Drudger, error) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"drudge/internal/cmd"
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd"
 )
 
 func main() {

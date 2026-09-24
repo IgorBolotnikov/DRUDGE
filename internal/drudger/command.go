@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // CommandRunner runs the commands that put a Drudger to work.

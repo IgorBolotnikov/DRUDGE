@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 var CleanupCmd = &Cmd{

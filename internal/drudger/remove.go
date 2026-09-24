@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"slices"
 
-	"drudge/internal/common"
-	"drudge/internal/config"
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // RemoveRun deletes the run directory of a task and reports whether the task

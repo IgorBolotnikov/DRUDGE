@@ -3,8 +3,8 @@ package drudger
 import (
 	"fmt"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // parkWorkspace parks every repository of a workspace and records the stashes

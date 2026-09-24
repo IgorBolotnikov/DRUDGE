@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 type mockRepo struct {

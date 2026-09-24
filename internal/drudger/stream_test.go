@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Sample events of a real run, one per line of the stream.

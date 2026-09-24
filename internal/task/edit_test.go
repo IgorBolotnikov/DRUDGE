@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 const testProjectSlug = "demo"

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"slices"
 
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // rescueBranchSuffix ends the name of a branch close-out puts on commits no

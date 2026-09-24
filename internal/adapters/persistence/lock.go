@@ -6,7 +6,7 @@ import (
 	"os"
 	"syscall"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // lockFileExtension is the suffix of every lock file this package writes.

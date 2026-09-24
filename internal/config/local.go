@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // LocalConfig scoped per project and contains overrides of global config

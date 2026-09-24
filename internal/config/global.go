@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 type Env string

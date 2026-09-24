@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"drudge/internal/common"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // editValueFlags are the flags drg task edit reads a value after.

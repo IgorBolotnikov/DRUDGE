@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 func TestTaskService_ListTasks(t *testing.T) {

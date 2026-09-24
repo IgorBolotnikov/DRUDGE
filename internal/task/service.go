@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // ShortIDLength is how many leading characters of a task id the interfaces

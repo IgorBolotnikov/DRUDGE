@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"drudge/internal/git"
-	"drudge/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // unfinishedBlockerLine lays out one blocker in a refusal, the status padded

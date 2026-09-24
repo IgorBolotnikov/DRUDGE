@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // fakeSessionKeeper stands for the drudger service. The live Session check and
