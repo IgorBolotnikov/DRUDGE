@@ -4,6 +4,7 @@ package theme
 import (
 	"fmt"
 	"maps"
+	"os"
 	"regexp"
 
 	"drudge/internal/common"
@@ -26,7 +27,16 @@ const (
 // Theme holds the effective color palette (foreground only, 24-bit hex) after
 // all merges. It is immutable after creation.
 type Theme struct {
-	colors map[string]string // role -> "#rrggbb"
+	colors      map[string]string // role -> "#rrggbb"
+	isColorless bool
+}
+
+// noColorEnv turns off every escape sequence when set to a non-empty value.
+// See https://no-color.org.
+const noColorEnv = "NO_COLOR"
+
+func isColorlessEnv() bool {
+	return os.Getenv(noColorEnv) != ""
 }
 
 // ansiReset is the ANSI reset sequence.
@@ -55,13 +65,17 @@ func NewTheme(name string) *Theme {
 		palette = make(map[string]string)
 	}
 	return &Theme{
-		colors: copyMap(palette),
+		colors:      copyMap(palette),
+		isColorless: isColorlessEnv(),
 	}
 }
 
 // Color returns a 24-bit true color ANSI escape sequence for the given role.
-// Format: \x1b[38;2;R;G;mb.
+// Format: \x1b[38;2;R;G;mb. It returns an empty string when NO_COLOR is set.
 func (t *Theme) Color(role string) string {
+	if t.isColorless {
+		return ""
+	}
 	hex, ok := t.colors[role]
 	if !ok {
 		return ""
@@ -70,8 +84,12 @@ func (t *Theme) Color(role string) string {
 	return fmt.Sprintf(ansiColorPrefix, r, g, b)
 }
 
-// Reset returns the ANSI reset sequence.
+// Reset returns the ANSI reset sequence, or an empty string when NO_COLOR is
+// set.
 func (t *Theme) Reset() string {
+	if t.isColorless {
+		return ""
+	}
 	return ansiReset
 }
 
@@ -166,7 +184,7 @@ func Load(name string) (*Theme, error) {
 		merged[role] = color
 	}
 
-	return &Theme{colors: merged}, nil
+	return &Theme{colors: merged, isColorless: isColorlessEnv()}, nil
 }
 
 // MustLoad is like Load but panics on error.

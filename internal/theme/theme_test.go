@@ -20,12 +20,32 @@ func TestBundledThemesHaveAllRoles(t *testing.T) {
 	}
 }
 
-func TestReset(t *testing.T) {
-	th := NewTheme("nord")
-	got := th.Reset()
-	expected := "\x1b[0m"
-	if got != expected {
-		t.Errorf("Reset() = %q, want %q", got, expected)
+func TestColorAndReset_FollowNoColor(t *testing.T) {
+	cases := []struct {
+		name      string
+		noColor   string
+		wantColor string
+		wantReset string
+	}{
+		{name: "NO_COLOR unset", noColor: "", wantColor: "\x1b[38;2;191;97;106m", wantReset: "\x1b[0m"},
+		{name: "NO_COLOR set", noColor: "1", wantColor: "", wantReset: ""},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv(noColorEnv, testCase.noColor)
+			t.Setenv("HOME", t.TempDir())
+			themes := map[string]*Theme{"NewTheme": NewTheme("nord"), "Load": MustLoad()}
+
+			for constructor, theme := range themes {
+				if got := theme.Color(RoleError); got != testCase.wantColor {
+					t.Errorf("%s: Color() = %q, want %q", constructor, got, testCase.wantColor)
+				}
+				if got := theme.Reset(); got != testCase.wantReset {
+					t.Errorf("%s: Reset() = %q, want %q", constructor, got, testCase.wantReset)
+				}
+			}
+		})
 	}
 }
 
