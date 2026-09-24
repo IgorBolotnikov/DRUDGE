@@ -36,6 +36,9 @@ func TestCLIRun_PrintsHelp(t *testing.T) {
 			if drudgerAt > projectAt || projectAt > taskAt {
 				t.Errorf("expected the commands in alphabetical order, got:\n%s", output)
 			}
+			if !strings.HasPrefix(output, "Available commands:\n") {
+				t.Errorf("expected the help to skip the logo outside a terminal, got:\n%s", output)
+			}
 		})
 	}
 }

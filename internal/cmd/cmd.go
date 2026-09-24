@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"slices"
 
 	"drudge/internal/theme"
@@ -44,9 +45,8 @@ func (c *CLI) Run(args []string) error {
 }
 
 func (c *CLI) printHelp() {
-	fmt.Println("")
 	printProjectName()
-	fmt.Println("\nAvailable commands:")
+	fmt.Println("Available commands:")
 	names := make([]string, 0, len(c.Cmds))
 	for name := range c.Cmds {
 		names = append(names, name)
@@ -57,7 +57,11 @@ func (c *CLI) printHelp() {
 	}
 }
 
+// printProjectName prints the logo when stdout is a terminal.
 func printProjectName() {
+	if !isTerminal(os.Stdout) {
+		return
+	}
 	lines := []string{
 		"  ██████╗ ██████╗ ██╗   ██╗██████╗  ██████╗ ███████╗",
 		"  ██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝",
@@ -68,9 +72,16 @@ func printProjectName() {
 	}
 	th := theme.MustLoad()
 	errColor := th.Color(theme.RoleError)
+	fmt.Println("")
 	for _, line := range lines {
 		fmt.Println(errColor + line + th.Reset())
 	}
+	fmt.Println("")
+}
+
+func isTerminal(file *os.File) bool {
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // HasForceFlag reports whether a slice of args contains --force or -f.
