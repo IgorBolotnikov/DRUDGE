@@ -110,22 +110,27 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return err
 	}
 
+	accept := func(candidate *task.Task) error {
+		return service.acceptRunnable(projectSlug, candidate)
+	}
+
 	if isDryRun {
-		if err := acceptRunnable(taskToRun); err != nil {
+		if err := accept(taskToRun); err != nil {
 			return err
 		}
 		return service.describeRun(projectSlug, taskToRun, layout)
 	}
 
-	return service.launch(projectSlug, taskToRun.ID, layout, acceptRunnable)
+	return service.launch(projectSlug, taskToRun.ID, layout, accept)
 }
 
-// acceptRunnable refuses a task that is not waiting for an agent.
-func acceptRunnable(taskToRun *task.Task) error {
+// acceptRunnable refuses a task that is not waiting for an agent, and one with
+// a blocker that is not done.
+func (service *DrudgerService) acceptRunnable(projectSlug string, taskToRun *task.Task) error {
 	if taskToRun.Status != task.StatusTodo {
 		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
 	}
-	return nil
+	return service.refuseBlocked(projectSlug, taskToRun)
 }
 
 // RerunTask hands a task back to a Drudger and starts it over from scratch.
@@ -161,8 +166,8 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 	return nil
 }
 
-// acceptRerunnable refuses a task no agent has had yet, and one whose agent is
-// still working.
+// acceptRerunnable refuses a task no agent has had yet, one whose agent is
+// still working, and one with a blocker that is not done.
 func (service *DrudgerService) acceptRerunnable(projectSlug string, layout projectLayout, taskToRerun *task.Task) error {
 	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
 		return fmt.Errorf(
@@ -181,7 +186,7 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, layout proje
 			working.Slot, working.Sandbox, taskToRerun.ID, nukeCommand, working.Slot,
 		)
 	}
-	return nil
+	return service.refuseBlocked(projectSlug, taskToRerun)
 }
 
 // RefuseWhileWorking refuses an edit or a removal of a task whose agent is
