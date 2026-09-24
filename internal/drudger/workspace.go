@@ -159,21 +159,29 @@ func (space slotWorkspace) mounts(runsDir string) []string {
 	return append(paths, runsDir)
 }
 
-// fetchBase updates the tracking ref a repository cuts work from. A repository
-// with no remote is left alone. A fetch that fails only warns and names the
-// commit the work is cut from, because that base is still a correct one to
-// branch from.
+// fetchBase updates the tracking ref a repository cuts work from. A fetch that
+// fails only warns and names the commit the work is cut from, because that
+// base is still a correct one to branch from.
 func (service *DrudgerService) fetchBase(repository repositoryWorktree) {
+	if !service.tryFetchBase(repository.projectRepository) {
+		service.logger.Error("Work on repository %s is cut from %s", repository.Name, service.describeBase(repository))
+	}
+}
+
+// tryFetchBase updates the tracking ref a repository cuts work from and
+// reports whether its base is fresh. A repository with no remote is left alone
+// and its base counts as fresh. A fetch that fails is logged.
+func (service *DrudgerService) tryFetchBase(repository projectRepository) bool {
 	if !repository.HasRemote {
-		return
+		return true
 	}
 
 	err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch)
 	if err == nil {
-		return
+		return true
 	}
 	service.logger.Error("Could not fetch %s of repository %s: %v", repository.DefaultBranch, repository.Name, err)
-	service.logger.Error("Work on repository %s is cut from %s", repository.Name, service.describeBase(repository))
+	return false
 }
 
 // describeBase names the commit a repository cuts work from and how old it is.

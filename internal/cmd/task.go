@@ -268,7 +268,12 @@ func taskShow(args []string) error {
 		return err
 	}
 
-	printTask(deps.log, found, blockers, time.Now().UTC())
+	unmerged, err := deps.drudger.UnmergedWork(blockers)
+	if err != nil {
+		return err
+	}
+
+	printTask(deps.log, found, blockers, unmerged, time.Now().UTC())
 	return nil
 }
 

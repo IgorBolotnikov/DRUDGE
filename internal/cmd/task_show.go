@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"drudge/internal/common"
+	"drudge/internal/drudger"
 	"drudge/internal/git"
 	"drudge/internal/task"
 )
@@ -60,9 +61,9 @@ const (
 )
 
 // printTask prints everything drudge knows about one task: what it asks for,
-// where it stands and what its last run left behind. The description prints in
-// full.
-func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, now time.Time) {
+// where it stands, what blocks it and what its last run left behind. The
+// description prints in full.
+func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork, now time.Time) {
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, string(taskToShow.Status)),
@@ -71,7 +72,7 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 		taskLine(startedLabel, formatMoment(taskToShow.StartedAt, now)),
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
 	}
-	lines = append(lines, blockerLines(blockers)...)
+	lines = append(lines, blockerLines(blockers, unmerged)...)
 	lines = append(lines,
 		"",
 		"Description:",
@@ -91,9 +92,9 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 	}
 }
 
-// blockerLines lists the tasks a task waits for, one line per blocker. A task
-// blocked by nothing gets no lines.
-func blockerLines(blockers []task.Blocker) []string {
+// blockerLines lists the tasks a task waits for, one line per blocker, with the
+// unmerged work of a blocker under it. A task blocked by nothing gets no lines.
+func blockerLines(blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork) []string {
 	if len(blockers) == 0 {
 		return nil
 	}
@@ -105,6 +106,9 @@ func blockerLines(blockers []task.Blocker) []string {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf(blockerLine, listIndent, task.ShortID(blocker.ID), blocker.Task.Status, blocker.Task.Title))
+		for _, line := range drudger.FormatUnmergedWork(unmerged[blocker.ID]) {
+			lines = append(lines, listIndent+listIndent+line)
+		}
 	}
 	return lines
 }
@@ -172,15 +176,8 @@ func formatLanding(landing task.Landing) string {
 	}
 	return fmt.Sprintf(
 		"%s (%s, %s..%s)",
-		landing.Branch, formatCommitCount(landing.Commits), git.ShortSHA(landing.Base), git.ShortSHA(landing.Head),
+		landing.Branch, git.FormatCommitCount(landing.Commits), git.ShortSHA(landing.Base), git.ShortSHA(landing.Head),
 	)
-}
-
-func formatCommitCount(commits int) string {
-	if commits == 1 {
-		return "1 commit"
-	}
-	return fmt.Sprintf("%d commits", commits)
 }
 
 func taskLine(label string, value string) string {

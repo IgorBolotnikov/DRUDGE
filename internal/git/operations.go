@@ -4,6 +4,7 @@ package git
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -117,4 +118,12 @@ func BranchHasCommits(operations Operations, dir string, base string, branch str
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// FormatCommitCount renders a number of commits for a message to the user.
+func FormatCommitCount(commits int) string {
+	if commits == 1 {
+		return "1 commit"
+	}
+	return fmt.Sprintf("%d commits", commits)
 }
