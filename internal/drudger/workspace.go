@@ -26,18 +26,20 @@ type slotWorkspace struct {
 	Repositories []repositoryWorktree
 }
 
-// repositoryWorktree is one repository of a project as one Drudger sees it.
-type repositoryWorktree struct {
+// projectRepository is one repository of a project, whatever slot checks it
+// out.
+type projectRepository struct {
 	// Name is the basename of the repository's path, which is the project
 	// directory's name for a project that is itself a repository.
 	Name string
+	// Path is where the local config records the repository, relative to the
+	// project directory.
+	Path string
 	// Dir is where the repository lives in the project directory.
 	Dir string
 	// GitDir is the repository's .git. A worktree's own .git is a file
 	// pointing at it, so a sandbox without this mount has no working git.
-	GitDir string
-	// Worktree is this slot's checkout of the repository.
-	Worktree      string
+	GitDir        string
 	DefaultBranch string
 	// HasRemote says whether the repository has an origin to fetch from.
 	HasRemote bool
@@ -46,11 +48,18 @@ type repositoryWorktree struct {
 // BaseRef is what a repository cuts work from. A repository with a remote
 // cuts from the tracking ref, which is never checked out anywhere and so can
 // be moved by a fetch.
-func (repository repositoryWorktree) BaseRef() string {
+func (repository projectRepository) BaseRef() string {
 	if repository.HasRemote {
 		return git.OriginRemote + "/" + repository.DefaultBranch
 	}
 	return repository.DefaultBranch
+}
+
+// repositoryWorktree is one repository of a project as one Drudger sees it.
+type repositoryWorktree struct {
+	projectRepository
+	// Worktree is this slot's checkout of the repository.
+	Worktree string
 }
 
 // defaultBranch names what the repositories of a workspace cut work from.
@@ -67,61 +76,69 @@ func (space slotWorkspace) defaultBranch() string {
 
 // resolveWorkspace works out where a Drudger works and what each of its
 // repositories cuts work from. It reads git and writes nothing, so a dry run
-// can ask for it. A project with no repositories recorded is refused.
+// can ask for it.
 func (service *DrudgerService) resolveWorkspace(layout projectLayout, drudger *Drudger) (slotWorkspace, error) {
-	repositories := service.localCfg.Repositories
-	if len(repositories) == 0 {
-		return slotWorkspace{}, fmt.Errorf(
+	repositories, err := service.resolveRepositories(layout)
+	if err != nil {
+		return slotWorkspace{}, err
+	}
+
+	space := slotWorkspace{Slot: drudger.Slot, Root: drudger.Workspace, Repositories: make([]repositoryWorktree, 0, len(repositories))}
+	for _, repository := range repositories {
+		space.Repositories = append(space.Repositories, repositoryWorktree{
+			projectRepository: repository,
+			Worktree:          filepath.Join(space.Root, repository.Path),
+		})
+	}
+	return space, nil
+}
+
+// resolveRepositories works out where every repository of a project sits and
+// what it cuts work from. It reads git and writes nothing. A project with no
+// repositories recorded is refused.
+func (service *DrudgerService) resolveRepositories(layout projectLayout) ([]projectRepository, error) {
+	recorded := service.localCfg.Repositories
+	if len(recorded) == 0 {
+		return nil, fmt.Errorf(
 			"project %s has no repositories recorded, run %s to record them",
 			// TODO: make init rerunnable on the existing project, or create another command, like `sync`
 			service.localCfg.ProjectSlug, initCommand,
 		)
 	}
 
-	space := slotWorkspace{Slot: drudger.Slot, Root: drudger.Workspace, Repositories: make([]repositoryWorktree, 0, len(repositories))}
-	for _, repository := range repositories {
-		resolved, err := service.resolveRepository(layout, space.Root, repository)
+	repositories := make([]projectRepository, 0, len(recorded))
+	for _, repository := range recorded {
+		resolved, err := service.resolveRepository(layout, repository)
 		if err != nil {
-			return slotWorkspace{}, err
+			return nil, err
 		}
-		space.Repositories = append(space.Repositories, resolved)
+		repositories = append(repositories, resolved)
 	}
-	return space, nil
+	return repositories, nil
 }
 
-// resolveRepository works out where one repository of a project sits and where
-// this workspace checks it out.
-func (service *DrudgerService) resolveRepository(layout projectLayout, root string, repository config.Repository) (repositoryWorktree, error) {
+// resolveRepository works out where one repository of a project sits and what
+// it cuts work from.
+func (service *DrudgerService) resolveRepository(layout projectLayout, repository config.Repository) (projectRepository, error) {
 	branch, err := project.DefaultBranchOf(service.gitOps, layout.Dir, repository)
 	if err != nil {
-		return repositoryWorktree{}, err
+		return projectRepository{}, err
 	}
 
 	dir := filepath.Join(layout.Dir, repository.Path)
 	hasRemote, err := service.gitOps.HasRemote(dir, git.OriginRemote)
 	if err != nil {
-		return repositoryWorktree{}, err
+		return projectRepository{}, err
 	}
 
-	return repositoryWorktree{
+	return projectRepository{
 		Name:          repositoryNameOf(dir),
+		Path:          repository.Path,
 		Dir:           dir,
 		GitDir:        filepath.Join(dir, gitDirName),
-		Worktree:      filepath.Join(root, repository.Path),
 		DefaultBranch: branch,
 		HasRemote:     hasRemote,
 	}, nil
-}
-
-// repositoryDirs maps the name of every repository of a project to where it
-// lives.
-func (service *DrudgerService) repositoryDirs(layout projectLayout) map[string]string {
-	dirs := make(map[string]string, len(service.localCfg.Repositories))
-	for _, repository := range service.localCfg.Repositories {
-		dir := filepath.Join(layout.Dir, repository.Path)
-		dirs[repositoryNameOf(dir)] = dir
-	}
-	return dirs
 }
 
 // repositoryNameOf is the name a repository at a path is recorded under.

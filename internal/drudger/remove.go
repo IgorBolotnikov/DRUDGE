@@ -2,9 +2,11 @@ package drudger
 
 import (
 	"maps"
+	"path/filepath"
 	"slices"
 
 	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/git"
 	"drudge/internal/task"
 )
@@ -48,18 +50,33 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 		return err
 	}
 
-	dirs := service.repositoryDirs(layout)
 	for _, name := range slices.Sorted(maps.Keys(removed.Landings)) {
 		landing := removed.Landings[name]
 
-		dir, isRecorded := dirs[name]
+		recorded, isRecorded := service.recordedRepository(layout, name)
 		if !isRecorded {
 			service.logger.Info("Branch %s stays, project %s records no repository %s", landing.Branch, service.localCfg.ProjectSlug, name)
 			continue
 		}
-		service.removeEmptyBranch(name, dir, landing)
+		repository, err := service.resolveRepository(layout, recorded)
+		if err != nil {
+			service.logger.Error("Could not read repository %s, branch %s stays: %v", name, landing.Branch, err)
+			continue
+		}
+		service.removeEmptyBranch(name, repository.Dir, landing)
 	}
 	return nil
+}
+
+// recordedRepository finds the repository of the local config that a name
+// stands for.
+func (service *DrudgerService) recordedRepository(layout projectLayout, name string) (config.Repository, bool) {
+	for _, repository := range service.localCfg.Repositories {
+		if repositoryNameOf(filepath.Join(layout.Dir, repository.Path)) == name {
+			return repository, true
+		}
+	}
+	return config.Repository{}, false
 }
 
 // removeEmptyBranch deletes the branch of one repository when it holds nothing
