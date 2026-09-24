@@ -22,6 +22,10 @@ const (
 	// taskFileIDSeparator splits a task file name into the task id and the
 	// task title.
 	taskFileIDSeparator = " "
+
+	// taskIDListSeparator splits a front matter value holding several task
+	// ids.
+	taskIDListSeparator = ","
 )
 
 // Front matter keys of a task file.
@@ -32,6 +36,7 @@ const (
 	metaKeyTicketID    = "ticket_id"
 	metaKeyProjectSlug = "project_slug"
 	metaKeySessionID   = "session_id"
+	metaKeyBlockedBy   = "blocked_by"
 
 	// Keys of what the agent reported when its run ended.
 	metaKeySessionFailed   = "session_failed"
@@ -106,6 +111,7 @@ func (r *FileTaskRepository) CreateTask(dto task.CreateTaskDto) (*task.Task, err
 		Status:      dto.Status,
 		TicketID:    dto.TicketID,
 		ProjectSlug: r.Project,
+		BlockedBy:   dto.BlockedBy,
 		CreatedAt:   dto.CreatedAt,
 	}
 
@@ -131,6 +137,9 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	}
 	if taskToWrite.SessionID != "" {
 		metadata[metaKeySessionID] = taskToWrite.SessionID
+	}
+	if len(taskToWrite.BlockedBy) != 0 {
+		metadata[metaKeyBlockedBy] = joinTaskIDs(taskToWrite.BlockedBy)
 	}
 	if taskToWrite.HasSessionFailed {
 		metadata[metaKeySessionFailed] = strconv.FormatBool(taskToWrite.HasSessionFailed)
@@ -167,6 +176,26 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 		metadata[metaKeyUpdatedAt] = taskToWrite.UpdatedAt.Format(time.RFC3339)
 	}
 	return metadata
+}
+
+func joinTaskIDs(ids []task.TaskID) string {
+	texts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		texts = append(texts, string(id))
+	}
+	return strings.Join(texts, taskIDListSeparator)
+}
+
+// splitTaskIDs reads back a value joinTaskIDs wrote. An empty value reads as
+// no ids.
+func splitTaskIDs(value string) []task.TaskID {
+	var ids []task.TaskID
+	for _, text := range strings.Split(value, taskIDListSeparator) {
+		if text = strings.TrimSpace(text); text != "" {
+			ids = append(ids, task.TaskID(text))
+		}
+	}
+	return ids
 }
 
 // landingKeyPrefixes are the front matter key prefixes a landing is written
@@ -266,6 +295,9 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if sessionID, ok := metadata[metaKeySessionID]; ok {
 		t.SessionID = sessionID
+	}
+	if blockedBy, ok := metadata[metaKeyBlockedBy]; ok {
+		t.BlockedBy = splitTaskIDs(blockedBy)
 	}
 	if sessionFailed, ok := metadata[metaKeySessionFailed]; ok {
 		t.HasSessionFailed, _ = strconv.ParseBool(sessionFailed)

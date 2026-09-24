@@ -47,6 +47,12 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 		dto.CreatedAt = time.Now()
 	}
 
+	blockedBy, err := service.resolveBlockers(dto.ProjectSlug, "", dto.BlockedBy)
+	if err != nil {
+		return nil, err
+	}
+	dto.BlockedBy = blockedBy
+
 	task, err := service.repo.CreateTask(dto)
 	if err != nil {
 		return nil, fmt.Errorf("could not create task: %w", err)

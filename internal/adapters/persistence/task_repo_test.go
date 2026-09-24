@@ -1538,3 +1538,110 @@ func TestTaskFrontMatter_LandingRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskFrontMatter_BlockedByRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	cases := []struct {
+		name      string
+		title     string
+		blockedBy []task.TaskID
+		// wantLineInFile is the blocked_by line the file should carry. A task
+		// blocked by nothing carries none.
+		wantLineInFile string
+	}{
+		{
+			name:  "a task blocked by nothing",
+			title: "Round Trip",
+		},
+		{
+			name:           "one blocker",
+			title:          "Round Trip",
+			blockedBy:      []task.TaskID{"9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f"},
+			wantLineInFile: metaKeyBlockedBy + ": 9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+		},
+		{
+			name:  "several blockers next to a title holding a comma",
+			title: "Wire the repository, then the service",
+			blockedBy: []task.TaskID{
+				"9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+				"1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f",
+			},
+			wantLineInFile: metaKeyBlockedBy + ": 9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f,1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       testCase.title,
+				Description: "Body stays put",
+				Status:      task.StatusTodo,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				BlockedBy: testCase.blockedBy,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !slices.Equal(read.BlockedBy, testCase.blockedBy) {
+				t.Errorf("expected the blockers %v, got %v", testCase.blockedBy, read.BlockedBy)
+			}
+			if testCase.blockedBy == nil && read.BlockedBy != nil {
+				t.Errorf("expected a task blocked by nothing, got %#v", read.BlockedBy)
+			}
+			if read.Title != testCase.title {
+				t.Errorf("expected the title %q, got %q", testCase.title, read.Title)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if testCase.wantLineInFile != "" && !strings.Contains(string(data), testCase.wantLineInFile+"\n") {
+				t.Errorf("expected %q in the file, got %s", testCase.wantLineInFile, data)
+			}
+			if testCase.wantLineInFile == "" && strings.Contains(string(data), metaKeyBlockedBy) {
+				t.Errorf("expected no %s entry in the file, got %s", metaKeyBlockedBy, data)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_CreateTask_StoresBlockers(t *testing.T) {
+	setupTaskTestHome(t)
+
+	repo := NewFileTaskRepository("test-project")
+	blockedBy := []task.TaskID{"9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f"}
+
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:       "Wire the repository",
+		Status:      task.StatusTodo,
+		ProjectSlug: "test-project",
+		BlockedBy:   blockedBy,
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	read, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !slices.Equal(read.BlockedBy, blockedBy) {
+		t.Errorf("expected the blockers %v, got %v", blockedBy, read.BlockedBy)
+	}
+}

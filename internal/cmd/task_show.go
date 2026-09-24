@@ -37,6 +37,7 @@ const (
 	flaggedLabel   = "Agent error"
 	refusedLabel   = "Refused"
 	workLabel      = "Work"
+	blockedByLabel = "Blocked by"
 )
 
 // What a task report prints in place of a field with nothing in it.
@@ -46,7 +47,12 @@ const (
 	nothingReportedYetLabel = "nothing reported yet"
 	endedUnreportedLabel    = "ended, the agent reported nothing"
 	committedNothingLabel   = "the agent committed nothing"
+	missingTaskLabel        = "no such task"
 )
+
+// blockerLine lays out one blocker of a task report, the status padded to the
+// longest status there is.
+const blockerLine = "%s%s  %-11s  %s"
 
 const (
 	yesLabel = "yes"
@@ -56,7 +62,7 @@ const (
 // printTask prints everything drudge knows about one task: what it asks for,
 // where it stands and what its last run left behind. The description prints in
 // full.
-func printTask(log *common.Logger, taskToShow *task.Task, now time.Time) {
+func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, now time.Time) {
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, string(taskToShow.Status)),
@@ -64,12 +70,15 @@ func printTask(log *common.Logger, taskToShow *task.Task, now time.Time) {
 		taskLine(createdLabel, formatMoment(taskToShow.CreatedAt, now)),
 		taskLine(startedLabel, formatMoment(taskToShow.StartedAt, now)),
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
+	}
+	lines = append(lines, blockerLines(blockers)...)
+	lines = append(lines,
 		"",
 		"Description:",
 		"",
 		orNone(taskToShow.Description),
 		"",
-	}
+	)
 	lines = append(lines, taskRunLines(taskToShow)...)
 	if taskToShow.HasRun() {
 		lines = append(lines, "")
@@ -80,6 +89,24 @@ func printTask(log *common.Logger, taskToShow *task.Task, now time.Time) {
 		// The line is already formatted and may hold a percent sign.
 		log.Info("%s", line)
 	}
+}
+
+// blockerLines lists the tasks a task waits for, one line per blocker. A task
+// blocked by nothing gets no lines.
+func blockerLines(blockers []task.Blocker) []string {
+	if len(blockers) == 0 {
+		return nil
+	}
+
+	lines := []string{"", blockedByLabel + ":"}
+	for _, blocker := range blockers {
+		if blocker.Task == nil {
+			lines = append(lines, listIndent+task.ShortID(blocker.ID)+"  "+missingTaskLabel)
+			continue
+		}
+		lines = append(lines, fmt.Sprintf(blockerLine, listIndent, task.ShortID(blocker.ID), blocker.Task.Status, blocker.Task.Title))
+	}
+	return lines
 }
 
 // taskRunLines reports what the last run left on a task. A task no agent has

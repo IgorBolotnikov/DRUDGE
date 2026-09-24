@@ -10,10 +10,10 @@ import (
 
 // editOptionLine lays out one option of the edit help, wide enough for the
 // longest flag it lists.
-const editOptionLine = "  %-22s %s\n"
+const editOptionLine = "  %-26s %s\n"
 
 // editValueFlags are the flags drg task edit reads a value after.
-var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag}
+var editValueFlags = []string{titleFlag, descriptionFlag, ticketFlag, statusFlag, blockedByFlag}
 
 // taskEdit changes the fields a user owns on one task.
 func taskEdit(args []string) error {
@@ -28,6 +28,7 @@ func taskEdit(args []string) error {
 		fmt.Printf(editOptionLine, descriptionFlag+" <text>", "New description, the prompt the agent is handed")
 		fmt.Printf(editOptionLine, ticketFlag+" <ticket>", "Ticket the task came from, empty to clear it")
 		fmt.Printf(editOptionLine, statusFlag+" <status>", "New status ("+task.FormatStatuses(task.Statuses)+")")
+		fmt.Printf(editOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for, replacing the list, empty to clear it")
 		fmt.Printf(editOptionLine, forceFlag, "Set a status drudge maintains itself ("+task.FormatStatuses(task.ManagedStatuses)+")")
 		return nil
 	}
@@ -95,5 +96,8 @@ func setEditedField(changes *task.EditTaskDto, flag string, value string) {
 	case statusFlag:
 		status := task.TaskStatus(value)
 		changes.Status = &status
+	case blockedByFlag:
+		blockedBy := parseTaskIDList(value)
+		changes.BlockedBy = &blockedBy
 	}
 }

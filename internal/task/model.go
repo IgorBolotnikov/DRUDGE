@@ -43,6 +43,8 @@ type Task struct {
 	ParentTaskID TaskID // ID of the parent task, if any
 	ProjectSlug  string // Slug of the project this task belongs to
 
+	BlockedBy []TaskID // Full ids of the tasks this task waits for
+
 	SessionID string // Resumable agent session of the run, empty until the agent reports it
 
 	// What the agent reported when its run ended. All of it stays zero until

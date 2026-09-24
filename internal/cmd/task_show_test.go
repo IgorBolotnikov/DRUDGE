@@ -14,9 +14,10 @@ func TestPrintTask(t *testing.T) {
 	longDescription := strings.Repeat("The login form posts to the old endpoint. ", 20)
 
 	cases := []struct {
-		name string
-		task task.Task
-		want []string
+		name     string
+		task     task.Task
+		blockers []task.Blocker
+		want     []string
 		// wantAbsent is what the report must leave out for this task.
 		wantAbsent []string
 	}{
@@ -29,7 +30,7 @@ func TestPrintTask(t *testing.T) {
 				CreatedAt:   now.Add(-2 * time.Hour),
 			},
 			want:       []string{"todo", "R-003-09", longDescription, neverRunLabel, neverLabel},
-			wantAbsent: []string{turnsLabel, costLabel, refusedLabel},
+			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel},
 		},
 		{
 			name: "a task an agent is working on",
@@ -135,6 +136,26 @@ func TestPrintTask(t *testing.T) {
 			wantAbsent: []string{"commits", committedNothingLabel},
 		},
 		{
+			name: "a task blocked by other tasks",
+			task: task.Task{
+				Status:    task.StatusTodo,
+				CreatedAt: now.Add(-2 * time.Hour),
+				BlockedBy: []task.TaskID{"9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", "1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f"},
+			},
+			blockers: []task.Blocker{
+				{
+					ID:   "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+					Task: &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Add the migration", Status: task.StatusDone},
+				},
+				{ID: "1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f"},
+			},
+			want: []string{
+				"\n" + blockedByLabel + ":\n",
+				"  9c8d7e6f  done         Add the migration\n",
+				"  1a2b3c4d  " + missingTaskLabel + "\n",
+			},
+		},
+		{
 			name: "a task carrying no ticket and no description",
 			task: task.Task{
 				Status:    task.StatusDraft,
@@ -151,7 +172,7 @@ func TestPrintTask(t *testing.T) {
 			taskToShow.Title = "Fix login"
 			log := common.NewLogger("")
 
-			out := captureOutput(func() { printTask(log, &taskToShow, now) })
+			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, now) })
 
 			for _, want := range append(testCase.want, string(taskToShow.ID), taskToShow.Title) {
 				if !strings.Contains(out, want) {

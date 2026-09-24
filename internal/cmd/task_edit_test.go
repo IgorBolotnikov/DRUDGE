@@ -80,6 +80,24 @@ func TestParseTaskEditArgs(t *testing.T) {
 			},
 		},
 		{
+			name:        "a list of blockers",
+			args:        []string{"abc123", "--blocked-by", "9c8d7e6f,1a2b3c4d"},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{BlockedBy: &[]task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+		},
+		{
+			name:        "a list of blockers with spaces and an empty entry",
+			args:        []string{"abc123", "--blocked-by", " 9c8d7e6f, ,1a2b3c4d "},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{BlockedBy: &[]task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+		},
+		{
+			name:        "the blockers cleared",
+			args:        []string{"abc123", "--blocked-by", ""},
+			wantTaskID:  "abc123",
+			wantChanges: task.EditTaskDto{BlockedBy: &[]task.TaskID{}},
+		},
+		{
 			name:    "no arguments",
 			args:    nil,
 			wantErr: true,
@@ -153,6 +171,7 @@ func showChanges(changes task.EditTaskDto) string {
 		showFlag(descriptionFlag, changes.Description),
 		showFlag(ticketFlag, changes.TicketID),
 		showFlag(statusFlag, changes.Status),
+		showBlockers(changes.BlockedBy),
 		fmt.Sprintf("%s %v", forceFlag, changes.AllowsManagedStatus),
 	}
 	return strings.Join(fields, ", ")
@@ -164,4 +183,11 @@ func showFlag[Value ~string](flag string, value *Value) string {
 		return flag + " unset"
 	}
 	return flag + " " + strconv.Quote(string(*value))
+}
+
+func showBlockers(blockedBy *[]task.TaskID) string {
+	if blockedBy == nil {
+		return blockedByFlag + " unset"
+	}
+	return fmt.Sprintf("%s %q", blockedByFlag, *blockedBy)
 }

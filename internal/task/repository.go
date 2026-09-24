@@ -17,6 +17,8 @@ type CreateTaskDto struct {
 	ParentTaskID TaskID // ID of the parent task, if any
 	ProjectSlug  string // Slug of the project this task belongs to
 
+	BlockedBy []TaskID // Full ids of the tasks this task waits for
+
 	CreatedAt time.Time
 }
 

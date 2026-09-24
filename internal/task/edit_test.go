@@ -23,7 +23,16 @@ type fakeTaskRepo struct {
 }
 
 func (repo *fakeTaskRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
-	return nil, errors.New("CreateTask should not be called")
+	created := &Task{
+		ID:          createdTaskID,
+		Title:       dto.Title,
+		Status:      dto.Status,
+		ProjectSlug: dto.ProjectSlug,
+		BlockedBy:   dto.BlockedBy,
+		CreatedAt:   dto.CreatedAt,
+	}
+	repo.tasks = append(repo.tasks, created)
+	return created, nil
 }
 
 func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*Task, error) {
@@ -118,7 +127,10 @@ func (guard *fakeSessionGuard) RefuseWhileWorking(projectSlug string, taskToChan
 	return guard.refusal
 }
 
-const editableTaskID TaskID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
+const (
+	editableTaskID TaskID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
+	createdTaskID  TaskID = "c0ffee00-dbe9-4316-8aba-8a67a8f01f8f"
+)
 
 func editableTask() *Task {
 	return &Task{

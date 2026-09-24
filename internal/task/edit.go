@@ -8,7 +8,7 @@ import (
 )
 
 // ErrNoChanges reports an edit that names no field to change.
-var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket and the status")
+var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status and the blockers")
 
 // ManagedStatuses are the statuses that describe a Session. Drudge writes them
 // itself when a run starts and when it ends.
@@ -21,6 +21,9 @@ type EditTaskDto struct {
 	Description *string
 	TicketID    *string
 	Status      *TaskStatus
+	// BlockedBy replaces the whole list of blockers. The ids may be prefixes,
+	// and an empty list clears it.
+	BlockedBy *[]TaskID
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
@@ -29,7 +32,7 @@ type EditTaskDto struct {
 
 // HasChanges reports whether the edit names a field to change.
 func (changes EditTaskDto) HasChanges() bool {
-	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil
+	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil || changes.BlockedBy != nil
 }
 
 // SessionGuard refuses a change to a task whose agent is still working.
@@ -54,6 +57,14 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 	found, err := service.repo.FindTask(projectSlug, string(id))
 	if err != nil {
 		return nil, err
+	}
+
+	if changes.BlockedBy != nil {
+		blockedBy, err := service.resolveBlockers(projectSlug, found.ID, *changes.BlockedBy)
+		if err != nil {
+			return nil, err
+		}
+		changes.BlockedBy = &blockedBy
 	}
 
 	var edited *Task
@@ -113,5 +124,8 @@ func applyEdit(taskToEdit *Task, changes EditTaskDto) {
 	}
 	if changes.Status != nil {
 		taskToEdit.Status = *changes.Status
+	}
+	if changes.BlockedBy != nil {
+		taskToEdit.BlockedBy = *changes.BlockedBy
 	}
 }

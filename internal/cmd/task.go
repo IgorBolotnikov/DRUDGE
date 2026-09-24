@@ -35,14 +35,18 @@ const (
 	descriptionFlag = "--description"
 	ticketFlag      = "--ticket"
 	statusFlag      = "--status"
+	blockedByFlag   = "--blocked-by"
 )
+
+// taskIDListSeparator splits a flag value holding several task ids.
+const taskIDListSeparator = ","
 
 const (
 	taskUsage     = "usage: drg task <new|list|show|edit|rm|run|rerun|status>"
 	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>]"
 	taskShowUsage = "usage: drg task show <task-id>"
 	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" +
-		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + forceFlag + "]"
+		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + forceFlag + "]"
 	taskRmUsage     = "usage: drg task rm <task-id> [" + forceFlag + "]"
 	taskRunUsage    = "usage: drg task run <task-id> [" + dryRunFlag + "]"
 	taskRerunUsage  = "usage: drg task rerun <task-id> [" + dryRunFlag + "]"
@@ -110,6 +114,18 @@ func hasFlag(args []string, flag string) bool {
 	return slices.Contains(args, flag)
 }
 
+// parseTaskIDList reads the comma-separated task ids a flag was given. Blank
+// entries are dropped, so an empty value reads as an empty list.
+func parseTaskIDList(value string) []task.TaskID {
+	ids := []task.TaskID{}
+	for _, text := range strings.Split(value, taskIDListSeparator) {
+		if text = strings.TrimSpace(text); text != "" {
+			ids = append(ids, task.TaskID(text))
+		}
+	}
+	return ids
+}
+
 func taskNew(args []string) error {
 	title, hasTitle := parseFlagValue(args, titleFlag)
 	if !hasTitle || title == "" {
@@ -122,6 +138,7 @@ func taskNew(args []string) error {
 	}
 
 	ticketID, _ := parseFlagValue(args, ticketFlag)
+	blockedBy, _ := parseFlagValue(args, blockedByFlag)
 	statusValue, hasStatus := parseFlagValue(args, statusFlag)
 	status := task.StatusDraft
 	if hasStatus {
@@ -146,6 +163,7 @@ func taskNew(args []string) error {
 		Status:      status,
 		TicketID:    ticketID,
 		ProjectSlug: cfg.ProjectSlug,
+		BlockedBy:   parseTaskIDList(blockedBy),
 		CreatedAt:   time.Now().UTC(),
 	}
 
@@ -237,7 +255,12 @@ func taskShow(args []string) error {
 		return err
 	}
 
-	printTask(deps.log, found, time.Now().UTC())
+	blockers, err := deps.tasks.Blockers(deps.localCfg.ProjectSlug, found)
+	if err != nil {
+		return err
+	}
+
+	printTask(deps.log, found, blockers, time.Now().UTC())
 	return nil
 }
 

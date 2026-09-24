@@ -28,6 +28,9 @@ model Task
   // We don't enforce that content
   description
   status
+  // Full ids of the tasks this task waits for, comma-separated
+  // Stored under the blocked_by key and left out when empty
+  blockedBy
 
   createdAt
   updatedAt
