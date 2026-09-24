@@ -264,6 +264,57 @@ func TestPrintSessionStatus(t *testing.T) {
 	}
 }
 
+func TestRunTask_PrintsHelp(t *testing.T) {
+	cases := []struct {
+		name      string
+		args      []string
+		wantUsage string
+		wantTexts []string
+	}{
+		{name: "the task command with no subcommand", args: nil, wantUsage: taskUsage},
+		{name: "the task command", args: []string{helpFlag}, wantUsage: taskUsage},
+		{name: "the task command with the short flag", args: []string{helpFlagShort}, wantUsage: taskUsage},
+		{
+			name:      "new",
+			args:      []string{newSubcommand, helpFlag},
+			wantUsage: taskNewUsage,
+			wantTexts: []string{titleFlag, descriptionFlag, descriptionFileFlag, ticketFlag, statusFlag, blockedByFlag, parentFlag},
+		},
+		{name: "new with the short flag", args: []string{newSubcommand, helpFlagShort}, wantUsage: taskNewUsage},
+		{name: "new with a title before the flag", args: []string{newSubcommand, titleFlag, "Wire the service", helpFlag}, wantUsage: taskNewUsage},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Chdir(t.TempDir())
+
+			var err error
+			output := captureOutput(func() { err = runTask(testCase.args) })
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.HasPrefix(output, testCase.wantUsage+"\n") {
+				t.Errorf("expected the help to start with %q, got:\n%s", testCase.wantUsage, output)
+			}
+			for _, want := range testCase.wantTexts {
+				if !strings.Contains(output, want) {
+					t.Errorf("expected the help to mention %q, got:\n%s", want, output)
+				}
+			}
+			entries, err := os.ReadDir(home)
+			if err != nil {
+				t.Fatalf("cannot read the home directory: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Errorf("expected the help to write nothing, found %d entries in the home directory", len(entries))
+			}
+		})
+	}
+}
+
 func TestRunTask_UnknownSubcommand(t *testing.T) {
 	if err := runTask([]string{"frobnicate"}); err == nil {
 		t.Fatal("expected an error for an unknown task subcommand")

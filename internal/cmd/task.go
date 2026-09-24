@@ -53,11 +53,17 @@ var (
 	errTwoDescriptions          = errors.New(descriptionFlag + " and " + descriptionFileFlag + " cannot be used together")
 )
 
+// taskOptionLine lays out one option of the new and edit help, wide enough
+// for the longest flag they list.
+const taskOptionLine = "  %-27s %s\n"
+
 // taskIDListSeparator splits a flag value holding several task ids.
 const taskIDListSeparator = ","
 
 const (
-	taskUsage     = "usage: drg task <new|list|next|show|edit|rm|run|rerun|status>"
+	taskUsage    = "usage: drg task <new|list|next|show|edit|rm|run|rerun|status>"
+	taskNewUsage = "usage: drg task new " + titleFlag + " <title> (" + descriptionFlag + " <text> | " + descriptionFileFlag + " <path>) [" +
+		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + parentFlag + " <id>]"
 	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>] [" + parentFlag + " <id>]"
 	taskNextUsage = "usage: drg task next"
 	taskShowUsage = "usage: drg task show <task-id>"
@@ -69,9 +75,12 @@ const (
 	taskStatusUsage = "usage: drg task status <task-id>"
 )
 
-// Names of the subcommands taking a task id, used in the errors their
-// argument parsing produces.
+// Names of the task subcommands. The ones taking a task id also name
+// themselves in the errors their argument parsing produces.
 const (
+	newSubcommand    = "new"
+	listSubcommand   = "list"
+	nextSubcommand   = "next"
 	showSubcommand   = "show"
 	editSubcommand   = "edit"
 	rmSubcommand     = "rm"
@@ -86,15 +95,19 @@ const taskRerunCommand = "drg task rerun"
 
 func runTask(args []string) error {
 	if len(args) < 1 {
-		return errors.New(taskUsage)
+		printTaskHelp()
+		return nil
 	}
 
 	switch args[0] {
-	case "new":
+	case helpFlag, helpFlagShort:
+		printTaskHelp()
+		return nil
+	case newSubcommand:
 		return taskNew(args[1:])
-	case "list":
+	case listSubcommand:
 		return taskList(args[1:])
-	case "next":
+	case nextSubcommand:
 		return taskNext(args[1:])
 	case showSubcommand:
 		return taskShow(args[1:])
@@ -111,6 +124,23 @@ func runTask(args []string) error {
 	default:
 		return fmt.Errorf("unknown task subcommand %q, %s", args[0], taskUsage)
 	}
+}
+
+func printTaskHelp() {
+	fmt.Println(taskUsage)
+	fmt.Println()
+	fmt.Println("Subcommands:")
+	fmt.Printf("  %-7s Add a task to the project\n", newSubcommand)
+	fmt.Printf("  %-7s List the tasks of the project\n", listSubcommand)
+	fmt.Printf("  %-7s Print the oldest todo task that is ready to run\n", nextSubcommand)
+	fmt.Printf("  %-7s Print one task in full\n", showSubcommand)
+	fmt.Printf("  %-7s Change the fields of a task\n", editSubcommand)
+	fmt.Printf("  %-7s Delete a task\n", rmSubcommand)
+	fmt.Printf("  %-7s Hand a task in todo status to a coding agent\n", runSubcommand)
+	fmt.Printf("  %-7s Start a task over from scratch\n", rerunSubcommand)
+	fmt.Printf("  %-7s Tell how the agent working on a task is doing\n", statusSubcommand)
+	fmt.Println()
+	fmt.Printf("Run drg task <subcommand> %s for the details of one.\n", helpFlag)
 }
 
 func parseFlagValue(args []string, flag string) (string, bool) {
@@ -171,6 +201,22 @@ func readDescriptionFile(path string, stdin io.Reader) (string, error) {
 }
 
 func taskNew(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(taskNewUsage)
+		fmt.Println()
+		fmt.Println("Add a task to the project linked to the current directory.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Printf(taskOptionLine, titleFlag+" <title>", "Title of the task")
+		fmt.Printf(taskOptionLine, descriptionFlag+" <text>", "Description, the prompt the agent is handed")
+		fmt.Printf(taskOptionLine, descriptionFileFlag+" <path>", "File to read the description from, "+stdinPath+" to read stdin")
+		fmt.Printf(taskOptionLine, ticketFlag+" <ticket>", "Ticket the task came from")
+		fmt.Printf(taskOptionLine, statusFlag+" <status>", "Status ("+task.FormatStatuses(task.Statuses)+"), "+string(task.StatusDraft)+" when left out")
+		fmt.Printf(taskOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for")
+		fmt.Printf(taskOptionLine, parentFlag+" <id>", "Task this task belongs to")
+		return nil
+	}
+
 	dto, err := parseTaskNewArgs(args, os.Stdin)
 	if err != nil {
 		return err
