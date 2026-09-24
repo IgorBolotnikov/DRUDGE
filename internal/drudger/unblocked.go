@@ -43,7 +43,7 @@ func (service *DrudgerService) reportUnblocked(projectSlug string, finished *tas
 		return
 	}
 
-	lines := []string{fmt.Sprintf("It unblocked %s:", formatTaskCount(len(unblocked)))}
+	lines := []string{fmt.Sprintf("It unblocked %s:", task.FormatTaskCount(len(unblocked)))}
 	for _, dependent := range unblocked {
 		lines = append(lines, fmt.Sprintf(unblockedTaskLine, task.ShortID(dependent.ID), dependent.Title))
 	}
@@ -63,13 +63,6 @@ func (service *DrudgerService) reportUnblocked(projectSlug string, finished *tas
 		// A task title may hold a percent sign.
 		service.logger.Info("%s", line)
 	}
-}
-
-func formatTaskCount(count int) string {
-	if count == 1 {
-		return "1 task"
-	}
-	return fmt.Sprintf("%d tasks", count)
 }
 
 func mergeHeading(unblockedCount int) string {

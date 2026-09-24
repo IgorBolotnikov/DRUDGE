@@ -2,8 +2,10 @@ package task
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"drudge/internal/common"
 )
@@ -33,15 +35,17 @@ func (keeper *fakeSessionKeeper) RemoveEmptyBranches(removed *Task) error {
 }
 
 // fakeConfirmation answers a removal the way a user would, and records the
-// task it was asked about.
+// removal it was asked about.
 type fakeConfirmation struct {
 	isApproved bool
 	failure    error
 	asked      TaskID
+	removal    Removal
 }
 
-func (confirmation *fakeConfirmation) answer(taskToRemove *Task) (bool, error) {
-	confirmation.asked = taskToRemove.ID
+func (confirmation *fakeConfirmation) answer(removal Removal) (bool, error) {
+	confirmation.asked = removal.Task.ID
+	confirmation.removal = removal
 	return confirmation.isApproved, confirmation.failure
 }
 
@@ -261,4 +265,205 @@ func TestTaskService_RemoveTask_ReportsARunDirectoryLeftBehind(t *testing.T) {
 	if !strings.Contains(err.Error(), string(editableTaskID)) {
 		t.Errorf("expected the error to name the task, got %q", err)
 	}
+}
+
+func TestTaskService_RemoveTask_StripsItsLinks(t *testing.T) {
+	const (
+		removedID     TaskID = "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f"
+		firstID       TaskID = "4f2a1b3c-dbe9-4316-8aba-8a67a8f01f8f"
+		secondID      TaskID = "7e6d5c4b-dbe9-4316-8aba-8a67a8f01f8f"
+		otherBlocker  TaskID = "2b3c4d5e-dbe9-4316-8aba-8a67a8f01f8f"
+		otherParentID TaskID = "1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f"
+	)
+	createdAt := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	// linkedTask is a task made the given number of minutes after the removed
+	// one.
+	linkedTask := func(id TaskID, minutesLater int, blockedBy []TaskID, parentID TaskID) *Task {
+		return &Task{
+			ID:           id,
+			Title:        "Task " + ShortID(id),
+			Status:       StatusTodo,
+			BlockedBy:    blockedBy,
+			ParentTaskID: parentID,
+			CreatedAt:    createdAt.Add(time.Duration(minutesLater) * time.Minute),
+		}
+	}
+	// wantLinks is what one task should name once the removal is done.
+	type wantLinks struct {
+		blockedBy []TaskID
+		parentID  TaskID
+	}
+
+	cases := []struct {
+		name       string
+		others     []*Task
+		isForced   bool
+		isApproved bool
+
+		wantDependents []TaskID
+		wantChildren   []TaskID
+		wantRemoved    bool
+		wantLinks      map[TaskID]wantLinks
+	}{
+		{
+			name:        "a task with no links",
+			others:      []*Task{linkedTask(firstID, 1, []TaskID{otherBlocker}, otherParentID)},
+			isApproved:  true,
+			wantRemoved: true,
+			wantLinks:   map[TaskID]wantLinks{firstID: {blockedBy: []TaskID{otherBlocker}, parentID: otherParentID}},
+		},
+		{
+			name: "dependents",
+			others: []*Task{
+				linkedTask(secondID, 2, []TaskID{otherBlocker, removedID}, ""),
+				linkedTask(firstID, 1, []TaskID{removedID}, ""),
+			},
+			isApproved:     true,
+			wantDependents: []TaskID{firstID, secondID},
+			wantRemoved:    true,
+			wantLinks: map[TaskID]wantLinks{
+				firstID:  {},
+				secondID: {blockedBy: []TaskID{otherBlocker}},
+			},
+		},
+		{
+			name: "children",
+			others: []*Task{
+				linkedTask(secondID, 2, nil, removedID),
+				linkedTask(firstID, 1, nil, removedID),
+			},
+			isApproved:   true,
+			wantChildren: []TaskID{firstID, secondID},
+			wantRemoved:  true,
+			wantLinks: map[TaskID]wantLinks{
+				firstID:  {},
+				secondID: {},
+			},
+		},
+		{
+			name: "a dependent and a child",
+			others: []*Task{
+				linkedTask(firstID, 1, []TaskID{removedID}, otherParentID),
+				linkedTask(secondID, 2, []TaskID{otherBlocker}, removedID),
+			},
+			isApproved:     true,
+			wantDependents: []TaskID{firstID},
+			wantChildren:   []TaskID{secondID},
+			wantRemoved:    true,
+			wantLinks: map[TaskID]wantLinks{
+				firstID:  {parentID: otherParentID},
+				secondID: {blockedBy: []TaskID{otherBlocker}},
+			},
+		},
+		{
+			name:           "a task both blocked by it and belonging to it",
+			others:         []*Task{linkedTask(firstID, 1, []TaskID{removedID}, removedID)},
+			isApproved:     true,
+			wantDependents: []TaskID{firstID},
+			wantChildren:   []TaskID{firstID},
+			wantRemoved:    true,
+			wantLinks:      map[TaskID]wantLinks{firstID: {}},
+		},
+		{
+			name: "a declined removal",
+			others: []*Task{
+				linkedTask(firstID, 1, []TaskID{removedID}, ""),
+				linkedTask(secondID, 2, nil, removedID),
+			},
+			wantDependents: []TaskID{firstID},
+			wantChildren:   []TaskID{secondID},
+			wantLinks: map[TaskID]wantLinks{
+				firstID:  {blockedBy: []TaskID{removedID}},
+				secondID: {parentID: removedID},
+			},
+		},
+		{
+			name: "a forced removal",
+			others: []*Task{
+				linkedTask(firstID, 1, []TaskID{removedID}, ""),
+				linkedTask(secondID, 2, nil, removedID),
+			},
+			isForced:    true,
+			wantRemoved: true,
+			wantLinks: map[TaskID]wantLinks{
+				firstID:  {},
+				secondID: {},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			removed := linkedTask(removedID, 0, nil, "")
+			repo := &fakeTaskRepo{tasks: append([]*Task{removed}, testCase.others...)}
+			service := NewTaskService(repo, common.NewLogger(""))
+			confirmation := &fakeConfirmation{isApproved: testCase.isApproved}
+
+			err := service.RemoveTask(testProjectSlug, removedID, testCase.isForced, &fakeSessionKeeper{}, confirmation.answer)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			_, lookupErr := repo.GetTask(testProjectSlug, removedID)
+			isRemoved := lookupErr != nil
+			if isRemoved != testCase.wantRemoved {
+				t.Errorf("expected the task to be removed: %v, got %v", testCase.wantRemoved, isRemoved)
+			}
+
+			if gotDependents := taskIDs(confirmation.removal.Dependents); !slices.Equal(gotDependents, testCase.wantDependents) {
+				t.Errorf("expected the confirmation to name dependents %v, got %v", testCase.wantDependents, gotDependents)
+			}
+			if gotChildren := taskIDs(confirmation.removal.Children); !slices.Equal(gotChildren, testCase.wantChildren) {
+				t.Errorf("expected the confirmation to name children %v, got %v", testCase.wantChildren, gotChildren)
+			}
+
+			for id, want := range testCase.wantLinks {
+				stored, err := repo.GetTask(testProjectSlug, id)
+				if err != nil {
+					t.Fatalf("expected task %s to stay: %v", id, err)
+				}
+				if !slices.Equal(stored.BlockedBy, want.blockedBy) {
+					t.Errorf("expected task %s to be blocked by %v, got %v", ShortID(id), want.blockedBy, stored.BlockedBy)
+				}
+				if stored.ParentTaskID != want.parentID {
+					t.Errorf("expected task %s to belong to %q, got %q", ShortID(id), want.parentID, stored.ParentTaskID)
+				}
+			}
+		})
+	}
+}
+
+func TestTaskService_RemoveTask_StandsWhenALinkedTaskIsHeld(t *testing.T) {
+	const (
+		heldID TaskID = "4f2a1b3c-dbe9-4316-8aba-8a67a8f01f8f"
+		freeID TaskID = "7e6d5c4b-dbe9-4316-8aba-8a67a8f01f8f"
+	)
+	held := &Task{ID: heldID, Title: "Wire the repository", BlockedBy: []TaskID{editableTaskID}}
+	free := &Task{ID: freeID, Title: "Add the endpoint", ParentTaskID: editableTaskID}
+	repo := &fakeTaskRepo{
+		tasks:  []*Task{editableTask(), held, free},
+		locked: map[TaskID]bool{heldID: true},
+	}
+	service := NewTaskService(repo, common.NewLogger(""))
+
+	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, &fakeSessionKeeper{}, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := repo.GetTask(testProjectSlug, editableTaskID); err == nil {
+		t.Error("expected the task to be gone")
+	}
+	if !slices.Equal(held.BlockedBy, []TaskID{editableTaskID}) {
+		t.Errorf("expected the held task to keep its blockers, got %v", held.BlockedBy)
+	}
+	if free.ParentTaskID != "" {
+		t.Errorf("expected the free task to be ungrouped, got parent %q", free.ParentTaskID)
+	}
+}
+
+func taskIDs(tasks []*Task) []TaskID {
+	var ids []TaskID
+	for _, listed := range tasks {
+		ids = append(ids, listed.ID)
+	}
+	return ids
 }

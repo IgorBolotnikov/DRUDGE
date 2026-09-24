@@ -21,6 +21,14 @@ func ShortID(id TaskID) string {
 	return text
 }
 
+// FormatTaskCount renders a count of tasks as "1 task" or "3 tasks".
+func FormatTaskCount(count int) string {
+	if count == 1 {
+		return "1 task"
+	}
+	return fmt.Sprintf("%d tasks", count)
+}
+
 type TaskService struct {
 	repo TaskRepository
 	log  *common.Logger
