@@ -17,11 +17,12 @@ type Cmd struct {
 }
 
 type CLI struct {
-	Cmds map[string]*Cmd
+	Cmds    map[string]*Cmd
+	Version string
 }
 
-func NewCLI() *CLI {
-	return &CLI{Cmds: make(map[string]*Cmd)}
+func NewCLI(version string) *CLI {
+	return &CLI{Cmds: make(map[string]*Cmd), Version: version}
 }
 
 func (c *CLI) Register(cmds ...*Cmd) {
@@ -33,6 +34,10 @@ func (c *CLI) Register(cmds ...*Cmd) {
 func (c *CLI) Run(args []string) error {
 	if len(args) < 1 || args[0] == helpFlag || args[0] == helpFlagShort {
 		c.printHelp()
+		return nil
+	}
+	if args[0] == versionFlag {
+		fmt.Printf("drg %s\n", c.Version)
 		return nil
 	}
 

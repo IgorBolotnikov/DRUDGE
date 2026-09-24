@@ -18,7 +18,7 @@ func TestCLIRun_PrintsHelp(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			cli := NewCLI()
+			cli := NewCLI("v1.2.3")
 			cli.Register(TaskCmd, ProjectCmd, DrudgerCmd)
 
 			var err error
@@ -44,12 +44,26 @@ func TestCLIRun_PrintsHelp(t *testing.T) {
 }
 
 func TestCLIRun_RefusesAnUnknownCommand(t *testing.T) {
-	cli := NewCLI()
+	cli := NewCLI("v1.2.3")
 	cli.Register(TaskCmd)
 
 	err := cli.Run([]string{"deploy"})
 
 	if err == nil || !strings.Contains(err.Error(), "unknown command: deploy") {
 		t.Errorf("expected an unknown command error, got %v", err)
+	}
+}
+
+func TestCLIRun_PrintsTheVersion(t *testing.T) {
+	cli := NewCLI("v1.2.3")
+
+	var err error
+	output := captureOutput(func() { err = cli.Run([]string{versionFlag}) })
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if output != "drg v1.2.3\n" {
+		t.Errorf("expected %q, got %q", "drg v1.2.3\n", output)
 	}
 }

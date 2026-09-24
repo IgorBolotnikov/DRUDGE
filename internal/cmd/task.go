@@ -28,6 +28,7 @@ const (
 	dryRunFlag     = "--dry-run"
 	helpFlag       = "--help"
 	helpFlagShort  = "-h"
+	versionFlag    = "--version"
 	forceFlag      = "--force"
 	forceFlagShort = "-f"
 )
