@@ -2,6 +2,10 @@
 
 The words below mean exactly one thing each. Use them in code, docs, commit messages and output.
 
+## DRUDGE
+
+The name of the project, written in all caps in prose, docs and output. The caps keep it apart from the English word "drudge". Lowercase `drudge` stays for the things that are literally spelled that way: the Go module, the `~/.drudge` directory and the like. The CLI binary is `drg`.
+
 ## Drudger
 
 A Drudger is a slot, a sandbox and a workspace. The workspace holds a git worktree per repository of the project, the sandbox is created over it, and the three are made together and stay together. Nothing is rebuilt between Tasks.
