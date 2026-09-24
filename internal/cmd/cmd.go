@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 
 	"drudge/internal/theme"
 )
@@ -29,7 +30,7 @@ func (c *CLI) Register(cmds ...*Cmd) {
 }
 
 func (c *CLI) Run(args []string) error {
-	if len(args) < 1 {
+	if len(args) < 1 || args[0] == helpFlag || args[0] == helpFlagShort {
 		c.printHelp()
 		return nil
 	}
@@ -46,8 +47,13 @@ func (c *CLI) printHelp() {
 	fmt.Println("")
 	printProjectName()
 	fmt.Println("\nAvailable commands:")
-	for _, cmd := range c.Cmds {
-		fmt.Printf("  %-12s %s\n", cmd.Name, cmd.Desc)
+	names := make([]string, 0, len(c.Cmds))
+	for name := range c.Cmds {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		fmt.Printf("  %-12s %s\n", name, c.Cmds[name].Desc)
 	}
 }
 

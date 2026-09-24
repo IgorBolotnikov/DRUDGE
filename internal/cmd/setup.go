@@ -16,6 +16,9 @@ var SetupCmd = &Cmd{
 	Usage: "setup",
 	Desc:  "Setup DRUDGE in this computer",
 	Run: func(args []string) error {
+		printProjectName()
+		fmt.Println("")
+
 		home, err := common.HomeDir()
 		if err != nil {
 			return err
