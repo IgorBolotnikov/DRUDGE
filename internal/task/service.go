@@ -56,10 +56,6 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	return task, nil
 }
 
-func (service *TaskService) ListTasks(projectSlug string) ([]*Task, error) {
-	return service.repo.ListTasks(projectSlug)
-}
-
 // GetTask finds one task by its full id, or by any prefix of an id that names
 // a single task. Listings print shortened ids, so a prefix is what a user has
 // in front of them.

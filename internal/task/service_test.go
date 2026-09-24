@@ -274,24 +274,6 @@ func TestTaskService_CreateTask_WrapsRepoError(t *testing.T) {
 	}
 }
 
-func TestTaskService_ListTasks_ForwardsToRepo(t *testing.T) {
-	expected := []*Task{{ID: "1", Title: "Task One"}, {ID: "2", Title: "Task Two"}}
-	repo := &mockRepo{
-		listTasksFn: func(string) ([]*Task, error) {
-			return expected, nil
-		},
-	}
-	svc := NewTaskService(repo, common.NewLogger(""))
-
-	result, err := svc.ListTasks("test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 2 {
-		t.Fatalf("expected 2 tasks, got %d", len(result))
-	}
-}
-
 func TestTaskService_GetTask_HandsTheIDToTheRepository(t *testing.T) {
 	// Resolving a full id or a prefix is the repository's job. The service
 	// passes on whatever the caller typed and returns what comes back.

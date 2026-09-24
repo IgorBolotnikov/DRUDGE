@@ -166,12 +166,16 @@ func taskList(args []string) error {
 		return nil
 	}
 
-	statusValue, hasStatus := parseFlagValue(args, statusFlag)
-	ticketFilter, hasTicket := parseFlagValue(args, ticketFlag)
-
-	statusFilter := task.TaskStatus(statusValue)
-	if hasStatus && !task.KnownStatus(statusFilter) {
-		return invalidStatusError(statusFilter)
+	var filter task.ListTasksFilter
+	if statusValue, hasStatus := parseFlagValue(args, statusFlag); hasStatus {
+		status := task.TaskStatus(statusValue)
+		if !task.KnownStatus(status) {
+			return invalidStatusError(status)
+		}
+		filter.Status = &status
+	}
+	if ticketID, hasTicket := parseFlagValue(args, ticketFlag); hasTicket {
+		filter.TicketID = &ticketID
 	}
 
 	cfg, err := config.LoadLocal()
@@ -183,14 +187,10 @@ func taskList(args []string) error {
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, log)
 
-	tasks, err := svc.ListTasks(cfg.ProjectSlug)
+	tasks, err := svc.ListTasks(cfg.ProjectSlug, filter)
 	if err != nil {
 		return fmt.Errorf("could not list tasks: %w", err)
 	}
-
-	// TODO: move this to service
-	tasks = filterTasks(tasks, statusFilter, hasStatus, ticketFilter, hasTicket)
-	tasks = sortTasksDesc(tasks)
 
 	if len(tasks) == 0 {
 		log.Info("No tasks found")
@@ -374,25 +374,4 @@ func parseTaskRunArgs(args []string, subcommand, usage string) (task.TaskID, boo
 // ones it does.
 func invalidStatusError(status task.TaskStatus) error {
 	return fmt.Errorf("invalid status %q, must be one of: %s", status, task.FormatStatuses(task.Statuses))
-}
-
-func filterTasks(tasks []*task.Task, statusFilter task.TaskStatus, hasStatus bool, ticketFilter string, hasTicket bool) []*task.Task {
-	var result []*task.Task
-	for _, t := range tasks {
-		if hasStatus && t.Status != statusFilter {
-			continue
-		}
-		if hasTicket && t.TicketID != ticketFilter {
-			continue
-		}
-		result = append(result, t)
-	}
-	return result
-}
-
-func sortTasksDesc(tasks []*task.Task) []*task.Task {
-	slices.SortFunc(tasks, func(a, b *task.Task) int {
-		return b.CreatedAt.Compare(a.CreatedAt)
-	})
-	return tasks
 }
