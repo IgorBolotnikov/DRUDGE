@@ -50,7 +50,7 @@ func taskEdit(args []string) error {
 		return err
 	}
 
-	_, err = deps.tasks.EditTask(deps.localCfg.ProjectSlug, taskID, changes, deps.drudger)
+	_, err = deps.drudger.EditTask(deps.localCfg.ProjectSlug, taskID, changes)
 	return err
 }
 

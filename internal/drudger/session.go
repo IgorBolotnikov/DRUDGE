@@ -174,6 +174,9 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 	}
 	if isRecorded {
 		service.logger.Info("Task [%s] %s is %s, its Session is over", current.ID, current.Title, current.Status)
+		if current.Status == task.StatusDone {
+			service.reportUnblocked(projectSlug, current)
+		}
 	}
 	return current, isRecorded, nil
 }

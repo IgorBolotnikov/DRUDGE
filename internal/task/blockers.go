@@ -36,6 +36,46 @@ func (service *TaskService) Blockers(projectSlug string, dependent *Task) ([]Blo
 	return blockers, nil
 }
 
+// Unblocked returns the todo tasks blocked by finished whose other blockers
+// are all done, oldest first and the lowest id first among tasks made at the
+// same moment. finished counts as done whatever its stored status says.
+func (service *TaskService) Unblocked(projectSlug string, finished *Task) ([]*Task, error) {
+	tasks, err := service.repo.ListTasks(projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the tasks blocked by task %s: %w", finished.ID, err)
+	}
+	tasksByID := indexTasks(tasks)
+
+	var unblocked []*Task
+	for _, dependent := range tasks {
+		if dependent.Status == StatusTodo && slices.Contains(dependent.BlockedBy, finished.ID) && isOnlyBlockedBy(tasksByID, dependent, finished.ID) {
+			unblocked = append(unblocked, dependent)
+		}
+	}
+	slices.SortFunc(unblocked, func(first, second *Task) int {
+		if byAge := first.CreatedAt.Compare(second.CreatedAt); byAge != 0 {
+			return byAge
+		}
+		return strings.Compare(string(first.ID), string(second.ID))
+	})
+	return unblocked, nil
+}
+
+// isOnlyBlockedBy reports whether every blocker of dependent other than
+// finishedID is a stored task that is done.
+func isOnlyBlockedBy(tasksByID map[TaskID]*Task, dependent *Task, finishedID TaskID) bool {
+	for _, blockerID := range dependent.BlockedBy {
+		if blockerID == finishedID {
+			continue
+		}
+		blocker, ok := tasksByID[blockerID]
+		if !ok || blocker.Status != StatusDone {
+			return false
+		}
+	}
+	return true
+}
+
 // resolveBlockers turns the ids a user named into the full ids of the tasks
 // they name, with repeats dropped. dependentID is the task being blocked, and
 // is empty for a task not created yet. It refuses an id that names no task or

@@ -484,3 +484,77 @@ func TestTaskService_EditTask_BlockAndUnblock(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskService_Unblocked(t *testing.T) {
+	const missingTaskID TaskID = "00000000-dbe9-4316-8aba-8a67a8f01f8f"
+
+	cases := []struct {
+		name string
+		// others are the tasks stored next to the finished one.
+		others []*Task
+		want   []TaskID
+	}{
+		{
+			name:   "a task nothing waits for",
+			others: []*Task{backlogTask(docsTaskID, "Write the docs", StatusTodo)},
+		},
+		{
+			name:   "a dependent waiting only for the finished task",
+			others: []*Task{backlogTask(docsTaskID, "Write the docs", StatusTodo, migrationTaskID)},
+			want:   []TaskID{docsTaskID},
+		},
+		{
+			name: "a dependent whose other blockers are done",
+			others: []*Task{
+				backlogTask(docsTaskID, "Write the docs", StatusTodo, repositoryTaskID, migrationTaskID),
+				backlogTask(repositoryTaskID, "Wire the repository", StatusDone),
+			},
+			want: []TaskID{docsTaskID},
+		},
+		{
+			name: "a dependent still held by another blocker",
+			others: []*Task{
+				backlogTask(docsTaskID, "Write the docs", StatusTodo, migrationTaskID, repositoryTaskID),
+				backlogTask(repositoryTaskID, "Wire the repository", StatusInProgress),
+			},
+		},
+		{
+			name:   "a dependent held by a blocker naming no task",
+			others: []*Task{backlogTask(docsTaskID, "Write the docs", StatusTodo, migrationTaskID, missingTaskID)},
+		},
+		{
+			name:   "a dependent that is not todo",
+			others: []*Task{backlogTask(docsTaskID, "Write the docs", StatusDraft, migrationTaskID)},
+		},
+		{
+			name: "only the dependents that became runnable, oldest first",
+			others: []*Task{
+				backlogTask(endpointTaskID, "Add the endpoint", StatusTodo, migrationTaskID),
+				backlogTask(docsTaskID, "Write the docs", StatusTodo, migrationTaskID, repositoryTaskID),
+				backlogTask(repositoryTaskID, "Wire the repository", StatusTodo, migrationTaskID),
+			},
+			want: []TaskID{repositoryTaskID, endpointTaskID},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			finished := backlogTask(migrationTaskID, "Add the migration", StatusDone)
+			repo := &fakeTaskRepo{tasks: append([]*Task{finished}, testCase.others...)}
+			service := NewTaskService(repo, common.NewLogger(""))
+
+			unblocked, err := service.Unblocked(testProjectSlug, finished)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var got []TaskID
+			for _, dependent := range unblocked {
+				got = append(got, dependent.ID)
+			}
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("expected %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
