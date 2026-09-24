@@ -211,7 +211,7 @@ func taskNew(args []string) error {
 		fmt.Printf(taskOptionLine, descriptionFlag+" <text>", "Description, the prompt the agent is handed")
 		fmt.Printf(taskOptionLine, descriptionFileFlag+" <path>", "File to read the description from, "+stdinPath+" to read stdin")
 		fmt.Printf(taskOptionLine, ticketFlag+" <ticket>", "Ticket the task came from")
-		fmt.Printf(taskOptionLine, statusFlag+" <status>", "Status ("+task.FormatStatuses(task.Statuses)+"), "+string(task.StatusDraft)+" when left out")
+		fmt.Printf(taskOptionLine, statusFlag+" <status>", "Status ("+task.FormatStatuses(task.Statuses)+"), "+config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusDraft)+" when that is unset")
 		fmt.Printf(taskOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for")
 		fmt.Printf(taskOptionLine, parentFlag+" <id>", "Task this task belongs to")
 		return nil
@@ -226,12 +226,17 @@ func taskNew(args []string) error {
 	if err != nil {
 		return err
 	}
+	globalCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, log)
 
 	dto.ProjectSlug = cfg.ProjectSlug
+	dto.DefaultStatus = config.ResolveDefaultTaskStatus(cfg, globalCfg)
 	dto.CreatedAt = time.Now().UTC()
 
 	_, err = svc.CreateTask(dto)
@@ -272,7 +277,7 @@ func parseTaskNewArgs(args []string, stdin io.Reader) (task.CreateTaskDto, error
 	blockedBy, _ := parseFlagValue(args, blockedByFlag)
 	parentID, _ := parseFlagValue(args, parentFlag)
 	statusValue, hasStatus := parseFlagValue(args, statusFlag)
-	status := task.StatusDraft
+	var status task.TaskStatus
 	if hasStatus {
 		status = task.TaskStatus(statusValue)
 		if !task.KnownStatus(status) {

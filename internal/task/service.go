@@ -48,6 +48,9 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 
 	if dto.Status == "" {
+		dto.Status = dto.DefaultStatus
+	}
+	if dto.Status == "" {
 		dto.Status = StatusDraft
 	}
 

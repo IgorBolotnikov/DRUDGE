@@ -6,12 +6,15 @@ import (
 )
 
 type CreateTaskDto struct {
-	Title        string
-	Description  string // Markdown
-	Status       TaskStatus
-	StartedAt    time.Time
-	FinishedAt   time.Time
-	Repositories []string // List of repositories this task is related to
+	Title       string
+	Description string // Markdown
+	Status      TaskStatus
+	// DefaultStatus is the status CreateTask gives a task that names no
+	// Status. Draft applies when it is empty too.
+	DefaultStatus TaskStatus
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	Repositories  []string // List of repositories this task is related to
 
 	TicketID     string // ID of the ticket this task is related to, if any
 	ParentTaskID TaskID // ID of the parent task, if any

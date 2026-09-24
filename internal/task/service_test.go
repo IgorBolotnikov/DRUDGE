@@ -162,24 +162,44 @@ func TestTaskService_CreateTask_MissingProjectSlug(t *testing.T) {
 	}
 }
 
-func TestTaskService_CreateTask_DefaultsStatusToDraft(t *testing.T) {
-	repo := &mockRepo{
-		createTaskFn: func(dto CreateTaskDto) (*Task, error) {
-			if dto.Status != StatusDraft {
-				t.Errorf("expected status %q, got %q", StatusDraft, dto.Status)
-			}
-			return &Task{ID: "abc123", Title: dto.Title}, nil
-		},
+func TestTaskService_CreateTask_PicksTheStatus(t *testing.T) {
+	cases := []struct {
+		name          string
+		status        TaskStatus
+		defaultStatus TaskStatus
+		want          TaskStatus
+	}{
+		{name: "no status and no default", want: StatusDraft},
+		{name: "no status and a todo default", defaultStatus: StatusTodo, want: StatusTodo},
+		{name: "no status and a draft default", defaultStatus: StatusDraft, want: StatusDraft},
+		{name: "an explicit status over the default", status: StatusDraft, defaultStatus: StatusTodo, want: StatusDraft},
+		{name: "an explicit status and no default", status: StatusTodo, want: StatusTodo},
 	}
-	svc := NewTaskService(repo, common.NewLogger(""))
 
-	_, err := svc.CreateTask(CreateTaskDto{
-		Title:       "Fix bug",
-		ProjectSlug: "test",
-		Status:      "",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var got TaskStatus
+			repo := &mockRepo{
+				createTaskFn: func(dto CreateTaskDto) (*Task, error) {
+					got = dto.Status
+					return &Task{ID: "abc123", Title: dto.Title}, nil
+				},
+			}
+			svc := NewTaskService(repo, common.NewLogger(""))
+
+			_, err := svc.CreateTask(CreateTaskDto{
+				Title:         "Fix bug",
+				ProjectSlug:   "test",
+				Status:        testCase.status,
+				DefaultStatus: testCase.defaultStatus,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != testCase.want {
+				t.Errorf("expected status %q, got %q", testCase.want, got)
+			}
+		})
 	}
 }
 

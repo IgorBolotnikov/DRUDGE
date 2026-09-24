@@ -89,6 +89,12 @@ const schemaJSON = `{
         }
       },
       "additionalProperties": false
+    },
+    "defaultTaskStatus": {
+      "description": "Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. A project config may override it.",
+      "type": "string",
+      "enum": ["draft", "todo"],
+      "default": "draft"
     }
   },
   "additionalProperties": false

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"drudge/internal/common"
+	"drudge/internal/task"
 )
 
 // setupLocalDir chdirs into a temp dir so the relative drudge paths the
@@ -47,6 +48,7 @@ func TestLoadLocal(t *testing.T) {
 		wantPrompt      string
 		wantDrudgers    int
 		wantRepos       []Repository
+		wantTaskStatus  task.TaskStatus
 	}{
 		{
 			name:            "no file",
@@ -137,6 +139,26 @@ func TestLoadLocal(t *testing.T) {
 			wantErr:         true,
 		},
 		{
+			name:            "draft default task status",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "draft"}`,
+			wantSlug:        "test-project",
+			wantTaskStatus:  task.StatusDraft,
+		},
+		{
+			name:            "todo default task status",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "todo"}`,
+			wantSlug:        "test-project",
+			wantTaskStatus:  task.StatusTodo,
+		},
+		{
+			name:            "default task status a new task cannot start in",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "done"}`,
+			wantErr:         true,
+		},
+		{
 			name:            "absolute repository path",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "/srv/elsewhere"}]}`,
@@ -174,6 +196,9 @@ func TestLoadLocal(t *testing.T) {
 			if !reflect.DeepEqual(cfg.Repositories, test.wantRepos) {
 				t.Errorf("Repositories = %+v, want %+v", cfg.Repositories, test.wantRepos)
 			}
+			if cfg.DefaultTaskStatus != test.wantTaskStatus {
+				t.Errorf("DefaultTaskStatus = %q, want %q", cfg.DefaultTaskStatus, test.wantTaskStatus)
+			}
 		})
 	}
 }
@@ -190,6 +215,21 @@ func TestLoadLocal_NoFile_ErrorNamesPath(t *testing.T) {
 	}
 }
 
+func TestLoadLocal_InvalidDefaultTaskStatus_ErrorNamesFileKeyAndValues(t *testing.T) {
+	setupLocalDir(t)
+	writeLocalConfig(t, `{"projectSlug": "test-project", "defaultTaskStatus": "someday"}`)
+
+	_, err := LoadLocal()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, fragment := range []string{common.LocalConfigPath(), DefaultTaskStatusKey, `"someday"`, "draft, todo"} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("error = %q, want it to name %q", err, fragment)
+		}
+	}
+}
+
 func TestSave_RoundTrips(t *testing.T) {
 	setupLocalDir(t)
 
@@ -197,6 +237,7 @@ func TestSave_RoundTrips(t *testing.T) {
 		ProjectSlug:           "test-project",
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
+		DefaultTaskStatus:     task.StatusTodo,
 		Repositories:          []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 	}
 	if err := cfg.Save(); err != nil {
@@ -311,6 +352,43 @@ func TestResolveMaxConcurrentDrudgers(t *testing.T) {
 			got := ResolveMaxConcurrentDrudgers(test.local, test.global)
 			if got != test.want {
 				t.Errorf("ResolveMaxConcurrentDrudgers = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestResolveDefaultTaskStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		local  *LocalConfig
+		global *GlobalConfig
+		want   task.TaskStatus
+	}{
+		{
+			name:   "local wins over global",
+			local:  &LocalConfig{DefaultTaskStatus: task.StatusDraft},
+			global: &GlobalConfig{DefaultTaskStatus: task.StatusTodo},
+			want:   task.StatusDraft,
+		},
+		{
+			name:   "falls back to global",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{DefaultTaskStatus: task.StatusTodo},
+			want:   task.StatusTodo,
+		},
+		{
+			name:   "falls back to draft",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{},
+			want:   task.StatusDraft,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ResolveDefaultTaskStatus(test.local, test.global)
+			if got != test.want {
+				t.Errorf("ResolveDefaultTaskStatus = %q, want %q", got, test.want)
 			}
 		})
 	}

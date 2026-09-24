@@ -4,9 +4,11 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"drudge/internal/common"
+	"drudge/internal/task"
 )
 
 type Env string
@@ -64,7 +66,12 @@ const (
 	RepositoriesKey   = "repositories"
 	DefaultBranchKey  = "defaultBranch"
 	repositoryPathKey = "path"
+	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
+	DefaultTaskStatusKey = "defaultTaskStatus"
 )
+
+// defaultTaskStatuses are the statuses a config may give a new task.
+var defaultTaskStatuses = []task.TaskStatus{task.StatusDraft, task.StatusTodo}
 
 // schemaRef is the $schema reference path in config.json.
 const schemaRef = "./schema/config.json"
@@ -75,7 +82,8 @@ func SchemaRef() string {
 }
 
 type GlobalConfig struct {
-	Drudger DrudgerConfig `json:"drudger"`
+	Drudger           DrudgerConfig   `json:"drudger"`
+	DefaultTaskStatus task.TaskStatus `json:"defaultTaskStatus,omitempty"` // Status of a new task created without one, empty means unset
 }
 
 type DrudgerConfig struct {
@@ -156,6 +164,9 @@ func Load() (*GlobalConfig, error) {
 		}
 	}
 
+	if err := validateDefaultTaskStatus(cfg.DefaultTaskStatus, cfgPath); err != nil {
+		return nil, err
+	}
 	if err := validatePromptFile(cfg.Drudger.PromptFile, cfgPath); err != nil {
 		return nil, err
 	}
@@ -236,6 +247,16 @@ func validatePromptFile(value string, path string) error {
 		return fmt.Errorf("%s has %s = %q, it must be a bare file name, prompt files are read from the prompts directory next to the config file", path, promptFileKey, value)
 	}
 	return nil
+}
+
+// validateDefaultTaskStatus rejects a default task status other than draft
+// and todo. An empty value passes, since that is what an absent key
+// unmarshals to.
+func validateDefaultTaskStatus(value task.TaskStatus, path string) error {
+	if value == "" || slices.Contains(defaultTaskStatuses, value) {
+		return nil
+	}
+	return fmt.Errorf("%s has %s = %q, it must be one of %s", path, DefaultTaskStatusKey, value, task.FormatStatuses(defaultTaskStatuses))
 }
 
 // validateMaxConcurrentDrudgers rejects a negative Drudger limit. Zero passes, since that is what an absent key unmarshals to.

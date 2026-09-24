@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"drudge/internal/common"
+	"drudge/internal/task"
 )
 
 // LocalConfig scoped per project and contains overrides of global config
@@ -16,6 +17,9 @@ type LocalConfig struct {
 	ProjectSlug           string `json:"projectSlug"`
 	PromptFile            string `json:"promptFile,omitempty"`
 	MaxConcurrentDrudgers int    `json:"maxConcurrentDrudgers,omitempty"`
+	// DefaultTaskStatus is the status of a new task created without one. It
+	// overrides the global config, and empty means unset.
+	DefaultTaskStatus task.TaskStatus `json:"defaultTaskStatus,omitempty"`
 	// Repositories is empty for a project initialized before drudge knew about repositories.
 	Repositories []Repository `json:"repositories,omitempty"`
 }
@@ -61,6 +65,9 @@ func LoadLocal() (*LocalConfig, error) {
 		return nil, err
 	}
 	if err := validateRepositories(cfg.Repositories, path); err != nil {
+		return nil, err
+	}
+	if err := validateDefaultTaskStatus(cfg.DefaultTaskStatus, path); err != nil {
 		return nil, err
 	}
 
@@ -128,4 +135,17 @@ func ResolveMaxConcurrentDrudgers(local *LocalConfig, global *GlobalConfig) int 
 		return global.Drudger.MaxConcurrentDrudgers
 	}
 	return defaultMaxConcurrentDrudgers
+}
+
+// ResolveDefaultTaskStatus returns the status of a new task created without
+// one, preferring the local config over the global one and falling back to
+// draft.
+func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.TaskStatus {
+	if local.DefaultTaskStatus != "" {
+		return local.DefaultTaskStatus
+	}
+	if global.DefaultTaskStatus != "" {
+		return global.DefaultTaskStatus
+	}
+	return task.StatusDraft
 }
