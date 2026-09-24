@@ -458,11 +458,11 @@ func TestLoad_DefaultTaskStatus(t *testing.T) {
 		wantErrText []string
 	}{
 		{name: "absent", raw: `{}`},
-		{name: "draft", raw: `{"defaultTaskStatus": "draft"}`, want: task.StatusDraft},
-		{name: "todo", raw: `{"defaultTaskStatus": "todo"}`, want: task.StatusTodo},
+		{name: "draft", raw: `{"task": {"defaultStatus": "draft"}}`, want: task.StatusDraft},
+		{name: "todo", raw: `{"task": {"defaultStatus": "todo"}}`, want: task.StatusTodo},
 		{
 			name:        "a status a new task cannot start in",
-			raw:         `{"defaultTaskStatus": "in-progress"}`,
+			raw:         `{"task": {"defaultStatus": "in-progress"}}`,
 			wantErrText: []string{DefaultTaskStatusKey, `"in-progress"`, "draft, todo"},
 		},
 	}
@@ -492,8 +492,8 @@ func TestLoad_DefaultTaskStatus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
-			if cfg.DefaultTaskStatus != test.want {
-				t.Errorf("DefaultTaskStatus = %q, want %q", cfg.DefaultTaskStatus, test.want)
+			if cfg.Task.DefaultStatus != test.want {
+				t.Errorf("Task.DefaultStatus = %q, want %q", cfg.Task.DefaultStatus, test.want)
 			}
 		})
 	}

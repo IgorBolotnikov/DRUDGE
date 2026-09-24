@@ -14,12 +14,10 @@ import (
 // TODO: give it a $schema pointer. It can't reuse SchemaRef, because the file
 // lives outside the global dir and needs its own resolution logic
 type LocalConfig struct {
-	ProjectSlug           string `json:"projectSlug"`
-	PromptFile            string `json:"promptFile,omitempty"`
-	MaxConcurrentDrudgers int    `json:"maxConcurrentDrudgers,omitempty"`
-	// DefaultTaskStatus is the status of a new task created without one. It
-	// overrides the global config, and empty means unset.
-	DefaultTaskStatus task.TaskStatus `json:"defaultTaskStatus,omitempty"`
+	ProjectSlug           string     `json:"projectSlug"`
+	PromptFile            string     `json:"promptFile,omitempty"`
+	MaxConcurrentDrudgers int        `json:"maxConcurrentDrudgers,omitempty"`
+	Task                  TaskConfig `json:"task,omitzero"`
 	// Repositories is empty for a project initialized before drudge knew about repositories.
 	Repositories []Repository `json:"repositories,omitempty"`
 }
@@ -67,7 +65,7 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validateRepositories(cfg.Repositories, path); err != nil {
 		return nil, err
 	}
-	if err := validateDefaultTaskStatus(cfg.DefaultTaskStatus, path); err != nil {
+	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, path); err != nil {
 		return nil, err
 	}
 
@@ -141,11 +139,11 @@ func ResolveMaxConcurrentDrudgers(local *LocalConfig, global *GlobalConfig) int 
 // one, preferring the local config over the global one and falling back to
 // draft.
 func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.TaskStatus {
-	if local.DefaultTaskStatus != "" {
-		return local.DefaultTaskStatus
+	if local.Task.DefaultStatus != "" {
+		return local.Task.DefaultStatus
 	}
-	if global.DefaultTaskStatus != "" {
-		return global.DefaultTaskStatus
+	if global.Task.DefaultStatus != "" {
+		return global.Task.DefaultStatus
 	}
 	return task.StatusDraft
 }

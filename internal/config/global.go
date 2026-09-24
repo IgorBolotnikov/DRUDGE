@@ -67,7 +67,7 @@ const (
 	DefaultBranchKey  = "defaultBranch"
 	repositoryPathKey = "path"
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
-	DefaultTaskStatusKey = "defaultTaskStatus"
+	DefaultTaskStatusKey = "task.defaultStatus"
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -82,8 +82,14 @@ func SchemaRef() string {
 }
 
 type GlobalConfig struct {
-	Drudger           DrudgerConfig   `json:"drudger"`
-	DefaultTaskStatus task.TaskStatus `json:"defaultTaskStatus,omitempty"` // Status of a new task created without one, empty means unset
+	Drudger DrudgerConfig `json:"drudger"`
+	Task    TaskConfig    `json:"task,omitzero"`
+}
+
+// TaskConfig holds the settings for the tasks of a project. A local config
+// overrides each field it sets.
+type TaskConfig struct {
+	DefaultStatus task.TaskStatus `json:"defaultStatus,omitempty"` // Status of a new task created without one, empty means unset
 }
 
 type DrudgerConfig struct {
@@ -164,7 +170,7 @@ func Load() (*GlobalConfig, error) {
 		}
 	}
 
-	if err := validateDefaultTaskStatus(cfg.DefaultTaskStatus, cfgPath); err != nil {
+	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, cfgPath); err != nil {
 		return nil, err
 	}
 	if err := validatePromptFile(cfg.Drudger.PromptFile, cfgPath); err != nil {

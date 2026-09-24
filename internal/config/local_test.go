@@ -141,21 +141,21 @@ func TestLoadLocal(t *testing.T) {
 		{
 			name:            "draft default task status",
 			shouldWriteFile: true,
-			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "draft"}`,
+			raw:             `{"projectSlug": "test-project", "task": {"defaultStatus": "draft"}}`,
 			wantSlug:        "test-project",
 			wantTaskStatus:  task.StatusDraft,
 		},
 		{
 			name:            "todo default task status",
 			shouldWriteFile: true,
-			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "todo"}`,
+			raw:             `{"projectSlug": "test-project", "task": {"defaultStatus": "todo"}}`,
 			wantSlug:        "test-project",
 			wantTaskStatus:  task.StatusTodo,
 		},
 		{
 			name:            "default task status a new task cannot start in",
 			shouldWriteFile: true,
-			raw:             `{"projectSlug": "test-project", "defaultTaskStatus": "done"}`,
+			raw:             `{"projectSlug": "test-project", "task": {"defaultStatus": "done"}}`,
 			wantErr:         true,
 		},
 		{
@@ -196,8 +196,8 @@ func TestLoadLocal(t *testing.T) {
 			if !reflect.DeepEqual(cfg.Repositories, test.wantRepos) {
 				t.Errorf("Repositories = %+v, want %+v", cfg.Repositories, test.wantRepos)
 			}
-			if cfg.DefaultTaskStatus != test.wantTaskStatus {
-				t.Errorf("DefaultTaskStatus = %q, want %q", cfg.DefaultTaskStatus, test.wantTaskStatus)
+			if cfg.Task.DefaultStatus != test.wantTaskStatus {
+				t.Errorf("Task.DefaultStatus = %q, want %q", cfg.Task.DefaultStatus, test.wantTaskStatus)
 			}
 		})
 	}
@@ -217,7 +217,7 @@ func TestLoadLocal_NoFile_ErrorNamesPath(t *testing.T) {
 
 func TestLoadLocal_InvalidDefaultTaskStatus_ErrorNamesFileKeyAndValues(t *testing.T) {
 	setupLocalDir(t)
-	writeLocalConfig(t, `{"projectSlug": "test-project", "defaultTaskStatus": "someday"}`)
+	writeLocalConfig(t, `{"projectSlug": "test-project", "task": {"defaultStatus": "someday"}}`)
 
 	_, err := LoadLocal()
 	if err == nil {
@@ -237,7 +237,7 @@ func TestSave_RoundTrips(t *testing.T) {
 		ProjectSlug:           "test-project",
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
-		DefaultTaskStatus:     task.StatusTodo,
+		Task:                  TaskConfig{DefaultStatus: task.StatusTodo},
 		Repositories:          []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 	}
 	if err := cfg.Save(); err != nil {
@@ -366,14 +366,14 @@ func TestResolveDefaultTaskStatus(t *testing.T) {
 	}{
 		{
 			name:   "local wins over global",
-			local:  &LocalConfig{DefaultTaskStatus: task.StatusDraft},
-			global: &GlobalConfig{DefaultTaskStatus: task.StatusTodo},
+			local:  &LocalConfig{Task: TaskConfig{DefaultStatus: task.StatusDraft}},
+			global: &GlobalConfig{Task: TaskConfig{DefaultStatus: task.StatusTodo}},
 			want:   task.StatusDraft,
 		},
 		{
 			name:   "falls back to global",
 			local:  &LocalConfig{},
-			global: &GlobalConfig{DefaultTaskStatus: task.StatusTodo},
+			global: &GlobalConfig{Task: TaskConfig{DefaultStatus: task.StatusTodo}},
 			want:   task.StatusTodo,
 		},
 		{
