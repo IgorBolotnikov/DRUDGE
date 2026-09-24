@@ -7,6 +7,7 @@ import (
 
 	"drudge/internal/common"
 	"drudge/internal/config"
+	"drudge/internal/skill"
 	"drudge/internal/theme"
 )
 
@@ -48,6 +49,15 @@ var SetupCmd = &Cmd{
 		if err != nil {
 			return err
 		}
+
+		skillPath, didInstall, err := skill.InstallDrudge(home, cfg.Drudger.Harness)
+		if err != nil {
+			return err
+		}
+		if didInstall {
+			fmt.Printf("Created %s\n", skillPath)
+		}
+
 		globalCfg := map[string]any{
 			"$schema": config.SchemaRef(),
 			"drudger": map[string]any{
