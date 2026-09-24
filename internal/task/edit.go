@@ -24,9 +24,9 @@ type EditTaskDto struct {
 	// BlockedBy replaces the whole list of blockers. The ids may be prefixes,
 	// and an empty list clears it.
 	BlockedBy *[]TaskID
-	// Block adds to the list of blockers and Unblock removes from it. An edit
-	// takes one of BlockedBy, Block and Unblock.
-	Block   *[]TaskID
+	// Block adds IDs to the list of blockers.
+	Block *[]TaskID
+	// Unblock removes the IDs from the list of blockers.
 	Unblock *[]TaskID
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
