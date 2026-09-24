@@ -18,4 +18,4 @@ loc:
 	@:
 
 drg:
-	@go run main.go $(filter-out drg,$(MAKECMDGOALS))
+	@go run ./cmd/drg $(filter-out drg,$(MAKECMDGOALS))
