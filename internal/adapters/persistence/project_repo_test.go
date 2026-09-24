@@ -1,9 +1,10 @@
 package persistence
 
 import (
-	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -11,219 +12,225 @@ import (
 	"drudge/internal/project"
 )
 
-func newTestRepo(t *testing.T) (*FileProjectRepository, string) {
+const testDirPerm = 0o755
+
+// testProject is a project a test stores before it runs the method under test.
+type testProject struct {
+	name string
+	slug string
+}
+
+// newTestRepo returns a repository over a projects directory holding the
+// given projects, and the path of that directory.
+func newTestRepo(t *testing.T, projects ...testProject) (*FileProjectRepository, string) {
 	t.Helper()
-	dir := t.TempDir()
-	return NewFileProjectRepository(dir), dir
-}
+	projectsDir := t.TempDir()
+	repo := NewFileProjectRepository(projectsDir)
 
-func newTestDto(dir, name, slug string) project.CreateProjectDto {
-	return project.CreateProjectDto{
-		Name:      name,
-		Slug:      slug,
-		Location:  filepath.Join(dir, slug),
-		CreatedAt: time.Now().UTC(),
-	}
-}
-
-func TestFileProjectRepository_Project_DeleteProject_DoesNotExist(t *testing.T) {
-	repo, _ := newTestRepo(t)
-
-	err := repo.DeleteProject("nonexistent")
-	if err != nil {
-		t.Errorf("expected no error for nonexistent project: %v", err)
-	}
-}
-
-func TestFileProjectRepository_Project_DeleteProject_RemovesDir(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	dto := newTestDto(dir, "Delete Test", "delete-test")
-	proj, err := repo.CreateProject(dto)
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	if proj.Slug != "delete-test" {
-		t.Errorf("expected slug 'delete-test', got %q", proj.Slug)
-	}
-
-	if err := repo.DeleteProject("delete-test"); err != nil {
-		t.Fatalf("DeleteProject: %v", err)
-	}
-
-	_, err = os.Stat(filepath.Join(dir, "delete-test"))
-	if !os.IsNotExist(err) {
-		t.Error("project dir should be deleted")
-	}
-}
-
-func TestFileProjectRepository_Project_ListProjects_EmptyDir(t *testing.T) {
-	repo, _ := newTestRepo(t)
-
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
-	}
-
-	if len(projects) != 0 {
-		t.Errorf("expected 0 projects, got %d", len(projects))
-	}
-}
-
-func TestFileProjectRepository_Project_ListProjects_NoProjectsDir(t *testing.T) {
-	repo := NewFileProjectRepository(filepath.Join(t.TempDir(), "projects"))
-
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
-	}
-
-	if len(projects) != 0 {
-		t.Errorf("expected 0 projects, got %d", len(projects))
-	}
-}
-
-func TestFileProjectRepository_Project_ListProjects_Single(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	dto := newTestDto(dir, "One Project", "one-project")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
-	}
-
-	if len(projects) != 1 {
-		t.Fatalf("expected 1 project, got %d", len(projects))
-	}
-
-	if projects[0].Slug != "one-project" || projects[0].Name != "One Project" {
-		t.Errorf("unexpected project: %+v", projects[0])
-	}
-}
-
-func TestFileProjectRepository_Project_ListProjects_Multiple(t *testing.T) {
-	repo, dir := newTestRepo(t)
-
-	for i := 1; i <= 3; i++ {
-		dto := newTestDto(dir, fmt.Sprintf("Project %d", i), fmt.Sprintf("project-%d", i))
+	for _, stored := range projects {
+		dto := project.CreateProjectDto{
+			Name:      stored.name,
+			Slug:      stored.slug,
+			Location:  filepath.Join(projectsDir, stored.slug),
+			CreatedAt: time.Now().UTC(),
+		}
 		if _, err := repo.CreateProject(dto); err != nil {
-			t.Fatalf("CreateProject %d: %v", i, err)
+			t.Fatalf("could not create project %s: %v", stored.slug, err)
 		}
 	}
+	return repo, projectsDir
+}
 
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
+func TestFileProjectRepository_DeleteProject(t *testing.T) {
+	cases := []struct {
+		name     string
+		projects []testProject
+		slug     string
+		// wantSlugs are the project directories left once the delete is done,
+		// in name order.
+		wantSlugs []string
+	}{
+		{
+			name:      "a project",
+			projects:  []testProject{{name: "Shop", slug: "shop"}, {name: "Blog", slug: "blog"}},
+			slug:      "shop",
+			wantSlugs: []string{"blog"},
+		},
+		{
+			name:      "a project that does not exist",
+			projects:  []testProject{{name: "Blog", slug: "blog"}},
+			slug:      "shop",
+			wantSlugs: []string{"blog"},
+		},
 	}
 
-	if len(projects) != 3 {
-		t.Fatalf("expected 3 projects, got %d", len(projects))
-	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, projectsDir := newTestRepo(t, testCase.projects...)
 
-	slugSet := make(map[string]bool)
-	for _, p := range projects {
-		slugSet[p.Slug] = true
-	}
+			if err := repo.DeleteProject(testCase.slug); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-	for i := 1; i <= 3; i++ {
-		expected := fmt.Sprintf("project-%d", i)
-		if !slugSet[expected] {
-			t.Errorf("missing project %s", expected)
-		}
+			entries, err := os.ReadDir(projectsDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var gotSlugs []string
+			for _, entry := range entries {
+				gotSlugs = append(gotSlugs, entry.Name())
+			}
+			if !slices.Equal(gotSlugs, testCase.wantSlugs) {
+				t.Errorf("expected the project directories %v, got %v", testCase.wantSlugs, gotSlugs)
+			}
+		})
 	}
 }
 
-func TestFileProjectRepository_Project_ListProjects_SkipsNonDirEntries(t *testing.T) {
-	repo, dir := newTestRepo(t)
+func TestFileProjectRepository_ListProjects(t *testing.T) {
+	cases := []struct {
+		name     string
+		projects []testProject
+		// strayFiles are files in the projects directory that are not projects.
+		strayFiles []string
+		// brokenDirs are directories in the projects directory without a
+		// project file.
+		brokenDirs []string
+		// hasNoProjectsDir removes the projects directory before the listing.
+		hasNoProjectsDir bool
 
-	// Create a non-directory file in the root
-	if err := os.WriteFile(filepath.Join(dir, "not-a-dir.txt"), []byte("ignore me"), common.DefaultFilePerm); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+		// wantNames are the names of the listed projects by slug.
+		wantNames map[string]string
+	}{
+		{
+			name:      "no projects",
+			wantNames: map[string]string{},
+		},
+		{
+			name:             "no projects directory",
+			hasNoProjectsDir: true,
+			wantNames:        map[string]string{},
+		},
+		{
+			name:      "one project",
+			projects:  []testProject{{name: "One Project", slug: "one-project"}},
+			wantNames: map[string]string{"one-project": "One Project"},
+		},
+		{
+			name: "several projects",
+			projects: []testProject{
+				{name: "Project 1", slug: "project-1"},
+				{name: "Project 2", slug: "project-2"},
+				{name: "Project 3", slug: "project-3"},
+			},
+			wantNames: map[string]string{"project-1": "Project 1", "project-2": "Project 2", "project-3": "Project 3"},
+		},
+		{
+			name:       "a file that is not a project",
+			strayFiles: []string{"not-a-dir.txt"},
+			wantNames:  map[string]string{},
+		},
+		{
+			name:       "a directory without a project file",
+			projects:   []testProject{{name: "Valid", slug: "valid"}},
+			brokenDirs: []string{"broken"},
+			wantNames:  map[string]string{"valid": "Valid"},
+		},
 	}
 
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
-	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, projectsDir := newTestRepo(t, testCase.projects...)
+			for _, file := range testCase.strayFiles {
+				if err := os.WriteFile(filepath.Join(projectsDir, file), []byte("ignore me"), common.DefaultFilePerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, dir := range testCase.brokenDirs {
+				if err := os.MkdirAll(filepath.Join(projectsDir, dir), testDirPerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if testCase.hasNoProjectsDir {
+				if err := os.RemoveAll(projectsDir); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	if len(projects) != 0 {
-		t.Errorf("expected 0 projects (skipped non-dir), got %d", len(projects))
+			projects, err := repo.ListProjects()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			gotNames := map[string]string{}
+			for _, listed := range projects {
+				gotNames[listed.Slug] = listed.Name
+			}
+			if !maps.Equal(gotNames, testCase.wantNames) {
+				t.Errorf("expected the projects %v, got %v", testCase.wantNames, gotNames)
+			}
+		})
 	}
 }
 
-func TestFileProjectRepository_Project_ListProjects_SkipsBrokenProjects(t *testing.T) {
-	repo, dir := newTestRepo(t)
+func TestFileProjectRepository_RenameProject(t *testing.T) {
+	const (
+		storedName = "Old Name"
+		storedSlug = "old-name"
+	)
 
-	// Create a valid project
-	dto := newTestDto(dir, "Valid", "valid")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
+	cases := []struct {
+		name    string
+		slug    string
+		newName string
 
-	// Create a broken project (directory without project.json)
-	if err := os.MkdirAll(filepath.Join(dir, "broken"), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-
-	projects, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
-	}
-
-	if len(projects) != 1 {
-		t.Fatalf("expected 1 project (skipped broken), got %d", len(projects))
+		wantErr bool
+	}{
+		{name: "a new name", slug: storedSlug, newName: "New Name"},
+		{name: "the same name", slug: storedSlug, newName: storedName},
+		{name: "a project that does not exist", slug: "nonexistent", newName: "New Name", wantErr: true},
 	}
 
-	if projects[0].Slug != "valid" {
-		t.Errorf("expected 'valid', got %q", projects[0].Slug)
-	}
-}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, projectsDir := newTestRepo(t, testProject{name: storedName, slug: storedSlug})
+			projectDir := filepath.Join(projectsDir, storedSlug)
+			taskFile := filepath.Join(projectDir, "tasks", "task.md")
+			if err := os.MkdirAll(filepath.Dir(taskFile), testDirPerm); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(taskFile, []byte("a task"), common.DefaultFilePerm); err != nil {
+				t.Fatal(err)
+			}
 
-func TestFileProjectRepository_Project_RenameProject_KeepsTheSlugAndTheDirectory(t *testing.T) {
-	repo, dir := newTestRepo(t)
+			err := repo.RenameProject(testCase.slug, testCase.newName)
 
-	dto := newTestDto(dir, "Old Name", "old-name")
-	if _, err := repo.CreateProject(dto); err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	taskFile := filepath.Join(dir, "old-name", "tasks", "task.md")
-	if err := os.MkdirAll(filepath.Dir(taskFile), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(taskFile, []byte("a task"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+			wantName := testCase.newName
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				wantName = storedName
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-	if err := repo.RenameProject("old-name", "New Name"); err != nil {
-		t.Fatalf("RenameProject: %v", err)
-	}
+			if _, err := os.Stat(taskFile); err != nil {
+				t.Errorf("expected the tasks of the project to stay where they are: %v", err)
+			}
+			if newSlug := common.SlugFrom(testCase.newName); newSlug != storedSlug {
+				if _, err := os.Stat(filepath.Join(projectsDir, newSlug)); !os.IsNotExist(err) {
+					t.Errorf("expected no directory for the new name, got %v", err)
+				}
+			}
 
-	if _, err := os.Stat(filepath.Join(dir, "new-name")); !os.IsNotExist(err) {
-		t.Errorf("expected no directory for the new name, got %v", err)
-	}
-	if _, err := os.Stat(taskFile); err != nil {
-		t.Errorf("expected the tasks of the project to stay where they are: %v", err)
-	}
-
-	var proj project.Project
-	if err := common.ReadJSON(filepath.Join(dir, "old-name", ProjectConfigFile), &proj); err != nil {
-		t.Fatalf("ReadJSON: %v", err)
-	}
-	want := project.Project{Name: "New Name", Slug: "old-name", Location: dto.Location, CreatedAt: dto.CreatedAt}
-	if !proj.CreatedAt.Equal(want.CreatedAt) || proj.Name != want.Name || proj.Slug != want.Slug || proj.Location != want.Location {
-		t.Errorf("expected %+v, got %+v", want, proj)
-	}
-}
-
-func TestFileProjectRepository_Project_RenameProject_NotFound(t *testing.T) {
-	repo, _ := newTestRepo(t)
-
-	if err := repo.RenameProject("nonexistent", "New Name"); err == nil {
-		t.Fatal("expected error for nonexistent project")
+			var got project.Project
+			if err := common.ReadJSON(filepath.Join(projectDir, ProjectConfigFile), &got); err != nil {
+				t.Fatalf("could not read the project file: %v", err)
+			}
+			if got.Name != wantName || got.Slug != storedSlug || got.Location != projectDir {
+				t.Errorf("expected name %q, slug %q and location %q, got %+v", wantName, storedSlug, projectDir, got)
+			}
+		})
 	}
 }
