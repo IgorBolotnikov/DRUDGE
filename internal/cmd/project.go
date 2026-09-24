@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
@@ -18,33 +20,103 @@ var ProjectCmd = &Cmd{
 	Run:   runProject,
 }
 
+const (
+	projectCreateSubcommand = "create"
+	projectInitSubcommand   = "init"
+	projectDeleteSubcommand = "delete"
+	projectRenameSubcommand = "rename"
+	projectListSubcommand   = "list"
+)
+
+const (
+	projectUsage       = "usage: drg project <create|init|delete|rename|list>"
+	projectCreateUsage = "usage: drg project create <name>"
+	projectInitUsage   = "usage: drg project init <name>"
+	projectDeleteUsage = "usage: drg project delete <name> [" + forceFlag + "]"
+	projectRenameUsage = "usage: drg project rename <old-name> <new-name>"
+	projectListUsage   = "usage: drg project list"
+)
+
+const projectNameArg = "project name"
+
 func runProject(args []string) error {
 	if len(args) < 1 {
-		return ErrNoProjectName
+		return errors.New(projectUsage)
 	}
 
 	switch args[0] {
-	case "create":
+	case helpFlag, helpFlagShort:
+		printProjectHelp()
+		return nil
+	case projectCreateSubcommand:
 		return projectCreate(args[1:])
-	case "init":
+	case projectInitSubcommand:
 		return projectInit(args[1:])
-	case "delete":
+	case projectDeleteSubcommand:
 		return projectDelete(args[1:])
-	case "rename":
+	case projectRenameSubcommand:
 		return projectRename(args[1:])
-	case "list":
-		return projectList()
+	case projectListSubcommand:
+		return projectList(args[1:])
 	default:
-		return ErrNoProjectName
+		return fmt.Errorf("unknown project subcommand %q, %s", args[0], projectUsage)
 	}
 }
 
-func projectCreate(args []string) error {
-	if len(args) < 1 {
-		return ErrNoProjectName
+func printProjectHelp() {
+	fmt.Println(projectUsage)
+	fmt.Println()
+	fmt.Println("Subcommands:")
+	fmt.Printf("  %-8s Record a project without linking a directory to it\n", projectCreateSubcommand)
+	fmt.Printf("  %-8s Record a project and link the current directory to it\n", projectInitSubcommand)
+	fmt.Printf("  %-8s Delete a project and its tasks\n", projectDeleteSubcommand)
+	fmt.Printf("  %-8s Give a project a new name\n", projectRenameSubcommand)
+	fmt.Printf("  %-8s List the projects\n", projectListSubcommand)
+	fmt.Println()
+	fmt.Printf("Run drg project <subcommand> %s for the details of one.\n", helpFlag)
+}
+
+// parseProjectArgs reads the arguments of a project subcommand, one per entry
+// of argNames, and whether the force flag was given. It refuses a missing or
+// extra argument, and any flag other than the force flag of a subcommand that
+// takes it.
+func parseProjectArgs(args []string, argNames []string, isForceAllowed bool, usage string) ([]string, bool, error) {
+	var values []string
+	isForced := false
+
+	for _, arg := range args {
+		switch {
+		case isForceAllowed && (arg == forceFlag || arg == forceFlagShort):
+			isForced = true
+		case strings.HasPrefix(arg, "-"):
+			return nil, false, fmt.Errorf("unknown flag %q, %s", arg, usage)
+		case len(values) == len(argNames):
+			return nil, false, fmt.Errorf("unexpected argument %q, %s", arg, usage)
+		default:
+			values = append(values, arg)
+		}
 	}
 
-	name := args[0]
+	if len(values) < len(argNames) {
+		return nil, false, fmt.Errorf("%s is required, %s", argNames[len(values)], usage)
+	}
+	return values, isForced, nil
+}
+
+func projectCreate(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(projectCreateUsage)
+		fmt.Println()
+		fmt.Println("Record a project in the drudge home directory without linking any directory to it.")
+		fmt.Println("Run drg project init inside the project directory to record a project and link the directory in one go.")
+		return nil
+	}
+
+	values, _, err := parseProjectArgs(args, []string{projectNameArg}, false, projectCreateUsage)
+	if err != nil {
+		return err
+	}
+	name := values[0]
 
 	log := common.NewLogger("")
 	svc, err := newProjectService(log)
@@ -57,11 +129,21 @@ func projectCreate(args []string) error {
 }
 
 func projectInit(args []string) error {
-	if len(args) < 1 {
-		return ErrNoProjectName
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(projectInitUsage)
+		fmt.Println()
+		fmt.Println("Record a project and link the current directory to it. Task commands run here work on that project.")
+		fmt.Println("A directory that is a git repository becomes the one repository of the project.")
+		fmt.Println("Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.")
+		fmt.Println("It prints each repository with the default branch that task branches are cut from.")
+		return nil
 	}
 
-	name := args[0]
+	values, _, err := parseProjectArgs(args, []string{projectNameArg}, false, projectInitUsage)
+	if err != nil {
+		return err
+	}
+	name := values[0]
 
 	projectDir, err := common.WorkDir()
 	if err != nil {
@@ -112,11 +194,22 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 }
 
 func projectDelete(args []string) error {
-	if len(args) < 1 {
-		return ErrNoProjectName
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(projectDeleteUsage)
+		fmt.Println()
+		fmt.Println("Delete a project and everything drudge keeps for it in the drudge home directory, its tasks included. It asks first.")
+		fmt.Println("The project may be named by its name or its slug.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Printf("  %s  Delete the project without asking\n", forceFlag)
+		return nil
 	}
 
-	lookup := args[0]
+	values, isForced, err := parseProjectArgs(args, []string{projectNameArg}, true, projectDeleteUsage)
+	if err != nil {
+		return err
+	}
+	lookup := values[0]
 
 	log := common.NewLogger("")
 	repo := persistence.NewFileProjectRepository("")
@@ -132,7 +225,7 @@ func projectDelete(args []string) error {
 
 	name := proj.Name
 
-	if !HasForceFlag(args) {
+	if !isForced {
 		isConfirmed, err := ConfirmDeletion(fmt.Sprintf("project %q", name))
 		if err != nil {
 			return err
@@ -152,12 +245,18 @@ func projectDelete(args []string) error {
 }
 
 func projectRename(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: drg project rename <old-name> <new-name>")
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(projectRenameUsage)
+		fmt.Println()
+		fmt.Println("Give a project a new name. Its slug follows the new name, and a slug another project holds is refused.")
+		return nil
 	}
 
-	oldName := args[0]
-	newName := args[1]
+	values, _, err := parseProjectArgs(args, []string{"old name", "new name"}, false, projectRenameUsage)
+	if err != nil {
+		return err
+	}
+	oldName, newName := values[0], values[1]
 
 	log := common.NewLogger("")
 	svc, err := newProjectService(log)
@@ -168,7 +267,18 @@ func projectRename(args []string) error {
 	return svc.RenameProject(oldName, newName)
 }
 
-func projectList() error {
+func projectList(args []string) error {
+	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
+		fmt.Println(projectListUsage)
+		fmt.Println()
+		fmt.Println("List the projects drudge knows about, with the slug and the name of each.")
+		return nil
+	}
+
+	if _, _, err := parseProjectArgs(args, nil, false, projectListUsage); err != nil {
+		return err
+	}
+
 	log := common.NewLogger("")
 	svc, err := newProjectService(log)
 	if err != nil {

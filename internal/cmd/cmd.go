@@ -7,8 +7,6 @@ import (
 	"drudge/internal/theme"
 )
 
-var ErrNoProjectName = fmt.Errorf("project name is required, usage: drg project create <name>")
-
 type Cmd struct {
 	Name  string
 	Usage string
