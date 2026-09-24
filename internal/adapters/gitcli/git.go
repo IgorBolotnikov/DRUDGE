@@ -72,14 +72,37 @@ const commitRange = "%s..%s"
 // path.
 const worktreeField = "worktree "
 
+// localEnvVars are the environment variables git reads a repository from, as
+// listed by git rev-parse --local-env-vars.
+var localEnvVars = []string{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_CONFIG",
+	"GIT_CONFIG_PARAMETERS",
+	"GIT_CONFIG_COUNT",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_IMPLICIT_WORK_TREE",
+	"GIT_GRAFT_FILE",
+	"GIT_INDEX_FILE",
+	"GIT_NO_REPLACE_OBJECTS",
+	"GIT_REPLACE_REF_BASE",
+	"GIT_PREFIX",
+	"GIT_SHALLOW_FILE",
+	"GIT_COMMON_DIR",
+}
+
 // Git runs git commands as processes.
 type Git struct {
 	runner   *exec.CommandRunner
 	timeouts git.Timeouts
 }
 
+// New wires the adapter over runner. Git commands leave out localEnvVars, so
+// each one works on the repository in the directory it is given, even when
+// drudge runs inside a git hook.
 func New(runner *exec.CommandRunner, timeouts git.Timeouts) *Git {
-	return &Git{runner: runner, timeouts: timeouts}
+	return &Git{runner: runner.WithoutEnv(localEnvVars...), timeouts: timeouts}
 }
 
 // IsRepositoryRoot reports whether dir is the root of a git work tree. A

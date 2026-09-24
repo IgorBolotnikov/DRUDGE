@@ -5,7 +5,6 @@ import (
 
 	"drudge/internal/adapters/persistence"
 	"drudge/internal/common"
-	"drudge/internal/config"
 	"drudge/internal/project"
 )
 
@@ -75,23 +74,13 @@ func projectInit(args []string) error {
 		return err
 	}
 
-	repositories, err := svc.DiscoverRepositories(projectDir)
+	_, repositories, err := svc.InitProject(name, projectDir)
 	if err != nil {
-		return err
-	}
-
-	proj, err := svc.CreateProject(name)
-	if err != nil {
-		return err
-	}
-
-	cfg := config.LocalConfig{ProjectSlug: proj.Slug, Repositories: repositories}
-	if err := cfg.Save(); err != nil {
 		return err
 	}
 
 	log.Info("Initialized project %s in %s", name, common.DotDrudgeDirName)
-	printRepositories(log, svc, projectDir, repositories)
+	printRepositories(log, svc.ResolveRepositories(projectDir, repositories))
 	return nil
 }
 
@@ -99,13 +88,11 @@ func projectInit(args []string) error {
 // one cuts work from. A repository whose default branch does not resolve is
 // listed as unresolved and the fix goes to stderr, leaving the recorded list
 // for the user to edit.
-func printRepositories(log *common.Logger, svc *project.ProjectService, projectDir string, repositories []config.Repository) {
+func printRepositories(log *common.Logger, resolved []project.ResolvedRepository) {
 	columns := []column{
 		{Title: "REPOSITORY", Width: 30},
 		{Title: "DEFAULT BRANCH"},
 	}
-
-	resolved := svc.ResolveRepositories(projectDir, repositories)
 
 	rows := make([][]string, 0, len(resolved))
 	for _, repository := range resolved {

@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	osexec "os/exec"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,10 +20,31 @@ const pipeGrace = 100 * time.Millisecond
 
 // CommandRunner is the os/exec backed implementation of the drudger's
 // CommandRunner port.
-type CommandRunner struct{}
+type CommandRunner struct {
+	// droppedEnv are the environment variables a command does not inherit.
+	droppedEnv []string
+}
 
 func NewCommandRunner() *CommandRunner {
 	return &CommandRunner{}
+}
+
+// WithoutEnv returns a runner whose commands do not inherit the named
+// environment variables. The runner it is called on is left as it is.
+func (runner *CommandRunner) WithoutEnv(names ...string) *CommandRunner {
+	return &CommandRunner{droppedEnv: append(slices.Clone(runner.droppedEnv), names...)}
+}
+
+// environment is what a command starts with. A nil environment makes os/exec
+// hand the command the environment of this process.
+func (runner *CommandRunner) environment() []string {
+	if len(runner.droppedEnv) == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		return slices.Contains(runner.droppedEnv, name)
+	})
 }
 
 // Run executes argv as a process and returns what it wrote to stdout and to
@@ -46,6 +69,7 @@ func (runner *CommandRunner) Run(argv []string, timeout time.Duration) (stdout s
 
 	command := osexec.CommandContext(ctx, argv[0], argv[1:]...)
 	command.WaitDelay = pipeGrace
+	command.Env = runner.environment()
 
 	var stderrBuffer strings.Builder
 	command.Stderr = &stderrBuffer
@@ -75,6 +99,7 @@ func (runner *CommandRunner) Start(argv []string) error {
 	}
 
 	command := osexec.Command(argv[0], argv[1:]...)
+	command.Env = runner.environment()
 
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("command %s could not be started: %w", argv[0], err)

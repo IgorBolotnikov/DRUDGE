@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"drudge/internal/common"
+	"drudge/internal/config"
 	"drudge/internal/git"
 )
 
@@ -47,6 +48,28 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 
 	p.log.Info("Created project %s", name)
 	return proj, nil
+}
+
+// InitProject creates a project for projectDir and links the current directory
+// to it in the local config file, together with the repositories of
+// projectDir. A directory holding no repository is refused before the project
+// is created.
+func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []config.Repository, error) {
+	repositories, err := p.DiscoverRepositories(projectDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	created, err := p.CreateProject(name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	localCfg := config.LocalConfig{ProjectSlug: created.Slug, Repositories: repositories}
+	if err := localCfg.Save(); err != nil {
+		return nil, nil, err
+	}
+	return created, repositories, nil
 }
 
 func (p *ProjectService) ListProjects() ([]*Project, error) {

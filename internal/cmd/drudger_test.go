@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"drudge/internal/adapters/persistence"
+	"drudge/internal/common"
 	"drudge/internal/drudger"
 )
 
@@ -18,7 +18,7 @@ const (
 	occupiedTaskID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 )
 
-func TestDrudgerList(t *testing.T) {
+func TestPrintDrudgers(t *testing.T) {
 	cases := []struct {
 		name string
 		pool []*drudger.Drudger
@@ -27,12 +27,8 @@ func TestDrudgerList(t *testing.T) {
 		wantAbsent []string
 	}{
 		{
-			name: "idle and occupied Drudgers, lowest slot first",
+			name: "idle and occupied Drudgers",
 			pool: []*drudger.Drudger{
-				{
-					Slot:    2,
-					Sandbox: "drudge-claude-test-project-2",
-				},
 				{
 					Slot:            1,
 					Sandbox:         "drudge-claude-test-project-1",
@@ -41,6 +37,10 @@ func TestDrudgerList(t *testing.T) {
 					WorkspaceHealth: drudger.WorkspaceUsable,
 					AgentHealth:     drudger.AgentReady,
 					LastChecked:     time.Now().UTC(),
+				},
+				{
+					Slot:    2,
+					Sandbox: "drudge-claude-test-project-2",
 				},
 			},
 			wantLines: []string{
@@ -167,14 +167,8 @@ func TestDrudgerList(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setupProject(t)
-			seedDrudgers(t, testCase.pool)
-
-			var err error
-			output := captureOutput(func() { err = drudgerList(nil) })
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			log := common.NewLogger("")
+			output := captureOutput(func() { printDrudgers(log, testProjectSlug, testCase.pool, time.Now().UTC()) })
 
 			rest := output
 			for _, want := range testCase.wantLines {
@@ -194,7 +188,8 @@ func TestDrudgerList(t *testing.T) {
 }
 
 func TestDrudgerList_NoProjectInDirectory(t *testing.T) {
-	setupHome(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
 
 	err := drudgerList(nil)
 	if err == nil {
@@ -336,32 +331,6 @@ func TestFormatAgo(t *testing.T) {
 				t.Errorf("expected %q, got %q", testCase.want, got)
 			}
 		})
-	}
-}
-
-func setupProject(t *testing.T) {
-	t.Helper()
-	setupHome(t)
-
-	var err error
-	captureOutput(func() { err = projectInit([]string{testProjectName}) })
-	if err != nil {
-		t.Fatalf("could not initialize the test project: %v", err)
-	}
-}
-
-func seedDrudgers(t *testing.T, pool []*drudger.Drudger) {
-	t.Helper()
-	if len(pool) == 0 {
-		return
-	}
-
-	repo := persistence.NewFileDrudgerRepository("")
-	err := repo.UpdateDrudgers(testProjectSlug, func([]*drudger.Drudger) ([]*drudger.Drudger, error) {
-		return pool, nil
-	})
-	if err != nil {
-		t.Fatalf("could not seed the Drudgers: %v", err)
 	}
 }
 

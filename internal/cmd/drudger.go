@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"drudge/internal/common"
 	"drudge/internal/drudger"
 	"drudge/internal/task"
 )
@@ -94,9 +95,16 @@ func drudgerList(args []string) error {
 		return err
 	}
 
+	printDrudgers(deps.log, deps.localCfg.ProjectSlug, drudgers, time.Now().UTC())
+	return nil
+}
+
+// printDrudgers lists the Drudgers of a project in the order given, one row
+// each.
+func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.Drudger, now time.Time) {
 	if len(drudgers) == 0 {
-		deps.log.Info("Project %s has no Drudgers, the first one is built when you run a task", deps.localCfg.ProjectSlug)
-		return nil
+		log.Info("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
+		return
 	}
 
 	columns := []column{
@@ -106,7 +114,6 @@ func drudgerList(args []string) error {
 		{Title: "HEALTH", Width: healthColumnWidth},
 		{Title: "LAST CHECKED"},
 	}
-	now := time.Now().UTC()
 	rows := make([][]string, 0, len(drudgers))
 	for _, entry := range drudgers {
 		rows = append(rows, []string{
@@ -118,8 +125,7 @@ func drudgerList(args []string) error {
 		})
 	}
 
-	printList(deps.log, "Drudgers", columns, rows)
-	return nil
+	printList(log, "Drudgers", columns, rows)
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.

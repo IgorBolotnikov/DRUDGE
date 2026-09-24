@@ -21,6 +21,15 @@ var testTimeouts = git.Timeouts{
 	Command:  30 * time.Second,
 }
 
+// TestMain clears localEnvVars for the helpers that run git without the
+// adapter. A git hook sets GIT_INDEX_FILE for every command it starts.
+func TestMain(m *testing.M) {
+	for _, name := range localEnvVars {
+		os.Unsetenv(name)
+	}
+	os.Exit(m.Run())
+}
+
 func newTestAdapter() *Git {
 	return New(exec.NewCommandRunner(), testTimeouts)
 }
@@ -362,6 +371,60 @@ func TestHasWorktree(t *testing.T) {
 func addWorktree(t *testing.T, repo string, path string) {
 	t.Helper()
 	runGit(t, repo, "worktree", "add", "--detach", path, "HEAD")
+}
+
+func TestGit_IgnoresTheRepositoryTheCallerPointsAt(t *testing.T) {
+	tests := []struct {
+		name string
+		// environment returns the variables the caller of drudge has set.
+		// foreign is a repository drudge was not asked about.
+		environment func(foreign string) map[string]string
+	}{
+		{
+			name:        "a git hook of a plain commit",
+			environment: func(foreign string) map[string]string { return map[string]string{"GIT_INDEX_FILE": ".git/index"} },
+		},
+		{
+			name: "a git hook of a commit -a",
+			environment: func(foreign string) map[string]string {
+				return map[string]string{"GIT_INDEX_FILE": filepath.Join(foreign, ".git", "index.lock")}
+			},
+		},
+		{
+			name: "a repository named outright",
+			environment: func(foreign string) map[string]string {
+				return map[string]string{"GIT_DIR": filepath.Join(foreign, ".git"), "GIT_WORK_TREE": foreign}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			clone := cloneRepo(t, root, "main", "clone")
+			foreign := initRepo(t, filepath.Join(root, "foreign"), "main")
+			worktree := filepath.Join(root, "workspace", "slot-1")
+
+			for name, value := range test.environment(foreign) {
+				t.Setenv(name, value)
+			}
+
+			if err := newTestAdapter().AddDetachedWorktree(clone, worktree, "main"); err != nil {
+				t.Fatalf("AddDetachedWorktree: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(foreign, ".git", "index.lock")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("expected the foreign repository to be left alone, got an index lock there: %v", err)
+			}
+
+			isRoot, err := newTestAdapter().IsRepositoryRoot(worktree)
+			if err != nil {
+				t.Fatalf("IsRepositoryRoot: %v", err)
+			}
+			if !isRoot {
+				t.Errorf("expected %s to be the root of a work tree", worktree)
+			}
+		})
+	}
 }
 
 func TestAddDetachedWorktree_PathHoldingFiles(t *testing.T) {

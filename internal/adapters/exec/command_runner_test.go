@@ -196,3 +196,57 @@ func TestCommandRunner_Run_KillsACommandThatOutrunsItsTimeout(t *testing.T) {
 		t.Error("the killed command went on working after Run returned")
 	}
 }
+
+func TestCommandRunner_WithoutEnv(t *testing.T) {
+	t.Setenv("DRUDGE_TEST_DROPPED", "inherited")
+	t.Setenv("DRUDGE_TEST_KEPT", "inherited")
+	argv := []string{"sh", "-c", "echo ${DRUDGE_TEST_DROPPED-unset} ${DRUDGE_TEST_KEPT-unset}"}
+
+	cases := []struct {
+		name   string
+		runner *CommandRunner
+		want   string
+	}{
+		{
+			name:   "a runner that drops nothing",
+			runner: NewCommandRunner(),
+			want:   "inherited inherited\n",
+		},
+		{
+			name:   "a runner that drops one variable",
+			runner: NewCommandRunner().WithoutEnv("DRUDGE_TEST_DROPPED"),
+			want:   "unset inherited\n",
+		},
+		{
+			name:   "a runner that drops a variable nobody set",
+			runner: NewCommandRunner().WithoutEnv("DRUDGE_TEST_NEVER_SET"),
+			want:   "inherited inherited\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, _, err := testCase.runner.Run(argv, generousTimeout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stdout != testCase.want {
+				t.Errorf("expected %q, got %q", testCase.want, stdout)
+			}
+		})
+	}
+}
+
+func TestCommandRunner_WithoutEnv_LeavesTheOriginalRunnerAlone(t *testing.T) {
+	t.Setenv("DRUDGE_TEST_DROPPED", "inherited")
+	runner := NewCommandRunner()
+	runner.WithoutEnv("DRUDGE_TEST_DROPPED")
+
+	stdout, _, err := runner.Run([]string{"sh", "-c", "echo ${DRUDGE_TEST_DROPPED-unset}"}, generousTimeout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout != "inherited\n" {
+		t.Errorf("expected the original runner to pass the variable on, got %q", stdout)
+	}
+}
