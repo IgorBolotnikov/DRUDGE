@@ -6,15 +6,16 @@
 
 <!--toc:start-->
 
-- [DRUDGE](#drudge)
-  - [Install](#install)
-  - [Main features](#main-features)
-  - [Other improvements - idea dump](#other-improvements-idea-dump)
-  <!--toc:end-->
+- [Install](#install)
+  - [Single command install](#single-command-install)
+  - [Go install](#go-install)
+- [Future improvements](#future-improvements)
 
-DRUDGE is a self-hosted control plane for coding agents.
+<!--toc:end-->
 
-Give it a backlog. It gives the work to isolated agents, watches them work, runs the checks, and keeps going.
+DRUDGE runs your backlog through coding agents, each in its own sandbox, on your own machine.
+
+You make the decisions and review what comes back. The agents do the grunt work in between.
 
 They're not coworkers. They're not digital employees. They're tools.
 
@@ -22,13 +23,15 @@ They're not coworkers. They're not digital employees. They're tools.
 
 DRUDGE runs on Linux and macOS. On Windows, use WSL.
 
+### Single command install
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/IgorBolotnikov/DRUDGE/main/install.sh | sh
 ```
 
 The script puts `drg` in `~/.local/bin`, or in `/usr/local/bin` when run as root. Set `DRG_VERSION=v0.1.0` to install a specific release, or `DRG_INSTALL_DIR` to pick another directory.
 
-With Go installed, this works too:
+### Go install
 
 ```sh
 go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
@@ -36,15 +39,6 @@ go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
 
 Then run `drg setup`.
 
-## Main features
-
-- Create a directory with a global config, projects, PRDs, tasks
-- Add CLI for managing everything
-- Provide config from the start
-- Provide themes from the start
-- Customize the clankers (or drudgers?)
-- Animations, because why not make it actually fun to work with?
-
-## Other improvements - idea dump
+## Future improvements
 
 - Extensibility with plugins
