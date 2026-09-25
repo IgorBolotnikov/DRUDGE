@@ -12,7 +12,8 @@ import (
 var version = ""
 
 func main() {
-	cli := cmd.NewCLI(resolveVersion())
+	version := resolveVersion()
+	cli := cmd.NewCLI(version)
 
 	cli.Register(
 		cmd.InitCmd,
@@ -21,6 +22,7 @@ func main() {
 		cmd.ProjectCmd,
 		cmd.TaskCmd,
 		cmd.DrudgerCmd,
+		cmd.NewUpdateCmd(version),
 	)
 
 	if err := cli.Run(os.Args[1:]); err != nil {

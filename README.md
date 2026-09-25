@@ -55,6 +55,14 @@ go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
 
 Then run `drg setup`.
 
+### Update
+
+```sh
+drg update
+```
+
+It replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
+
 ## Future improvements
 
 - TUI
