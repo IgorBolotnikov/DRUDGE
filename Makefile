@@ -1,4 +1,7 @@
-.PHONY: drg test loc
+.PHONY: drg build test loc
+
+build:
+	go build -o drg ./cmd/drg
 
 test:
 	go test ./...
