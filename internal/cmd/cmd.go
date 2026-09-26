@@ -31,7 +31,9 @@ type Cmd struct {
 }
 
 const (
-	versionFlagName = "version"
+	versionFlagName    = "version"
+	forceFlagName      = "force"
+	forceFlagShortName = "f"
 	// flagTerminator ends flag parsing. Every arg after it is a positional.
 	flagTerminator = "--"
 	// pathSeparator joins the names of a command path, as in "drg task rm".
