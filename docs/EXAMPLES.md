@@ -2,23 +2,6 @@
 
 This is just a collection of example of how the vibe of this project should look like.
 
-## General terminology
-
-How to approach the wording
-"Call things what they physically are. The machine did something, so tell me what it did."
-worker → a running agent process
-drudge → an agent instance
-sandbox → isolated execution environment
-job → a unit of work
-run → an execution
-log → logs
-output → output
-failure → failure
-retry → retry
-kill → terminate a worker
-queue → queue
-horde → collection of workers
-
 ## Vague ideas about the dashboard
 
 ```
