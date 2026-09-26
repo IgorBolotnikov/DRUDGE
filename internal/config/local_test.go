@@ -44,6 +44,7 @@ func TestLoadLocal(t *testing.T) {
 		raw             string
 		shouldWriteFile bool
 		wantErr         bool
+		wantSchema      string
 		wantSlug        string
 		wantPrompt      string
 		wantDrudgers    int
@@ -59,6 +60,13 @@ func TestLoadLocal(t *testing.T) {
 			name:            "slug only",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project"}`,
+			wantSlug:        "test-project",
+		},
+		{
+			name:            "slug and schema",
+			shouldWriteFile: true,
+			raw:             `{"$schema": "/home/user/.drudge/schema/local-config.json", "projectSlug": "test-project"}`,
+			wantSchema:      "/home/user/.drudge/schema/local-config.json",
 			wantSlug:        "test-project",
 		},
 		{
@@ -184,6 +192,9 @@ func TestLoadLocal(t *testing.T) {
 				t.Fatalf("LoadLocal: %v", err)
 			}
 
+			if cfg.Schema != test.wantSchema {
+				t.Errorf("Schema = %q, want %q", cfg.Schema, test.wantSchema)
+			}
 			if cfg.ProjectSlug != test.wantSlug {
 				t.Errorf("ProjectSlug = %q, want %q", cfg.ProjectSlug, test.wantSlug)
 			}
@@ -234,6 +245,7 @@ func TestSave_RoundTrips(t *testing.T) {
 	setupLocalDir(t)
 
 	cfg := LocalConfig{
+		Schema:                "/home/user/.drudge/schema/local-config.json",
 		ProjectSlug:           "test-project",
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
@@ -275,6 +287,53 @@ func TestSave_OmitsUnsetOverrides(t *testing.T) {
 	}
 	if raw[projectSlugKey] != "test-project" {
 		t.Errorf("%s = %v, want %q", projectSlugKey, raw[projectSlugKey], "test-project")
+	}
+}
+
+func TestLocalSchema_DescribesEveryLocalConfigKey(t *testing.T) {
+	var schema map[string]any
+	if err := json.Unmarshal(LocalSchema(), &schema); err != nil {
+		t.Fatalf("LocalSchema() is not valid JSON: %v", err)
+	}
+	assertSchemaDescribes(t, schema, reflect.TypeFor[LocalConfig](), "")
+}
+
+// assertSchemaDescribes fails for every JSON key of structType, and of the
+// structs it nests, that has no entry in the properties of schema.
+func assertSchemaDescribes(t *testing.T, schema map[string]any, structType reflect.Type, keyPrefix string) {
+	t.Helper()
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Errorf("schema of %q has no properties", keyPrefix)
+		return
+	}
+	for index := range structType.NumField() {
+		field := structType.Field(index)
+		key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		keyPath := keyPrefix + key
+		property, ok := properties[key].(map[string]any)
+		if !ok {
+			t.Errorf("schema has no entry for %q", keyPath)
+			continue
+		}
+		switch {
+		case field.Type.Kind() == reflect.Struct:
+			assertSchemaDescribes(t, property, field.Type, keyPath+".")
+		case field.Type.Kind() == reflect.Slice && field.Type.Elem().Kind() == reflect.Struct:
+			items, ok := property["items"].(map[string]any)
+			if !ok {
+				t.Errorf("schema of %q has no items", keyPath)
+				continue
+			}
+			assertSchemaDescribes(t, items, field.Type.Elem(), keyPath+"[].")
+		}
+	}
+}
+
+func TestLocalSchemaRef(t *testing.T) {
+	want := filepath.Join("/home/user", ".drudge", "schema", "local-config.json")
+	if got := LocalSchemaRef("/home/user"); got != want {
+		t.Errorf("LocalSchemaRef = %q, want %q", got, want)
 	}
 }
 

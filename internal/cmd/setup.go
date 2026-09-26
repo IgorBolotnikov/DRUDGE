@@ -32,6 +32,7 @@ func setup([]string) error {
 	schemaDir := filepath.Join(drudgeDir, common.SchemaDirName)
 	themeSchemaPath := filepath.Join(schemaDir, common.ThemeConfigName)
 	configSchemaPath := filepath.Join(schemaDir, common.GloablConfigName)
+	localSchemaPath := filepath.Join(schemaDir, common.LocalSchemaName)
 	themePath := filepath.Join(drudgeDir, common.ThemeConfigName)
 
 	if err := common.EnsureDir(projectsDir); err != nil {
@@ -49,6 +50,10 @@ func setup([]string) error {
 		return fmt.Errorf("could not write schema: %w", err)
 	}
 	fmt.Printf("Created %s\n", configSchemaPath)
+	if err := os.WriteFile(localSchemaPath, config.LocalSchema(), common.DefaultFilePerm); err != nil {
+		return fmt.Errorf("could not write schema: %w", err)
+	}
+	fmt.Printf("Created %s\n", localSchemaPath)
 
 	cfg, err := config.Load()
 	if err != nil {

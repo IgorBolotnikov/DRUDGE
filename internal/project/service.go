@@ -65,12 +65,21 @@ func (p *ProjectService) InitProject(name string, projectDir string) (*Project, 
 		return nil, nil, err
 	}
 
+	home, err := common.HomeDir()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	created, err := p.CreateProject(name)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	localCfg := config.LocalConfig{ProjectSlug: created.Slug, Repositories: repositories}
+	localCfg := config.LocalConfig{
+		Schema:       config.LocalSchemaRef(home),
+		ProjectSlug:  created.Slug,
+		Repositories: repositories,
+	}
 	if err := localCfg.Save(); err != nil {
 		return nil, nil, err
 	}

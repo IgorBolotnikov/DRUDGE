@@ -10,10 +10,9 @@ import (
 )
 
 // LocalConfig scoped per project and contains overrides of global config
-//
-// TODO: give it a $schema pointer. It can't reuse SchemaRef, because the file
-// lives outside the global dir and needs its own resolution logic
 type LocalConfig struct {
+	// Schema is empty for a project initialized before the local config had a schema.
+	Schema                string     `json:"$schema,omitempty"`
 	ProjectSlug           string     `json:"projectSlug"`
 	PromptFile            string     `json:"promptFile,omitempty"`
 	MaxConcurrentDrudgers int        `json:"maxConcurrentDrudgers,omitempty"`
@@ -31,6 +30,13 @@ type Repository struct {
 	// DefaultBranch is the branch work is cut from. An empty value means
 	// drudge reads it from origin/HEAD.
 	DefaultBranch string `json:"defaultBranch,omitempty"`
+}
+
+// LocalSchemaRef returns the $schema reference for the local config file, the
+// absolute path of the local config schema. The local config file lives outside
+// the drudge home directory, so a relative reference would not resolve.
+func LocalSchemaRef(home string) string {
+	return filepath.Join(common.DrudgeDir(home), common.SchemaDirName, common.LocalSchemaName)
 }
 
 // LoadLocal reads the local config from a config file. A missing or

@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -98,7 +99,8 @@ func TestProjectService_InitProject(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			home := t.TempDir()
+			t.Setenv("HOME", home)
 			projectDir := makeProjectDir(t, test.subdirs)
 			t.Chdir(projectDir)
 
@@ -136,6 +138,10 @@ func TestProjectService_InitProject(t *testing.T) {
 			saved, err := config.LoadLocal()
 			if err != nil {
 				t.Fatalf("could not read the local config: %v", err)
+			}
+			wantSchema := filepath.Join(home, ".drudge", "schema", "local-config.json")
+			if saved.Schema != wantSchema {
+				t.Errorf("expected the local config to point at the schema %q, got %q", wantSchema, saved.Schema)
 			}
 			if saved.ProjectSlug != test.wantSlug {
 				t.Errorf("expected the local config to link %q, got %q", test.wantSlug, saved.ProjectSlug)

@@ -21,6 +21,7 @@ const (
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
 	ThemeConfigName  = "theme.json"
+	LocalSchemaName  = "local-config.json"
 )
 
 // Shape of a front matter block: a delimiter line around a body of
