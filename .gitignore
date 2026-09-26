@@ -15,4 +15,6 @@ AGENTS.md
 # release builds
 /dist
 
-.claude/settings.local.json
+# claude code: keep only skills
+/.claude/*
+!/.claude/skills/
