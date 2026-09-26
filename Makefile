@@ -1,4 +1,4 @@
-.PHONY: drg build test loc
+.PHONY: drg build test loc release
 
 build:
 	go build -o drg ./cmd/drg
@@ -16,6 +16,9 @@ loc:
 		count=$$(find $$dir -maxdepth 1 -name '*.go' -not -name '*_test.go' -exec cat {} + | wc -l); \
 		[ "$$count" -gt 0 ] && printf '%7s  %s\n' "$$count" "$$dir" || true; \
 	done
+
+release:
+	@scripts/release.sh $(filter-out release,$(MAKECMDGOALS)) "$(MSG)"
 
 %:
 	@:
