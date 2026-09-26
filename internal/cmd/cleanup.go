@@ -7,9 +7,8 @@ import (
 )
 
 var CleanupCmd = &Cmd{
-	Name:  "cleanup",
-	Usage: "cleanup",
-	Desc:  "Cleanup DRUDGE from this computer",
+	Name: "cleanup",
+	Desc: "Cleanup DRUDGE from this computer",
 	Run: func(args []string) error {
 		home, err := common.HomeDir()
 		if err != nil {

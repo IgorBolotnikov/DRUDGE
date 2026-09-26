@@ -14,10 +14,9 @@ import (
 const unresolvedBranch = "unresolved"
 
 var ProjectCmd = &Cmd{
-	Name:  "project",
-	Usage: "project <subcommand>",
-	Desc:  "Project management commands",
-	Run:   runProject,
+	Name: "project",
+	Desc: "Project management commands",
+	Run:  runProject,
 }
 
 const (

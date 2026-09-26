@@ -13,10 +13,9 @@ import (
 )
 
 var DrudgerCmd = &Cmd{
-	Name:  "drudger",
-	Usage: "drudger <subcommand>",
-	Desc:  "Drudger management commands",
-	Run:   runDrudger,
+	Name: "drudger",
+	Desc: "Drudger management commands",
+	Run:  runDrudger,
 }
 
 const (

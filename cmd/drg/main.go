@@ -13,19 +13,10 @@ var version = ""
 
 func main() {
 	version := resolveVersion()
-	cli := cmd.NewCLI(version)
+	root := cmd.NewRoot(version)
+	root.Validate()
 
-	cli.Register(
-		cmd.InitCmd,
-		cmd.SetupCmd,
-		cmd.CleanupCmd,
-		cmd.ProjectCmd,
-		cmd.TaskCmd,
-		cmd.DrudgerCmd,
-		cmd.NewUpdateCmd(version),
-	)
-
-	if err := cli.Run(os.Args[1:]); err != nil {
+	if err := root.Execute(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}

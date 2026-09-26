@@ -12,9 +12,8 @@ import (
 )
 
 var SetupCmd = &Cmd{
-	Name:  "setup",
-	Usage: "setup",
-	Desc:  "Setup DRUDGE in this computer",
+	Name: "setup",
+	Desc: "Setup DRUDGE in this computer",
 	Run: func(args []string) error {
 		printProjectName()
 

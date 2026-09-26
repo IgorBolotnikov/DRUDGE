@@ -11,9 +11,8 @@ import (
 // NewUpdateCmd returns the update command for a drg binary of version.
 func NewUpdateCmd(version string) *Cmd {
 	return &Cmd{
-		Name:  "update",
-		Usage: "update",
-		Desc:  "Update drg to the latest release",
+		Name: "update",
+		Desc: "Update drg to the latest release",
 		Run: func(args []string) error {
 			binaryPath, err := release.ExecutablePath()
 			if err != nil {

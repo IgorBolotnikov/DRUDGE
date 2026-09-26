@@ -17,10 +17,9 @@ import (
 )
 
 var TaskCmd = &Cmd{
-	Name:  "task",
-	Usage: "task <subcommand>",
-	Desc:  "Task management commands",
-	Run:   runTask,
+	Name: "task",
+	Desc: "Task management commands",
+	Run:  runTask,
 }
 
 // CLI flag names.
@@ -28,7 +27,6 @@ const (
 	dryRunFlag     = "--dry-run"
 	helpFlag       = "--help"
 	helpFlagShort  = "-h"
-	versionFlag    = "--version"
 	forceFlag      = "--force"
 	forceFlagShort = "-f"
 )
