@@ -41,7 +41,7 @@ const (
 func NewRoot(version string) *Cmd {
 	return &Cmd{
 		Name: "drg",
-		Desc: "Control plane for coding agents",
+		Desc: "Runs your backlog through coding agents, each in its own sandbox, on your own machine",
 		Subcommands: []*Cmd{
 			SetupCmd,
 			CleanupCmd,
