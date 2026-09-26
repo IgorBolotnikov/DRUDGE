@@ -1,9 +1,13 @@
 name: release
 
+# A run on main saves its Go cache where the next release can restore it. A run
+# started by a tag push can only read caches made on that tag.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release
+        required: true
 
 permissions:
   contents: write
@@ -14,13 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # There is no go.sum while the module has no dependencies.
+          cache-dependency-path: go.mod
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag }}

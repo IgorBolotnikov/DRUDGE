@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tags the next version and pushes the tag, which kicks off the release workflow.
+# Tags the next version, pushes the tag and starts the release workflow on main.
 #
 # Usage: scripts/release.sh feat|fix [message]
 #
@@ -48,3 +48,4 @@ else
 fi
 
 git push origin "$next"
+gh workflow run release.yml --ref main -f tag="$next"

@@ -1,5 +1,11 @@
 version: 2
 
+# The test hook and the builds share these, so the linux/amd64 build reuses
+# the packages the tests compiled.
+env:
+  - CGO_ENABLED=0
+  - GOFLAGS=-trimpath
+
 before:
   hooks:
     - go test ./...
@@ -8,16 +14,12 @@ builds:
   - id: drg
     main: ./cmd/drg
     binary: drg
-    env:
-      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
     goarch:
       - amd64
       - arm64
-    flags:
-      - -trimpath
     ldflags:
       - -s -w -X main.version={{ .Tag }}
 
