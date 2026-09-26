@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -21,8 +20,39 @@ var TaskCmd = &Cmd{
 	Name: "task",
 	Desc: "Task management commands",
 	Subcommands: []*Cmd{
-		{Name: newSubcommand, Desc: "Add a task to the project", Run: taskNew},
-		{Name: listSubcommand, Desc: "List the tasks of the project", Run: taskList},
+		{
+			Name: "new",
+			Desc: "Add a task to the project",
+			Help: "Add a task to the project linked to the current directory.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskNewFlags{}
+				flags.declare(fs)
+				return func([]string) error {
+					dto, err := flags.dto(os.Stdin)
+					if err != nil {
+						return err
+					}
+					return taskNew(dto)
+				}
+			},
+		},
+		{
+			Name: "list",
+			Desc: "List the tasks of the project",
+			Help: "List tasks in the current project. Tasks belonging to another task are listed under it.\n" +
+				"A filter lists the tasks it keeps without grouping them.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskListFlags{}
+				flags.declare(fs)
+				return func([]string) error {
+					filter, err := flags.filter()
+					if err != nil {
+						return err
+					}
+					return taskList(filter)
+				}
+			},
+		},
 		{
 			Name: "next",
 			Desc: "Print the oldest todo task that is ready to run",
@@ -38,7 +68,24 @@ var TaskCmd = &Cmd{
 				"The task ID may be the short one a listing prints, as long as it names a single task.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return taskShow },
 		},
-		{Name: editSubcommand, Desc: "Change the fields of a task", Run: taskEdit},
+		{
+			Name: "edit",
+			Args: []string{taskIDArg},
+			Desc: "Change the fields of a task",
+			Help: "Change what a task asks for and where it stands. It takes at least one field.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskEditFlags{}
+				flags.declare(fs)
+				return func(args []string) error {
+					changes, err := flags.changes(os.Stdin)
+					if err != nil {
+						return err
+					}
+					return taskEdit(task.TaskID(args[0]), changes)
+				}
+			},
+		},
 		{
 			Name: "rm",
 			Args: []string{taskIDArg},
@@ -102,65 +149,47 @@ const (
 
 // Flags a task command reads a value after.
 const (
-	titleFlag           = "--title"
-	descriptionFlag     = "--description"
-	descriptionFileFlag = "--description-file"
-	ticketFlag          = "--ticket"
-	statusFlag          = "--status"
-	blockedByFlag       = "--blocked-by"
-	blockFlag           = "--block"
-	unblockFlag         = "--unblock"
-	parentFlag          = "--parent"
+	titleFlagName           = "title"
+	descriptionFlagName     = "description"
+	descriptionFileFlagName = "description-file"
+	ticketFlagName          = "ticket"
+	statusFlagName          = "status"
+	blockedByFlagName       = "blocked-by"
+	blockFlagName           = "block"
+	unblockFlagName         = "unblock"
+	parentFlagName          = "parent"
 )
 
 // stdinPath is the description file path that reads stdin.
 const stdinPath = "-"
 
-var (
-	errDescriptionFileNeedsPath = errors.New(descriptionFileFlag + " needs a path, or " + stdinPath + " to read stdin")
-	errTwoDescriptions          = errors.New(descriptionFlag + " and " + descriptionFileFlag + " cannot be used together")
-)
-
-// taskOptionLine lays out one option of the new and edit help, wide enough
-// for the longest flag they list.
-const taskOptionLine = "  %-27s %s\n"
+var errTwoDescriptions = errors.New(flagLabel(descriptionFlagName) + " and " + flagLabel(descriptionFileFlagName) + " cannot be used together")
 
 // taskIDListSeparator splits a flag value holding several task ids.
 const taskIDListSeparator = ","
-
-const (
-	taskNewUsage = "usage: drg task new " + titleFlag + " <title> (" + descriptionFlag + " <text> | " + descriptionFileFlag + " <path>) [" +
-		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + parentFlag + " <id>]"
-	taskListUsage = "usage: drg task list [" + statusFlag + " <status>] [" + ticketFlag + " <ticket>] [" + parentFlag + " <id>]"
-	taskEditUsage = "usage: drg task edit <task-id> [" + titleFlag + " <title>] [" + descriptionFlag + " <text>] [" + descriptionFileFlag + " <path>] [" +
-		ticketFlag + " <ticket>] [" + statusFlag + " <status>] [" + blockedByFlag + " <id>[,<id>...]] [" + parentFlag + " <id>] [" + forceFlag + "]"
-)
-
-// Names of the task subcommands that parse their own args.
-const (
-	newSubcommand  = "new"
-	listSubcommand = "list"
-	editSubcommand = "edit"
-)
 
 // taskRerunCommand is what a user types to start a task over. Other commands
 // name it when starting a task over is the next step.
 const taskRerunCommand = "drg task rerun"
 
-func parseFlagValue(args []string, flag string) (string, bool) {
-	for i := range args {
-		if args[i] == flag {
-			if i+1 >= len(args) {
-				return "", false
-			}
-			return args[i+1], true
-		}
+// optionalOf converts the value of a flag that was given, and returns nil for
+// a flag that was not.
+func optionalOf[Value ~string](flagValue optionalString) *Value {
+	if flagValue.value == nil {
+		return nil
 	}
-	return "", false
+	converted := Value(*flagValue.value)
+	return &converted
 }
 
-func hasFlag(args []string, flag string) bool {
-	return slices.Contains(args, flag)
+// optionalTaskIDList reads the task ids of a flag that was given, and returns
+// nil for a flag that was not.
+func optionalTaskIDList(flagValue optionalString) *[]task.TaskID {
+	if flagValue.value == nil {
+		return nil
+	}
+	ids := parseTaskIDList(*flagValue.value)
+	return &ids
 }
 
 // parseTaskIDList reads the comma-separated task ids a flag was given. Blank
@@ -204,28 +233,68 @@ func readDescriptionFile(path string, stdin io.Reader) (string, error) {
 	return description, nil
 }
 
-func taskNew(args []string) error {
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(taskNewUsage)
-		fmt.Println()
-		fmt.Println("Add a task to the project linked to the current directory.")
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Printf(taskOptionLine, titleFlag+" <title>", "Title of the task")
-		fmt.Printf(taskOptionLine, descriptionFlag+" <text>", "Description, the prompt the agent is handed")
-		fmt.Printf(taskOptionLine, descriptionFileFlag+" <path>", "File to read the description from, "+stdinPath+" to read stdin")
-		fmt.Printf(taskOptionLine, ticketFlag+" <ticket>", "Ticket the task came from")
-		fmt.Printf(taskOptionLine, statusFlag+" <status>", "Status ("+task.FormatStatuses(task.Statuses)+"), "+config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusDraft)+" when that is unset")
-		fmt.Printf(taskOptionLine, blockedByFlag+" <id>[,<id>...]", "Tasks this task waits for")
-		fmt.Printf(taskOptionLine, parentFlag+" <id>", "Task this task belongs to")
-		return nil
+// taskNewFlags holds the flags of drg task new.
+type taskNewFlags struct {
+	title           optionalString
+	description     optionalString
+	descriptionFile optionalString
+	ticket          optionalString
+	status          optionalString
+	blockedBy       optionalString
+	parent          optionalString
+}
+
+func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
+	fs.Var(&flags.title, titleFlagName, "Task `title`")
+	fs.Var(&flags.description, descriptionFlagName, "Description, the `text` the agent is handed as its prompt")
+	fs.Var(&flags.descriptionFile, descriptionFileFlagName, "Read the description from the file at `path`, "+stdinPath+" to read stdin")
+	fs.Var(&flags.ticket, ticketFlagName, "The `ticket` the task came from")
+	fs.Var(&flags.status, statusFlagName, "Task `status` ("+task.FormatStatuses(task.Statuses)+"), "+
+		config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusDraft)+" when that is unset")
+	fs.Var(&flags.blockedBy, blockedByFlagName, "Comma-separated `ids` of the tasks this task waits for")
+	fs.Var(&flags.parent, parentFlagName, "The `id` of the task this task belongs to")
+}
+
+// dto returns the fields of a new task, reading a description file from disk
+// or from stdin. It leaves the project slug, the default status and the
+// creation time for the caller to fill in.
+func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
+	if flags.title.get() == "" {
+		return task.CreateTaskDto{}, fmt.Errorf("%s is required", flagLabel(titleFlagName))
 	}
 
-	dto, err := parseTaskNewArgs(args, os.Stdin)
-	if err != nil {
-		return err
+	description := flags.description.get()
+	switch {
+	case flags.description.value != nil && flags.descriptionFile.value != nil:
+		return task.CreateTaskDto{}, errTwoDescriptions
+	case flags.descriptionFile.value != nil:
+		var err error
+		if description, err = readDescriptionFile(flags.descriptionFile.get(), stdin); err != nil {
+			return task.CreateTaskDto{}, err
+		}
+	case flags.description.value == nil:
+		return task.CreateTaskDto{}, fmt.Errorf("%s or %s is required", flagLabel(descriptionFlagName), flagLabel(descriptionFileFlagName))
 	}
 
+	var status task.TaskStatus
+	if flags.status.value != nil {
+		status = task.TaskStatus(flags.status.get())
+		if !task.KnownStatus(status) {
+			return task.CreateTaskDto{}, invalidStatusError(status)
+		}
+	}
+
+	return task.CreateTaskDto{
+		Title:        flags.title.get(),
+		Description:  description,
+		Status:       status,
+		TicketID:     flags.ticket.get(),
+		BlockedBy:    parseTaskIDList(flags.blockedBy.get()),
+		ParentTaskID: task.TaskID(flags.parent.get()),
+	}, nil
+}
+
+func taskNew(dto task.CreateTaskDto) error {
 	cfg, err := config.LoadLocal()
 	if err != nil {
 		return err
@@ -245,58 +314,6 @@ func taskNew(args []string) error {
 
 	_, err = svc.CreateTask(dto)
 	return err
-}
-
-// parseTaskNewArgs reads the fields of a new task. It leaves the project slug
-// and the creation time for the caller to fill in.
-func parseTaskNewArgs(args []string, stdin io.Reader) (task.CreateTaskDto, error) {
-	for _, flag := range []string{blockFlag, unblockFlag} {
-		if hasFlag(args, flag) {
-			return task.CreateTaskDto{}, fmt.Errorf("drg task new takes no %s, name the blockers of a new task with %s", flag, blockedByFlag)
-		}
-	}
-
-	title, hasTitle := parseFlagValue(args, titleFlag)
-	if !hasTitle || title == "" {
-		return task.CreateTaskDto{}, fmt.Errorf("%s is required", titleFlag)
-	}
-
-	description, hasDesc := parseFlagValue(args, descriptionFlag)
-	descriptionPath, hasDescPath := parseFlagValue(args, descriptionFileFlag)
-	switch {
-	case hasFlag(args, descriptionFileFlag) && !hasDescPath:
-		return task.CreateTaskDto{}, errDescriptionFileNeedsPath
-	case hasDesc && hasDescPath:
-		return task.CreateTaskDto{}, errTwoDescriptions
-	case hasDescPath:
-		var err error
-		if description, err = readDescriptionFile(descriptionPath, stdin); err != nil {
-			return task.CreateTaskDto{}, err
-		}
-	case !hasDesc:
-		return task.CreateTaskDto{}, fmt.Errorf("%s or %s is required", descriptionFlag, descriptionFileFlag)
-	}
-
-	ticketID, _ := parseFlagValue(args, ticketFlag)
-	blockedBy, _ := parseFlagValue(args, blockedByFlag)
-	parentID, _ := parseFlagValue(args, parentFlag)
-	statusValue, hasStatus := parseFlagValue(args, statusFlag)
-	var status task.TaskStatus
-	if hasStatus {
-		status = task.TaskStatus(statusValue)
-		if !task.KnownStatus(status) {
-			return task.CreateTaskDto{}, invalidStatusError(status)
-		}
-	}
-
-	return task.CreateTaskDto{
-		Title:        title,
-		Description:  description,
-		Status:       status,
-		TicketID:     ticketID,
-		BlockedBy:    parseTaskIDList(blockedBy),
-		ParentTaskID: task.TaskID(parentID),
-	}, nil
 }
 
 // taskShow prints everything drudge knows about one task.

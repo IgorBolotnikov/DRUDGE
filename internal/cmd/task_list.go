@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
@@ -23,26 +24,35 @@ const blockedByTitle = "BLOCKED BY"
 // parent.
 const childRowIndent = "  "
 
-func taskList(args []string) error {
-	// TODO: make a util for printing out help text
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(taskListUsage)
-		fmt.Println()
-		fmt.Println("List tasks in the current project. Tasks belonging to another task are listed under it.")
-		fmt.Println("A filter lists the tasks it keeps without grouping them.")
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Printf("  %s <status>  Filter by status (%s)\n", statusFlag, task.FormatStatuses(task.Statuses))
-		fmt.Printf("  %s <ticket>  Filter by ticket ID\n", ticketFlag)
-		fmt.Printf("  %s <id>      Filter by the task the tasks belong to\n", parentFlag)
-		return nil
-	}
+// taskListFlags holds the filters of drg task list. A flag left out filters
+// nothing.
+type taskListFlags struct {
+	status optionalString
+	ticket optionalString
+	parent optionalString
+}
 
-	filter, err := parseTaskListArgs(args)
-	if err != nil {
-		return err
-	}
+func (flags *taskListFlags) declare(fs *flag.FlagSet) {
+	fs.Var(&flags.status, statusFlagName, "Filter by `status` ("+task.FormatStatuses(task.Statuses)+")")
+	fs.Var(&flags.ticket, ticketFlagName, "Filter by `ticket` ID")
+	fs.Var(&flags.parent, parentFlagName, "Filter by the `id` of the task the tasks belong to")
+}
 
+// filter returns the filter of the listing. It refuses a status drudge does
+// not know.
+func (flags *taskListFlags) filter() (task.ListTasksFilter, error) {
+	filter := task.ListTasksFilter{
+		Status:   optionalOf[task.TaskStatus](flags.status),
+		TicketID: optionalOf[string](flags.ticket),
+		ParentID: optionalOf[task.TaskID](flags.parent),
+	}
+	if filter.Status != nil && !task.KnownStatus(*filter.Status) {
+		return task.ListTasksFilter{}, invalidStatusError(*filter.Status)
+	}
+	return filter, nil
+}
+
+func taskList(filter task.ListTasksFilter) error {
 	cfg, err := config.LoadLocal()
 	if err != nil {
 		return err
@@ -59,27 +69,6 @@ func taskList(args []string) error {
 
 	printTaskList(log, listed)
 	return nil
-}
-
-// parseTaskListArgs reads the filters of drg task list. A flag left out
-// filters nothing.
-func parseTaskListArgs(args []string) (task.ListTasksFilter, error) {
-	var filter task.ListTasksFilter
-	if statusValue, hasStatus := parseFlagValue(args, statusFlag); hasStatus {
-		status := task.TaskStatus(statusValue)
-		if !task.KnownStatus(status) {
-			return task.ListTasksFilter{}, invalidStatusError(status)
-		}
-		filter.Status = &status
-	}
-	if ticketID, hasTicket := parseFlagValue(args, ticketFlag); hasTicket {
-		filter.TicketID = &ticketID
-	}
-	if parentID, hasParent := parseFlagValue(args, parentFlag); hasParent {
-		id := task.TaskID(parentID)
-		filter.ParentID = &id
-	}
-	return filter, nil
 }
 
 // printTaskList prints a listing, indenting the tasks listed under a parent.

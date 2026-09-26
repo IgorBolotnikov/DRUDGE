@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"flag"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -123,24 +125,25 @@ func TestRunTask_UnknownSubcommand(t *testing.T) {
 }
 
 func TestTaskNew_RefusesEditOnlyBlockerFlags(t *testing.T) {
-	for _, flag := range []string{blockFlag, unblockFlag} {
-		t.Run(flag, func(t *testing.T) {
-			err := taskNew([]string{"--title", "Wire the service", "--description", "", flag, "9c8d"})
+	for _, name := range []string{blockFlagName, unblockFlagName} {
+		t.Run(name, func(t *testing.T) {
+			err := NewRoot("v1.2.3").Execute([]string{TaskCmd.Name, "new", "--title", "Wire the service", "--description", "", flagLabel(name), "9c8d"})
+
 			if err == nil {
-				t.Fatalf("expected drg task new to refuse %s", flag)
+				t.Fatalf("expected drg task new to refuse %s", flagLabel(name))
 			}
-			if !strings.Contains(err.Error(), flag) || !strings.Contains(err.Error(), blockedByFlag) {
-				t.Errorf("expected the error to name %s and %s, got %q", flag, blockedByFlag, err)
+			if !strings.Contains(err.Error(), "flag provided but not defined: -"+name) {
+				t.Errorf("expected the error to name the undefined flag %s, got %q", name, err)
 			}
 		})
 	}
 }
 
-func TestParseTaskNewArgs(t *testing.T) {
+func TestTaskNewFlags(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
-		// files are written to the directory the parsing runs in, by name.
+		// files are written to the directory the flags are read in, by name.
 		files   map[string]string
 		stdin   string
 		wantDto task.CreateTaskDto
@@ -248,28 +251,10 @@ func TestParseTaskNewArgs(t *testing.T) {
 			wantErrText: "stdin holds no description",
 		},
 		{
-			name:        "a description file flag with no path",
-			args:        []string{"--title", "Fix logout", "--description-file"},
-			wantErr:     true,
-			wantErrText: "--description-file needs a path",
-		},
-		{
 			name:        "an unknown status",
 			args:        []string{"--title", "Fix logout", "--description", "", "--status", "someday"},
 			wantErr:     true,
 			wantErrText: `invalid status "someday"`,
-		},
-		{
-			name:        "blockers to add",
-			args:        []string{"--title", "Fix logout", "--description", "", "--block", "9c8d"},
-			wantErr:     true,
-			wantErrText: "drg task new takes no --block, name the blockers of a new task with --blocked-by",
-		},
-		{
-			name:        "blockers to remove",
-			args:        []string{"--title", "Fix logout", "--description", "", "--unblock", "9c8d"},
-			wantErr:     true,
-			wantErrText: "drg task new takes no --unblock, name the blockers of a new task with --blocked-by",
 		},
 	}
 
@@ -277,7 +262,10 @@ func TestParseTaskNewArgs(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			writeFiles(t, testCase.files)
 
-			dto, err := parseTaskNewArgs(testCase.args, strings.NewReader(testCase.stdin))
+			flags := &taskNewFlags{}
+			parseTestFlags(t, flags.declare, testCase.args)
+
+			dto, err := flags.dto(strings.NewReader(testCase.stdin))
 
 			if testCase.wantErr {
 				if err == nil {
@@ -301,6 +289,17 @@ func TestParseTaskNewArgs(t *testing.T) {
 
 // literalDescription holds what a shell would expand or a heredoc might break.
 const literalDescription = "Run `make drg task list` and check $HOME.\n\n```sh\necho \"$1\" '$2' \\$3\n```"
+
+// parseTestFlags declares flags into a fresh flag set and parses args with it.
+func parseTestFlags(t *testing.T, declare func(fs *flag.FlagSet), args []string) {
+	t.Helper()
+	fs := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	declare(fs)
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("parsing %q: %v", args, err)
+	}
+}
 
 // writeFiles runs the test in a fresh directory holding the given files.
 func writeFiles(t *testing.T, files map[string]string) {

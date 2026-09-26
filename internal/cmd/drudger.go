@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -325,4 +326,8 @@ func formatAgo(moment time.Time, now time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(elapsed.Hours()/24))
 	}
+}
+
+func hasFlag(args []string, flag string) bool {
+	return slices.Contains(args, flag)
 }

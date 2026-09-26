@@ -9,7 +9,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
-func TestParseTaskListArgs(t *testing.T) {
+func TestTaskListFlags(t *testing.T) {
 	cases := []struct {
 		name        string
 		args        []string
@@ -21,32 +21,32 @@ func TestParseTaskListArgs(t *testing.T) {
 		},
 		{
 			name: "a status",
-			args: []string{statusFlag, "todo"},
+			args: []string{"--status", "todo"},
 			want: task.ListTasksFilter{Status: pointerTo(task.StatusTodo)},
 		},
 		{
 			name:        "a status drudge does not know",
-			args:        []string{statusFlag, "finished"},
+			args:        []string{"--status", "finished"},
 			wantErrText: "finished",
 		},
 		{
 			name: "a ticket",
-			args: []string{ticketFlag, "R-005"},
+			args: []string{"--ticket", "R-005"},
 			want: task.ListTasksFilter{TicketID: pointerTo("R-005")},
 		},
 		{
 			name: "a parent",
-			args: []string{parentFlag, "9c8d"},
+			args: []string{"--parent", "9c8d"},
 			want: task.ListTasksFilter{ParentID: pointerTo[task.TaskID]("9c8d")},
 		},
 		{
 			name: "an empty parent",
-			args: []string{parentFlag, ""},
+			args: []string{"--parent", ""},
 			want: task.ListTasksFilter{ParentID: pointerTo[task.TaskID]("")},
 		},
 		{
 			name: "every filter at once",
-			args: []string{parentFlag, "9c8d", statusFlag, "done", ticketFlag, "R-005"},
+			args: []string{"--parent", "9c8d", "--status", "done", "--ticket", "R-005"},
 			want: task.ListTasksFilter{
 				Status:   pointerTo(task.StatusDone),
 				TicketID: pointerTo("R-005"),
@@ -57,7 +57,10 @@ func TestParseTaskListArgs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			filter, err := parseTaskListArgs(testCase.args)
+			flags := &taskListFlags{}
+			parseTestFlags(t, flags.declare, testCase.args)
+
+			filter, err := flags.filter()
 
 			if testCase.wantErrText != "" {
 				if err == nil || !strings.Contains(err.Error(), testCase.wantErrText) {
