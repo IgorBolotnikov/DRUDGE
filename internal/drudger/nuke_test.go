@@ -33,9 +33,12 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 		// the nuke.
 		finished  []task.TaskID
 		removeErr error
+		// listing is what the sandbox listing answers after a failed removal.
+		listing string
 		// wantRemoved is the sandbox the removal command must name, empty when
 		// nothing may be run at all.
 		wantRemoved     string
+		wantListed      bool
 		wantSlotsLeft   []int
 		wantErrContains string
 		// taskStatus is what the task of the nuked Drudger is recorded as
@@ -102,7 +105,42 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			pool:            []*Drudger{idleDrudger(1)},
 			slot:            1,
 			removeErr:       removalFailed,
+			listing:         sandboxListingWith(testSandboxOfSlot(1)),
 			wantRemoved:     testSandboxOfSlot(1),
+			wantListed:      true,
+			wantSlotsLeft:   []int{1},
+			wantErrContains: removalFailed.Error(),
+		},
+		{
+			name:          "a sandbox that is already gone counts as removed",
+			pool:          []*Drudger{idleDrudger(1)},
+			slot:          1,
+			removeErr:     removalFailed,
+			listing:       sandboxListingWith(testSandboxOfSlot(2)),
+			wantRemoved:   testSandboxOfSlot(1),
+			wantListed:    true,
+			wantSlotsLeft: []int{},
+		},
+		{
+			name:           "forcing a Drudger whose sandbox is already gone kills its task",
+			pool:           []*Drudger{busyDrudger(1)},
+			slot:           1,
+			isForced:       true,
+			removeErr:      removalFailed,
+			listing:        sandboxListingWith(),
+			wantRemoved:    testSandboxOfSlot(1),
+			wantListed:     true,
+			wantSlotsLeft:  []int{},
+			wantTaskStatus: task.StatusFuckedUp,
+		},
+		{
+			name:            "a failed removal that cannot be checked keeps the entry",
+			pool:            []*Drudger{idleDrudger(1)},
+			slot:            1,
+			removeErr:       removalFailed,
+			listing:         "not json",
+			wantRemoved:     testSandboxOfSlot(1),
+			wantListed:      true,
 			wantSlotsLeft:   []int{1},
 			wantErrContains: removalFailed.Error(),
 		},
@@ -122,7 +160,9 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			slot:            1,
 			isForced:        true,
 			removeErr:       removalFailed,
+			listing:         sandboxListingWith(testSandboxOfSlot(1)),
 			wantRemoved:     testSandboxOfSlot(1),
+			wantListed:      true,
 			wantSlotsLeft:   []int{1},
 			wantErrContains: removalFailed.Error(),
 		},
@@ -135,7 +175,11 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 				finishSession(t, projectDir, finishedID)
 			}
 
-			commands := &fakeCommandRunner{projectDir: projectDir, errs: []error{testCase.removeErr}}
+			commands := &fakeCommandRunner{
+				projectDir: projectDir,
+				outputs:    []string{"", testCase.listing},
+				errs:       []error{testCase.removeErr},
+			}
 			occupied := busyTask(testCase.slot)
 			if testCase.taskStatus != "" {
 				occupied.Status = testCase.taskStatus
@@ -166,6 +210,9 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			wantCalls := [][]string{}
 			if testCase.wantRemoved != "" {
 				wantCalls = append(wantCalls, []string{sbxBinary, sbxRmSubcommand, sbxForceFlag, testCase.wantRemoved})
+			}
+			if testCase.wantListed {
+				wantCalls = append(wantCalls, []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag})
 			}
 			if !slices.EqualFunc(commands.calls, wantCalls, slices.Equal) {
 				t.Errorf("expected commands %v, got %v", wantCalls, commands.calls)

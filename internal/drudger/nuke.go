@@ -52,8 +52,8 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 
 		// The sandbox is removed under the lock, so that nothing can claim this
 		// Drudger in the meantime.
-		if _, _, err := service.runSbx(remove); err != nil {
-			return nil, fmt.Errorf("could not remove sandbox %s: %w", doomed.Sandbox, err)
+		if err := service.removeSandbox(remove, doomed.Sandbox); err != nil {
+			return nil, err
 		}
 
 		sandboxName = doomed.Sandbox
@@ -72,6 +72,42 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 		return nil
 	}
 	return service.recordKilledTask(projectSlug, killedTaskID, stashes)
+}
+
+// removeSandbox deletes a Drudger's sandbox. A removal that fails on a sandbox
+// the listing no longer holds counts as done.
+func (service *DrudgerService) removeSandbox(remove sandboxCommand, sandboxName string) error {
+	_, _, removeErr := service.runSbx(remove)
+	if removeErr == nil {
+		return nil
+	}
+
+	isGone, err := service.isSandboxGone(sandboxName)
+	if err != nil {
+		return fmt.Errorf("could not remove sandbox %s: %w, and could not check whether it is still there: %w", sandboxName, removeErr, err)
+	}
+	if !isGone {
+		return fmt.Errorf("could not remove sandbox %s: %w", sandboxName, removeErr)
+	}
+
+	service.logger.Info("Sandbox %s was already gone", sandboxName)
+	return nil
+}
+
+func (service *DrudgerService) isSandboxGone(sandboxName string) (bool, error) {
+	inspect, err := service.pickInspectCommand()
+	if err != nil {
+		return false, err
+	}
+	listing, err := service.listSandboxes(inspect)
+	if err != nil {
+		return false, err
+	}
+	existing, err := findSandbox(listing, sandboxName)
+	if err != nil {
+		return false, err
+	}
+	return existing == nil, nil
 }
 
 // nukeWorkspace takes a Drudger's workspace apart and returns the commit the
