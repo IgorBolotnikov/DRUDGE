@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,88 +13,90 @@ import (
 )
 
 var SetupCmd = &Cmd{
-	Name: "setup",
-	Desc: "Setup DRUDGE in this computer",
-	Run: func(args []string) error {
-		printProjectName()
+	Name:  "setup",
+	Desc:  "Setup DRUDGE in this computer",
+	Setup: func(*flag.FlagSet) func(args []string) error { return setup },
+}
 
-		home, err := common.HomeDir()
-		if err != nil {
-			return err
-		}
+func setup([]string) error {
+	printProjectName()
 
-		drudgeDir := common.DrudgeDir(home)
-		projectsDir := common.ProjectsDir(home)
-		configPath := common.GlobalConfigPath(home)
-		schemaDir := filepath.Join(drudgeDir, common.SchemaDirName)
-		themeSchemaPath := filepath.Join(schemaDir, common.ThemeConfigName)
-		configSchemaPath := filepath.Join(schemaDir, common.GloablConfigName)
-		themePath := filepath.Join(drudgeDir, common.ThemeConfigName)
+	home, err := common.HomeDir()
+	if err != nil {
+		return err
+	}
 
-		if err := common.EnsureDir(projectsDir); err != nil {
-			return err
-		}
+	drudgeDir := common.DrudgeDir(home)
+	projectsDir := common.ProjectsDir(home)
+	configPath := common.GlobalConfigPath(home)
+	schemaDir := filepath.Join(drudgeDir, common.SchemaDirName)
+	themeSchemaPath := filepath.Join(schemaDir, common.ThemeConfigName)
+	configSchemaPath := filepath.Join(schemaDir, common.GloablConfigName)
+	themePath := filepath.Join(drudgeDir, common.ThemeConfigName)
 
-		if err := common.EnsureDir(schemaDir); err != nil {
-			return err
-		}
-		if err := os.WriteFile(themeSchemaPath, theme.Schema(), common.DefaultFilePerm); err != nil {
-			return fmt.Errorf("could not write schema: %w", err)
-		}
-		fmt.Printf("Created %s\n", themeSchemaPath)
-		if err := os.WriteFile(configSchemaPath, config.Schema(), common.DefaultFilePerm); err != nil {
-			return fmt.Errorf("could not write schema: %w", err)
-		}
-		fmt.Printf("Created %s\n", configSchemaPath)
+	if err := common.EnsureDir(projectsDir); err != nil {
+		return err
+	}
 
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
+	if err := common.EnsureDir(schemaDir); err != nil {
+		return err
+	}
+	if err := os.WriteFile(themeSchemaPath, theme.Schema(), common.DefaultFilePerm); err != nil {
+		return fmt.Errorf("could not write schema: %w", err)
+	}
+	fmt.Printf("Created %s\n", themeSchemaPath)
+	if err := os.WriteFile(configSchemaPath, config.Schema(), common.DefaultFilePerm); err != nil {
+		return fmt.Errorf("could not write schema: %w", err)
+	}
+	fmt.Printf("Created %s\n", configSchemaPath)
 
-		skillPath, didInstall, err := skill.InstallDrudge(home, cfg.Drudger.Harness)
-		if err != nil {
-			return err
-		}
-		if didInstall {
-			fmt.Printf("Created %s\n", skillPath)
-		}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
-		globalCfg := map[string]any{
-			"$schema": config.SchemaRef(),
-			"drudger": map[string]any{
-				"environment": cfg.Drudger.Env,
-				"harness":     cfg.Drudger.Harness,
-			},
-		}
+	skillPath, didInstall, err := skill.InstallDrudge(home, cfg.Drudger.Harness)
+	if err != nil {
+		return err
+	}
+	if didInstall {
+		fmt.Printf("Created %s\n", skillPath)
+	}
 
-		didWrite, err := common.WriteJSONIfNotExists(configPath, globalCfg)
-		if err != nil {
-			return err
-		}
-		if didWrite {
-			fmt.Printf("Created %s\n", configPath)
-		} else {
-			fmt.Printf("Config already exists at %s, skipping\n", configPath)
-		}
+	globalCfg := map[string]any{
+		"$schema": config.SchemaRef(),
+		"drudger": map[string]any{
+			"environment": cfg.Drudger.Env,
+			"harness":     cfg.Drudger.Harness,
+		},
+	}
 
-		// TODO: move to config/theme.go
-		themeCfg := map[string]any{
-			"$schema":   theme.ThemeSchemaRef(),
-			"theme":     theme.DefaultTheme(),
-			"overrides": map[string]any{},
-		}
-		didWrite, err = common.WriteJSONIfNotExists(themePath, themeCfg)
-		if err != nil {
-			return err
-		}
-		if didWrite {
-			fmt.Printf("Created %s\n", themePath)
-		} else {
-			fmt.Printf("Theme config already exists at %s, skipping\n", themePath)
-		}
+	didWrite, err := common.WriteJSONIfNotExists(configPath, globalCfg)
+	if err != nil {
+		return err
+	}
+	if didWrite {
+		fmt.Printf("Created %s\n", configPath)
+	} else {
+		fmt.Printf("Config already exists at %s, skipping\n", configPath)
+	}
 
-		fmt.Printf("Initialized DRUDGE at %s\n", drudgeDir)
-		return nil
-	},
+	// TODO: move to config/theme.go
+	themeCfg := map[string]any{
+		"$schema":   theme.ThemeSchemaRef(),
+		"theme":     theme.DefaultTheme(),
+		"overrides": map[string]any{},
+	}
+	didWrite, err = common.WriteJSONIfNotExists(themePath, themeCfg)
+	if err != nil {
+		return err
+	}
+	if didWrite {
+		fmt.Printf("Created %s\n", themePath)
+	} else {
+		fmt.Printf("Theme config already exists at %s, skipping\n", themePath)
+	}
+
+	fmt.Printf("Initialized DRUDGE at %s\n", drudgeDir)
+	return nil
 }

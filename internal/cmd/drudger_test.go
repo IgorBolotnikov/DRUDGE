@@ -200,62 +200,70 @@ func TestDrudgerList_NoProjectInDirectory(t *testing.T) {
 	}
 }
 
-func TestDrudgerReclaim_BadArgs(t *testing.T) {
-	err := drudgerReclaim([]string{"1"})
-	if err == nil {
-		t.Fatal("expected an error for an argument the subcommand does not take")
-	}
-	if !strings.Contains(err.Error(), drudgerReclaimUsage) {
-		t.Errorf("expected the error to hold the usage, got %q", err)
-	}
-}
-
-func TestRunDrudger_BadArgs(t *testing.T) {
+func TestRunDrudger_PrintsHelp(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
 	}{
-		{name: "no subcommand", args: nil},
-		{name: "unknown subcommand", args: []string{"frobnicate"}},
+		{name: "the help flag", args: []string{DrudgerCmd.Name, helpFlag}},
+		{name: "no subcommand", args: []string{DrudgerCmd.Name}},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if err := runDrudger(testCase.args); err == nil {
-				t.Fatalf("expected an error for args %v", testCase.args)
+			var err error
+			output := captureOutput(func() { err = NewRoot("v1.2.3").Execute(testCase.args) })
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.HasPrefix(output, "usage: drg drudger <subcommand>\n") {
+				t.Errorf("expected the help of the drudger command, got:\n%s", output)
+			}
+			for _, name := range []string{"list", "nuke", "reclaim"} {
+				if !strings.Contains(output, "  "+name+" ") {
+					t.Errorf("expected %q in the help, got:\n%s", name, output)
+				}
 			}
 		})
 	}
 }
 
+func TestRunDrudger_UnknownSubcommand(t *testing.T) {
+	err := NewRoot("v1.2.3").Execute([]string{DrudgerCmd.Name, "frobnicate"})
+
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), `unknown subcommand "frobnicate"`) {
+		t.Errorf("expected the error to name the unknown subcommand, got %q", err)
+	}
+}
+
 func TestParseDrudgerNukeArgs(t *testing.T) {
 	cases := []struct {
-		name      string
-		args      []string
-		wantSlot  int
-		wantForce bool
-		wantErr   bool
+		name     string
+		slot     string
+		wantSlot int
+		wantErr  bool
 	}{
-		{name: "a slot alone", args: []string{"2"}, wantSlot: 2},
-		{name: "a slot and the short force flag", args: []string{"2", "-f"}, wantSlot: 2, wantForce: true},
-		{name: "a slot and the long force flag", args: []string{"2", "--force"}, wantSlot: 2, wantForce: true},
-		{name: "the force flag first", args: []string{"-f", "2"}, wantSlot: 2, wantForce: true},
-		{name: "no slot", args: nil, wantErr: true},
-		{name: "the force flag alone", args: []string{"-f"}, wantErr: true},
-		{name: "two slots", args: []string{"1", "2"}, wantErr: true},
-		{name: "an unknown flag", args: []string{"1", "--yolo"}, wantErr: true},
-		{name: "a slot that is not a number", args: []string{"one"}, wantErr: true},
-		{name: "slot zero", args: []string{"0"}, wantErr: true},
-		{name: "a negative slot reads as a flag", args: []string{"-1"}, wantErr: true},
+		{name: "a slot", slot: "2", wantSlot: 2},
+		{name: "a slot that is not a number", slot: "one", wantErr: true},
+		{name: "a slot that is not whole", slot: "1.5", wantErr: true},
+		{name: "slot zero", slot: "0", wantErr: true},
+		{name: "a negative slot", slot: "-1", wantErr: true},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			slot, isForced, err := parseDrudgerNukeArgs(testCase.args)
+			slot, err := parseDrudgerNukeArgs(testCase.slot)
 
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error for args %v", testCase.args)
+					t.Fatalf("expected an error for slot %q", testCase.slot)
+				}
+				if !strings.Contains(err.Error(), "slots are whole numbers starting at 1") {
+					t.Errorf("expected the error to say what a slot is, got %q", err)
 				}
 				return
 			}
@@ -264,9 +272,6 @@ func TestParseDrudgerNukeArgs(t *testing.T) {
 			}
 			if slot != testCase.wantSlot {
 				t.Errorf("expected slot %d, got %d", testCase.wantSlot, slot)
-			}
-			if isForced != testCase.wantForce {
-				t.Errorf("expected force %v, got %v", testCase.wantForce, isForced)
 			}
 		})
 	}

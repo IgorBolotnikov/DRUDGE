@@ -1,9 +1,8 @@
 package cmd
 
 import (
-	"errors"
+	"flag"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,15 +15,39 @@ import (
 var DrudgerCmd = &Cmd{
 	Name: "drudger",
 	Desc: "Drudger management commands",
-	Run:  runDrudger,
+	Subcommands: []*Cmd{
+		{
+			Name:  "list",
+			Desc:  "List the Drudgers of the project",
+			Help:  "List the Drudgers of the current project and what each one is doing.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return drudgerList },
+		},
+		{
+			Name: "nuke",
+			Args: []string{slotArg},
+			Desc: "Delete a Drudger",
+			Help: "Delete a Drudger's sandbox and drop it from the pool.\n" +
+				"A Drudger with a running Session is refused unless you insist.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isForced := fs.Bool(forceFlagName, false, "Nuke a working Drudger, killing its agent and fucking up its task")
+				alias(fs, forceFlagShortName, forceFlagName)
+				return func(args []string) error { return drudgerNuke(args[0], *isForced) }
+			},
+		},
+		{
+			Name: "reclaim",
+			Desc: "Free the slots held by agents that are gone",
+			Help: "Free the Drudger slots that are still claimed by an agent that is gone.\n\n" +
+				"A Drudger frees its slot when its agent writes an exit file. An agent killed before that leaves the slot claimed, and a claimed slot counts against the concurrency limit.\n\n" +
+				"This only rewrites the Drudgers file. No process is killed, no sandbox is removed and the tasks those slots held keep their status, so start one over with " + taskRerunCommand + ".",
+			Setup: func(*flag.FlagSet) func(args []string) error { return drudgerReclaim },
+		},
+	},
 }
 
-const (
-	drudgerUsage        = "usage: drg drudger <subcommand>"
-	drudgerListUsage    = "usage: drg drudger list"
-	drudgerNukeUsage    = "usage: drg drudger nuke <slot> [" + forceFlagShort + "]"
-	drudgerReclaimUsage = "usage: drg drudger reclaim"
+const slotArg = "slot"
 
+const (
 	idleLabel = "idle"
 
 	// neverLabel stands for a moment that never happened.
@@ -60,31 +83,7 @@ const (
 	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
-func runDrudger(args []string) error {
-	if len(args) < 1 {
-		return errors.New(drudgerUsage)
-	}
-
-	switch args[0] {
-	case "list":
-		return drudgerList(args[1:])
-	case "nuke":
-		return drudgerNuke(args[1:])
-	case "reclaim":
-		return drudgerReclaim(args[1:])
-	default:
-		return fmt.Errorf("unknown drudger subcommand: %s", args[0])
-	}
-}
-
-func drudgerList(args []string) error {
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(drudgerListUsage)
-		fmt.Println()
-		fmt.Println("List the Drudgers of the current project and what each one is doing.")
-		return nil
-	}
-
+func drudgerList([]string) error {
 	deps, err := newCommandDeps()
 	if err != nil {
 		return err
@@ -129,26 +128,7 @@ func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.D
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.
-func drudgerReclaim(args []string) error {
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(drudgerReclaimUsage)
-		fmt.Println()
-		fmt.Println("Free the Drudger slots that are still claimed by an agent that is gone.")
-		fmt.Println()
-		fmt.Println("A Drudger frees its slot when its agent writes an exit file. An agent killed")
-		fmt.Println("before that leaves the slot claimed, and a claimed slot counts against the")
-		fmt.Println("concurrency limit.")
-		fmt.Println()
-		fmt.Println("This only rewrites the Drudgers file. No process is killed, no sandbox is")
-		fmt.Println("removed and the tasks those slots held keep their status, so start one over")
-		fmt.Printf("with %s.\n", taskRerunCommand)
-		return nil
-	}
-
-	if len(args) > 0 {
-		return fmt.Errorf("unexpected argument %q, %s", args[0], drudgerReclaimUsage)
-	}
-
+func drudgerReclaim([]string) error {
 	deps, err := newCommandDeps()
 	if err != nil {
 		return err
@@ -172,19 +152,8 @@ func drudgerReclaim(args []string) error {
 }
 
 // drudgerNuke destroys one Drudger and fucks up the task worked on, if any.
-func drudgerNuke(args []string) error {
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(drudgerNukeUsage)
-		fmt.Println()
-		fmt.Println("Delete a Drudger's sandbox and drop it from the pool.")
-		fmt.Println("A Drudger with a running Session is refused unless you insist.")
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Printf("  %s, %s  Nuke a working Drudger, killing its agent and fucking up its task\n", forceFlagShort, forceFlag)
-		return nil
-	}
-
-	slot, isForced, err := parseDrudgerNukeArgs(args)
+func drudgerNuke(slotText string, isForced bool) error {
+	slot, err := parseDrudgerNukeArgs(slotText)
 	if err != nil {
 		return err
 	}
@@ -197,32 +166,12 @@ func drudgerNuke(args []string) error {
 	return deps.drudger.NukeDrudger(deps.localCfg.ProjectSlug, slot, isForced)
 }
 
-func parseDrudgerNukeArgs(args []string) (int, bool, error) {
-	var slot string
-	isForced := false
-
-	for _, arg := range args {
-		switch {
-		case arg == forceFlag || arg == forceFlagShort:
-			isForced = true
-		case strings.HasPrefix(arg, "-"):
-			return 0, false, fmt.Errorf("unknown flag %q, %s", arg, drudgerNukeUsage)
-		case slot == "":
-			slot = arg
-		default:
-			return 0, false, fmt.Errorf("unexpected argument %q, drg drudger nuke takes a single slot", arg)
-		}
-	}
-
-	if slot == "" {
-		return 0, false, fmt.Errorf("slot is required, %s", drudgerNukeUsage)
-	}
-
+func parseDrudgerNukeArgs(slot string) (int, error) {
 	parsed, err := strconv.Atoi(slot)
 	if err != nil || parsed < 1 {
-		return 0, false, fmt.Errorf("%q is not a Drudger slot, slots are whole numbers starting at 1", slot)
+		return 0, fmt.Errorf("%q is not a Drudger slot, slots are whole numbers starting at 1", slot)
 	}
-	return parsed, isForced, nil
+	return parsed, nil
 }
 
 func occupyingTask(entry *drudger.Drudger) string {
@@ -326,8 +275,4 @@ func formatAgo(moment time.Time, now time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(elapsed.Hours()/24))
 	}
-}
-
-func hasFlag(args []string, flag string) bool {
-	return slices.Contains(args, flag)
 }

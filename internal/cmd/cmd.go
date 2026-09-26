@@ -330,16 +330,6 @@ func (o *optionalString) get() string {
 	return *o.value
 }
 
-// HasForceFlag reports whether a slice of args contains --force or -f.
-func HasForceFlag(args []string) bool {
-	for _, a := range args {
-		if a == "--force" || a == "-f" {
-			return true
-		}
-	}
-	return false
-}
-
 // ConfirmDeletion asks the user to confirm deleting a resource and reports
 // what they answered. Anything but y or Y calls the deletion off.
 func ConfirmDeletion(resource string) (isConfirmed bool, err error) {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/github"
@@ -13,25 +14,29 @@ func NewUpdateCmd(version string) *Cmd {
 	return &Cmd{
 		Name: "update",
 		Desc: "Update drg to the latest release",
-		Run: func(args []string) error {
-			binaryPath, err := release.ExecutablePath()
-			if err != nil {
-				return err
-			}
-			repo := github.New(github.RepositoryURL, github.RequestTimeout)
-			service := release.NewReleaseService(repo, common.NewLogger(""))
-
-			result, err := service.Update(version, binaryPath)
-			if err != nil {
-				return err
-			}
-			if result.IsUpToDate {
-				fmt.Printf("drg %s is the latest release\n", result.Version)
-				return nil
-			}
-			fmt.Printf("Updated drg %s to %s at %s\n", result.PreviousVersion, result.Version, result.BinaryPath)
-			fmt.Println("Run drg setup to refresh the schema files and the skill")
-			return nil
+		Setup: func(*flag.FlagSet) func(args []string) error {
+			return func([]string) error { return update(version) }
 		},
 	}
+}
+
+func update(version string) error {
+	binaryPath, err := release.ExecutablePath()
+	if err != nil {
+		return err
+	}
+	repo := github.New(github.RepositoryURL, github.RequestTimeout)
+	service := release.NewReleaseService(repo, common.NewLogger(""))
+
+	result, err := service.Update(version, binaryPath)
+	if err != nil {
+		return err
+	}
+	if result.IsUpToDate {
+		fmt.Printf("drg %s is the latest release\n", result.Version)
+		return nil
+	}
+	fmt.Printf("Updated drg %s to %s at %s\n", result.PreviousVersion, result.Version, result.BinaryPath)
+	fmt.Println("Run drg setup to refresh the schema files and the skill")
+	return nil
 }

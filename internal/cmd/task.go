@@ -141,10 +141,8 @@ const (
 
 // CLI flag names.
 const (
-	helpFlag       = "--help"
-	helpFlagShort  = "-h"
-	forceFlag      = "--force"
-	forceFlagShort = "-f"
+	helpFlag      = "--help"
+	helpFlagShort = "-h"
 )
 
 // Flags a task command reads a value after.
