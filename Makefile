@@ -1,4 +1,4 @@
-.PHONY: drg build test loc release
+.PHONY: drg build test loc release review merge
 
 build:
 	go build -o drg ./cmd/drg
@@ -19,6 +19,12 @@ loc:
 
 release:
 	@scripts/release.sh $(filter-out release,$(MAKECMDGOALS)) "$(MSG)"
+
+review:
+	@scripts/drudger.sh review $(filter-out review,$(MAKECMDGOALS))
+
+merge:
+	@scripts/drudger.sh merge $(filter-out merge,$(MAKECMDGOALS))
 
 %:
 	@:
