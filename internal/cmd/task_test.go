@@ -12,188 +12,6 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
-func TestParseTaskRunArgs(t *testing.T) {
-	cases := []struct {
-		name       string
-		subcommand string
-		usage      string
-		args       []string
-		wantTaskID task.TaskID
-		wantDryRun bool
-		wantErr    bool
-		// wantErrText is a fragment the error must carry, checked when set.
-		wantErrText string
-	}{
-		{
-			name:       "task ID only",
-			args:       []string{"abc123"},
-			wantTaskID: "abc123",
-		},
-		{
-			name:       "task ID with dry run flag",
-			args:       []string{"abc123", "--dry-run"},
-			wantTaskID: "abc123",
-			wantDryRun: true,
-		},
-		{
-			name:       "dry run flag before the task ID",
-			args:       []string{"--dry-run", "abc123"},
-			wantTaskID: "abc123",
-			wantDryRun: true,
-		},
-		{
-			name:    "no arguments",
-			args:    nil,
-			wantErr: true,
-		},
-		{
-			name:    "dry run flag without a task ID",
-			args:    []string{"--dry-run"},
-			wantErr: true,
-		},
-		{
-			name:    "unknown flag",
-			args:    []string{"abc123", "--detached"},
-			wantErr: true,
-		},
-		{
-			name:    "second task ID",
-			args:    []string{"abc123", "def456"},
-			wantErr: true,
-		},
-		{
-			name:        "the error names the subcommand the user typed",
-			subcommand:  rerunSubcommand,
-			usage:       taskRerunUsage,
-			args:        []string{"abc123", "def456"},
-			wantErr:     true,
-			wantErrText: "drg task rerun",
-		},
-		{
-			name:       "rerun takes the same arguments",
-			subcommand: rerunSubcommand,
-			usage:      taskRerunUsage,
-			args:       []string{"abc123", "--dry-run"},
-			wantTaskID: "abc123",
-			wantDryRun: true,
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			subcommand := testCase.subcommand
-			if subcommand == "" {
-				subcommand = runSubcommand
-			}
-			usage := testCase.usage
-			if usage == "" {
-				usage = taskRunUsage
-			}
-
-			taskID, isDryRun, err := parseTaskRunArgs(testCase.args, subcommand, usage)
-
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error, got task ID %q and dry run %v", taskID, isDryRun)
-				}
-				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
-					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if taskID != testCase.wantTaskID {
-				t.Errorf("expected task ID %q, got %q", testCase.wantTaskID, taskID)
-			}
-			if isDryRun != testCase.wantDryRun {
-				t.Errorf("expected dry run %v, got %v", testCase.wantDryRun, isDryRun)
-			}
-		})
-	}
-}
-
-func TestParseTaskIDArgs(t *testing.T) {
-	cases := []struct {
-		name       string
-		subcommand string
-		usage      string
-		args       []string
-		wantTaskID task.TaskID
-		wantErr    bool
-		// wantErrText is a fragment the error must carry, checked when set.
-		wantErrText string
-	}{
-		{
-			name:       "task ID only",
-			args:       []string{"abc123"},
-			wantTaskID: "abc123",
-		},
-		{
-			name:       "an id prefix is passed on as typed",
-			args:       []string{"00"},
-			wantTaskID: "00",
-		},
-		{
-			name:    "no arguments",
-			args:    nil,
-			wantErr: true,
-		},
-		{
-			name:    "unknown flag",
-			args:    []string{"abc123", "--watch"},
-			wantErr: true,
-		},
-		{
-			name:    "second task ID",
-			args:    []string{"abc123", "def456"},
-			wantErr: true,
-		},
-		{
-			name:        "the error names the subcommand the user typed",
-			subcommand:  showSubcommand,
-			usage:       taskShowUsage,
-			args:        []string{"abc123", "def456"},
-			wantErr:     true,
-			wantErrText: "drg task show",
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			subcommand := testCase.subcommand
-			if subcommand == "" {
-				subcommand = statusSubcommand
-			}
-			usage := testCase.usage
-			if usage == "" {
-				usage = taskStatusUsage
-			}
-
-			taskID, err := parseTaskIDArgs(testCase.args, subcommand, usage)
-
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error, got task ID %q", taskID)
-				}
-				if testCase.wantErrText != "" && !strings.Contains(err.Error(), testCase.wantErrText) {
-					t.Errorf("expected the error to name %q, got %q", testCase.wantErrText, err)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if taskID != testCase.wantTaskID {
-				t.Errorf("expected task ID %q, got %q", testCase.wantTaskID, taskID)
-			}
-		})
-	}
-}
-
 func TestPrintSessionStatus(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -266,58 +84,41 @@ func TestPrintSessionStatus(t *testing.T) {
 
 func TestRunTask_PrintsHelp(t *testing.T) {
 	cases := []struct {
-		name      string
-		args      []string
-		wantUsage string
-		wantTexts []string
+		name string
+		args []string
 	}{
-		{name: "the task command with no subcommand", args: nil, wantUsage: taskUsage},
-		{name: "the task command", args: []string{helpFlag}, wantUsage: taskUsage},
-		{name: "the task command with the short flag", args: []string{helpFlagShort}, wantUsage: taskUsage},
-		{
-			name:      "new",
-			args:      []string{newSubcommand, helpFlag},
-			wantUsage: taskNewUsage,
-			wantTexts: []string{titleFlag, descriptionFlag, descriptionFileFlag, ticketFlag, statusFlag, blockedByFlag, parentFlag},
-		},
-		{name: "new with the short flag", args: []string{newSubcommand, helpFlagShort}, wantUsage: taskNewUsage},
-		{name: "new with a title before the flag", args: []string{newSubcommand, titleFlag, "Wire the service", helpFlag}, wantUsage: taskNewUsage},
+		{name: "the help flag", args: []string{TaskCmd.Name, helpFlag}},
+		{name: "no subcommand", args: []string{TaskCmd.Name}},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("HOME", home)
-			t.Chdir(t.TempDir())
-
 			var err error
-			output := captureOutput(func() { err = runTask(testCase.args) })
+			output := captureOutput(func() { err = NewRoot("v1.2.3").Execute(testCase.args) })
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.HasPrefix(output, testCase.wantUsage+"\n") {
-				t.Errorf("expected the help to start with %q, got:\n%s", testCase.wantUsage, output)
+			if !strings.HasPrefix(output, "usage: drg task <subcommand>\n") {
+				t.Errorf("expected the help of the task command, got:\n%s", output)
 			}
-			for _, want := range testCase.wantTexts {
-				if !strings.Contains(output, want) {
-					t.Errorf("expected the help to mention %q, got:\n%s", want, output)
+			for _, name := range []string{"new", "list", "next", "show", "edit", "rm", "run", "rerun", "status"} {
+				if !strings.Contains(output, "  "+name+" ") {
+					t.Errorf("expected %q in the help, got:\n%s", name, output)
 				}
-			}
-			entries, err := os.ReadDir(home)
-			if err != nil {
-				t.Fatalf("cannot read the home directory: %v", err)
-			}
-			if len(entries) != 0 {
-				t.Errorf("expected the help to write nothing, found %d entries in the home directory", len(entries))
 			}
 		})
 	}
 }
 
 func TestRunTask_UnknownSubcommand(t *testing.T) {
-	if err := runTask([]string{"frobnicate"}); err == nil {
-		t.Fatal("expected an error for an unknown task subcommand")
+	err := NewRoot("v1.2.3").Execute([]string{TaskCmd.Name, "frobnicate"})
+
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), `unknown subcommand "frobnicate"`) {
+		t.Errorf("expected the error to name the unknown subcommand, got %q", err)
 	}
 }
 

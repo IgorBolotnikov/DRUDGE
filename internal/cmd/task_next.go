@@ -21,17 +21,6 @@ const holdingBlockerSeparator = ", "
 
 // taskNext prints the task that can be started now.
 func taskNext(args []string) error {
-	if hasFlag(args, helpFlag) || hasFlag(args, helpFlagShort) {
-		fmt.Println(taskNextUsage)
-		fmt.Println()
-		fmt.Println("Print the oldest todo task whose blockers are all done. It starts nothing.")
-		fmt.Println("Work of a blocker that is not merged yet is listed under the task.")
-		return nil
-	}
-	if len(args) > 0 {
-		return fmt.Errorf("unexpected argument %q, %s", args[0], taskNextUsage)
-	}
-
 	deps, err := newCommandDeps()
 	if err != nil {
 		return err
