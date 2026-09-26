@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,61 @@ func TestCommandRunner_Run(t *testing.T) {
 			}
 			if got != testCase.want {
 				t.Errorf("expected output %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandRunner_RunEchoed(t *testing.T) {
+	cases := []struct {
+		name      string
+		script    string
+		want      string
+		wantLines []string
+	}{
+		{
+			name:      "echoes stdout and stderr and still returns stdout",
+			script:    "echo out; sleep 0.1; echo err >&2",
+			want:      "out\n",
+			wantLines: []string{"out", "err"},
+		},
+		{
+			name:      "echoes a line redrawn with carriage returns as it last read",
+			script:    `printf '10%%\r50%%\r100%%\n'`,
+			want:      "10%\r50%\r100%\n",
+			wantLines: []string{"100%"},
+		},
+		{
+			name:      "drops blank lines",
+			script:    "echo first; echo; echo '   '; echo second",
+			want:      "first\n\n   \nsecond\n",
+			wantLines: []string{"first", "second"},
+		},
+		{
+			name:      "echoes a last line with no newline",
+			script:    "printf 'no newline'",
+			want:      "no newline",
+			wantLines: []string{"no newline"},
+		},
+	}
+
+	runner := NewCommandRunner()
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var gotLines []string
+			got, _, err := runner.RunEchoed([]string{"sh", "-c", testCase.script}, generousTimeout, func(line string) {
+				gotLines = append(gotLines, line)
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if got != testCase.want {
+				t.Errorf("expected output %q, got %q", testCase.want, got)
+			}
+			if !slices.Equal(gotLines, testCase.wantLines) {
+				t.Errorf("expected echoed lines %q, got %q", testCase.wantLines, gotLines)
 			}
 		})
 	}

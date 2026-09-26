@@ -241,6 +241,18 @@ func (runner *fakeCommandRunner) Run(argv []string, timeout time.Duration) (stri
 	return output, stderr, err
 }
 
+// RunEchoed echoes the stdout and the stderr Run hands back, one line at a
+// time.
+func (runner *fakeCommandRunner) RunEchoed(argv []string, timeout time.Duration, echo func(line string)) (string, string, error) {
+	stdout, stderr, err := runner.Run(argv, timeout)
+	for _, line := range strings.Split(stdout+"\n"+stderr, "\n") {
+		if line != "" {
+			echo(line)
+		}
+	}
+	return stdout, stderr, err
+}
+
 func (runner *fakeCommandRunner) subcommands() []string {
 	names := make([]string, 0, len(runner.calls))
 	for _, argv := range runner.calls {
@@ -963,6 +975,78 @@ func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.
 
 			if got := commands.subcommands(); !slices.Equal(got, testCase.want) {
 				t.Errorf("expected sbx calls %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
+	const pullProgress = "Pulling agent image"
+	createKilled := fmt.Errorf("command sbx create did not finish within 600s and was killed: %w", context.DeadlineExceeded)
+
+	cases := []struct {
+		name            string
+		outputs         []string
+		errs            []error
+		wantLogContains []string
+		wantErrContains string
+	}{
+		{
+			name:    "a missing sandbox is created with sbx output echoed",
+			outputs: []string{sandboxListingWith(), pullProgress},
+			wantLogContains: []string{
+				"goes to Drudger 1 (" + testSandbox + ")",
+				"Looking for sandbox " + testSandbox,
+				"does not exist yet, creating it",
+				"sbx: " + pullProgress,
+				"Starting the agent",
+			},
+		},
+		{
+			name:    "an existing sandbox is reused",
+			outputs: []string{sandboxListingWith(testSandbox)},
+			wantLogContains: []string{
+				"goes to Drudger 1 (" + testSandbox + ")",
+				"Sandbox " + testSandbox + " exists, reusing it",
+				"Starting the agent",
+			},
+		},
+		{
+			name:            "a create killed for outrunning its timeout names the setting",
+			outputs:         []string{sandboxListingWith(), pullProgress},
+			errs:            []error{nil, createKilled},
+			wantLogContains: []string{"sbx: " + pullProgress},
+			wantErrContains: config.CreateTimeoutKey,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: testCase.outputs, errs: testCase.errs}
+			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+
+			var err error
+			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+
+			for _, want := range testCase.wantLogContains {
+				if !strings.Contains(logged, want) {
+					t.Errorf("expected the log to say %q, got %q", want, logged)
+				}
+			}
+
+			if testCase.wantErrContains != "" {
+				if err == nil {
+					t.Fatal("expected the failure to surface")
+				}
+				if !strings.Contains(err.Error(), testCase.wantErrContains) {
+					t.Errorf("expected error to say %q, got %q", testCase.wantErrContains, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}

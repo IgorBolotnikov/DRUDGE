@@ -56,11 +56,13 @@ const (
 	// MaxConcurrentDrudgersKey is exported so the drudger package can name it when a project's pool is full.
 	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
 	listTimeoutKey           = "sandboxTimeouts.listSeconds"
-	createTimeoutKey         = "sandboxTimeouts.createSeconds"
-	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
-	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
-	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
-	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"
+	// CreateTimeoutKey is exported so the drudger package can name it when a
+	// sandbox create is killed.
+	CreateTimeoutKey     = "sandboxTimeouts.createSeconds"
+	removeTimeoutKey     = "sandboxTimeouts.removeSeconds"
+	fetchTimeoutKey      = "gitTimeouts.fetchSeconds"
+	worktreeTimeoutKey   = "gitTimeouts.worktreeSeconds"
+	gitCommandTimeoutKey = "gitTimeouts.commandSeconds"
 	// RepositoriesKey and DefaultBranchKey are exported so the project package
 	// can name them when a repository does not resolve.
 	RepositoriesKey   = "repositories"
@@ -281,7 +283,7 @@ func validateSandboxTimeouts(timeouts SandboxTimeouts, path string) error {
 		value int
 	}{
 		{key: listTimeoutKey, value: timeouts.ListSeconds},
-		{key: createTimeoutKey, value: timeouts.CreateSeconds},
+		{key: CreateTimeoutKey, value: timeouts.CreateSeconds},
 		{key: removeTimeoutKey, value: timeouts.RemoveSeconds},
 	}
 	for _, timeout := range seconds {

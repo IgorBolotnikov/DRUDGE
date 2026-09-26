@@ -22,6 +22,9 @@ type CommandRunner interface {
 	// longer than timeout is killed and the error wraps
 	// context.DeadlineExceeded.
 	Run(argv []string, timeout time.Duration) (stdout string, stderr string, err error)
+	// RunEchoed is Run that also hands echo each line the command writes to
+	// stdout or to stderr while it runs.
+	RunEchoed(argv []string, timeout time.Duration, echo func(line string)) (stdout string, stderr string, err error)
 	// Start runs the command and returns immediately.
 	Start(argv []string) error
 }

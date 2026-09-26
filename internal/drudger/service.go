@@ -299,6 +299,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	if err != nil {
 		return err
 	}
+	service.logger.Info("Task [%s] %s goes to Drudger %d (%s)", taskID, taskToRun.Title, claimed.Slot, claimed.Sandbox)
 
 	isLaunched := false
 	defer func() {
@@ -341,6 +342,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	service.logger.Info("Putting the workspace on branch %s", branch)
 	prepared, err := service.prepareWorkspace(space, taskToRun, branch)
 	if err != nil {
 		return err
@@ -350,6 +352,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	service.logger.Info("Starting the agent in sandbox %s and waiting up to %s for its first output", claimed.Sandbox, service.launchGrace)
 	if err := service.commands.Start(plan.start); err != nil {
 		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
 	}
@@ -466,6 +469,7 @@ func (service *DrudgerService) launchedSessionID(runDir string) string {
 // What the listing says about the sandbox is recorded as the Drudger's
 // sandbox health.
 func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, mounts []string) error {
+	service.logger.Info("Looking for sandbox %s", claimed.Sandbox)
 	listing, err := service.listSandboxes(plan.inspect)
 	if err != nil {
 		return fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
@@ -477,7 +481,11 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 	}
 
 	if existing == nil {
-		if _, _, err := service.runSbx(plan.create); err != nil {
+		service.logger.Info(
+			"Sandbox %s does not exist yet, creating it. The first sandbox of a harness pulls its image, which takes minutes. DRUDGE waits up to %s",
+			claimed.Sandbox, plan.create.timeout,
+		)
+		if err := service.createSandbox(plan.create); err != nil {
 			service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxGone)
 			return fmt.Errorf("could not create sandbox %s: %w", claimed.Sandbox, err)
 		}
@@ -489,6 +497,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxMisplaced)
 		return err
 	}
+	service.logger.Info("Sandbox %s exists, reusing it", claimed.Sandbox)
 	service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxUsable)
 	return nil
 }
@@ -545,13 +554,32 @@ func (service *DrudgerService) listSandboxes(inspect sandboxCommand) (string, er
 // its timeout is reported as a daemon that stopped answering.
 func (service *DrudgerService) runSbx(command sandboxCommand) (string, string, error) {
 	stdout, stderr, err := service.commands.Run(command.argv, command.timeout)
-	if daemonJustStarted(stderr) {
-		service.logger.Info("The sbx daemon was not running, sbx has just started it")
-	}
+	service.noteDaemonStart(stderr)
 	if timedOut(err) {
 		return stdout, stderr, fmt.Errorf("the sbx daemon stopped answering, run %s to see what is wrong with it: %w", sbxDaemonStatusCommand, err)
 	}
 	return stdout, stderr, err
+}
+
+// createSandbox runs the create command of a plan and prints every line sbx
+// writes while it runs. A create killed for outrunning its timeout names the
+// setting that raises it.
+func (service *DrudgerService) createSandbox(create sandboxCommand) error {
+	_, stderr, err := service.commands.RunEchoed(create.argv, create.timeout, func(line string) {
+		service.logger.Info("%s: %s", sbxBinary, line)
+	})
+	service.noteDaemonStart(stderr)
+	if timedOut(err) {
+		return fmt.Errorf("sbx did not finish within %s, raise %q in the global config if it needs longer: %w", create.timeout, config.CreateTimeoutKey, err)
+	}
+	return err
+}
+
+// noteDaemonStart logs when an sbx call had to start the sbx daemon.
+func (service *DrudgerService) noteDaemonStart(stderr string) {
+	if daemonJustStarted(stderr) {
+		service.logger.Info("The sbx daemon was not running, sbx has just started it")
+	}
 }
 
 // prepareRunDir clears whatever the previous run left in the run directory and

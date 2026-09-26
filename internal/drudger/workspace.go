@@ -176,6 +176,7 @@ func (service *DrudgerService) tryFetchBase(repository projectRepository) bool {
 		return true
 	}
 
+	service.logger.Info("Fetching %s of repository %s from %s", repository.DefaultBranch, repository.Name, git.OriginRemote)
 	err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch)
 	if err == nil {
 		return true
@@ -292,6 +293,7 @@ func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) (Wo
 		return WorkspaceGone, nil
 	}
 
+	service.logger.Info("Creating the workspace of repository %s at %s", repository.Name, repository.Worktree)
 	if err := service.gitOps.AddDetachedWorktree(repository.Dir, repository.Worktree, repository.BaseRef()); err != nil {
 		return "", fmt.Errorf("could not create the workspace of repository %s: %w", repository.Name, err)
 	}
