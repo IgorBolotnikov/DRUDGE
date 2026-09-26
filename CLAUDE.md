@@ -21,6 +21,8 @@ DRUDGE is a self-hosted control plane for coding agents: give it a backlog, it h
 
 This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer, and the CLI is only one of several planned interfaces — a TUI and an HTMX-based web frontend are planned on top of the same domain layer. Business logic belongs in the domain packages (`internal/project`, `internal/task`, `internal/drudger`,their services) and never in `internal/cmd`. A command handler should only parse args, call a service, and format output — if a handler is doing anything more than that, it's logic that another interface will need to duplicate, and it should move down into the domain layer instead.
 
+**Local-first and unix-only.** Sandboxes are local containers, workspaces are local directories and run artifacts live in local files. Concurrency means two CLI invocations on one machine. Use same-machine primitives like `flock` and local paths. Don't add networked storage, cross-machine coordination or distributed locking. Windows users run DRUDGE in WSL, so don't add Windows build tags or fallbacks.
+
 **CLI dispatch.** `cmd/drg/main.go` registers `*cmd.Cmd` values into a `cmd.CLI` (`internal/cmd/cmd.go`). There's no third-party CLI framework: `CLI.Run` looks up `args[0]` in a map and calls `Cmd.Run(args[1:])`. Commands with subcommands (`project`, `task`) do their own `switch args[0]` dispatch inside `Run` and hand-roll flag parsing (see `parseFlagValue`/`hasFlag` in `internal/cmd/task.go`). Follow this pattern rather than introducing a flags/cobra-style dependency.
 
 **Domain packages are ports-and-adapters.** `internal/project`, `internal/task` and `internal/drudger` each follow the same three-file shape:

@@ -15,6 +15,7 @@ AGENTS.md
 # release builds
 /dist
 
-# claude code: keep only skills
+# claude code: keep only skills and shared settings
 /.claude/*
 !/.claude/skills/
+!/.claude/settings.json

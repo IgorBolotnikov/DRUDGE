@@ -1,9 +1,9 @@
 ---
 name: code-style
-description: Code, comment and commit style for the DRUDGE repo. Load before writing or editing any Go file, including tests, and before writing a commit message or a branch name.
+description: Code, comment, prose and commit style for the DRUDGE repo. Load before writing or editing any Go file, including tests, any markdown file, and before writing a commit message or a branch name.
 ---
 
-These rules apply to every Go file in this repo, production code and tests alike. Read them before you write, and check your diff against them before you finish.
+These rules apply to every Go file in this repo, production code and tests alike. The prose rules also apply to markdown files. Read them before you write, and check your diff against them before you finish.
 
 ## Code style
 
@@ -14,7 +14,8 @@ These rules apply to every Go file in this repo, production code and tests alike
 - We value good developer experience. Explicit hard errors with good error messages are always preferred over trying to provide some default behavior and hide the incorrect behavior. We want to always provide proper feedback to the user so that they have as little WTF moments as possible. This also solves many support tickets which we want to avoid as much as possible.
 - Commit rules (non-negotiable): use conventional commits, commit message is single line, clear and short. Adding walls of text in commit message is a huge red flag.
 - Branch rules (non-negotiable): use conventional commit branch prefixes: `<prefix>/<branch-name>`.
-- boolean variables should read like questions to be answered with "yes" or "no". Use `is/has/does/should` and other name prefixes to formulate the question. Idiomatic go names like `ok` are allowed.
+- Attribution rules (non-negotiable): never credit Claude, Anthropic or any other AI tool anywhere. That covers `Co-Authored-By` trailers, "Generated with" footers, code comments, docs and changelogs. The work belongs to the person who ran the tool.
+- boolean variables should read like questions to be answered with "yes" or "no". Use `is/has/does/should` and other name prefixes to formulate the question. Idiomatic go names are allowed: `ok`, and the `want*`/`got` fields of table-driven tests. The rule covers test files too, including struct fields, function parameters and named return values. Functions that return a bool are not variables and keep their names.
 
 Examples of boolean variables:
 
@@ -27,6 +28,13 @@ delete -> shouldDelete
 wrote -> didWrite
 called -> wasCalled
 ```
+
+## Prose in markdown
+
+This covers `docs/*.md`, `README.md`, `CLAUDE.md`, skills and any other markdown in the repo.
+
+- Follow the "How to write one" rules for comments below. Plain, short sentences. No semicolons. No "X, not Y", "rather than Z" or "instead of Z".
+- Do not hard-wrap paragraphs. Write one line per paragraph and one line per bullet, however long. Renderers wrap the text themselves. Put line breaks only where they carry meaning: between paragraphs, between list items and inside code blocks.
 
 ## Comments and documentation comments style guide
 
