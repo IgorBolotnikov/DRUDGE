@@ -139,12 +139,6 @@ const (
 	dryRunUsage    = "Print the prompt the agent would get and stop"
 )
 
-// CLI flag names.
-const (
-	helpFlag      = "--help"
-	helpFlagShort = "-h"
-)
-
 // Flags a task command reads a value after.
 const (
 	titleFlagName           = "title"
@@ -161,7 +155,7 @@ const (
 // stdinPath is the description file path that reads stdin.
 const stdinPath = "-"
 
-var errTwoDescriptions = errors.New(flagLabel(descriptionFlagName) + " and " + flagLabel(descriptionFileFlagName) + " cannot be used together")
+var errTwoDescriptions = errors.New("--description and --description-file cannot be used together")
 
 // taskIDListSeparator splits a flag value holding several task ids.
 const taskIDListSeparator = ","
@@ -258,7 +252,7 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 // creation time for the caller to fill in.
 func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 	if flags.title.get() == "" {
-		return task.CreateTaskDto{}, fmt.Errorf("%s is required", flagLabel(titleFlagName))
+		return task.CreateTaskDto{}, errors.New("--title is required")
 	}
 
 	description := flags.description.get()
@@ -271,7 +265,7 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 			return task.CreateTaskDto{}, err
 		}
 	case flags.description.value == nil:
-		return task.CreateTaskDto{}, fmt.Errorf("%s or %s is required", flagLabel(descriptionFlagName), flagLabel(descriptionFileFlagName))
+		return task.CreateTaskDto{}, errors.New("--description or --description-file is required")
 	}
 
 	var status task.TaskStatus

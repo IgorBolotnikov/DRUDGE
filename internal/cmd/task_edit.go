@@ -44,15 +44,15 @@ func (flags *taskEditFlags) declare(fs *flag.FlagSet) {
 func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
 	var givenBlockerFlags []string
 	for _, blocker := range []struct {
-		name  string
+		label string
 		value optionalString
 	}{
-		{name: blockedByFlagName, value: flags.blockedBy},
-		{name: blockFlagName, value: flags.block},
-		{name: unblockFlagName, value: flags.unblock},
+		{label: "--blocked-by", value: flags.blockedBy},
+		{label: "--block", value: flags.block},
+		{label: "--unblock", value: flags.unblock},
 	} {
 		if blocker.value.value != nil {
-			givenBlockerFlags = append(givenBlockerFlags, flagLabel(blocker.name))
+			givenBlockerFlags = append(givenBlockerFlags, blocker.label)
 		}
 	}
 	if len(givenBlockerFlags) > 1 {

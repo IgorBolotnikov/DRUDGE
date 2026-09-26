@@ -17,8 +17,8 @@ type invocation struct {
 }
 
 // newFakeTree builds a tree of a root with a --verbose flag, a task group
-// holding the rm and list leaves, and a legacy leaf. Every run function
-// appends what it got to calls.
+// holding the rm and list leaves. Every run function appends what it got to
+// calls.
 func newFakeTree(calls *[]invocation) *Cmd {
 	return &Cmd{
 		Name: "app",
@@ -59,14 +59,6 @@ func newFakeTree(calls *[]invocation) *Cmd {
 							}
 						},
 					},
-				},
-			},
-			{
-				Name: "legacy",
-				Desc: "Parse its own args",
-				Run: func(args []string) error {
-					*calls = append(*calls, invocation{command: "legacy", args: args})
-					return nil
 				},
 			},
 		},
@@ -127,11 +119,6 @@ func TestExecute_Dispatches(t *testing.T) {
 			name: "an optional flag given a value",
 			args: []string{"task", "rm", "42", "--ticket", "R-7"},
 			want: invocation{command: "rm", args: []string{"42"}, ticket: stringPointer("R-7")},
-		},
-		{
-			name: "the raw args to a legacy leaf",
-			args: []string{"legacy", "--unknown", "-h", "x"},
-			want: invocation{command: "legacy", args: []string{"--unknown", "-h", "x"}},
 		},
 	}
 
@@ -324,7 +311,9 @@ func TestExecute_RefusesBadArgs(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	leaf := func(name string) *Cmd {
-		return &Cmd{Name: name, Run: func(args []string) error { return nil }}
+		return &Cmd{Name: name, Setup: func(*flag.FlagSet) func(args []string) error {
+			return func(args []string) error { return nil }
+		}}
 	}
 	cases := []struct {
 		name        string
@@ -337,7 +326,7 @@ func TestValidate(t *testing.T) {
 			shouldPanic: false,
 		},
 		{
-			name:        "a leaf with neither Setup nor Run",
+			name:        "a leaf without Setup",
 			root:        &Cmd{Name: "app", Subcommands: []*Cmd{{Name: "task", Subcommands: []*Cmd{{Name: "rm"}}}}},
 			shouldPanic: true,
 		},
@@ -381,8 +370,8 @@ func TestNewRoot_PrintsHelp(t *testing.T) {
 		args []string
 	}{
 		{name: "no arguments", args: nil},
-		{name: "the help flag", args: []string{helpFlag}},
-		{name: "the short help flag", args: []string{helpFlagShort}},
+		{name: "the help flag", args: []string{"--help"}},
+		{name: "the short help flag", args: []string{"-h"}},
 	}
 
 	for _, testCase := range cases {

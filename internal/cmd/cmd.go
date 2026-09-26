@@ -25,9 +25,6 @@ type Cmd struct {
 	// Setup declares the flags of the command and returns its run function.
 	// A group without a run function prints its help when no subcommand is given.
 	Setup func(fs *flag.FlagSet) func(args []string) error
-	// Run is the legacy entry point. A leaf with Run and no Setup gets the raw
-	// args and parses them itself.
-	Run func(args []string) error
 }
 
 const (
@@ -66,15 +63,15 @@ func NewRoot(version string) *Cmd {
 	}
 }
 
-// Validate panics on a leaf with neither Setup nor Run and on two subcommands
-// of one parent sharing a name.
+// Validate panics on a leaf without Setup and on two subcommands of one parent
+// sharing a name.
 func (c *Cmd) Validate() {
 	c.validate(c.Name)
 }
 
 func (c *Cmd) validate(path string) {
-	if len(c.Subcommands) == 0 && c.Setup == nil && c.Run == nil {
-		panic(fmt.Sprintf("command %q has neither Setup nor Run", path))
+	if len(c.Subcommands) == 0 && c.Setup == nil {
+		panic(fmt.Sprintf("command %q has no Setup", path))
 	}
 	seen := make(map[string]bool, len(c.Subcommands))
 	for _, sub := range c.Subcommands {
@@ -94,10 +91,6 @@ func (c *Cmd) Execute(args []string) error {
 }
 
 func (c *Cmd) execute(path string, args []string) error {
-	if c.Setup == nil && c.Run != nil && len(c.Subcommands) == 0 {
-		return c.Run(args)
-	}
-
 	fs := flag.NewFlagSet(path, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var run func(args []string) error
@@ -231,7 +224,7 @@ func (c *Cmd) printHelp(path string, fs *flag.FlagSet) {
 			fmt.Printf("  %-*s  %s\n", width, sub.Name, sub.Desc)
 		}
 		fmt.Println()
-		fmt.Printf("Run %s <subcommand> %s for the details of one.\n", path, helpFlag)
+		fmt.Printf("Run %s <subcommand> --help for the details of one.\n", path)
 	}
 }
 

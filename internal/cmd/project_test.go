@@ -15,7 +15,7 @@ func TestRunProject_PrintsHelp(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "the help flag", args: []string{ProjectCmd.Name, helpFlag}},
+		{name: "the help flag", args: []string{ProjectCmd.Name, "--help"}},
 		{name: "no subcommand", args: []string{ProjectCmd.Name}},
 	}
 

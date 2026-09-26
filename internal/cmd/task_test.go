@@ -89,7 +89,7 @@ func TestRunTask_PrintsHelp(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "the help flag", args: []string{TaskCmd.Name, helpFlag}},
+		{name: "the help flag", args: []string{TaskCmd.Name, "--help"}},
 		{name: "no subcommand", args: []string{TaskCmd.Name}},
 	}
 

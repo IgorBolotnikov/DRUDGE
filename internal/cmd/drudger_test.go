@@ -205,7 +205,7 @@ func TestRunDrudger_PrintsHelp(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "the help flag", args: []string{DrudgerCmd.Name, helpFlag}},
+		{name: "the help flag", args: []string{DrudgerCmd.Name, "--help"}},
 		{name: "no subcommand", args: []string{DrudgerCmd.Name}},
 	}
 
