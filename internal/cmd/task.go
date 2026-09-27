@@ -129,6 +129,14 @@ var TaskCmd = &Cmd{
 			Help:  "Tell whether the agent working on a task is working, stuck or has .",
 			Setup: func(*flag.FlagSet) func(args []string) error { return taskSessionStatus },
 		},
+		{
+			Name: "runlog",
+			Args: []string{taskIDArg},
+			Desc: "Print the logs of the latest run of a task",
+			Help: "Print the event stream and the stderr log of the latest run of a task. Lines that are JSON are indented.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskRunlog },
+		},
 	},
 }
 
