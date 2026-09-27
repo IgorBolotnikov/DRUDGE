@@ -17,7 +17,7 @@ This skill covers `drg task new`, `edit`, `list`, `show` and `rm`. Run `drg task
 ## Rules
 
 1. Before you write anything, run `drg task list --ticket <ticket-id>`. If tasks already exist, show them beside the new breakdown. Propose leave, edit, create or remove for each one and wait for the user to approve.
-2. Never edit or remove a task that is `in-progress` or `done`. Report it to the user and leave it alone.
+2. Never edit or remove a task that is `in-progress`, `unmerged` or `done`. Report it to the user and leave it alone.
 3. Write every description with a quoted heredoc into `--description-file -`. The quotes around the heredoc delimiter keep the shell from expanding `$`, backticks and quotes.
 4. Name a task by its short id, the first 8 characters of its full id. Every command and every flag that takes a task id accepts it, as long as it names a single task.
 5. Create tasks one at a time in dependency order. `drg task new` prints `Created task [<id>] <title>`. Take the short id from that line and pass it to `--blocked-by` on the later tasks that wait for it. Use `--parent` when a task belongs under another task.
