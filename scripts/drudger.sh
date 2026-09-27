@@ -124,6 +124,7 @@ merge)
 	git merge-base --is-ancestor main "$branch" || die "$branch is not on top of main, run make review ${task_id:0:8} first"
 	(cd "$worktree" && go test ./...) || die "tests fail on $branch"
 	git merge --ff-only "$branch"
+	go run ./cmd/drg task done "$task_id"
 	git worktree remove "$worktree"
 	git branch --delete "$branch"
 	;;

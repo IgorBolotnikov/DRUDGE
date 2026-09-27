@@ -9,10 +9,6 @@ import (
 // unblockedTaskLine lays out one task a finished task unblocked.
 const unblockedTaskLine = "  %s  %s"
 
-// unmergedWorkLineIndent sets the unmerged work of a finished task under the
-// heading that names it.
-const unmergedWorkLineIndent = "  "
-
 // EditTask changes the fields a user owns on one task, the way
 // task.TaskService.EditTask does. An edit that sets the task to done also
 // reports the tasks it unblocked.
@@ -27,9 +23,19 @@ func (service *DrudgerService) EditTask(projectSlug string, id task.TaskID, chan
 	return edited, nil
 }
 
-// reportUnblocked names the tasks that became runnable once finished is done,
-// and the work of finished that has not reached its base yet. It prints
-// nothing when no task became runnable.
+// MarkDone sets an unmerged task to done, the way task.TaskService.MarkDone
+// does, and reports the tasks it unblocked.
+func (service *DrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, error) {
+	marked, err := service.tasks.MarkDone(projectSlug, id)
+	if err != nil {
+		return nil, err
+	}
+	service.reportUnblocked(projectSlug, marked)
+	return marked, nil
+}
+
+// reportUnblocked names the tasks that became runnable once finished is done.
+// It prints nothing when no task became runnable.
 //
 // The task is stored as done by the time this runs, so a failure is logged
 // and the command still succeeds.
@@ -48,26 +54,8 @@ func (service *DrudgerService) reportUnblocked(projectSlug string, finished *tas
 		lines = append(lines, fmt.Sprintf(unblockedTaskLine, task.ShortID(dependent.ID), dependent.Title))
 	}
 
-	unmerged, err := service.UnmergedWork([]task.Blocker{{ID: finished.ID, Task: finished}})
-	if err != nil {
-		service.logger.Error("Could not tell whether the work of task %s is merged: %v", finished.ID, err)
-	}
-	if work := unmerged[finished.ID]; len(work) > 0 {
-		lines = append(lines, mergeHeading(len(unblocked)))
-		for _, line := range FormatUnmergedWork(work) {
-			lines = append(lines, unmergedWorkLineIndent+line)
-		}
-	}
-
 	for _, line := range lines {
 		// A task title may hold a percent sign.
 		service.logger.Info("%s", line)
 	}
-}
-
-func mergeHeading(unblockedCount int) string {
-	if unblockedCount == 1 {
-		return "That task needs its work merged first:"
-	}
-	return "They need its work merged first:"
 }

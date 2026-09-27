@@ -26,9 +26,8 @@ type BlockedTask struct {
 }
 
 // NextTask picks the oldest todo task whose blockers are all done, and the
-// lowest id among tasks made at the same moment. Unmerged work of a blocker
-// does not hold a task back here. When no task qualifies, the pick lists every
-// todo task with the blockers holding it, oldest first.
+// lowest id among tasks made at the same moment. When no task qualifies, the
+// pick lists every todo task with the blockers holding it, oldest first.
 func (service *TaskService) NextTask(projectSlug string) (Pick, error) {
 	tasks, err := service.repo.ListTasks(projectSlug)
 	if err != nil {

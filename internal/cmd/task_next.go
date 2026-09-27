@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -31,23 +30,17 @@ func taskNext(args []string) error {
 		return err
 	}
 
-	unmerged, err := deps.drudger.UnmergedWork(pick.Blockers)
-	if err != nil {
-		return err
-	}
-
-	printNext(deps.log, pick, unmerged)
+	printNext(deps.log, pick)
 	return nil
 }
 
-// printNext prints the picked task and the unmerged work of its blockers. With
-// no task picked, it prints the blocked todo tasks, or that there are none.
-func printNext(log *common.Logger, pick task.Pick, unmerged map[task.TaskID][]drudger.UnmergedWork) {
+// printNext prints the picked task. With no task picked, it prints the blocked
+// todo tasks, or that there are none.
+func printNext(log *common.Logger, pick task.Pick) {
 	var lines []string
 	switch {
 	case pick.Task != nil:
 		lines = append(lines, fmt.Sprintf(nextTaskLine, task.ShortID(pick.Task.ID), pick.Task.Title))
-		lines = append(lines, waitingMergeLines(pick.Blockers, unmerged)...)
 	case len(pick.Blocked) == 0:
 		lines = append(lines, "No task can be started. There are no todo tasks.")
 	default:
@@ -58,26 +51,6 @@ func printNext(log *common.Logger, pick task.Pick, unmerged map[task.TaskID][]dr
 		// A task title may hold a percent sign.
 		log.Info("%s", line)
 	}
-}
-
-// waitingMergeLines lists each blocker with unmerged work and that work under
-// it. Blockers with all of their work merged get no lines.
-func waitingMergeLines(blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork) []string {
-	var lines []string
-	for _, blocker := range blockers {
-		work := unmerged[blocker.ID]
-		if len(work) == 0 {
-			continue
-		}
-		lines = append(lines, listIndent+fmt.Sprintf(nextTaskLine, task.ShortID(blocker.ID), blocker.Task.Title))
-		for _, line := range drudger.FormatUnmergedWork(work) {
-			lines = append(lines, listIndent+listIndent+line)
-		}
-	}
-	if len(lines) == 0 {
-		return nil
-	}
-	return append([]string{"", "Waiting on a merge:"}, lines...)
 }
 
 func blockedTaskLines(blocked []task.BlockedTask) []string {

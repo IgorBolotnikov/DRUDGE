@@ -54,10 +54,9 @@ var TaskCmd = &Cmd{
 			},
 		},
 		{
-			Name: "next",
-			Desc: "Print the oldest todo task that is ready to run",
-			Help: "Print the oldest todo task whose blockers are all done. It starts nothing.\n" +
-				"Work of a blocker that is not merged yet is listed under the task.",
+			Name:  "next",
+			Desc:  "Print the oldest todo task that is ready to run",
+			Help:  "Print the oldest todo task whose blockers are all done. It starts nothing.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return taskNext },
 		},
 		{
@@ -85,6 +84,15 @@ var TaskCmd = &Cmd{
 					return taskEdit(task.TaskID(args[0]), changes)
 				}
 			},
+		},
+		{
+			Name: "done",
+			Args: []string{taskIDArg},
+			Desc: "Mark an unmerged task done once its work is merged",
+			Help: "Mark an unmerged task done once its work is merged, and list the tasks that became runnable.\n" +
+				"A task in any other status is refused. Use drg task edit --status done to mark it done anyway.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskDone },
 		},
 		{
 			Name: "rm",
@@ -116,7 +124,7 @@ var TaskCmd = &Cmd{
 			Args: []string{taskIDArg},
 			Desc: "Start a task over from scratch",
 			Help: "Start a task over from scratch, clearing what its last run left behind.\n" +
-				"Only a task an agent has already had can be rerun, so in-progress and fucked-up.",
+				"Only a task an agent has already had can be rerun, so in-progress, fucked-up and unmerged.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				isDryRun := fs.Bool(dryRunFlagName, false, dryRunUsage)
 				return func(args []string) error { return taskRerun(task.TaskID(args[0]), *isDryRun) }
@@ -335,18 +343,26 @@ func taskShow(args []string) error {
 		return err
 	}
 
-	unmerged, err := deps.drudger.UnmergedWork(blockers)
-	if err != nil {
-		return err
-	}
-
 	family, err := deps.tasks.Family(deps.localCfg.ProjectSlug, found)
 	if err != nil {
 		return err
 	}
 
-	printTask(deps.log, found, blockers, unmerged, family, time.Now().UTC())
+	printTask(deps.log, found, blockers, family, time.Now().UTC())
 	return nil
+}
+
+// taskDone marks an unmerged task done.
+func taskDone(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	_, err = deps.drudger.MarkDone(deps.localCfg.ProjectSlug, taskID)
+	return err
 }
 
 func taskRun(taskID task.TaskID, isDryRun bool) error {

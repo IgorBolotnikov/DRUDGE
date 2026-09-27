@@ -828,6 +828,7 @@ func TestDrudgerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
 		{name: "refuses a draft task", status: task.StatusDraft, wantErr: true},
 		{name: "refuses an in-progress task", status: task.StatusInProgress, wantErr: true},
 		{name: "refuses a fucked-up task", status: task.StatusFuckedUp, wantErr: true},
+		{name: "refuses an unmerged task", status: task.StatusUnmerged, wantErr: true},
 		{name: "refuses a done task", status: task.StatusDone, wantErr: true},
 	}
 
@@ -1851,6 +1852,7 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 	}{
 		{name: "reruns an in-progress task whose Session is over", status: task.StatusInProgress, hasFinishedRun: true},
 		{name: "reruns a fucked-up task", status: task.StatusFuckedUp},
+		{name: "reruns an unmerged task", status: task.StatusUnmerged},
 		{name: "refuses a draft task", status: task.StatusDraft, wantErr: true},
 		{name: "refuses a todo task", status: task.StatusTodo, wantErr: true},
 		{name: "refuses a done task", status: task.StatusDone, wantErr: true},

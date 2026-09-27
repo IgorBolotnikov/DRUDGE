@@ -245,7 +245,7 @@ func TestTaskService_EditTask_ResolvesAnIDPrefix(t *testing.T) {
 func TestTaskService_EditTask_RefusesAStatusDrudgeMaintains(t *testing.T) {
 	// These statuses describe a Session. Setting one by hand makes the record
 	// claim a run that never happened.
-	for _, managed := range []TaskStatus{StatusInProgress, StatusFuckedUp, StatusDone} {
+	for _, managed := range []TaskStatus{StatusInProgress, StatusFuckedUp, StatusUnmerged} {
 		t.Run(string(managed), func(t *testing.T) {
 			stored := editableTask()
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
@@ -269,7 +269,7 @@ func TestTaskService_EditTask_RefusesAStatusDrudgeMaintains(t *testing.T) {
 }
 
 func TestTaskService_EditTask_TakesAStatusDrudgeMaintainsUnderForce(t *testing.T) {
-	for _, managed := range []TaskStatus{StatusInProgress, StatusFuckedUp, StatusDone} {
+	for _, managed := range []TaskStatus{StatusInProgress, StatusFuckedUp, StatusUnmerged} {
 		t.Run(string(managed), func(t *testing.T) {
 			stored := editableTask()
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}

@@ -46,7 +46,7 @@ const initCommand = "drg project init"
 
 // rerunnableStatuses are the task statuses a rerun accepts. They are the ones
 // an agent has actually had.
-var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp}
+var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp, task.StatusUnmerged}
 
 type DrudgerService struct {
 	logger    *common.Logger
@@ -111,7 +111,7 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	}
 
 	accept := func(candidate *task.Task) error {
-		return service.acceptRunnable(projectSlug, layout, candidate)
+		return service.acceptRunnable(projectSlug, candidate)
 	}
 
 	if isDryRun {
@@ -125,12 +125,12 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 }
 
 // acceptRunnable refuses a task that is not waiting for an agent, and one with
-// a blocker that is not done or whose work is not merged.
-func (service *DrudgerService) acceptRunnable(projectSlug string, layout projectLayout, taskToRun *task.Task) error {
+// a blocker that is not done.
+func (service *DrudgerService) acceptRunnable(projectSlug string, taskToRun *task.Task) error {
 	if taskToRun.Status != task.StatusTodo {
 		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
 	}
-	return service.refuseBlocked(projectSlug, layout, taskToRun)
+	return service.refuseBlocked(projectSlug, taskToRun)
 }
 
 // RerunTask hands a task back to a Drudger and starts it over from scratch.
@@ -167,8 +167,7 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 }
 
 // acceptRerunnable refuses a task no agent has had yet, one whose agent is
-// still working, and one with a blocker that is not done or whose work is not
-// merged.
+// still working, and one with a blocker that is not done.
 func (service *DrudgerService) acceptRerunnable(projectSlug string, layout projectLayout, taskToRerun *task.Task) error {
 	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
 		return fmt.Errorf(
@@ -187,7 +186,7 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, layout proje
 			working.Slot, working.Sandbox, taskToRerun.ID, nukeCommand, working.Slot,
 		)
 	}
-	return service.refuseBlocked(projectSlug, layout, taskToRerun)
+	return service.refuseBlocked(projectSlug, taskToRerun)
 }
 
 // RefuseWhileWorking refuses an edit or a removal of a task whose agent is

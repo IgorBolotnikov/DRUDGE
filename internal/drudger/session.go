@@ -149,8 +149,6 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 // writes nothing when the task has moved on to another run, when another
 // command already recorded this one, or when another command holds the task.
 func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *task.Task, report SessionReport) (*task.Task, bool, error) {
-	finished := taskStatusOf(report.Status)
-
 	var current *task.Task
 	isRecorded := false
 
@@ -161,13 +159,15 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		if !onDisk.FinishedAt.IsZero() || !sameRun(onDisk, tracked) {
 			return task.ErrTaskUnchanged
 		}
-		recordSessionEnd(onDisk, finished, report)
+		recordSessionEnd(onDisk, report)
+		// The status of a clean run depends on the landings close-out leaves.
 		service.finishRun(projectSlug, onDisk)
+		onDisk.Status = taskStatusOf(report.Status, onDisk)
 		isRecorded = true
 		return nil
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("the Session of task %s has finished, but the task could not be marked %q: %w", tracked.ID, finished, err)
+		return nil, false, fmt.Errorf("the Session of task %s has finished, but its outcome could not be recorded on the task: %w", tracked.ID, err)
 	}
 	if !isStored {
 		return service.reportWithoutRecording(tracked), false, nil
@@ -195,10 +195,9 @@ func (service *DrudgerService) reportWithoutRecording(tracked *task.Task) *task.
 	return tracked
 }
 
-// recordSessionEnd puts the status and the agent's own report of a finished
-// Session onto its task.
-func recordSessionEnd(tracked *task.Task, finished task.TaskStatus, report SessionReport) {
-	tracked.Status = finished
+// recordSessionEnd puts the agent's own report of a finished Session onto its
+// task.
+func recordSessionEnd(tracked *task.Task, report SessionReport) {
 	tracked.FinishedAt = time.Now().UTC()
 	if report.SessionID != "" {
 		tracked.SessionID = report.SessionID
@@ -275,12 +274,16 @@ func agentHealthOf(status SessionStatus) AgentHealth {
 }
 
 // taskStatusOf turns the status of a finished Session into the status of the
-// task it worked on.
-func taskStatusOf(status SessionStatus) task.TaskStatus {
-	if status == StatusGotShitDone {
-		return task.StatusDone
+// task it worked on. A clean run whose task still has landings after close-out
+// is unmerged, and one with none left is done.
+func taskStatusOf(status SessionStatus, finished *task.Task) task.TaskStatus {
+	if status != StatusGotShitDone {
+		return task.StatusFuckedUp
 	}
-	return task.StatusFuckedUp
+	if len(finished.Landings) > 0 {
+		return task.StatusUnmerged
+	}
+	return task.StatusDone
 }
 
 func readSessionReport(runDir string, now time.Time) (SessionReport, error) {

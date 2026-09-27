@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"errors"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -32,6 +33,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 		leave func(fake *fakeGit, worktrees map[string]string)
 
 		wantLandings map[string]task.Landing
+		wantStatus   task.TaskStatus
 		// wantDeletedIn names the repositories whose empty branch is deleted.
 		wantDeletedIn []string
 		// wantCreated are the branches close-out made.
@@ -43,6 +45,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.leaveOn(worktrees[testRepositoryName], testTaskBranch, testHeadSHA)
 				fake.commitsOn(testHeadSHA, 3)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 3},
 			},
@@ -52,6 +55,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 			leave: func(fake *fakeGit, worktrees map[string]string) {
 				fake.leaveOn(worktrees[testRepositoryName], testTaskBranch, testBaseSHA)
 			},
+			wantStatus:    task.StatusDone,
 			wantDeletedIn: []string{testRepositoryName},
 		},
 		{
@@ -60,6 +64,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.leaveOn(worktrees[testRepositoryName], testSideBranch, testHeadSHA)
 				fake.commitsOn(testHeadSHA, 2)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testSideBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 2},
 			},
@@ -70,6 +75,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.leaveDetached(worktrees[testRepositoryName], testHeadSHA)
 				fake.commitsOn(testHeadSHA, 1)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testRescueBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 1},
 			},
@@ -81,6 +87,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.leaveDetached(worktrees[testRepositoryName], testHeadSHA, testTaskBranch)
 				fake.commitsOn(testHeadSHA, 1)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 1},
 			},
@@ -92,6 +99,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.branchAt(worktrees[testRepositoryName], testTaskBranch, testHeadSHA)
 				fake.commitsOn(testHeadSHA, 2)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 2},
 			},
@@ -104,10 +112,23 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 				fake.commitsOn(testHeadSHA, 4)
 				fake.leaveOn(worktrees["ui"], testTaskBranch, testBaseSHA)
 			},
+			wantStatus: task.StatusUnmerged,
 			wantLandings: map[string]task.Landing{
 				"api": {Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 4},
 			},
 			wantDeletedIn: []string{"ui"},
+		},
+		{
+			name: "a repository close-out cannot read keeps the handover",
+			leave: func(fake *fakeGit, worktrees map[string]string) {
+				fake.leaveDetached(worktrees[testRepositoryName], testHeadSHA)
+				fake.commitsOn(testHeadSHA, 1)
+				fake.branchErr = errors.New("cannot lock ref")
+			},
+			wantLandings: map[string]task.Landing{
+				testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA},
+			},
+			wantStatus: task.StatusUnmerged,
 		},
 	}
 
@@ -137,6 +158,9 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 
 			if !maps.Equal(session.Task.Landings, testCase.wantLandings) {
 				t.Errorf("expected the landings %v, got %v", testCase.wantLandings, session.Task.Landings)
+			}
+			if session.Task.Status != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, session.Task.Status)
 			}
 
 			wantDeleted := make([]branchRef, 0, len(testCase.wantDeletedIn))
@@ -169,8 +193,8 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if session.Task.Status != task.StatusDone {
-		t.Errorf("expected the outcome to be recorded anyway, got %q", session.Task.Status)
+	if session.Task.Status != task.StatusUnmerged {
+		t.Errorf("expected a clean run that kept its handover to be %q, got %q", task.StatusUnmerged, session.Task.Status)
 	}
 	want := map[string]task.Landing{testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA}}
 	if !maps.Equal(session.Task.Landings, want) {

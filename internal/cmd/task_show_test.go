@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -19,7 +18,6 @@ func TestPrintTask(t *testing.T) {
 		task     task.Task
 		blockers []task.Blocker
 		family   task.Family
-		unmerged map[task.TaskID][]drudger.UnmergedWork
 		want     []string
 		// wantAbsent is what the report must leave out for this task.
 		wantAbsent []string
@@ -159,7 +157,7 @@ func TestPrintTask(t *testing.T) {
 			},
 		},
 		{
-			name: "a task blocked by a done task with unmerged work",
+			name: "a task blocked by an unmerged task",
 			task: task.Task{
 				Status:    task.StatusTodo,
 				CreatedAt: now.Add(-2 * time.Hour),
@@ -168,19 +166,12 @@ func TestPrintTask(t *testing.T) {
 			blockers: []task.Blocker{
 				{
 					ID:   "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
-					Task: &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Add the migration", Status: task.StatusDone},
-				},
-			},
-			unmerged: map[task.TaskID][]drudger.UnmergedWork{
-				"9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f": {
-					{Repository: "drudge", Branch: "task/9c8d7e6f", BaseRef: "origin/main", Commits: 3},
-					{Repository: "drudge-web", Branch: "task/9c8d7e6f", BaseRef: "origin/main", Commits: 1},
+					Task: &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Add the migration", Status: task.StatusUnmerged},
 				},
 			},
 			want: []string{
-				"  9c8d7e6f  done         Add the migration\n" +
-					"    drudge      task/9c8d7e6f  3 commits not in origin/main\n" +
-					"    drudge-web  task/9c8d7e6f  1 commit not in origin/main\n",
+				"\n" + blockedByLabel + ":\n" +
+					"  9c8d7e6f  unmerged     Add the migration\n",
 			},
 		},
 		{
@@ -247,7 +238,7 @@ func TestPrintTask(t *testing.T) {
 			taskToShow.Title = "Fix login"
 			log := common.NewLogger("")
 
-			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, testCase.unmerged, testCase.family, now) })
+			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, testCase.family, now) })
 
 			for _, want := range append(testCase.want, string(taskToShow.ID), taskToShow.Title) {
 				if !strings.Contains(out, want) {

@@ -19,6 +19,7 @@ const (
 	StatusTodo       TaskStatus = "todo"
 	StatusInProgress TaskStatus = "in-progress"
 	StatusFuckedUp   TaskStatus = "fucked-up"
+	StatusUnmerged   TaskStatus = "unmerged" // The work got done and is not on the base yet
 	StatusDone       TaskStatus = "done"
 )
 
@@ -84,7 +85,7 @@ type Landing struct {
 }
 
 // Statuses are every status a task can carry.
-var Statuses = []TaskStatus{StatusDraft, StatusTodo, StatusInProgress, StatusFuckedUp, StatusDone}
+var Statuses = []TaskStatus{StatusDraft, StatusTodo, StatusInProgress, StatusFuckedUp, StatusUnmerged, StatusDone}
 
 // KnownStatus reports whether a status is one drudge understands.
 func KnownStatus(status TaskStatus) bool {

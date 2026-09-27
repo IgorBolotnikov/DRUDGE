@@ -12,7 +12,7 @@ var ErrNoChanges = errors.New("nothing to change, name at least one of the title
 
 // ManagedStatuses are the statuses that describe a Session. Drudge writes them
 // itself when a run starts and when it ends.
-var ManagedStatuses = []TaskStatus{StatusInProgress, StatusFuckedUp, StatusDone}
+var ManagedStatuses = []TaskStatus{StatusInProgress, StatusFuckedUp, StatusUnmerged}
 
 // EditTaskDto carries the fields a user may change on a task. A nil field is
 // left as it stands, so a field a user names is set even when it is empty.

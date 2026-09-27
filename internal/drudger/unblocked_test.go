@@ -12,13 +12,23 @@ import (
 
 // unblockedFinish is one of the ways a task reaches the end of its work.
 type unblockedFinish struct {
-	name     string
-	isByHand bool
+	name string
+	// startsFrom is the status the finished task has before the finish.
+	startsFrom task.TaskStatus
+	isByHand   bool
+	isMarkDone bool
 }
 
 var unblockedFinishes = []unblockedFinish{
-	{name: "Session check"},
-	{name: "hand edit", isByHand: true},
+	{name: "Session check", startsFrom: task.StatusInProgress},
+	{name: "hand edit", startsFrom: task.StatusFuckedUp, isByHand: true},
+	{name: "task done", startsFrom: task.StatusUnmerged, isMarkDone: true},
+}
+
+// canReach reports whether this finish can end the work with the outcome
+// given. Marking a task done only ever makes it done.
+func (finish unblockedFinish) canReach(outcome task.TaskStatus) bool {
+	return !finish.isMarkDone || outcome == task.StatusDone
 }
 
 // finish ends the work on finished with the outcome given and returns what the
@@ -28,10 +38,13 @@ func (finish unblockedFinish) finish(t *testing.T, service *testService, project
 
 	var err error
 	var output string
-	if finish.isByHand {
+	switch {
+	case finish.isMarkDone:
+		output = captureOutput(func() { _, err = service.MarkDone(testProjectSlug, finished.ID) })
+	case finish.isByHand:
 		changes := task.EditTaskDto{Status: &outcome, AllowsManagedStatus: true}
 		output = captureOutput(func() { _, err = service.EditTask(testProjectSlug, finished.ID, changes) })
-	} else {
+	default:
 		runDir := common.RunDir(projectDir, string(finished.ID))
 		writeStream(t, runDir, initEvent, resultEvent)
 		exitCode := "0\n"
@@ -58,8 +71,7 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 		// others are the tasks stored next to the finished one.
 		others []*task.Task
 		// commits is how many commits the run of the finished task left.
-		commits  int
-		isMerged bool
+		commits int
 		// wantLines are what the command prints about the dependents, and none
 		// means it says nothing about them.
 		wantLines []string
@@ -100,31 +112,10 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 			},
 		},
 		{
-			name:    "dependents that need the work merged first",
-			outcome: task.StatusDone,
-			others: []*task.Task{
-				dependentOf("4f2a1b3c-0001", "Wire the repository"),
-				dependentOf("7e6d5c4b-0002", "Add the endpoint"),
-			},
+			name:    "a task whose work is not merged",
+			outcome: task.StatusUnmerged,
+			others:  []*task.Task{dependentOf("4f2a1b3c-0001", "Wire the repository")},
 			commits: 3,
-			wantLines: []string{
-				"It unblocked 2 tasks:",
-				"  4f2a1b3c  Wire the repository",
-				"  7e6d5c4b  Add the endpoint",
-				"They need its work merged first:",
-				"  api  " + testTaskBranch + "  3 commits not in origin/main",
-			},
-		},
-		{
-			name:     "a dependent of work already merged",
-			outcome:  task.StatusDone,
-			others:   []*task.Task{dependentOf("4f2a1b3c-0001", "Wire the repository")},
-			commits:  3,
-			isMerged: true,
-			wantLines: []string{
-				"It unblocked 1 task:",
-				"  4f2a1b3c  Wire the repository",
-			},
 		},
 		{
 			name:    "a task that fucked up",
@@ -136,14 +127,17 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 
 	for _, testCase := range cases {
 		for _, finish := range unblockedFinishes {
+			if !finish.canReach(testCase.outcome) {
+				continue
+			}
 			t.Run(testCase.name+" on a "+finish.name, func(t *testing.T) {
 				projectDir := setupProjectDir(t)
 				finished := handedOverTask(testRepositoryName)
 				worktree := filepath.Join(slotRoot(projectDir, 1), testRepositoryName)
+				finished.Status = finish.startsFrom
 				var pool []*Drudger
 
-				if finish.isByHand {
-					finished.Status = task.StatusFuckedUp
+				if finish.isByHand || finish.isMarkDone {
 					finished.Landings = nil
 					if testCase.commits > 0 {
 						finished.RecordLanding(testRepositoryName, task.Landing{Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: testCase.commits})
@@ -159,9 +153,6 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 					service.git.commitsOn(testHeadSHA, testCase.commits)
 				} else {
 					service.git.leaveOn(worktree, testTaskBranch, testBaseSHA)
-				}
-				if testCase.isMerged {
-					service.git.repositoryCommits = map[string]int{filepath.Join(projectDir, testRepositoryName) + " " + testHeadSHA: 0}
 				}
 
 				output := finish.finish(t, service, projectDir, finished, testCase.outcome)

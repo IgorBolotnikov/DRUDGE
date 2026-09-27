@@ -69,6 +69,15 @@ func TestTaskService_NextTask(t *testing.T) {
 			wantTask: migrationTaskID,
 		},
 		{
+			name: "a todo task with an unmerged blocker is skipped",
+			tasks: []*Task{
+				madeAt(0, backlogTask(docsTaskID, "Write the docs", StatusTodo, migrationTaskID)),
+				madeAt(1, backlogTask(migrationTaskID, "Add the migration", StatusUnmerged)),
+				madeAt(2, backlogTask(endpointTaskID, "Add the endpoint", StatusTodo)),
+			},
+			wantTask: endpointTaskID,
+		},
+		{
 			name: "a parent is an ordinary candidate",
 			tasks: []*Task{
 				madeAt(1, &Task{ID: docsTaskID, Title: "Write the docs", Status: StatusTodo, ParentTaskID: migrationTaskID}),

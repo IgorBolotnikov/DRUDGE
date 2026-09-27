@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -65,7 +64,7 @@ const (
 // printTask prints everything drudge knows about one task: what it asks for,
 // where it stands, what blocks it, what it belongs to, what belongs to it and
 // what its last run left behind. The description prints in full.
-func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork, family task.Family, now time.Time) {
+func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, string(taskToShow.Status)),
@@ -74,7 +73,7 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 		taskLine(startedLabel, formatMoment(taskToShow.StartedAt, now)),
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
 	}
-	lines = append(lines, blockerLines(blockers, unmerged)...)
+	lines = append(lines, blockerLines(blockers)...)
 	lines = append(lines, familyLines(family)...)
 	lines = append(lines,
 		"",
@@ -95,9 +94,9 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 	}
 }
 
-// blockerLines lists the tasks a task waits for, one line per blocker, with the
-// unmerged work of a blocker under it. A task blocked by nothing gets no lines.
-func blockerLines(blockers []task.Blocker, unmerged map[task.TaskID][]drudger.UnmergedWork) []string {
+// blockerLines lists the tasks a task waits for, one line per blocker. A task
+// blocked by nothing gets no lines.
+func blockerLines(blockers []task.Blocker) []string {
 	if len(blockers) == 0 {
 		return nil
 	}
@@ -105,9 +104,6 @@ func blockerLines(blockers []task.Blocker, unmerged map[task.TaskID][]drudger.Un
 	lines := []string{"", blockedByLabel + ":"}
 	for _, blocker := range blockers {
 		lines = append(lines, relatedLine(blocker.ID, blocker.Task))
-		for _, line := range drudger.FormatUnmergedWork(unmerged[blocker.ID]) {
-			lines = append(lines, listIndent+listIndent+line)
-		}
 	}
 	return lines
 }
