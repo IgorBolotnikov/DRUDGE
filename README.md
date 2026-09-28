@@ -74,6 +74,19 @@ DRUDGE checks these rules in order. The first rule that matches wins.
 4. `TERM=dumb` turns color off.
 5. Otherwise color is on when stdout is a terminal and off when it is not.
 
+`drg task list` prints each task status in the color of a theme role:
+
+| Status        | Role                              |
+| ------------- | --------------------------------- |
+| `draft`       | `muted`                           |
+| `todo`        | the default color of the terminal |
+| `in-progress` | `info`                            |
+| `fucked-up`   | `error`                           |
+| `unmerged`    | `warning`                         |
+| `done`        | `success`                         |
+
+A status drudge does not know prints plain. A theme that fails to load leaves every status plain.
+
 ## Future improvements
 
 - TUI

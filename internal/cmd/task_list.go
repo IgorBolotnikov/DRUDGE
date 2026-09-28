@@ -9,6 +9,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 // taskTitleWidth is how much room a listing gives a task title.
@@ -23,6 +24,25 @@ const blockedByTitle = "BLOCKED BY"
 // childRowIndent starts the status and the title of a task listed under its
 // parent.
 const childRowIndent = "  "
+
+// statusRoles maps a task status to the theme role it prints in. A status
+// left out, like todo, prints plain.
+var statusRoles = map[task.TaskStatus]string{
+	task.StatusDraft:      theme.RoleMuted,
+	task.StatusInProgress: theme.RoleInfo,
+	task.StatusFuckedUp:   theme.RoleError,
+	task.StatusUnmerged:   theme.RoleWarning,
+	task.StatusDone:       theme.RoleSuccess,
+}
+
+// colorStatus wraps a status in the color of its role.
+func colorStatus(palette *theme.Theme, status task.TaskStatus) string {
+	role, ok := statusRoles[status]
+	if !ok {
+		return string(status)
+	}
+	return palette.Color(role) + string(status) + palette.Reset()
+}
 
 // taskListFlags holds the filters of drg task list. A flag left out filters
 // nothing.
@@ -72,7 +92,8 @@ func taskList(filter task.ListTasksFilter) error {
 }
 
 // printTaskList prints a listing, indenting the tasks listed under a parent.
-// The blockers column is as wide as its widest value.
+// The blockers column is as wide as its widest value. A theme that fails to
+// load is logged and leaves the statuses plain.
 func printTaskList(log *common.Logger, listed []task.ListedTask) {
 	if len(listed) == 0 {
 		log.Info("No tasks found")
@@ -102,8 +123,16 @@ func printTaskList(log *common.Logger, listed []task.ListedTask) {
 		})
 	}
 
+	statusColumn := column{Title: "STATUS", Width: taskStatusWidth}
+	palette, err := theme.Load("")
+	if err != nil {
+		log.Error("cannot color the task statuses: %v", err)
+	} else {
+		statusColumn.Color = func(text string) string { return colorStatus(palette, task.TaskStatus(text)) }
+	}
+
 	columns := []column{
-		{Title: "STATUS", Width: taskStatusWidth},
+		statusColumn,
 		{Title: "ID", Width: task.ShortIDLength},
 		{Title: "TITLE", Width: taskTitleWidth},
 		{Title: blockedByTitle, Width: blockedByWidth},
