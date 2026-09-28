@@ -8,9 +8,9 @@
 
 - [Features](#features)
 - [Install](#install)
-  - [Single command install](#single-command-install)
-  - [Go install](#go-install)
-- [Colors](#colors)
+  - [Single command](#single-command)
+  - [Go](#go)
+  - [Update](#update)
 - [Future improvements](#future-improvements)
 
 <!--toc:end-->
@@ -63,29 +63,6 @@ drg update
 ```
 
 It replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
-
-## Colors
-
-DRUDGE checks these rules in order. The first rule that matches wins.
-
-1. `NO_COLOR` set to a non-empty value turns color off.
-2. `FORCE_COLOR` or `CLICOLOR_FORCE` set to a non-empty value other than `0` turns color on, even when stdout is not a terminal.
-3. `CLICOLOR=0` turns color off.
-4. `TERM=dumb` turns color off.
-5. Otherwise color is on when stdout is a terminal and off when it is not.
-
-`drg task list` prints each task status in the color of a theme role:
-
-| Status        | Role                              |
-| ------------- | --------------------------------- |
-| `draft`       | `muted`                           |
-| `todo`        | the default color of the terminal |
-| `in-progress` | `info`                            |
-| `fucked-up`   | `error`                           |
-| `unmerged`    | `warning`                         |
-| `done`        | `success`                         |
-
-A status drudge does not know prints plain. A theme that fails to load leaves every status plain.
 
 ## Future improvements
 
