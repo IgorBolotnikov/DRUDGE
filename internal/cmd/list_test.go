@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+const (
+	testColorStart = "\x1b[31m"
+	testColorReset = "\x1b[0m"
+)
+
+func testColor(text string) string {
+	return testColorStart + text + testColorReset
+}
+
 func TestListLines(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -76,6 +85,41 @@ func TestListLines(t *testing.T) {
 				"  NAME  SLUG",
 				"  ----  ----",
 				"  añçá  done",
+			},
+		},
+		{
+			name:    "colors the text of a cell and keeps the columns after it aligned",
+			columns: []column{{Title: "SLUG", Width: 6, Color: testColor}, {Title: "NAME"}},
+			rows:    [][]string{{"dru", "Drudge"}, {"a slug too long", "Other"}},
+			want: []string{
+				"Things (2):",
+				"  SLUG    NAME",
+				"  ------  ----",
+				"  " + testColor("dru") + "     Drudge",
+				"  " + testColor("a s...") + "  Other",
+			},
+		},
+		{
+			name:    "leaves the indent and the padding of a colored cell plain",
+			columns: []column{{Title: "TITLE", Width: 8, Color: testColor}, {Title: "TICKET"}},
+			rows:    [][]string{{"  child", "R-001"}},
+			want: []string{
+				"Things (1):",
+				"  TITLE     TICKET",
+				"  --------  ------",
+				"    " + testColor("child") + "   R-001",
+			},
+		},
+		{
+			name:    "colors the text of the last column",
+			columns: []column{{Title: "SLUG", Width: 6}, {Title: "NAME", Color: testColor}},
+			rows:    [][]string{{"drudge", "Drudge"}, {"other"}},
+			want: []string{
+				"Things (2):",
+				"  SLUG    NAME",
+				"  ------  ----",
+				"  drudge  " + testColor("Drudge"),
+				"  other",
 			},
 		},
 		{

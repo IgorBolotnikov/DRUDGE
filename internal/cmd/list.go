@@ -26,9 +26,12 @@ func labelledLine(label string, width int, value string) string {
 
 // column is one column of a listing. A width of zero means the column takes
 // whatever room its values need (which only makes sense for the last one).
+// Color, when set, wraps the text of every row cell in the column. The header
+// and the rule stay plain.
 type column struct {
 	Title string
 	Width int
+	Color func(text string) string
 }
 
 // printList prints a listing: how many rows there are, a header, a rule under
@@ -43,15 +46,15 @@ func printList(log *common.Logger, title string, columns []column, rows [][]stri
 func listLines(title string, columns []column, rows [][]string) []string {
 	lines := make([]string, 0, len(rows)+3)
 	lines = append(lines, fmt.Sprintf("%s (%d):", title, len(rows)))
-	lines = append(lines, listLine(columns, columnTitles(columns)))
-	lines = append(lines, listLine(columns, columnRules(columns)))
+	lines = append(lines, listLine(columns, columnTitles(columns), false))
+	lines = append(lines, listLine(columns, columnRules(columns), false))
 	for _, row := range rows {
-		lines = append(lines, listLine(columns, row))
+		lines = append(lines, listLine(columns, row, true))
 	}
 	return lines
 }
 
-func listLine(columns []column, values []string) string {
+func listLine(columns []column, values []string, shouldColor bool) string {
 	cells := make([]string, 0, len(columns))
 	for index, col := range columns {
 		var value string
@@ -61,9 +64,26 @@ func listLine(columns []column, values []string) string {
 		if col.Width > 0 {
 			value = fmt.Sprintf("%-*s", col.Width, fitColumn(value, col.Width))
 		}
+		if shouldColor && col.Color != nil {
+			value = colorCell(value, col.Color)
+		}
 		cells = append(cells, value)
 	}
 	return listIndent + strings.TrimRight(strings.Join(cells, listGap), " ")
+}
+
+// colorCell colors the text of a cell that is already fitted and padded. The
+// leading indent and the trailing padding stay plain. A blank cell stays
+// plain, so listLine still trims it off the end of the line.
+func colorCell(cell string, color func(text string) string) string {
+	text := strings.TrimLeft(cell, " ")
+	indent := cell[:len(cell)-len(text)]
+	text = strings.TrimRight(text, " ")
+	if text == "" {
+		return cell
+	}
+	padding := cell[len(indent)+len(text):]
+	return indent + color(text) + padding
 }
 
 func columnTitles(columns []column) []string {
