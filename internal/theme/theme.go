@@ -3,7 +3,6 @@ package theme
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"regexp"
 
@@ -24,10 +23,10 @@ const (
 	RolePath      = "path"
 )
 
-// Theme holds the effective color palette (foreground only, 24-bit hex) after
-// all merges. It is immutable after creation.
+// Theme holds the effective foreground color of each role after all merges.
+// It is immutable after creation.
 type Theme struct {
-	colors      map[string]string // role -> "#rrggbb"
+	colors      map[string]color
 	isColorless bool
 }
 
@@ -95,23 +94,22 @@ func NewTheme(name string) *Theme {
 		palette = make(map[string]string)
 	}
 	return &Theme{
-		colors:      copyMap(palette),
+		colors:      hexColors(palette),
 		isColorless: isColorlessEnv(),
 	}
 }
 
-// Color returns a 24-bit true color ANSI escape sequence for the given role.
-// Format: \x1b[38;2;R;G;mb. It returns an empty string when color is off.
+// Color returns the ANSI escape sequence of the color of the given role. It
+// returns an empty string when color is off or the role is unknown.
 func (t *Theme) Color(role string) string {
 	if t.isColorless {
 		return ""
 	}
-	hex, ok := t.colors[role]
+	roleColor, ok := t.colors[role]
 	if !ok {
 		return ""
 	}
-	r, g, b := hexToRGB(hex)
-	return fmt.Sprintf(ansiColorPrefix, r, g, b)
+	return roleColor.escape()
 }
 
 // Reset returns the ANSI reset sequence, or an empty string when color is
@@ -123,29 +121,22 @@ func (t *Theme) Reset() string {
 	return ansiReset
 }
 
-// Hex returns the raw "#rrggbb" string for the given role.
+// Hex returns the raw "#rrggbb" string for the given role, or an empty string
+// when the role is unknown or its color is not a hex color.
 func (t *Theme) Hex(role string) string {
-	return t.colors[role]
+	hex, _ := t.colors[role].(hexColor)
+	return string(hex)
 }
 
-// Colors returns a copy of the effective palette map after all merges.
+// Colors returns the "#rrggbb" string of every role with a hex color.
 func (t *Theme) Colors() map[string]string {
-	return copyMap(t.colors)
-}
-
-// copyMap returns a shallow copy of the given map.
-func copyMap(m map[string]string) map[string]string {
-	out := make(map[string]string, len(m))
-	maps.Copy(out, m)
-	return out
-}
-
-// hexToRGB parses a "#rrggbb" string and returns the red, green, and blue
-// byte values as ints.
-func hexToRGB(hex string) (int, int, int) {
-	var r, g, b int
-	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
-	return r, g, b
+	hexes := make(map[string]string, len(t.colors))
+	for role, roleColor := range t.colors {
+		if hex, ok := roleColor.(hexColor); ok {
+			hexes[role] = string(hex)
+		}
+	}
+	return hexes
 }
 
 // themeSchemaRef is the $schema reference path in theme.json.
@@ -204,14 +195,14 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
-	merged := copyMap(palette)
+	merged := hexColors(palette)
 	logger := common.NewLogger("theme")
 	for role, color := range cfg.Overrides {
 		if !validHex(color) {
 			logger.Info("invalid hex color %q for role %q, falling back to palette default", color, role)
 			continue
 		}
-		merged[role] = color
+		merged[role] = hexColor(color)
 	}
 
 	return &Theme{colors: merged, isColorless: isColorlessEnv()}, nil

@@ -1,26 +1,26 @@
 package theme
 
-import (
-	"fmt"
-	"math"
-)
+import "math"
 
 // Shade returns the ANSI escape sequence for the color of a role with its HSV
 // value shifted by valueShift. The hue and saturation of the role stay as they
 // are, and the value is clamped to 0..1. It returns an empty string when
-// color is off or the role is unknown.
+// color is off, the role is unknown or its color has no RGB.
 func (t *Theme) Shade(role string, valueShift float64) string {
 	if t.isColorless {
 		return ""
 	}
-	hex, ok := t.colors[role]
+	roleColor, ok := t.colors[role]
 	if !ok {
 		return ""
 	}
-	hue, saturation, value := rgbToHSV(hexToRGB(hex))
+	red, green, blue, hasRGB := roleColor.rgb()
+	if !hasRGB {
+		return ""
+	}
+	hue, saturation, value := rgbToHSV(red, green, blue)
 	shiftedValue := math.Max(0, math.Min(1, value+valueShift))
-	red, green, blue := hsvToRGB(hue, saturation, shiftedValue)
-	return fmt.Sprintf(ansiColorPrefix, red, green, blue)
+	return rgbEscape(hsvToRGB(hue, saturation, shiftedValue))
 }
 
 // rgbToHSV returns the hue in degrees and the saturation and value in 0..1.
