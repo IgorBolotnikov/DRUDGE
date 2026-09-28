@@ -54,9 +54,42 @@ var (
 	}
 )
 
+// systemTheme is the name of the theme made of basic ANSI colors.
+const systemTheme = "system"
+
+var systemPalette = map[string]ansiColor{
+	"primary":   ansiCyan,
+	"heading":   ansiBlue,
+	"success":   ansiGreen,
+	"error":     ansiRed,
+	"warning":   ansiYellow,
+	"info":      ansiCyan,
+	"muted":     ansiBrightBlack,
+	"secondary": ansiWhite,
+	"border":    ansiBrightBlack,
+	"path":      ansiGreen,
+}
+
 var bundledPalettes = map[string]map[string]string{
 	"nord":             nordPalette,
 	"monokai":          monokaiPalette,
 	"catppuccin-mocha": catppuccinMochaPalette,
 	"dracula":          draculaPalette,
+}
+
+// bundledColors returns a fresh copy of the colors of a bundled theme. ok is
+// false for an unknown name.
+func bundledColors(name string) (colors map[string]color, ok bool) {
+	if name == systemTheme {
+		colors = make(map[string]color, len(systemPalette))
+		for role, sgr := range systemPalette {
+			colors[role] = sgr
+		}
+		return colors, true
+	}
+	palette, ok := bundledPalettes[name]
+	if !ok {
+		return nil, false
+	}
+	return hexColors(palette), true
 }

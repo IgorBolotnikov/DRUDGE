@@ -201,6 +201,22 @@ func TestPrintTaskListColors(t *testing.T) {
 			},
 		},
 		{
+			name:      "the system theme paints each status in its SGR color",
+			env:       map[string]string{"FORCE_COLOR": "1"},
+			themeFile: `{"theme": "system"}`,
+			want: func(*theme.Theme) string {
+				paint := func(sgr, text string) string { return "\x1b[" + sgr + "m" + text + "\x1b[0m" }
+				return header +
+					"  " + paint("36", "in-progress") + "      9c8d7e6f  Dependency tracking\n" +
+					"    " + paint("32", "done") + "           2b3c4d5e    Pick the next task\n" +
+					"  " + paint("90", "draft") + "            0a1b2c3d  Write a draft\n" +
+					"  todo             1a2b3c4d  Do the thing\n" +
+					"  " + paint("31", "fucked-up") + "        3c4d5e6f  Break the build\n" +
+					"  " + paint("33", "unmerged") + "         4d5e6f7a  Wait for a merge\n" +
+					"  finished         5e6f7a8b  Edited by hand\n"
+			},
+		},
+		{
 			name: "no color prints every status plain",
 			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
 			want: func(*theme.Theme) string { return plain },

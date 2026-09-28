@@ -89,12 +89,12 @@ func ThemeSchemaRef() string {
 
 // NewTheme creates a Theme from a bundled palette name.
 func NewTheme(name string) *Theme {
-	palette, ok := bundledPalettes[name]
+	colors, ok := bundledColors(name)
 	if !ok {
-		palette = make(map[string]string)
+		colors = make(map[string]color)
 	}
 	return &Theme{
-		colors:      hexColors(palette),
+		colors:      colors,
 		isColorless: isColorlessEnv(),
 	}
 }
@@ -190,12 +190,11 @@ func Load(name string) (*Theme, error) {
 		paletteName = defaultTheme
 	}
 
-	palette, ok := bundledPalettes[paletteName]
+	merged, ok := bundledColors(paletteName)
 	if !ok {
 		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
-	merged := hexColors(palette)
 	logger := common.NewLogger("theme")
 	for role, color := range cfg.Overrides {
 		if !validHex(color) {
