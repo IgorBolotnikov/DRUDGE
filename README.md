@@ -42,7 +42,7 @@ DRUDGE runs on Linux and macOS. On Windows, use WSL.
 ### Single command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/IgorBolotnikov/DRUDGE/main/install.sh | sh
+curl -fsSL https://drgtools.dev/install.sh | sh
 ```
 
 The script puts `drg` in `~/.local/bin`, or in `/usr/local/bin` when run as root. Set `DRG_VERSION=v0.1.0` to install a specific release, or `DRG_INSTALL_DIR` to pick another directory.
