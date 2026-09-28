@@ -44,6 +44,17 @@ func colorStatus(palette *theme.Theme, status task.TaskStatus) string {
 	return palette.Color(role) + string(status) + palette.Reset()
 }
 
+// loadStatusColor returns what colors a task status in the loaded theme. A
+// theme that fails to load is logged and leaves the statuses plain.
+func loadStatusColor(log *common.Logger) func(text string) string {
+	palette, err := theme.Load("")
+	if err != nil {
+		log.Error("cannot color the task statuses: %v", err)
+		return func(text string) string { return text }
+	}
+	return func(text string) string { return colorStatus(palette, task.TaskStatus(text)) }
+}
+
 // taskListFlags holds the filters of drg task list. A flag left out filters
 // nothing.
 type taskListFlags struct {
@@ -92,8 +103,7 @@ func taskList(filter task.ListTasksFilter) error {
 }
 
 // printTaskList prints a listing, indenting the tasks listed under a parent.
-// The blockers column is as wide as its widest value. A theme that fails to
-// load is logged and leaves the statuses plain.
+// The blockers column is as wide as its widest value.
 func printTaskList(log *common.Logger, listed []task.ListedTask) {
 	if len(listed) == 0 {
 		log.Info("No tasks found")
@@ -123,16 +133,8 @@ func printTaskList(log *common.Logger, listed []task.ListedTask) {
 		})
 	}
 
-	statusColumn := column{Title: "STATUS", Width: taskStatusWidth}
-	palette, err := theme.Load("")
-	if err != nil {
-		log.Error("cannot color the task statuses: %v", err)
-	} else {
-		statusColumn.Color = func(text string) string { return colorStatus(palette, task.TaskStatus(text)) }
-	}
-
 	columns := []column{
-		statusColumn,
+		{Title: "STATUS", Width: taskStatusWidth, Color: loadStatusColor(log)},
 		{Title: "ID", Width: task.ShortIDLength},
 		{Title: "TITLE", Width: taskTitleWidth},
 		{Title: blockedByTitle, Width: blockedByWidth},

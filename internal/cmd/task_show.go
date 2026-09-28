@@ -52,9 +52,12 @@ const (
 	missingTaskLabel        = "no such task"
 )
 
-// relatedTaskLine lays out one task a task report links to, the status padded
-// to the longest status there is.
-const relatedTaskLine = "%s%s  %-11s  %s"
+// relatedTaskLine lays out one task a task report links to. The status comes
+// in already padded.
+const relatedTaskLine = "%s%s  %s  %s"
+
+// relatedStatusWidth fits the longest status there is.
+const relatedStatusWidth = 11
 
 const (
 	yesLabel = "yes"
@@ -65,16 +68,17 @@ const (
 // where it stands, what blocks it, what it belongs to, what belongs to it and
 // what its last run left behind. The description prints in full.
 func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
+	statusColor := loadStatusColor(log)
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
-		taskLine(statusLabel, string(taskToShow.Status)),
+		taskLine(statusLabel, statusColor(string(taskToShow.Status))),
 		taskLine(ticketLabel, orNone(taskToShow.TicketID)),
 		taskLine(createdLabel, formatMoment(taskToShow.CreatedAt, now)),
 		taskLine(startedLabel, formatMoment(taskToShow.StartedAt, now)),
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
 	}
-	lines = append(lines, blockerLines(blockers)...)
-	lines = append(lines, familyLines(family)...)
+	lines = append(lines, blockerLines(blockers, statusColor)...)
+	lines = append(lines, familyLines(family, statusColor)...)
 	lines = append(lines,
 		"",
 		"Description:",
@@ -96,41 +100,43 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 
 // blockerLines lists the tasks a task waits for, one line per blocker. A task
 // blocked by nothing gets no lines.
-func blockerLines(blockers []task.Blocker) []string {
+func blockerLines(blockers []task.Blocker, statusColor func(text string) string) []string {
 	if len(blockers) == 0 {
 		return nil
 	}
 
 	lines := []string{"", blockedByLabel + ":"}
 	for _, blocker := range blockers {
-		lines = append(lines, relatedLine(blocker.ID, blocker.Task))
+		lines = append(lines, relatedLine(blocker.ID, blocker.Task, statusColor))
 	}
 	return lines
 }
 
 // familyLines lists the task a task belongs to and the tasks belonging to it,
 // each under a heading of its own. A section with no task in it gets no lines.
-func familyLines(family task.Family) []string {
+func familyLines(family task.Family, statusColor func(text string) string) []string {
 	var lines []string
 	if family.ParentID != "" {
-		lines = append(lines, "", parentLabel+":", relatedLine(family.ParentID, family.Parent))
+		lines = append(lines, "", parentLabel+":", relatedLine(family.ParentID, family.Parent, statusColor))
 	}
 	if len(family.Children) > 0 {
 		lines = append(lines, "", childrenLabel+":")
 		for _, child := range family.Children {
-			lines = append(lines, relatedLine(child.ID, child))
+			lines = append(lines, relatedLine(child.ID, child, statusColor))
 		}
 	}
 	return lines
 }
 
 // relatedLine renders one task a task report links to. related is nil when id
-// names no stored task.
-func relatedLine(id task.TaskID, related *task.Task) string {
+// names no stored task. The status is padded before it is colored, so the
+// escape sequences do not count towards its width.
+func relatedLine(id task.TaskID, related *task.Task, statusColor func(text string) string) string {
 	if related == nil {
 		return listIndent + task.ShortID(id) + "  " + missingTaskLabel
 	}
-	return fmt.Sprintf(relatedTaskLine, listIndent, task.ShortID(id), related.Status, related.Title)
+	status := colorCell(fmt.Sprintf("%-*s", relatedStatusWidth, related.Status), statusColor)
+	return fmt.Sprintf(relatedTaskLine, listIndent, task.ShortID(id), status, related.Title)
 }
 
 // taskRunLines reports what the last run left on a task. A task no agent has

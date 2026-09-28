@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 func TestPrintTask(t *testing.T) {
@@ -233,6 +236,8 @@ func TestPrintTask(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
 			taskToShow := testCase.task
 			taskToShow.ID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
 			taskToShow.Title = "Fix login"
@@ -252,6 +257,116 @@ func TestPrintTask(t *testing.T) {
 			}
 			if !strings.Contains(out, "\n"+lastRunLabel+":") {
 				t.Errorf("expected %q to head its section without an indent, got:\n%s", lastRunLabel, out)
+			}
+		})
+	}
+}
+
+func TestPrintTaskColors(t *testing.T) {
+	now := time.Date(2025, 3, 4, 12, 0, 0, 0, time.UTC)
+	taskToShow := &task.Task{
+		ID:        "006684e3-dbe9-4316-8aba-8a67a8f01f8f",
+		Title:     "Fix login",
+		Status:    task.StatusFuckedUp,
+		CreatedAt: now.Add(-2 * time.Hour),
+	}
+	blockers := []task.Blocker{
+		{
+			ID:   "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f",
+			Task: &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Add the migration", Status: task.StatusUnmerged},
+		},
+		{ID: "1a2b3c4d-dbe9-4316-8aba-8a67a8f01f8f"},
+	}
+	family := task.Family{
+		ParentID: "0a1b2c3d-dbe9-4316-8aba-8a67a8f01f8f",
+		Parent:   &task.Task{ID: "0a1b2c3d-dbe9-4316-8aba-8a67a8f01f8f", Title: "Dependency tracking", Status: task.StatusInProgress},
+		Children: []*task.Task{
+			{ID: "2b3c4d5e-dbe9-4316-8aba-8a67a8f01f8f", Title: "Pick the next task", Status: task.StatusDone},
+			{ID: "3c4d5e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Write a draft", Status: task.StatusDraft},
+			{ID: "4d5e6f7a-dbe9-4316-8aba-8a67a8f01f8f", Title: "Do the thing", Status: task.StatusTodo},
+		},
+	}
+	plain := []string{
+		"  Status:      fucked-up\n",
+		"\n" + blockedByLabel + ":\n" +
+			"  9c8d7e6f  unmerged     Add the migration\n" +
+			"  1a2b3c4d  " + missingTaskLabel + "\n",
+		"\n" + parentLabel + ":\n" +
+			"  0a1b2c3d  in-progress  Dependency tracking\n",
+		"\n" + childrenLabel + ":\n" +
+			"  2b3c4d5e  done         Pick the next task\n" +
+			"  3c4d5e6f  draft        Write a draft\n" +
+			"  4d5e6f7a  todo         Do the thing\n",
+	}
+
+	cases := []struct {
+		name          string
+		env           map[string]string
+		themeFile     string
+		want          func(palette *theme.Theme) []string
+		wantErrorText string
+	}{
+		{
+			name: "forced color paints each status in its role",
+			env:  map[string]string{"FORCE_COLOR": "1"},
+			want: func(palette *theme.Theme) []string {
+				paint := func(role, text string) string { return palette.Color(role) + text + palette.Reset() }
+				return []string{
+					"  Status:      " + paint(theme.RoleError, "fucked-up") + "\n",
+					"\n" + blockedByLabel + ":\n" +
+						"  9c8d7e6f  " + paint(theme.RoleWarning, "unmerged") + "     Add the migration\n" +
+						"  1a2b3c4d  " + missingTaskLabel + "\n",
+					"\n" + parentLabel + ":\n" +
+						"  0a1b2c3d  " + paint(theme.RoleInfo, "in-progress") + "  Dependency tracking\n",
+					"\n" + childrenLabel + ":\n" +
+						"  2b3c4d5e  " + paint(theme.RoleSuccess, "done") + "         Pick the next task\n" +
+						"  3c4d5e6f  " + paint(theme.RoleMuted, "draft") + "        Write a draft\n" +
+						"  4d5e6f7a  todo         Do the thing\n",
+				}
+			},
+		},
+		{
+			name: "no color prints every status plain",
+			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
+			want: func(*theme.Theme) []string { return plain },
+		},
+		{
+			name:          "a theme that fails to load prints every status plain",
+			env:           map[string]string{"FORCE_COLOR": "1"},
+			themeFile:     `{"theme": "no-such-theme"}`,
+			want:          func(*theme.Theme) []string { return plain },
+			wantErrorText: "no-such-theme",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("NO_COLOR", "")
+			for name, value := range testCase.env {
+				t.Setenv(name, value)
+			}
+			if testCase.themeFile != "" {
+				if err := os.WriteFile(filepath.Join(home, common.ThemeConfigName), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			log := common.NewLogger("")
+
+			var out string
+			errOut := captureStderr(func() { out = captureOutput(func() { printTask(log, taskToShow, blockers, family, now) }) })
+
+			for _, want := range testCase.want(theme.NewTheme(theme.DefaultTheme())) {
+				if !strings.Contains(out, want) {
+					t.Errorf("expected the report to hold:\n%q\ngot:\n%q", want, out)
+				}
+			}
+			if testCase.wantErrorText == "" && errOut != "" {
+				t.Errorf("expected nothing on stderr, got %q", errOut)
+			}
+			if testCase.wantErrorText != "" && strings.Count(errOut, testCase.wantErrorText) != 1 {
+				t.Errorf("expected one error naming %q on stderr, got %q", testCase.wantErrorText, errOut)
 			}
 		})
 	}
