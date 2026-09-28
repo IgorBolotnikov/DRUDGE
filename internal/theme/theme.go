@@ -75,7 +75,7 @@ const ansiReset = "\x1b[0m"
 const ansiColorPrefix = "\x1b[38;2;%d;%d;%dm"
 
 // defaultTheme is the fallback theme when none is configured.
-const defaultTheme = "nord"
+const defaultTheme = systemTheme
 
 // DefaultTheme returns the name of the fallback theme.
 func DefaultTheme() string {

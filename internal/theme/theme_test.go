@@ -50,7 +50,7 @@ func TestColorShadeAndReset_FollowColorEnv(t *testing.T) {
 			for _, name := range []string{noColorEnv, forceColorEnv, cliColorForceEnv, cliColorEnv, termEnv} {
 				t.Setenv(name, testCase.env[name])
 			}
-			t.Setenv("HOME", t.TempDir())
+			setupTempHome(t, `{"theme": "nord"}`)
 			themes := map[string]*Theme{"NewTheme": NewTheme("nord"), "Load": MustLoad()}
 
 			want := map[string]string{"Color": "", "Shade": "", "Reset": ""}
@@ -124,38 +124,45 @@ func TestNewTheme_UnknownName(t *testing.T) {
 	}
 }
 
-func TestLoad_DefaultNord(t *testing.T) {
-	home := setupTempHome(t, "")
-
-	th, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+func TestLoad_DefaultSystem(t *testing.T) {
+	cases := []struct {
+		name      string
+		themeFile string
+	}{
+		{name: "no theme file", themeFile: ""},
+		{name: "empty theme file", themeFile: "{}"},
 	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv(noColorEnv, "")
+			t.Setenv(forceColorEnv, "1")
+			setupTempHome(t, testCase.themeFile)
 
-	for _, role := range allRoles() {
-		if th.Hex(role) != nordPalette[role] {
-			t.Errorf("Load() %q = %q, want %q", role, th.Hex(role), nordPalette[role])
-		}
-	}
+			theme, err := Load("")
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
 
-	_, err = os.Stat(home + "/.drudge/theme.json")
-	if !os.IsNotExist(err) {
-		t.Error("theme.json should not be created")
+			system := NewTheme(systemTheme)
+			for _, role := range allRoles() {
+				if got, want := theme.Color(role), system.Color(role); got != want {
+					t.Errorf("Color(%q) = %q, want %q", role, got, want)
+				}
+			}
+		})
 	}
 }
 
-func TestLoad_EmptyConfig(t *testing.T) {
-	setupTempHome(t, "{}")
+func TestLoad_DefaultCreatesNoThemeFile(t *testing.T) {
+	home := setupTempHome(t, "")
 
-	th, err := Load("")
-	if err != nil {
+	if _, err := Load(""); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	for _, role := range allRoles() {
-		if th.Hex(role) != nordPalette[role] {
-			t.Errorf("Load() with empty config %q = %q, want %q", role, th.Hex(role), nordPalette[role])
-		}
+	_, err := os.Stat(common.ThemeConfigPath(home))
+	if !os.IsNotExist(err) {
+		t.Error("theme.json should not be created")
 	}
 }
 

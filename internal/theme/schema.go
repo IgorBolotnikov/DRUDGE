@@ -15,7 +15,7 @@ const schemaJSON = `{
       "description": "The color theme to use.",
       "type": "string",
       "enum": ["nord", "monokai", "catppuccin-mocha", "dracula", "system"],
-      "default": "nord"
+      "default": "system"
     },
     "overrides": {
       "description": "Optional per-role color overrides. Each value must be a 24-bit hex color in \"#rrggbb\" format. Unknown roles are silently ignored.",
