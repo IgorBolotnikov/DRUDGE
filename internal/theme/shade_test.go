@@ -21,6 +21,7 @@ func TestShade(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv(noColorEnv, testCase.noColor)
+			t.Setenv(forceColorEnv, "1")
 			theme := NewTheme("nord")
 
 			if got := theme.Shade(testCase.role, testCase.valueShift); got != testCase.want {

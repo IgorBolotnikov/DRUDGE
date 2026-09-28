@@ -31,12 +31,42 @@ type Theme struct {
 	isColorless bool
 }
 
-// noColorEnv turns off every escape sequence when set to a non-empty value.
-// See https://no-color.org.
-const noColorEnv = "NO_COLOR"
+// Environment variables that decide whether color is on. See
+// https://no-color.org and https://bixense.com/clicolors.
+const (
+	noColorEnv       = "NO_COLOR"
+	forceColorEnv    = "FORCE_COLOR"
+	cliColorForceEnv = "CLICOLOR_FORCE"
+	cliColorEnv      = "CLICOLOR"
+	termEnv          = "TERM"
+)
 
+// Values of the color environment variables that turn color off.
+const (
+	colorOffValue = "0"
+	dumbTerm      = "dumb"
+)
+
+// isColorlessEnv decides whether color is off. The order of the cases is the
+// precedence of the rules, and the first case that matches wins.
 func isColorlessEnv() bool {
-	return os.Getenv(noColorEnv) != ""
+	switch {
+	case os.Getenv(noColorEnv) != "":
+		return true
+	case isForcedEnv(forceColorEnv) || isForcedEnv(cliColorForceEnv):
+		return false
+	case os.Getenv(cliColorEnv) == colorOffValue:
+		return true
+	case os.Getenv(termEnv) == dumbTerm:
+		return true
+	default:
+		return !common.IsTerminal(os.Stdout)
+	}
+}
+
+func isForcedEnv(name string) bool {
+	value := os.Getenv(name)
+	return value != "" && value != colorOffValue
 }
 
 // ansiReset is the ANSI reset sequence.
@@ -71,7 +101,7 @@ func NewTheme(name string) *Theme {
 }
 
 // Color returns a 24-bit true color ANSI escape sequence for the given role.
-// Format: \x1b[38;2;R;G;mb. It returns an empty string when NO_COLOR is set.
+// Format: \x1b[38;2;R;G;mb. It returns an empty string when color is off.
 func (t *Theme) Color(role string) string {
 	if t.isColorless {
 		return ""
@@ -84,8 +114,8 @@ func (t *Theme) Color(role string) string {
 	return fmt.Sprintf(ansiColorPrefix, r, g, b)
 }
 
-// Reset returns the ANSI reset sequence, or an empty string when NO_COLOR is
-// set.
+// Reset returns the ANSI reset sequence, or an empty string when color is
+// off.
 func (t *Theme) Reset() string {
 	if t.isColorless {
 		return ""

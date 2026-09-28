@@ -10,6 +10,7 @@
 - [Install](#install)
   - [Single command install](#single-command-install)
   - [Go install](#go-install)
+- [Colors](#colors)
 - [Future improvements](#future-improvements)
 
 <!--toc:end-->
@@ -62,6 +63,16 @@ drg update
 ```
 
 It replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
+
+## Colors
+
+DRUDGE checks these rules in order. The first rule that matches wins.
+
+1. `NO_COLOR` set to a non-empty value turns color off.
+2. `FORCE_COLOR` or `CLICOLOR_FORCE` set to a non-empty value other than `0` turns color on, even when stdout is not a terminal.
+3. `CLICOLOR=0` turns color off.
+4. `TERM=dumb` turns color off.
+5. Otherwise color is on when stdout is a terminal and off when it is not.
 
 ## Future improvements
 

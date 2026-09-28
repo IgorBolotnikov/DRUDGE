@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
@@ -32,7 +33,7 @@ const (
 
 // printProjectName prints the logo when stdout is a terminal.
 func printProjectName() {
-	if !isTerminal(os.Stdout) {
+	if !common.IsTerminal(os.Stdout) {
 		return
 	}
 	th := theme.MustLoad()
@@ -58,9 +59,4 @@ func printProjectName() {
 		fmt.Println(builder.String() + th.Reset())
 	}
 	fmt.Println("")
-}
-
-func isTerminal(file *os.File) bool {
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

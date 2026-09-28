@@ -8,7 +8,7 @@ import (
 // Shade returns the ANSI escape sequence for the color of a role with its HSV
 // value shifted by valueShift. The hue and saturation of the role stay as they
 // are, and the value is clamped to 0..1. It returns an empty string when
-// NO_COLOR is set or the role is unknown.
+// color is off or the role is unknown.
 func (t *Theme) Shade(role string, valueShift float64) string {
 	if t.isColorless {
 		return ""

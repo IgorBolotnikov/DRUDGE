@@ -20,29 +20,52 @@ func TestBundledThemesHaveAllRoles(t *testing.T) {
 	}
 }
 
-func TestColorAndReset_FollowNoColor(t *testing.T) {
+func TestColorShadeAndReset_FollowColorEnv(t *testing.T) {
+	const wantColor = "\x1b[38;2;191;97;106m"
 	cases := []struct {
 		name      string
-		noColor   string
-		wantColor string
-		wantReset string
+		env       map[string]string
+		isColorOn bool
 	}{
-		{name: "NO_COLOR unset", noColor: "", wantColor: "\x1b[38;2;191;97;106m", wantReset: "\x1b[0m"},
-		{name: "NO_COLOR set", noColor: "1", wantColor: "", wantReset: ""},
+		{name: "stdout is not a terminal", env: map[string]string{}, isColorOn: false},
+		{name: "NO_COLOR set", env: map[string]string{noColorEnv: "1"}, isColorOn: false},
+		{name: "FORCE_COLOR set", env: map[string]string{forceColorEnv: "1"}, isColorOn: true},
+		{name: "CLICOLOR_FORCE set", env: map[string]string{cliColorForceEnv: "1"}, isColorOn: true},
+		{name: "FORCE_COLOR=0 does not force", env: map[string]string{forceColorEnv: "0"}, isColorOn: false},
+		{name: "CLICOLOR_FORCE=0 does not force", env: map[string]string{cliColorForceEnv: "0"}, isColorOn: false},
+		{name: "CLICOLOR=0", env: map[string]string{cliColorEnv: "0"}, isColorOn: false},
+		{name: "TERM=dumb", env: map[string]string{termEnv: "dumb"}, isColorOn: false},
+		{name: "NO_COLOR wins over FORCE_COLOR", env: map[string]string{noColorEnv: "1", forceColorEnv: "1"}, isColorOn: false},
+		{name: "NO_COLOR wins over CLICOLOR_FORCE", env: map[string]string{noColorEnv: "1", cliColorForceEnv: "1"}, isColorOn: false},
+		{name: "FORCE_COLOR wins over CLICOLOR=0", env: map[string]string{forceColorEnv: "1", cliColorEnv: "0"}, isColorOn: true},
+		{name: "CLICOLOR_FORCE wins over CLICOLOR=0", env: map[string]string{cliColorForceEnv: "1", cliColorEnv: "0"}, isColorOn: true},
+		{name: "FORCE_COLOR wins over TERM=dumb", env: map[string]string{forceColorEnv: "1", termEnv: "dumb"}, isColorOn: true},
+		{name: "CLICOLOR_FORCE wins over TERM=dumb", env: map[string]string{cliColorForceEnv: "1", termEnv: "dumb"}, isColorOn: true},
+		{name: "FORCE_COLOR=0 does not win over CLICOLOR_FORCE", env: map[string]string{forceColorEnv: "0", cliColorForceEnv: "1"}, isColorOn: true},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			t.Setenv(noColorEnv, testCase.noColor)
+			for _, name := range []string{noColorEnv, forceColorEnv, cliColorForceEnv, cliColorEnv, termEnv} {
+				t.Setenv(name, testCase.env[name])
+			}
 			t.Setenv("HOME", t.TempDir())
 			themes := map[string]*Theme{"NewTheme": NewTheme("nord"), "Load": MustLoad()}
 
+			want := map[string]string{"Color": "", "Shade": "", "Reset": ""}
+			if testCase.isColorOn {
+				want = map[string]string{"Color": wantColor, "Shade": wantColor, "Reset": ansiReset}
+			}
 			for constructor, theme := range themes {
-				if got := theme.Color(RoleError); got != testCase.wantColor {
-					t.Errorf("%s: Color() = %q, want %q", constructor, got, testCase.wantColor)
+				got := map[string]string{
+					"Color": theme.Color(RoleError),
+					"Shade": theme.Shade(RoleError, 0),
+					"Reset": theme.Reset(),
 				}
-				if got := theme.Reset(); got != testCase.wantReset {
-					t.Errorf("%s: Reset() = %q, want %q", constructor, got, testCase.wantReset)
+				for method, wantValue := range want {
+					if got[method] != wantValue {
+						t.Errorf("%s: %s() = %q, want %q", constructor, method, got[method], wantValue)
+					}
 				}
 			}
 		})
