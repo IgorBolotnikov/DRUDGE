@@ -13,10 +13,11 @@ import (
 )
 
 type commandDeps struct {
-	localCfg *config.LocalConfig
-	log      *common.Logger
-	tasks    *task.TaskService
-	drudger  *drudger.DrudgerService
+	localCfg  *config.LocalConfig
+	globalCfg *config.GlobalConfig
+	log       *common.Logger
+	tasks     *task.TaskService
+	drudger   *drudger.DrudgerService
 }
 
 func newCommandDeps() (*commandDeps, error) {
@@ -37,10 +38,11 @@ func newCommandDeps() (*commandDeps, error) {
 	cmdRunner := exec.NewCommandRunner()
 
 	return &commandDeps{
-		localCfg: localCfg,
-		log:      log,
-		tasks:    tasks,
-		drudger:  drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner, newGitOperations(globalCfg)),
+		localCfg:  localCfg,
+		globalCfg: globalCfg,
+		log:       log,
+		tasks:     tasks,
+		drudger:   drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner, newGitOperations(globalCfg)),
 	}, nil
 }
 

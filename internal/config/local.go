@@ -12,13 +12,19 @@ import (
 // LocalConfig scoped per project and contains overrides of global config
 type LocalConfig struct {
 	// Schema is empty for a project initialized before the local config had a schema.
-	Schema                string     `json:"$schema,omitempty"`
-	ProjectSlug           string     `json:"projectSlug"`
-	PromptFile            string     `json:"promptFile,omitempty"`
-	MaxConcurrentDrudgers int        `json:"maxConcurrentDrudgers,omitempty"`
-	Task                  TaskConfig `json:"task,omitzero"`
+	Schema                string             `json:"$schema,omitempty"`
+	ProjectSlug           string             `json:"projectSlug"`
+	PromptFile            string             `json:"promptFile,omitempty"`
+	MaxConcurrentDrudgers int                `json:"maxConcurrentDrudgers,omitempty"`
+	Task                  TaskConfig         `json:"task,omitzero"`
+	Drudger               LocalDrudgerConfig `json:"drudger,omitzero"`
 	// Repositories is empty for a project initialized before drudge knew about repositories.
 	Repositories []Repository `json:"repositories,omitempty"`
+}
+
+// LocalDrudgerConfig holds the Drudger settings a local config overrides.
+type LocalDrudgerConfig struct {
+	PageSize *int `json:"pageSize,omitempty"` // Drudgers on one page of a listing, nil means unset and zero means every Drudger on one page
 }
 
 // Repository is one git repository of a project. `drg project init` writes the
@@ -75,6 +81,9 @@ func LoadLocal() (*LocalConfig, error) {
 		return nil, err
 	}
 	if err := validatePageSize(cfg.Task.PageSize, TaskPageSizeKey, "task", path); err != nil {
+		return nil, err
+	}
+	if err := validatePageSize(cfg.Drudger.PageSize, DrudgerPageSizeKey, "Drudger", path); err != nil {
 		return nil, err
 	}
 
@@ -168,4 +177,17 @@ func ResolveTaskPageSize(local *LocalConfig, global *GlobalConfig) int {
 		return *global.Task.PageSize
 	}
 	return defaultTaskPageSize
+}
+
+// ResolveDrudgerPageSize returns how many Drudgers one page of a listing
+// holds, preferring the local config over the global one and falling back to
+// the default page size. A local size of 0 wins over a global size.
+func ResolveDrudgerPageSize(local *LocalConfig, global *GlobalConfig) int {
+	if local.Drudger.PageSize != nil {
+		return *local.Drudger.PageSize
+	}
+	if global.Drudger.PageSize != nil {
+		return *global.Drudger.PageSize
+	}
+	return defaultDrudgerPageSize
 }

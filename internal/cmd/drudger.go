@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -17,10 +18,14 @@ var DrudgerCmd = &Cmd{
 	Desc: "Drudger management commands",
 	Subcommands: []*Cmd{
 		{
-			Name:  "list",
-			Desc:  "List the Drudgers of the project",
-			Help:  "List the Drudgers of the current project and what each one is doing.",
-			Setup: func(*flag.FlagSet) func(args []string) error { return drudgerList },
+			Name: "list",
+			Desc: "List the Drudgers of the project",
+			Help: "List the Drudgers of the current project and what each one is doing, one page at a time.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				var flags pageFlags
+				flags.declare(fs, config.DrudgerPageSizeKey+" from the project config or the global config")
+				return func([]string) error { return drudgerList(flags) }
+			},
 		},
 		{
 			Name: "nuke",
@@ -83,25 +88,29 @@ const (
 	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
-func drudgerList([]string) error {
+func drudgerList(page pageFlags) error {
 	deps, err := newCommandDeps()
 	if err != nil {
 		return err
 	}
-
-	drudgers, err := deps.drudger.ListDrudgers(deps.localCfg.ProjectSlug)
+	size, err := page.pageSize(config.ResolveDrudgerPageSize(deps.localCfg, deps.globalCfg))
 	if err != nil {
 		return err
 	}
 
-	printDrudgers(deps.log, deps.localCfg.ProjectSlug, drudgers, time.Now().UTC())
+	listed, err := deps.drudger.ListDrudgers(deps.localCfg.ProjectSlug, page.number, size)
+	if err != nil {
+		return err
+	}
+
+	printDrudgers(deps.log, deps.localCfg.ProjectSlug, listed, time.Now().UTC())
 	return nil
 }
 
-// printDrudgers lists the Drudgers of a project in the order given, one row
-// each.
-func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.Drudger, now time.Time) {
-	if len(drudgers) == 0 {
+// printDrudgers prints a page of the Drudgers of a project in the order given,
+// one row each, and its footer.
+func printDrudgers(log *common.Logger, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
+	if listed.TotalItems == 0 {
 		log.Info("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
 		return
 	}
@@ -113,8 +122,8 @@ func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.D
 		{Title: "HEALTH", Width: healthColumnWidth},
 		{Title: "LAST CHECKED"},
 	}
-	rows := make([][]string, 0, len(drudgers))
-	for _, entry := range drudgers {
+	rows := make([][]string, 0, len(listed.Items))
+	for _, entry := range listed.Items {
 		rows = append(rows, []string{
 			strconv.Itoa(entry.Slot),
 			entry.Sandbox,
@@ -124,7 +133,8 @@ func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.D
 		})
 	}
 
-	printList(log, "Drudgers", len(rows), columns, rows)
+	printList(log, "Drudgers", listed.TotalItems, columns, rows)
+	printPageFooter(log, listed.Number, listed.TotalPages)
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.

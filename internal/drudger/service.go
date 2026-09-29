@@ -79,22 +79,30 @@ func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.
 	}
 }
 
-// ListDrudgers returns all Drudgers which currently exist in a Project.
-func (service *DrudgerService) ListDrudgers(projectSlug string) ([]*Drudger, error) {
+// ListDrudgers returns the page numbered page of the Drudgers of a project in
+// slot order, with size Drudgers on every page. A size of 0 puts every Drudger
+// on page 1. It refuses a page below 1 and a page past the last one.
+func (service *DrudgerService) ListDrudgers(projectSlug string, page int, size int) (common.Page[*Drudger], error) {
 	layout, err := service.layout()
 	if err != nil {
-		return nil, err
+		return common.Page[*Drudger]{}, err
 	}
 
 	drudgers, err := service.reclaimForListing(projectSlug, layout)
 	if err != nil {
-		return nil, fmt.Errorf("could not list the Drudgers of project %s: %w", projectSlug, err)
+		return common.Page[*Drudger]{}, fmt.Errorf("could not list the Drudgers of project %s: %w", projectSlug, err)
 	}
 
 	slices.SortFunc(drudgers, func(first, second *Drudger) int {
 		return cmp.Compare(first.Slot, second.Slot)
 	})
-	return drudgers, nil
+
+	listed, err := common.Paginate(drudgers, page, size)
+	var notFound *common.PageNotFoundError
+	if errors.As(err, &notFound) {
+		notFound.Noun = "Drudgers"
+	}
+	return listed, err
 }
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and

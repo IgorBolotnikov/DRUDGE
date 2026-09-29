@@ -30,6 +30,7 @@ const (
 	defaultMaxConcurrentDrudgers = 3
 	defaultProjectPageSize       = 20
 	defaultTaskPageSize          = 20
+	defaultDrudgerPageSize       = 20
 )
 
 // How long a sandbox command may run before DRUDGE kills it, in seconds.
@@ -76,6 +77,8 @@ const (
 	ProjectPageSizeKey = "project.pageSize"
 	// TaskPageSizeKey is exported so the task commands can name it in their help.
 	TaskPageSizeKey = "task.pageSize"
+	// DrudgerPageSizeKey is exported so the drudger commands can name it in their help.
+	DrudgerPageSizeKey = "drudger.pageSize"
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -114,6 +117,7 @@ type DrudgerConfig struct {
 	MaxConcurrentDrudgers int             `json:"maxConcurrentDrudgers,omitempty"` // Drudgers allowed on one project at once, zero means unset
 	SandboxTimeouts       SandboxTimeouts `json:"sandboxTimeouts"`
 	GitTimeouts           GitTimeouts     `json:"gitTimeouts"`
+	PageSize              *int            `json:"pageSize,omitempty"` // Drudgers on one page of a listing, nil means unset and zero means every Drudger on one page
 }
 
 // SandboxTimeouts caps how long DRUDGE waits for each sandbox command it runs.
@@ -204,6 +208,9 @@ func Load() (*GlobalConfig, error) {
 		return nil, err
 	}
 	if err := validatePageSize(cfg.Task.PageSize, TaskPageSizeKey, "task", cfgPath); err != nil {
+		return nil, err
+	}
+	if err := validatePageSize(cfg.Drudger.PageSize, DrudgerPageSizeKey, "Drudger", cfgPath); err != nil {
 		return nil, err
 	}
 

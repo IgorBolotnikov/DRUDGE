@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 )
 
@@ -168,7 +172,7 @@ func TestPrintDrudgers(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			log := common.NewLogger("")
-			output := captureOutput(func() { printDrudgers(log, testProjectSlug, testCase.pool, time.Now().UTC()) })
+			output := captureOutput(func() { printDrudgers(log, testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC()) })
 
 			rest := output
 			for _, want := range testCase.wantLines {
@@ -187,11 +191,122 @@ func TestPrintDrudgers(t *testing.T) {
 	}
 }
 
+func drudgersOnOnePage(pool []*drudger.Drudger) common.Page[*drudger.Drudger] {
+	return common.Page[*drudger.Drudger]{Items: pool, Number: 1, TotalPages: 1, TotalItems: len(pool)}
+}
+
+func TestDrudgerList(t *testing.T) {
+	header := fmt.Sprintf("  SLOT  %-40s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", healthColumnWidth, "HEALTH") +
+		fmt.Sprintf("  ----  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", healthColumnWidth))
+	row := func(slot int) string {
+		return fmt.Sprintf("  %-4d  %-40s  %-8s  %-*s  never\n", slot, testSandboxName(slot), idleLabel, healthColumnWidth, healthUncheckedLabel)
+	}
+
+	cases := []struct {
+		name  string
+		slots []int
+		args  []string
+		// localDrudger is the drudger section of the local config when set.
+		localDrudger string
+		want         string
+		wantErr      string
+	}{
+		{
+			name:  "the first of two pages hints at the next one",
+			slots: []int{3, 1, 2},
+			args:  []string{"--page-size", "2"},
+			want:  "Drudgers (3):\n" + header + row(1) + row(2) + "Page 1 of 2, see the next one with --page 2\n",
+		},
+		{
+			name:  "the last of two pages prints a footer without a hint",
+			slots: []int{3, 1, 2},
+			args:  []string{"-p", "2", "--page-size", "2"},
+			want:  "Drudgers (3):\n" + header + row(3) + "Page 2 of 2\n",
+		},
+		{
+			name:         "the local config sets the page size",
+			slots:        []int{1, 2},
+			args:         []string{"--page", "2"},
+			localDrudger: `{"pageSize": 1}`,
+			want:         "Drudgers (2):\n" + header + row(2) + "Page 2 of 2\n",
+		},
+		{
+			name:         "a page size of 0 on the command line turns paging off",
+			slots:        []int{1, 2},
+			args:         []string{"--page-size", "0"},
+			localDrudger: `{"pageSize": 1}`,
+			want:         "Drudgers (2):\n" + header + row(1) + row(2),
+		},
+		{
+			name: "no Drudgers",
+			want: "Project " + testProjectSlug + " has no Drudgers, the first one is built when you run a task\n",
+		},
+		{
+			name:    "a page past the last one",
+			slots:   []int{1, 2, 3},
+			args:    []string{"--page", "3", "--page-size", "2"},
+			wantErr: "page 3 does not exist, there are 2 pages of Drudgers",
+		},
+		{
+			name:    "a negative page size",
+			args:    []string{"--page-size", "-1"},
+			wantErr: "--page-size must be 0 or more, got -1",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			t.Chdir(t.TempDir())
+			localConfig := &config.LocalConfig{ProjectSlug: testProjectSlug}
+			if testCase.localDrudger != "" {
+				if err := json.Unmarshal([]byte(testCase.localDrudger), &localConfig.Drudger); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := localConfig.Save(); err != nil {
+				t.Fatal(err)
+			}
+			pool := make([]*drudger.Drudger, 0, len(testCase.slots))
+			for _, slot := range testCase.slots {
+				pool = append(pool, &drudger.Drudger{Slot: slot, Sandbox: testSandboxName(slot)})
+			}
+			err := persistence.NewFileDrudgerRepository("").UpdateDrudgers(testProjectSlug, func([]*drudger.Drudger) ([]*drudger.Drudger, error) {
+				return pool, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			args := append([]string{DrudgerCmd.Name, "list"}, testCase.args...)
+			output := captureOutput(func() { err = NewRoot("v1.2.3").Execute(args) })
+
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if output != testCase.want {
+				t.Errorf("expected:\n%q\ngot:\n%q", testCase.want, output)
+			}
+		})
+	}
+}
+
+func testSandboxName(slot int) string {
+	return fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, slot)
+}
+
 func TestDrudgerList_NoProjectInDirectory(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 
-	err := drudgerList(nil)
+	err := drudgerList(pageFlags{number: 1})
 	if err == nil {
 		t.Fatal("expected an error in a directory linked to no project")
 	}

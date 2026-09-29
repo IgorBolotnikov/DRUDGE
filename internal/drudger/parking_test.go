@@ -195,7 +195,7 @@ func TestDrudgerService_ListDrudgers_RunsNoGitCommands(t *testing.T) {
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
-	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug) })
+	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug, 1, 0) })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -37,6 +37,12 @@ const schemaJSON = `{
           "minimum": 1,
           "default": 3
         },
+        "pageSize": {
+          "description": "How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        },
         "sandboxTimeouts": {
           "description": "How long DRUDGE waits for a sandbox command before it kills it. A command that needs longer than its timeout is killed and reported.",
           "type": "object",
@@ -168,6 +174,19 @@ const localSchemaJSON = `{
         },
         "pageSize": {
           "description": "How many tasks drg task list shows on one page. 0 shows every task on one page.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        }
+      },
+      "additionalProperties": false
+    },
+    "drudger": {
+      "description": "Settings for the Drudgers. Each one overrides the global config.",
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "description": "How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page.",
           "type": "integer",
           "minimum": 0,
           "default": 20

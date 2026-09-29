@@ -2288,9 +2288,9 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
 			service.drudgers.isLockHeld = testCase.isLockHeld
 
-			var listed []*Drudger
+			var listed common.Page[*Drudger]
 			var err error
-			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug) })
+			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug, 1, 0) })
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -2301,10 +2301,10 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 				t.Errorf("expected a list to run no commands, got %v", commands.subcommands())
 			}
 
-			if len(listed) != 2 {
-				t.Fatalf("expected both Drudgers to be listed, got %v", listed)
+			if len(listed.Items) != 2 {
+				t.Fatalf("expected both Drudgers to be listed, got %v", listed.Items)
 			}
-			reported := listed[0]
+			reported := listed.Items[0]
 			if reported.Slot != 1 {
 				t.Fatalf("expected the lowest slot first, got slot %d", reported.Slot)
 			}
@@ -2583,13 +2583,61 @@ func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T)
 	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
 
 	var err error
-	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug) })
+	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug, 1, 0) })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if service.drudgers.updates != 0 {
 		t.Errorf("expected a list of idle Drudgers to write nothing, got %d writes", service.drudgers.updates)
+	}
+}
+
+func TestDrudgerService_ListDrudgers_Pages(t *testing.T) {
+	cases := []struct {
+		name      string
+		page      int
+		size      int
+		wantSlots []int
+		// wantErr is the whole refusal. A case without it expects a page.
+		wantErr string
+	}{
+		{name: "the first page in slot order", page: 1, size: 2, wantSlots: []int{1, 2}},
+		{name: "the last page holds what is left", page: 2, size: 2, wantSlots: []int{3}},
+		{name: "a size of 0 puts every Drudger on one page", page: 1, size: 0, wantSlots: []int{1, 2, 3}},
+		{name: "a page past the last one names the Drudgers", page: 3, size: 2, wantErr: "page 3 does not exist, there are 2 pages of Drudgers"},
+		{name: "a page below 1", page: 0, size: 2, wantErr: "page must be 1 or more, got 0"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			pool := []*Drudger{idleDrudger(3), idleDrudger(1), idleDrudger(2)}
+			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+
+			var listed common.Page[*Drudger]
+			var err error
+			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug, testCase.page, testCase.size) })
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			slots := make([]int, 0, len(listed.Items))
+			for _, entry := range listed.Items {
+				slots = append(slots, entry.Slot)
+			}
+			if !slices.Equal(slots, testCase.wantSlots) {
+				t.Errorf("slots = %v, want %v", slots, testCase.wantSlots)
+			}
+			if listed.TotalItems != len(pool) {
+				t.Errorf("TotalItems = %d, want %d", listed.TotalItems, len(pool))
+			}
+		})
 	}
 }
 

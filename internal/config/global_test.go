@@ -630,3 +630,55 @@ func TestLoad_TaskPageSize(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_DrudgerPageSize(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		// want is the loaded page size, nil for one left unset.
+		want *int
+		// wantErrText lists fragments the error must carry. A test with none expects no error.
+		wantErrText []string
+	}{
+		{name: "absent", raw: `{}`},
+		{name: "zero", raw: `{"drudger": {"pageSize": 0}}`, want: new(0)},
+		{name: "a positive size", raw: `{"drudger": {"pageSize": 50}}`, want: new(50)},
+		{
+			name:        "a negative size",
+			raw:         `{"drudger": {"pageSize": -1}}`,
+			wantErrText: []string{DrudgerPageSizeKey, "-1"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatalf("could not create drudge dir: %v", err)
+			}
+			if err := os.WriteFile(common.GlobalConfigPath(home), []byte(test.raw), common.DefaultFilePerm); err != nil {
+				t.Fatalf("could not write config: %v", err)
+			}
+
+			cfg, err := Load()
+			if len(test.wantErrText) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, fragment := range append(test.wantErrText, common.GlobalConfigPath(home)) {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got := cfg.Drudger.PageSize
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Errorf("Drudger.PageSize = %s, want %s", formatOptionalInt(got), formatOptionalInt(test.want))
+			}
+		})
+	}
+}
