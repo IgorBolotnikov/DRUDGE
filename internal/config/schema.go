@@ -99,6 +99,12 @@ const schemaJSON = `{
           "type": "string",
           "enum": ["draft", "todo"],
           "default": "draft"
+        },
+        "pageSize": {
+          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page. --page-size overrides it.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
         }
       },
       "additionalProperties": false
@@ -159,6 +165,12 @@ const localSchemaJSON = `{
           "type": "string",
           "enum": ["draft", "todo"],
           "default": "draft"
+        },
+        "pageSize": {
+          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page. --page-size overrides it.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
         }
       },
       "additionalProperties": false

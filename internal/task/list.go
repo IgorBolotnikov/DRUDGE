@@ -1,8 +1,11 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // ListTasksFilter narrows a listing. A nil field filters nothing, so a field
@@ -28,10 +31,29 @@ type ListedTask struct {
 	Holding []TaskID
 }
 
-// ListTasks returns the tasks of a project that pass filter, newest first. An
-// unfiltered listing puts the children of a task right after it. A filtered
-// listing is flat. It refuses a parent id that names no task or several.
-func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter) ([]ListedTask, error) {
+// ListTasks returns the page numbered page of the tasks of a project that
+// pass filter, newest first, with size rows on every page. A size of 0 puts
+// every row on page 1. An unfiltered listing puts the children of a task right
+// after it. A filtered listing is flat. Pages are cut by row, so a page may
+// start with children whose parent sits on the page before. It refuses a
+// parent id that names no task or several, a page below 1 and a page past the
+// last one.
+func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter, page int, size int) (common.Page[ListedTask], error) {
+	rows, err := service.listRows(projectSlug, filter)
+	if err != nil {
+		return common.Page[ListedTask]{}, err
+	}
+
+	listed, err := common.Paginate(rows, page, size)
+	var notFound *common.PageNotFoundError
+	if errors.As(err, &notFound) {
+		notFound.Noun = "tasks"
+	}
+	return listed, err
+}
+
+// listRows returns every row of the listing ListTasks pages.
+func (service *TaskService) listRows(projectSlug string, filter ListTasksFilter) ([]ListedTask, error) {
 	if filter.ParentID != nil && *filter.ParentID != "" {
 		parent, err := service.repo.FindTask(projectSlug, string(*filter.ParentID))
 		if err != nil {
@@ -42,7 +64,7 @@ func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter
 
 	tasks, err := service.repo.ListTasks(projectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not list tasks: %w", err)
 	}
 	tasksByID := indexTasks(tasks)
 

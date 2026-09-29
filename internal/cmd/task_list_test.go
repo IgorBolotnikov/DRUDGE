@@ -1,14 +1,18 @@
 package cmd
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -146,7 +150,7 @@ func TestPrintTaskList(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			log := common.NewLogger("")
 
-			out := captureOutput(func() { printTaskList(log, testCase.listed) })
+			out := captureOutput(func() { printTaskList(log, onePage(testCase.listed)) })
 
 			if out != testCase.want {
 				t.Errorf("expected:\n%s\ngot:\n%s", testCase.want, out)
@@ -246,7 +250,7 @@ func TestPrintTaskListColors(t *testing.T) {
 			log := common.NewLogger("")
 
 			var out string
-			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(log, listed) }) })
+			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(log, onePage(listed)) }) })
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
@@ -259,6 +263,137 @@ func TestPrintTaskListColors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskList(t *testing.T) {
+	const header = "  STATUS           ID        TITLE                                     BLOCKED BY  TICKET\n" +
+		"  ---------------  --------  ----------------------------------------  ----------  ------\n"
+	monday := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	threeTitles := []string{"Oldest task", "Middle task", "Newest task"}
+
+	cases := []struct {
+		name string
+		// titles are the tasks to create, oldest first.
+		titles []string
+		args   []string
+		// localTask is the task section of the local config when set.
+		localTask string
+		// want renders the output from the short ids of the tasks.
+		want    func(ids []string) string
+		wantErr string
+	}{
+		{
+			name:   "the first of two pages hints at the next one",
+			titles: threeTitles,
+			args:   []string{"--page-size", "2"},
+			want: func(ids []string) string {
+				return "Tasks (3):\n" + header +
+					"  todo             " + ids[2] + "  Newest task\n" +
+					"  todo             " + ids[1] + "  Middle task\n" +
+					"Page 1 of 2, see the next one with --page 2\n"
+			},
+		},
+		{
+			name:   "the last of two pages prints a footer without a hint",
+			titles: threeTitles,
+			args:   []string{"-p", "2", "--page-size", "2"},
+			want: func(ids []string) string {
+				return "Tasks (3):\n" + header +
+					"  todo             " + ids[0] + "  Oldest task\n" +
+					"Page 2 of 2\n"
+			},
+		},
+		{
+			name:      "the local config sets the page size",
+			titles:    threeTitles,
+			args:      []string{"--page", "3"},
+			localTask: `{"pageSize": 1}`,
+			want: func(ids []string) string {
+				return "Tasks (3):\n" + header +
+					"  todo             " + ids[0] + "  Oldest task\n" +
+					"Page 3 of 3\n"
+			},
+		},
+		{
+			name:      "a page size of 0 on the command line turns paging off",
+			titles:    threeTitles[:2],
+			args:      []string{"--page-size", "0"},
+			localTask: `{"pageSize": 1}`,
+			want: func(ids []string) string {
+				return "Tasks (2):\n" + header +
+					"  todo             " + ids[1] + "  Middle task\n" +
+					"  todo             " + ids[0] + "  Oldest task\n"
+			},
+		},
+		{
+			name: "no tasks",
+			want: func([]string) string { return "No tasks found\n" },
+		},
+		{
+			name:    "a page past the last one",
+			titles:  threeTitles,
+			args:    []string{"--page", "3", "--page-size", "2"},
+			wantErr: "page 3 does not exist, there are 2 pages of tasks",
+		},
+		{
+			name:    "a negative page size",
+			args:    []string{"--page-size", "-1"},
+			wantErr: "--page-size must be 0 or more, got -1",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			t.Chdir(t.TempDir())
+			localConfig := &config.LocalConfig{ProjectSlug: "demo"}
+			if testCase.localTask != "" {
+				if err := json.Unmarshal([]byte(testCase.localTask), &localConfig.Task); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := localConfig.Save(); err != nil {
+				t.Fatal(err)
+			}
+			repo := persistence.NewFileTaskRepository(localConfig.ProjectSlug)
+			var ids []string
+			for age, title := range testCase.titles {
+				created, err := repo.CreateTask(task.CreateTaskDto{
+					Title:       title,
+					Status:      task.StatusTodo,
+					ProjectSlug: localConfig.ProjectSlug,
+					CreatedAt:   monday.AddDate(0, 0, age),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, task.ShortID(created.ID))
+			}
+
+			var err error
+			args := append([]string{TaskCmd.Name, "list"}, testCase.args...)
+			output := captureOutput(func() { err = NewRoot("v1.2.3").Execute(args) })
+
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if want := testCase.want(ids); output != want {
+				t.Errorf("expected:\n%q\ngot:\n%q", want, output)
+			}
+		})
+	}
+}
+
+// onePage puts every row of a listing on a single page.
+func onePage(listed []task.ListedTask) common.Page[task.ListedTask] {
+	return common.Page[task.ListedTask]{Items: listed, Number: 1, TotalPages: 1, TotalItems: len(listed)}
 }
 
 func captureStderr(f func()) string {

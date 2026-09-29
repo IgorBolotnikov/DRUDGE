@@ -29,6 +29,7 @@ const (
 	defaultHarness               = HarnessClaudeCode
 	defaultMaxConcurrentDrudgers = 3
 	defaultProjectPageSize       = 20
+	defaultTaskPageSize          = 20
 )
 
 // How long a sandbox command may run before DRUDGE kills it, in seconds.
@@ -73,6 +74,8 @@ const (
 	DefaultTaskStatusKey = "task.defaultStatus"
 	// ProjectPageSizeKey is exported so the project commands can name it in their help.
 	ProjectPageSizeKey = "project.pageSize"
+	// TaskPageSizeKey is exported so the task commands can name it in their help.
+	TaskPageSizeKey = "task.pageSize"
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -101,6 +104,7 @@ type ProjectConfig struct {
 // overrides each field it sets.
 type TaskConfig struct {
 	DefaultStatus task.TaskStatus `json:"defaultStatus,omitempty"` // Status of a new task created without one, empty means unset
+	PageSize      *int            `json:"pageSize,omitempty"`      // Tasks on one page of a listing, nil means unset and zero means every task on one page
 }
 
 type DrudgerConfig struct {
@@ -196,7 +200,10 @@ func Load() (*GlobalConfig, error) {
 	if err := validateGitTimeouts(cfg.Drudger.GitTimeouts, cfgPath); err != nil {
 		return nil, err
 	}
-	if err := validateProjectPageSize(cfg.Project.PageSize, cfgPath); err != nil {
+	if err := validatePageSize(cfg.Project.PageSize, ProjectPageSizeKey, "project", cfgPath); err != nil {
+		return nil, err
+	}
+	if err := validatePageSize(cfg.Task.PageSize, TaskPageSizeKey, "task", cfgPath); err != nil {
 		return nil, err
 	}
 
@@ -334,11 +341,12 @@ func validateGitTimeouts(timeouts GitTimeouts, path string) error {
 	return nil
 }
 
-// validateProjectPageSize rejects a negative project page size. A nil value
-// passes, since that is what an absent key unmarshals to.
-func validateProjectPageSize(value *int, path string) error {
+// validatePageSize rejects a negative page size. A nil value passes, since
+// that is what an absent key unmarshals to. noun names what a page holds in
+// the message.
+func validatePageSize(value *int, key string, noun string, path string) error {
 	if value != nil && *value < 0 {
-		return fmt.Errorf("%s has %s = %d, it must be 0 or more, 0 puts every project on one page", path, ProjectPageSizeKey, *value)
+		return fmt.Errorf("%s has %s = %d, it must be 0 or more, 0 puts every %s on one page", path, key, *value, noun)
 	}
 	return nil
 }

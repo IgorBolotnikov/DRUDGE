@@ -452,3 +452,98 @@ func TestResolveDefaultTaskStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadLocal_TaskPageSize(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		// want is the loaded page size, nil for one left unset.
+		want *int
+		// wantErrText lists fragments the error must carry. A test with none expects no error.
+		wantErrText []string
+	}{
+		{name: "absent", raw: `{"projectSlug": "test-project"}`},
+		{name: "zero", raw: `{"projectSlug": "test-project", "task": {"pageSize": 0}}`, want: new(0)},
+		{name: "a positive size", raw: `{"projectSlug": "test-project", "task": {"pageSize": 50}}`, want: new(50)},
+		{
+			name:        "a negative size",
+			raw:         `{"projectSlug": "test-project", "task": {"pageSize": -1}}`,
+			wantErrText: []string{TaskPageSizeKey, "-1"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupLocalDir(t)
+			writeLocalConfig(t, test.raw)
+
+			cfg, err := LoadLocal()
+			if len(test.wantErrText) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, fragment := range append(test.wantErrText, common.LocalConfigPath()) {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadLocal: %v", err)
+			}
+			got := cfg.Task.PageSize
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Errorf("Task.PageSize = %s, want %s", formatOptionalInt(got), formatOptionalInt(test.want))
+			}
+		})
+	}
+}
+
+func TestResolveTaskPageSize(t *testing.T) {
+	tests := []struct {
+		name   string
+		local  *LocalConfig
+		global *GlobalConfig
+		want   int
+	}{
+		{
+			name:   "local wins over global",
+			local:  &LocalConfig{Task: TaskConfig{PageSize: new(10)}},
+			global: &GlobalConfig{Task: TaskConfig{PageSize: new(50)}},
+			want:   10,
+		},
+		{
+			name:   "a local 0 wins over global",
+			local:  &LocalConfig{Task: TaskConfig{PageSize: new(0)}},
+			global: &GlobalConfig{Task: TaskConfig{PageSize: new(50)}},
+			want:   0,
+		},
+		{
+			name:   "falls back to global",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{Task: TaskConfig{PageSize: new(50)}},
+			want:   50,
+		},
+		{
+			name:   "takes a global 0",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{Task: TaskConfig{PageSize: new(0)}},
+			want:   0,
+		},
+		{
+			name:   "falls back to 20",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{},
+			want:   20,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ResolveTaskPageSize(test.local, test.global); got != test.want {
+				t.Errorf("ResolveTaskPageSize = %d, want %d", got, test.want)
+			}
+		})
+	}
+}

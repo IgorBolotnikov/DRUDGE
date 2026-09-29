@@ -252,12 +252,12 @@ func TestTaskService_ListTasks(t *testing.T) {
 			repo := &fakeTaskRepo{tasks: testCase.tasks}
 			service := NewTaskService(repo, common.NewLogger(""))
 
-			listed, err := service.ListTasks(testProjectSlug, testCase.filter)
+			listed, err := service.ListTasks(testProjectSlug, testCase.filter, 1, 0)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !reflect.DeepEqual(listed, testCase.want) {
-				t.Errorf("expected:\n%s\ngot:\n%s", describeListing(testCase.want), describeListing(listed))
+			if !reflect.DeepEqual(listed.Items, testCase.want) {
+				t.Errorf("expected:\n%s\ngot:\n%s", describeListing(testCase.want), describeListing(listed.Items))
 			}
 		})
 	}
@@ -267,10 +267,99 @@ func TestTaskService_ListTasks_RefusesAParentThatNamesNoTask(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{{ID: "parent"}}}
 	service := NewTaskService(repo, common.NewLogger(""))
 
-	_, err := service.ListTasks(testProjectSlug, ListTasksFilter{ParentID: pointerTo[TaskID]("missing")})
+	_, err := service.ListTasks(testProjectSlug, ListTasksFilter{ParentID: pointerTo[TaskID]("missing")}, 1, 0)
 
 	if err == nil || !strings.Contains(err.Error(), `task "missing" not found`) {
 		t.Fatalf("expected the parent to be not found, got %v", err)
+	}
+}
+
+func TestTaskService_ListTasks_Pages(t *testing.T) {
+	monday := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	stored := func(id TaskID, status TaskStatus, daysAfterMonday int, parentID TaskID) *Task {
+		return &Task{ID: id, Status: status, ParentTaskID: parentID, CreatedAt: monday.AddDate(0, 0, daysAfterMonday)}
+	}
+	tasks := []*Task{
+		stored("parent", StatusTodo, 0, ""),
+		stored("first-child", StatusTodo, 1, "parent"),
+		stored("second-child", StatusDone, 2, "parent"),
+		stored("todo", StatusTodo, 3, ""),
+		stored("done", StatusDone, 4, ""),
+		stored("newest-todo", StatusTodo, 5, ""),
+	}
+
+	cases := []struct {
+		name   string
+		filter ListTasksFilter
+		page   int
+		size   int
+		want   []ListedTask
+		// wantTotalItems and wantTotalPages count the rows of every page.
+		wantTotalItems int
+		wantTotalPages int
+		// wantErr is the whole refusal. A case without it expects a page.
+		wantErr string
+	}{
+		{
+			name: "a page may start with children whose parent is on the page before",
+			page: 2,
+			size: 4,
+			want: []ListedTask{
+				{Task: stored("second-child", StatusDone, 2, "parent"), IsUnderParent: true},
+				{Task: stored("first-child", StatusTodo, 1, "parent"), IsUnderParent: true},
+			},
+			wantTotalItems: 6,
+			wantTotalPages: 2,
+		},
+		{
+			name:   "a filtered listing counts only the rows it keeps",
+			filter: ListTasksFilter{Status: pointerTo(StatusTodo)},
+			page:   2,
+			size:   2,
+			want: []ListedTask{
+				{Task: stored("first-child", StatusTodo, 1, "parent")},
+				{Task: stored("parent", StatusTodo, 0, "")},
+			},
+			wantTotalItems: 4,
+			wantTotalPages: 2,
+		},
+		{
+			name:    "a page past the last one names the tasks",
+			filter:  ListTasksFilter{Status: pointerTo(StatusDone)},
+			page:    2,
+			size:    2,
+			wantErr: "page 2 does not exist, there is 1 page of tasks",
+		},
+		{
+			name:    "a page below 1",
+			page:    0,
+			size:    2,
+			wantErr: "page must be 1 or more, got 0",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := NewTaskService(&fakeTaskRepo{tasks: tasks}, common.NewLogger(""))
+
+			listed, err := service.ListTasks(testProjectSlug, testCase.filter, testCase.page, testCase.size)
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(listed.Items, testCase.want) {
+				t.Errorf("expected:\n%s\ngot:\n%s", describeListing(testCase.want), describeListing(listed.Items))
+			}
+			if listed.TotalItems != testCase.wantTotalItems || listed.TotalPages != testCase.wantTotalPages {
+				t.Errorf("%d items on %d pages, want %d items on %d pages",
+					listed.TotalItems, listed.TotalPages, testCase.wantTotalItems, testCase.wantTotalPages)
+			}
+		})
 	}
 }
 

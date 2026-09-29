@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
@@ -55,18 +54,20 @@ func loadStatusColor(log *common.Logger) func(text string) string {
 	return func(text string) string { return colorStatus(palette, task.TaskStatus(text)) }
 }
 
-// taskListFlags holds the filters of drg task list. A flag left out filters
-// nothing.
+// taskListFlags holds the filters and the page of drg task list. A filter
+// left out filters nothing.
 type taskListFlags struct {
 	status optionalString
 	ticket optionalString
 	parent optionalString
+	page   pageFlags
 }
 
 func (flags *taskListFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.status, statusFlagName, "Filter by `status` ("+task.FormatStatuses(task.Statuses)+")")
 	fs.Var(&flags.ticket, ticketFlagName, "Filter by `ticket` ID")
 	fs.Var(&flags.parent, parentFlagName, "Filter by the `id` of the task the tasks belong to")
+	flags.page.declare(fs)
 }
 
 // filter returns the filter of the listing. It refuses a status drudge does
@@ -83,8 +84,16 @@ func (flags *taskListFlags) filter() (task.ListTasksFilter, error) {
 	return filter, nil
 }
 
-func taskList(filter task.ListTasksFilter) error {
+func taskList(filter task.ListTasksFilter, page pageFlags) error {
 	cfg, err := config.LoadLocal()
+	if err != nil {
+		return err
+	}
+	globalCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	size, err := page.pageSize(config.ResolveTaskPageSize(cfg, globalCfg))
 	if err != nil {
 		return err
 	}
@@ -93,26 +102,27 @@ func taskList(filter task.ListTasksFilter) error {
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, log)
 
-	listed, err := svc.ListTasks(cfg.ProjectSlug, filter)
+	listed, err := svc.ListTasks(cfg.ProjectSlug, filter, page.number, size)
 	if err != nil {
-		return fmt.Errorf("could not list tasks: %w", err)
+		return err
 	}
 
 	printTaskList(log, listed)
 	return nil
 }
 
-// printTaskList prints a listing, indenting the tasks listed under a parent.
-// The blockers column is as wide as its widest value.
-func printTaskList(log *common.Logger, listed []task.ListedTask) {
-	if len(listed) == 0 {
+// printTaskList prints a page of a listing and its footer, indenting the tasks
+// listed under a parent. The blockers column is as wide as its widest value on
+// the page.
+func printTaskList(log *common.Logger, listed common.Page[task.ListedTask]) {
+	if listed.TotalItems == 0 {
 		log.Info("No tasks found")
 		return
 	}
 
 	blockedByWidth := len(blockedByTitle)
-	rows := make([][]string, 0, len(listed))
-	for _, entry := range listed {
+	rows := make([][]string, 0, len(listed.Items))
+	for _, entry := range listed.Items {
 		holding := make([]string, 0, len(entry.Holding))
 		for _, id := range entry.Holding {
 			holding = append(holding, task.ShortID(id))
@@ -140,5 +150,6 @@ func printTaskList(log *common.Logger, listed []task.ListedTask) {
 		{Title: blockedByTitle, Width: blockedByWidth},
 		{Title: "TICKET"},
 	}
-	printList(log, "Tasks", len(rows), columns, rows)
+	printList(log, "Tasks", listed.TotalItems, columns, rows)
+	printPageFooter(log, listed.Number, listed.TotalPages)
 }

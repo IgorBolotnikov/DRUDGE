@@ -74,6 +74,9 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, path); err != nil {
 		return nil, err
 	}
+	if err := validatePageSize(cfg.Task.PageSize, TaskPageSizeKey, "task", path); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
 }
@@ -152,4 +155,17 @@ func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.Tas
 		return global.Task.DefaultStatus
 	}
 	return task.StatusDraft
+}
+
+// ResolveTaskPageSize returns how many tasks one page of a listing holds,
+// preferring the local config over the global one and falling back to 20. A
+// local size of 0 wins over a global size.
+func ResolveTaskPageSize(local *LocalConfig, global *GlobalConfig) int {
+	if local.Task.PageSize != nil {
+		return *local.Task.PageSize
+	}
+	if global.Task.PageSize != nil {
+		return *global.Task.PageSize
+	}
+	return defaultTaskPageSize
 }
