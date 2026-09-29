@@ -33,7 +33,7 @@ func newCommandDeps() (*commandDeps, error) {
 
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	tasks := task.NewTaskService(repo, log)
+	tasks := task.NewTaskService(repo, log, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
 	drudgers := persistence.NewFileDrudgerRepository("")
 	cmdRunner := exec.NewCommandRunner()
 

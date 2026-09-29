@@ -32,7 +32,7 @@ func TestTaskService_MarkDone(t *testing.T) {
 			stored := editableTask()
 			stored.Status = testCase.status
 			repo := &fakeTaskRepo{tasks: []*Task{stored}, locked: map[TaskID]bool{stored.ID: testCase.isLocked}}
-			service := NewTaskService(repo, common.NewLogger(""))
+			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
 
 			marked, err := service.MarkDone(testProjectSlug, testCase.id)
 

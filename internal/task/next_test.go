@@ -123,7 +123,7 @@ func TestTaskService_NextTask(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, common.NewLogger(""))
+			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, common.NewLogger(""), StatusDraft)
 
 			pick, err := service.NextTask(testProjectSlug)
 			if err != nil {

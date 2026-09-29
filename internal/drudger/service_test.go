@@ -665,7 +665,7 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	if len(localCfg.Repositories) == 0 {
 		localCfg.Repositories = []config.Repository{{Path: testRepoPath}}
 	}
-	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger), drudgers, commands, gitOps)
+	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0

@@ -30,12 +30,15 @@ func FormatTaskCount(count int) string {
 }
 
 type TaskService struct {
-	repo TaskRepository
-	log  *common.Logger
+	repo          TaskRepository
+	log           *common.Logger
+	defaultStatus TaskStatus
 }
 
-func NewTaskService(repo TaskRepository, log *common.Logger) *TaskService {
-	return &TaskService{repo: repo, log: log}
+// NewTaskService builds a task service. defaultStatus is the status CreateTask
+// gives a task that names none, and draft applies when it is empty too.
+func NewTaskService(repo TaskRepository, log *common.Logger, defaultStatus TaskStatus) *TaskService {
+	return &TaskService{repo: repo, log: log, defaultStatus: defaultStatus}
 }
 
 func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -48,14 +51,14 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 
 	if dto.Status == "" {
-		dto.Status = dto.DefaultStatus
+		dto.Status = service.defaultStatus
 	}
 	if dto.Status == "" {
 		dto.Status = StatusDraft
 	}
 
 	if dto.CreatedAt.IsZero() {
-		dto.CreatedAt = time.Now()
+		dto.CreatedAt = time.Now().UTC()
 	}
 
 	blockedBy, err := service.resolveBlockers(dto.ProjectSlug, "", dto.BlockedBy)

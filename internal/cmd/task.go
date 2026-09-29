@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -264,8 +262,7 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 }
 
 // dto returns the fields of a new task, reading a description file from disk
-// or from stdin. It leaves the project slug, the default status and the
-// creation time for the caller to fill in.
+// or from stdin. It leaves the project slug for the caller to fill in.
 func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 	if flags.title.get() == "" {
 		return task.CreateTaskDto{}, errors.New("--title is required")
@@ -303,24 +300,13 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 }
 
 func taskNew(dto task.CreateTaskDto) error {
-	cfg, err := config.LoadLocal()
-	if err != nil {
-		return err
-	}
-	globalCfg, err := config.Load()
+	deps, err := newCommandDeps()
 	if err != nil {
 		return err
 	}
 
-	log := common.NewLogger("")
-	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
-	svc := task.NewTaskService(repo, log)
-
-	dto.ProjectSlug = cfg.ProjectSlug
-	dto.DefaultStatus = config.ResolveDefaultTaskStatus(cfg, globalCfg)
-	dto.CreatedAt = time.Now().UTC()
-
-	_, err = svc.CreateTask(dto)
+	dto.ProjectSlug = deps.localCfg.ProjectSlug
+	_, err = deps.tasks.CreateTask(dto)
 	return err
 }
 

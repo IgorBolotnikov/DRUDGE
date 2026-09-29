@@ -100,7 +100,7 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
-	svc := task.NewTaskService(repo, log)
+	svc := task.NewTaskService(repo, log, config.ResolveDefaultTaskStatus(cfg, globalCfg))
 
 	listed, err := svc.ListTasks(cfg.ProjectSlug, filter, page.number, size)
 	if err != nil {
