@@ -37,8 +37,16 @@ func (repo *fakeProjectRepo) RenameProject(slug string, newName string) error {
 	return errors.New("project not found")
 }
 
+var errFakeProjectNotFound = errors.New("project not found")
+
 func (repo *fakeProjectRepo) DeleteProject(slug string) error {
-	return errors.New("DeleteProject should not be called")
+	for index, candidate := range repo.projects {
+		if candidate.Slug == slug {
+			repo.projects = append(repo.projects[:index], repo.projects[index+1:]...)
+			return nil
+		}
+	}
+	return errFakeProjectNotFound
 }
 
 func TestProjectService_InitProject(t *testing.T) {
@@ -283,6 +291,37 @@ func TestProjectService_RenameProject(t *testing.T) {
 				t.Errorf("expected the projects %v, got %v", testCase.wantNames, gotNames)
 			}
 		})
+	}
+}
+
+func TestProjectService_DeleteProject(t *testing.T) {
+	repo := &fakeProjectRepo{projects: renamedProjects()}
+	service := NewProjectService(repo, nil, common.NewLogger(""))
+
+	if err := service.DeleteProject("demo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	remaining, err := repo.ListProjects()
+	if err != nil {
+		t.Fatalf("could not list projects: %v", err)
+	}
+	for _, candidate := range remaining {
+		if candidate.Slug == "demo" {
+			t.Errorf("expected project demo to be gone, got %+v", remaining)
+		}
+	}
+	if len(remaining) != 1 {
+		t.Errorf("expected the other project to stay, got %+v", remaining)
+	}
+}
+
+func TestProjectService_DeleteProject_ReturnsTheErrorOfTheRepository(t *testing.T) {
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, common.NewLogger(""))
+
+	err := service.DeleteProject("wiki")
+	if !errors.Is(err, errFakeProjectNotFound) {
+		t.Fatalf("expected the error of the repository, got %v", err)
 	}
 }
 

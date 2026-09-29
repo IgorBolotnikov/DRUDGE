@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -136,7 +135,6 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 
 func projectDelete(lookup string, isForced bool) error {
 	log := common.NewLogger("")
-	repo := persistence.NewFileProjectRepository("")
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err
@@ -160,7 +158,7 @@ func projectDelete(lookup string, isForced bool) error {
 		}
 	}
 
-	if err := repo.DeleteProject(proj.Slug); err != nil {
+	if err := svc.DeleteProject(proj.Slug); err != nil {
 		return fmt.Errorf("could not delete project %q: %w", name, err)
 	}
 

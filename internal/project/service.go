@@ -139,6 +139,12 @@ func (p *ProjectService) RenameProject(slugOrName string, newName string) error 
 	return nil
 }
 
+// DeleteProject removes the project with the slug slug. It does no lookup by
+// name, so a caller holding a name resolves it with LookupProject first.
+func (p *ProjectService) DeleteProject(slug string) error {
+	return p.repo.DeleteProject(slug)
+}
+
 func findProject(projects []*Project, slugOrName string) (*Project, error) {
 	slug := common.SlugFrom(slugOrName)
 	for _, candidate := range projects {
