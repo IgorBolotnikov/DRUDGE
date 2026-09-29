@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -91,16 +93,129 @@ func TestPrintRepositories(t *testing.T) {
 	}
 }
 
-func TestProjectList_NoProjects(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+func TestProjectList(t *testing.T) {
+	const header = "  SLUG                  NAME\n" +
+		"  --------------------  ----\n"
 
-	var err error
-	output := captureOutput(func() { err = projectList(nil) })
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	cases := []struct {
+		name     string
+		projects []string
+		args     []string
+		// globalConfig is written to the global config file when set.
+		globalConfig string
+		env          map[string]string
+		want         string
+		wantErr      string
+	}{
+		{
+			name:     "a listing that fits on one page prints no footer",
+			projects: []string{"alpha", "bravo"},
+			want:     "Projects (2):\n" + header + "  alpha                 alpha\n  bravo                 bravo\n",
+		},
+		{
+			name:     "a page before the last one hints at the next one",
+			projects: []string{"alpha", "bravo", "charlie", "delta", "echo"},
+			args:     []string{"--page-size", "2"},
+			want: "Projects (5):\n" + header + "  alpha                 alpha\n  bravo                 bravo\n" +
+				"Page 1 of 3, see the next one with --page 2\n",
+		},
+		{
+			name:     "the last page prints a footer without a hint",
+			projects: []string{"alpha", "bravo", "charlie", "delta", "echo"},
+			args:     []string{"-p", "3", "--page-size", "2"},
+			want:     "Projects (5):\n" + header + "  echo                  echo\n" + "Page 3 of 3\n",
+		},
+		{
+			name:         "the global config sets the page size",
+			projects:     []string{"alpha", "bravo", "charlie"},
+			args:         []string{"--page", "2"},
+			globalConfig: `{"project": {"pageSize": 2}}`,
+			want:         "Projects (3):\n" + header + "  charlie               charlie\n" + "Page 2 of 2\n",
+		},
+		{
+			name:         "a page size of 0 on the command line turns paging off",
+			projects:     []string{"alpha", "bravo", "charlie"},
+			args:         []string{"--page-size", "0"},
+			globalConfig: `{"project": {"pageSize": 2}}`,
+			want: "Projects (3):\n" + header +
+				"  alpha                 alpha\n  bravo                 bravo\n  charlie               charlie\n",
+		},
+		{
+			name:     "the footer prints in the muted color of the system theme",
+			projects: []string{"alpha", "bravo"},
+			args:     []string{"--page", "2", "--page-size", "1"},
+			env:      map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			want: "Projects (2):\n" + header + "  bravo                 bravo\n" +
+				"\x1b[90mPage 2 of 2\x1b[0m\n",
+		},
+		{
+			name: "no projects",
+			want: "No projects yet, run drg project init <name> in a project directory to create one\n",
+		},
+		{
+			name:    "a page of no projects past the first one",
+			args:    []string{"--page", "2"},
+			wantErr: "page 2 does not exist, there is 1 page of projects",
+		},
+		{
+			name:     "a page past the last one",
+			projects: []string{"alpha", "bravo", "charlie"},
+			args:     []string{"--page", "5", "--page-size", "1"},
+			wantErr:  "page 5 does not exist, there are 3 pages of projects",
+		},
+		{
+			name:    "a page below 1",
+			args:    []string{"--page", "0"},
+			wantErr: "page must be 1 or more, got 0",
+		},
+		{
+			name:    "a negative page size",
+			args:    []string{"--page-size", "-1"},
+			wantErr: "--page-size must be 0 or more, got -1",
+		},
 	}
-	if !strings.Contains(output, "No projects yet") || !strings.Contains(output, "drg project init <name>") {
-		t.Errorf("expected the listing to say there are no projects and how to create one, got:\n%s", output)
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("NO_COLOR", "1")
+			for name, value := range testCase.env {
+				t.Setenv(name, value)
+			}
+			if testCase.globalConfig != "" {
+				if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(common.GlobalConfigPath(home), []byte(testCase.globalConfig), common.DefaultFilePerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, common.NewLogger(""))
+			captureOutput(func() {
+				for _, name := range testCase.projects {
+					if _, err := service.CreateProject(name); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+
+			var err error
+			args := append([]string{ProjectCmd.Name, "list"}, testCase.args...)
+			output := captureOutput(func() { err = NewRoot("v1.2.3").Execute(args) })
+
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if output != testCase.want {
+				t.Errorf("expected:\n%q\ngot:\n%q", testCase.want, output)
+			}
+		})
 	}
 }

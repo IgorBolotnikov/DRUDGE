@@ -102,6 +102,19 @@ const schemaJSON = `{
         }
       },
       "additionalProperties": false
+    },
+    "project": {
+      "description": "Settings for projects.",
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "description": "How many projects drg project list shows on one page. 0 shows every project on one page. --page-size overrides it.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

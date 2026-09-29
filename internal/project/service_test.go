@@ -285,3 +285,44 @@ func TestProjectService_RenameProject(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectService_ListProjects(t *testing.T) {
+	projects := []*Project{{Slug: "api"}, {Slug: "docs"}, {Slug: "ui"}}
+
+	tests := []struct {
+		name      string
+		page      int
+		size      int
+		wantSlugs []string
+		// wantErr is the whole refusal. A case without it expects a page.
+		wantErr string
+	}{
+		{name: "a page", page: 2, size: 2, wantSlugs: []string{"ui"}},
+		{name: "a page past the last one names the projects", page: 3, size: 2, wantErr: "page 3 does not exist, there are 2 pages of projects"},
+		{name: "a page below 1", page: 0, size: 2, wantErr: "page must be 1 or more, got 0"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, common.NewLogger(""))
+
+			listed, err := service.ListProjects(test.page, test.size)
+			if test.wantErr != "" {
+				if err == nil || err.Error() != test.wantErr {
+					t.Fatalf("error = %v, want %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			slugs := make([]string, 0, len(listed.Items))
+			for _, listedProject := range listed.Items {
+				slugs = append(slugs, listedProject.Slug)
+			}
+			if !reflect.DeepEqual(slugs, test.wantSlugs) {
+				t.Errorf("slugs = %v, want %v", slugs, test.wantSlugs)
+			}
+		})
+	}
+}

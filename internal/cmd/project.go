@@ -6,6 +6,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
@@ -55,10 +56,15 @@ var ProjectCmd = &Cmd{
 			Setup: func(*flag.FlagSet) func(args []string) error { return projectRename },
 		},
 		{
-			Name:  "list",
-			Desc:  "List the projects",
-			Help:  "List the projects drudge knows about, with the slug and the name of each.",
-			Setup: func(*flag.FlagSet) func(args []string) error { return projectList },
+			Name: "list",
+			Desc: "List the projects",
+			Help: "List the projects drudge knows about, with the slug and the name of each, one page at a time.\n" +
+				"A page holds --page-size projects, " + config.ProjectPageSizeKey + " from the global config when left out, 20 when that is unset. 0 shows every project on one page.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				var flags pageFlags
+				flags.declare(fs)
+				return func([]string) error { return projectList(flags) }
+			},
 		},
 	},
 }
@@ -120,7 +126,7 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 		}
 		rows = append(rows, []string{repository.Repository.Path, branch})
 	}
-	printList(log, "Repositories", columns, rows)
+	printList(log, "Repositories", len(rows), columns, rows)
 
 	for _, repository := range resolved {
 		if repository.Problem != nil {
@@ -175,19 +181,28 @@ func projectRename(args []string) error {
 	return svc.RenameProject(oldName, newName)
 }
 
-func projectList(args []string) error {
+func projectList(flags pageFlags) error {
+	globalCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	size, err := flags.pageSize(config.ResolveProjectPageSize(globalCfg))
+	if err != nil {
+		return err
+	}
+
 	log := common.NewLogger("")
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err
 	}
 
-	projects, err := svc.ListProjects()
+	listed, err := svc.ListProjects(flags.number, size)
 	if err != nil {
-		return fmt.Errorf("could not list projects: %w", err)
+		return err
 	}
 
-	if len(projects) == 0 {
+	if listed.TotalItems == 0 {
 		log.Info("No projects yet, run drg project init <name> in a project directory to create one")
 		return nil
 	}
@@ -196,11 +211,12 @@ func projectList(args []string) error {
 		{Title: "SLUG", Width: 20},
 		{Title: "NAME"},
 	}
-	rows := make([][]string, 0, len(projects))
-	for _, p := range projects {
+	rows := make([][]string, 0, len(listed.Items))
+	for _, p := range listed.Items {
 		rows = append(rows, []string{p.Slug, p.Name})
 	}
 
-	printList(log, "Projects", columns, rows)
+	printList(log, "Projects", listed.TotalItems, columns, rows)
+	printPageFooter(log, listed.Number, listed.TotalPages)
 	return nil
 }

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 const (
@@ -34,18 +36,18 @@ type column struct {
 	Color func(text string) string
 }
 
-// printList prints a listing: how many rows there are, a header, a rule under
-// it and one line per row.
-func printList(log *common.Logger, title string, columns []column, rows [][]string) {
-	for _, line := range listLines(title, columns, rows) {
+// printList prints a listing: a count, a header, a rule under it and one line
+// per row. total is the count, and covers the rows of every page.
+func printList(log *common.Logger, title string, total int, columns []column, rows [][]string) {
+	for _, line := range listLines(title, total, columns, rows) {
 		// The line is already formatted and may hold a percent sign.
 		log.Info("%s", line)
 	}
 }
 
-func listLines(title string, columns []column, rows [][]string) []string {
+func listLines(title string, total int, columns []column, rows [][]string) []string {
 	lines := make([]string, 0, len(rows)+3)
-	lines = append(lines, fmt.Sprintf("%s (%d):", title, len(rows)))
+	lines = append(lines, fmt.Sprintf("%s (%d):", title, total))
 	lines = append(lines, listLine(columns, columnTitles(columns), false))
 	lines = append(lines, listLine(columns, columnRules(columns), false))
 	for _, row := range rows {
@@ -105,6 +107,58 @@ func columnRules(columns []column) []string {
 		rules = append(rules, strings.Repeat(listRule, width))
 	}
 	return rules
+}
+
+// Flags that page a listing.
+const (
+	pageFlagName      = "page"
+	pageFlagShortName = "p"
+	pageSizeFlagName  = "page-size"
+)
+
+// pageFlags holds which page of a listing to show and how big a page is.
+type pageFlags struct {
+	number int
+	size   optionalInt
+}
+
+func (flags *pageFlags) declare(fs *flag.FlagSet) {
+	fs.IntVar(&flags.number, pageFlagName, 1, "The `number` of the page to show")
+	alias(fs, pageFlagShortName, pageFlagName)
+	fs.Var(&flags.size, pageSizeFlagName, "How many `items` one page shows, 0 shows every item on one page")
+}
+
+// pageSize returns the size given with --page-size, or fallback when the flag
+// was left out. It refuses a negative size.
+func (flags *pageFlags) pageSize(fallback int) (int, error) {
+	if flags.size.value == nil {
+		return fallback, nil
+	}
+	if *flags.size.value < 0 {
+		return 0, fmt.Errorf("--%s must be 0 or more, got %d", pageSizeFlagName, *flags.size.value)
+	}
+	return *flags.size.value, nil
+}
+
+// printPageFooter prints which page of how many a listing shows, in the muted
+// color of the theme. Every page but the last names the flag that shows the
+// next one. A listing of one page prints nothing.
+func printPageFooter(log *common.Logger, number int, totalPages int) {
+	if totalPages <= 1 {
+		return
+	}
+	footer := fmt.Sprintf("Page %d of %d", number, totalPages)
+	if number < totalPages {
+		footer += fmt.Sprintf(", see the next one with --%s %d", pageFlagName, number+1)
+	}
+
+	palette, err := theme.Load("")
+	if err != nil {
+		log.Error("cannot color the page footer: %v", err)
+	} else {
+		footer = palette.Color(theme.RoleMuted) + footer + palette.Reset()
+	}
+	log.Info("%s", footer)
 }
 
 // fitColumn cuts a value short so it fits its column.

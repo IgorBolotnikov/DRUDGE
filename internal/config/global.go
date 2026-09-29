@@ -28,6 +28,7 @@ const (
 	defaultEnv                   = EnvDockerSbx
 	defaultHarness               = HarnessClaudeCode
 	defaultMaxConcurrentDrudgers = 3
+	defaultProjectPageSize       = 20
 )
 
 // How long a sandbox command may run before DRUDGE kills it, in seconds.
@@ -70,6 +71,8 @@ const (
 	repositoryPathKey = "path"
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
 	DefaultTaskStatusKey = "task.defaultStatus"
+	// ProjectPageSizeKey is exported so the project commands can name it in their help.
+	ProjectPageSizeKey = "project.pageSize"
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -86,6 +89,12 @@ func SchemaRef() string {
 type GlobalConfig struct {
 	Drudger DrudgerConfig `json:"drudger"`
 	Task    TaskConfig    `json:"task,omitzero"`
+	Project ProjectConfig `json:"project,omitzero"`
+}
+
+// ProjectConfig holds the settings for listing projects.
+type ProjectConfig struct {
+	PageSize *int `json:"pageSize,omitempty"` // Projects on one page of a listing, nil means unset and zero means every project on one page
 }
 
 // TaskConfig holds the settings for the tasks of a project. A local config
@@ -187,6 +196,9 @@ func Load() (*GlobalConfig, error) {
 	if err := validateGitTimeouts(cfg.Drudger.GitTimeouts, cfgPath); err != nil {
 		return nil, err
 	}
+	if err := validateProjectPageSize(cfg.Project.PageSize, cfgPath); err != nil {
+		return nil, err
+	}
 
 	defaultCfg := DefaultConfig()
 	return mergeConfigs(defaultCfg, &cfg), nil
@@ -243,6 +255,15 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 		loadedCfg.Drudger.GitTimeouts.CommandSeconds = defaultCfg.Drudger.GitTimeouts.CommandSeconds
 	}
 	return loadedCfg
+}
+
+// ResolveProjectPageSize returns how many projects one page of a listing
+// holds, falling back to 20 when the global config leaves it unset.
+func ResolveProjectPageSize(global *GlobalConfig) int {
+	if global.Project.PageSize != nil {
+		return *global.Project.PageSize
+	}
+	return defaultProjectPageSize
 }
 
 // validatePromptFile rejects a prompt file that is anything but a bare file
@@ -309,6 +330,15 @@ func validateGitTimeouts(timeouts GitTimeouts, path string) error {
 		if timeout.value < 0 {
 			return fmt.Errorf("%s has %s = %d, it must be a positive number of seconds", path, timeout.key, timeout.value)
 		}
+	}
+	return nil
+}
+
+// validateProjectPageSize rejects a negative project page size. A nil value
+// passes, since that is what an absent key unmarshals to.
+func validateProjectPageSize(value *int, path string) error {
+	if value != nil && *value < 0 {
+		return fmt.Errorf("%s has %s = %d, it must be 0 or more, 0 puts every project on one page", path, ProjectPageSizeKey, *value)
 	}
 	return nil
 }

@@ -124,7 +124,7 @@ func printDrudgers(log *common.Logger, projectSlug string, drudgers []*drudger.D
 		})
 	}
 
-	printList(log, "Drudgers", columns, rows)
+	printList(log, "Drudgers", len(rows), columns, rows)
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.

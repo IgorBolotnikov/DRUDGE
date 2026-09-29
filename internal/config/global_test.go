@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -494,6 +495,85 @@ func TestLoad_DefaultTaskStatus(t *testing.T) {
 			}
 			if cfg.Task.DefaultStatus != test.want {
 				t.Errorf("Task.DefaultStatus = %q, want %q", cfg.Task.DefaultStatus, test.want)
+			}
+		})
+	}
+}
+
+func TestLoad_ProjectPageSize(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		// want is the loaded page size, nil for one left unset.
+		want *int
+		// wantErrText lists fragments the error must carry. A test with none expects no error.
+		wantErrText []string
+	}{
+		{name: "absent", raw: `{}`},
+		{name: "zero", raw: `{"project": {"pageSize": 0}}`, want: new(0)},
+		{name: "a positive size", raw: `{"project": {"pageSize": 50}}`, want: new(50)},
+		{
+			name:        "a negative size",
+			raw:         `{"project": {"pageSize": -1}}`,
+			wantErrText: []string{ProjectPageSizeKey, "-1"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatalf("could not create drudge dir: %v", err)
+			}
+			if err := os.WriteFile(common.GlobalConfigPath(home), []byte(test.raw), common.DefaultFilePerm); err != nil {
+				t.Fatalf("could not write config: %v", err)
+			}
+
+			cfg, err := Load()
+			if len(test.wantErrText) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, fragment := range append(test.wantErrText, common.GlobalConfigPath(home)) {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got := cfg.Project.PageSize
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Errorf("Project.PageSize = %s, want %s", formatOptionalInt(got), formatOptionalInt(test.want))
+			}
+		})
+	}
+}
+
+func formatOptionalInt(value *int) string {
+	if value == nil {
+		return "nil"
+	}
+	return strconv.Itoa(*value)
+}
+
+func TestResolveProjectPageSize(t *testing.T) {
+	tests := []struct {
+		name   string
+		global *GlobalConfig
+		want   int
+	}{
+		{name: "falls back to 20", global: &GlobalConfig{}, want: 20},
+		{name: "takes the global size", global: &GlobalConfig{Project: ProjectConfig{PageSize: new(50)}}, want: 50},
+		{name: "takes a global size of 0", global: &GlobalConfig{Project: ProjectConfig{PageSize: new(0)}}, want: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ResolveProjectPageSize(test.global); got != test.want {
+				t.Errorf("ResolveProjectPageSize = %d, want %d", got, test.want)
 			}
 		})
 	}

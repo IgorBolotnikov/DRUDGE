@@ -1,6 +1,7 @@
 package project
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -86,8 +87,21 @@ func (p *ProjectService) InitProject(name string, projectDir string) (*Project, 
 	return created, repositories, nil
 }
 
-func (p *ProjectService) ListProjects() ([]*Project, error) {
-	return p.repo.ListProjects()
+// ListProjects returns the page numbered page of the projects, with size
+// projects on every page. A size of 0 puts every project on page 1. It refuses
+// a page below 1 and a page past the last one.
+func (p *ProjectService) ListProjects(page int, size int) (common.Page[*Project], error) {
+	projects, err := p.repo.ListProjects()
+	if err != nil {
+		return common.Page[*Project]{}, fmt.Errorf("could not list projects: %w", err)
+	}
+
+	listed, err := common.Paginate(projects, page, size)
+	var notFound *common.PageNotFoundError
+	if errors.As(err, &notFound) {
+		notFound.Noun = "projects"
+	}
+	return listed, err
 }
 
 // LookupProject finds the project named by its slug or by its name. Names are

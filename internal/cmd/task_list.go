@@ -140,5 +140,5 @@ func printTaskList(log *common.Logger, listed []task.ListedTask) {
 		{Title: blockedByTitle, Width: blockedByWidth},
 		{Title: "TICKET"},
 	}
-	printList(log, "Tasks", columns, rows)
+	printList(log, "Tasks", len(rows), columns, rows)
 }

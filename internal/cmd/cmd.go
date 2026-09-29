@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -321,6 +322,28 @@ func (o *optionalString) get() string {
 		return ""
 	}
 	return *o.value
+}
+
+// optionalInt is an int flag.Value that stays nil until the flag is set. It
+// tells a flag that was not given from one given 0.
+type optionalInt struct {
+	value *int
+}
+
+func (o *optionalInt) String() string {
+	if o.value == nil {
+		return ""
+	}
+	return strconv.Itoa(*o.value)
+}
+
+func (o *optionalInt) Set(text string) error {
+	value, err := strconv.Atoi(text)
+	if err != nil {
+		return fmt.Errorf("%q is not a whole number", text)
+	}
+	o.value = &value
+	return nil
 }
 
 // ConfirmDeletion asks the user to confirm deleting a resource and reports

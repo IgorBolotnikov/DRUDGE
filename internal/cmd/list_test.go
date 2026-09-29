@@ -136,7 +136,7 @@ func TestListLines(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := listLines("Things", testCase.columns, testCase.rows)
+			got := listLines("Things", len(testCase.rows), testCase.columns, testCase.rows)
 
 			if len(got) != len(testCase.want) {
 				t.Fatalf("expected %d lines, got %d:\n%s", len(testCase.want), len(got), strings.Join(got, "\n"))
