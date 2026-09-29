@@ -92,6 +92,26 @@ func SchemaRef() string {
 	return schemaRef
 }
 
+// DefaultDocument is the global config file drg setup writes when there is none.
+type DefaultDocument struct {
+	Schema  string                 `json:"$schema"`
+	Drudger DefaultDrudgerDocument `json:"drudger"`
+}
+
+// DefaultDrudgerDocument is the drudger section of DefaultDocument.
+type DefaultDrudgerDocument struct {
+	Env     Env     `json:"environment"`
+	Harness Harness `json:"harness"`
+}
+
+// NewDefaultDocument returns the default global config file.
+func NewDefaultDocument() DefaultDocument {
+	return DefaultDocument{
+		Schema:  schemaRef,
+		Drudger: DefaultDrudgerDocument{Env: defaultEnv, Harness: defaultHarness},
+	}
+}
+
 type GlobalConfig struct {
 	Drudger DrudgerConfig `json:"drudger"`
 	Task    TaskConfig    `json:"task,omitzero"`

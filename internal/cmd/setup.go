@@ -3,105 +3,53 @@ package cmd
 import (
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
-	"github.com/IgorBolotnikov/DRUDGE/internal/skill"
-	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
 )
 
 var SetupCmd = &Cmd{
 	Name:  "setup",
 	Desc:  "Setup DRUDGE in this computer",
-	Setup: func(*flag.FlagSet) func(args []string) error { return setup },
+	Setup: func(*flag.FlagSet) func(args []string) error { return runSetup },
 }
 
-func setup([]string) error {
+func runSetup([]string) error {
 	printProjectName()
 
+	service, err := newSetupService()
+	if err != nil {
+		return err
+	}
+	result, err := service.Setup()
+	if err != nil {
+		return err
+	}
+
+	for _, path := range result.SchemaPaths {
+		fmt.Printf("Created %s\n", path)
+	}
+	if result.SkillPath != "" {
+		fmt.Printf("Created %s\n", result.SkillPath)
+	}
+	if result.GlobalConfig.HasExisted {
+		fmt.Printf("Config already exists at %s, skipping\n", result.GlobalConfig.Path)
+	} else {
+		fmt.Printf("Created %s\n", result.GlobalConfig.Path)
+	}
+	if result.ThemeConfig.HasExisted {
+		fmt.Printf("Theme config already exists at %s, skipping\n", result.ThemeConfig.Path)
+	} else {
+		fmt.Printf("Created %s\n", result.ThemeConfig.Path)
+	}
+	fmt.Printf("Initialized DRUDGE at %s\n", result.DrudgeDir)
+	return nil
+}
+
+func newSetupService() (*setup.SetupService, error) {
 	home, err := common.HomeDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	drudgeDir := common.DrudgeDir(home)
-	projectsDir := common.ProjectsDir(home)
-	configPath := common.GlobalConfigPath(home)
-	schemaDir := filepath.Join(drudgeDir, common.SchemaDirName)
-	themeSchemaPath := filepath.Join(schemaDir, common.ThemeConfigName)
-	configSchemaPath := filepath.Join(schemaDir, common.GloablConfigName)
-	localSchemaPath := filepath.Join(schemaDir, common.LocalSchemaName)
-	themePath := filepath.Join(drudgeDir, common.ThemeConfigName)
-
-	if err := common.EnsureDir(projectsDir); err != nil {
-		return err
-	}
-
-	if err := common.EnsureDir(schemaDir); err != nil {
-		return err
-	}
-	if err := os.WriteFile(themeSchemaPath, theme.Schema(), common.DefaultFilePerm); err != nil {
-		return fmt.Errorf("could not write schema: %w", err)
-	}
-	fmt.Printf("Created %s\n", themeSchemaPath)
-	if err := os.WriteFile(configSchemaPath, config.Schema(), common.DefaultFilePerm); err != nil {
-		return fmt.Errorf("could not write schema: %w", err)
-	}
-	fmt.Printf("Created %s\n", configSchemaPath)
-	if err := os.WriteFile(localSchemaPath, config.LocalSchema(), common.DefaultFilePerm); err != nil {
-		return fmt.Errorf("could not write schema: %w", err)
-	}
-	fmt.Printf("Created %s\n", localSchemaPath)
-
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	skillPath, didInstall, err := skill.InstallDrudge(home, cfg.Drudger.Harness)
-	if err != nil {
-		return err
-	}
-	if didInstall {
-		fmt.Printf("Created %s\n", skillPath)
-	}
-
-	globalCfg := map[string]any{
-		"$schema": config.SchemaRef(),
-		"drudger": map[string]any{
-			"environment": cfg.Drudger.Env,
-			"harness":     cfg.Drudger.Harness,
-		},
-	}
-
-	didWrite, err := common.WriteJSONIfNotExists(configPath, globalCfg)
-	if err != nil {
-		return err
-	}
-	if didWrite {
-		fmt.Printf("Created %s\n", configPath)
-	} else {
-		fmt.Printf("Config already exists at %s, skipping\n", configPath)
-	}
-
-	// TODO: move to config/theme.go
-	themeCfg := map[string]any{
-		"$schema":   theme.ThemeSchemaRef(),
-		"theme":     theme.DefaultTheme(),
-		"overrides": map[string]any{},
-	}
-	didWrite, err = common.WriteJSONIfNotExists(themePath, themeCfg)
-	if err != nil {
-		return err
-	}
-	if didWrite {
-		fmt.Printf("Created %s\n", themePath)
-	} else {
-		fmt.Printf("Theme config already exists at %s, skipping\n", themePath)
-	}
-
-	fmt.Printf("Initialized DRUDGE at %s\n", drudgeDir)
-	return nil
+	return setup.NewSetupService(home), nil
 }

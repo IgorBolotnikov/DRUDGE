@@ -48,7 +48,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 - `internal/config` — `GlobalConfig` (Drudger environment/harness), defaults merged with whatever's on disk, bundled JSON schema in `schema.go`
 - `internal/theme` — terminal color theme. Bundled palettes (`nord`, `monokai`, `catppuccin-mocha`, `dracula`, and `system` made of the 16 basic ANSI colors) in `themes.go`, keyed by role (`primary`, `error`, `success`, ...), overridable per-role via `~/.drudge/theme.json`, rendered as 24-bit ANSI escapes. Invalid override colors are logged and skipped, not treated as fatal. The theme alone decides whether color is on, so no other code checks `NO_COLOR` or the terminal for color.
 
-Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup` (`internal/cmd/setup.go`), and both config files carry a `$schema` pointer to that local file.
+Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup` (`internal/setup`), and both config files carry a `$schema` pointer to that local file.
 
 **`internal/common`** holds the shared low-level helpers everything else depends on: path helpers for the `~/.drudge` layout, generic JSON read/write, the front-matter format, UUID generation, and a minimal `Logger` (`Info` → stdout, `Error` → stderr, optional bracketed prefix). Don't reintroduce these primitives in a domain package.
 

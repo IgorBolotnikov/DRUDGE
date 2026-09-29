@@ -3,8 +3,6 @@ package cmd
 import (
 	"flag"
 	"fmt"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 var CleanupCmd = &Cmd{
@@ -18,24 +16,21 @@ var CleanupCmd = &Cmd{
 }
 
 func cleanup(isForced bool) error {
-	home, err := common.HomeDir()
+	service, err := newSetupService()
 	if err != nil {
 		return err
-	}
-
-	drudgeDir := common.DrudgeDir(home)
-
-	isPresent, err := common.Exists(drudgeDir)
-	if err != nil {
-		return err
-	}
-	if !isPresent {
-		fmt.Printf("Nothing to clean up, %s does not exist\n", drudgeDir)
-		return nil
 	}
 
 	if !isForced {
-		isConfirmed, err := ConfirmDeletion(drudgeDir)
+		isInstalled, err := service.IsInstalled()
+		if err != nil {
+			return err
+		}
+		if !isInstalled {
+			printNothingToCleanUp(service.DrudgeDir())
+			return nil
+		}
+		isConfirmed, err := ConfirmDeletion(service.DrudgeDir())
 		if err != nil {
 			return err
 		}
@@ -45,10 +40,18 @@ func cleanup(isForced bool) error {
 		}
 	}
 
-	if err := common.RemoveAll(drudgeDir); err != nil {
+	result, err := service.Cleanup()
+	if err != nil {
 		return err
 	}
-
-	fmt.Printf("Removed %s\n", drudgeDir)
+	if !result.HasRemoved {
+		printNothingToCleanUp(result.DrudgeDir)
+		return nil
+	}
+	fmt.Printf("Removed %s\n", result.DrudgeDir)
 	return nil
+}
+
+func printNothingToCleanUp(drudgeDir string) {
+	fmt.Printf("Nothing to clean up, %s does not exist\n", drudgeDir)
 }

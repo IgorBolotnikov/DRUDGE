@@ -151,6 +151,18 @@ type config struct {
 	Overrides map[string]string `json:"overrides"`
 }
 
+// DefaultDocument is the theme config file drg setup writes when there is none.
+type DefaultDocument struct {
+	Schema    string            `json:"$schema"`
+	Theme     string            `json:"theme"`
+	Overrides map[string]string `json:"overrides"`
+}
+
+// NewDefaultDocument returns the default theme config file.
+func NewDefaultDocument() DefaultDocument {
+	return DefaultDocument{Schema: themeSchemaRef, Theme: defaultTheme, Overrides: map[string]string{}}
+}
+
 func validHex(s string) bool {
 	return hexPattern.MatchString(s)
 }
