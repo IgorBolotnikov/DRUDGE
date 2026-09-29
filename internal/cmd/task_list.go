@@ -67,7 +67,7 @@ func (flags *taskListFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.status, statusFlagName, "Filter by `status` ("+task.FormatStatuses(task.Statuses)+")")
 	fs.Var(&flags.ticket, ticketFlagName, "Filter by `ticket` ID")
 	fs.Var(&flags.parent, parentFlagName, "Filter by the `id` of the task the tasks belong to")
-	flags.page.declare(fs)
+	flags.page.declare(fs, config.TaskPageSizeKey+" from the project config or the global config")
 }
 
 // filter returns the filter of the listing. It refuses a status drudge does

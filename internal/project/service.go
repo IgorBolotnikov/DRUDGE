@@ -88,8 +88,7 @@ func (p *ProjectService) InitProject(name string, projectDir string) (*Project, 
 }
 
 // ListProjects returns the page numbered page of the projects, with size
-// projects on every page. A size of 0 puts every project on page 1. It refuses
-// a page below 1 and a page past the last one.
+// projects on every page.
 func (p *ProjectService) ListProjects(page int, size int) (common.Page[*Project], error) {
 	projects, err := p.repo.ListProjects()
 	if err != nil {

@@ -36,8 +36,8 @@ type column struct {
 	Color func(text string) string
 }
 
-// printList prints a listing: a count, a header, a rule under it and one line
-// per row. total is the count, and covers the rows of every page.
+// printList prints a listing: the total count of rows on every page, a header,
+// a rule under it and one line per row.
 func printList(log *common.Logger, title string, total int, columns []column, rows [][]string) {
 	for _, line := range listLines(title, total, columns, rows) {
 		// The line is already formatted and may hold a percent sign.
@@ -122,14 +122,16 @@ type pageFlags struct {
 	size   optionalInt
 }
 
-func (flags *pageFlags) declare(fs *flag.FlagSet) {
+// declare declares the page flags. sizeSource names the config the page size
+// comes from when the size flag is left out.
+func (flags *pageFlags) declare(fs *flag.FlagSet, sizeSource string) {
 	fs.IntVar(&flags.number, pageFlagName, 1, "The `number` of the page to show")
 	alias(fs, pageFlagShortName, pageFlagName)
-	fs.Var(&flags.size, pageSizeFlagName, "How many `items` one page shows, 0 shows every item on one page")
+	fs.Var(&flags.size, pageSizeFlagName, "How many `items` one page shows, 0 shows them all, "+sizeSource+" when left out")
 }
 
-// pageSize returns the size given with --page-size, or fallback when the flag
-// was left out. It refuses a negative size.
+// pageSize returns the size given with the size flag, or fallback when the
+// flag was left out. It refuses a negative size.
 func (flags *pageFlags) pageSize(fallback int) (int, error) {
 	if flags.size.value == nil {
 		return fallback, nil

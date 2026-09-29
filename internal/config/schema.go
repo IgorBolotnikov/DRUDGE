@@ -101,7 +101,7 @@ const schemaJSON = `{
           "default": "draft"
         },
         "pageSize": {
-          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page. --page-size overrides it.",
+          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page.",
           "type": "integer",
           "minimum": 0,
           "default": 20
@@ -114,7 +114,7 @@ const schemaJSON = `{
       "type": "object",
       "properties": {
         "pageSize": {
-          "description": "How many projects drg project list shows on one page. 0 shows every project on one page. --page-size overrides it.",
+          "description": "How many projects drg project list shows on one page. 0 shows every project on one page.",
           "type": "integer",
           "minimum": 0,
           "default": 20
@@ -167,7 +167,7 @@ const localSchemaJSON = `{
           "default": "draft"
         },
         "pageSize": {
-          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page. --page-size overrides it.",
+          "description": "How many tasks drg task list shows on one page. 0 shows every task on one page.",
           "type": "integer",
           "minimum": 0,
           "default": 20

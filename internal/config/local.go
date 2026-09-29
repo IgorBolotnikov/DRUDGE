@@ -158,8 +158,8 @@ func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.Tas
 }
 
 // ResolveTaskPageSize returns how many tasks one page of a listing holds,
-// preferring the local config over the global one and falling back to 20. A
-// local size of 0 wins over a global size.
+// preferring the local config over the global one and falling back to the
+// default page size. A local size of 0 wins over a global size.
 func ResolveTaskPageSize(local *LocalConfig, global *GlobalConfig) int {
 	if local.Task.PageSize != nil {
 		return *local.Task.PageSize

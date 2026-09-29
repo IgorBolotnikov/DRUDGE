@@ -58,11 +58,10 @@ var ProjectCmd = &Cmd{
 		{
 			Name: "list",
 			Desc: "List the projects",
-			Help: "List the projects drudge knows about, with the slug and the name of each, one page at a time.\n" +
-				"A page holds --page-size projects, " + config.ProjectPageSizeKey + " from the global config when left out, 20 when that is unset. 0 shows every project on one page.",
+			Help: "List the projects drudge knows about, with the slug and the name of each, one page at a time.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				var flags pageFlags
-				flags.declare(fs)
+				flags.declare(fs, config.ProjectPageSizeKey+" from the global config")
 				return func([]string) error { return projectList(flags) }
 			},
 		},

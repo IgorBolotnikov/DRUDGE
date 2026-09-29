@@ -40,8 +40,7 @@ var TaskCmd = &Cmd{
 			Name: "list",
 			Desc: "List the tasks of the project",
 			Help: "List tasks in the current project, one page at a time. Tasks belonging to another task are listed under it.\n" +
-				"A filter lists the tasks it keeps without grouping them.\n" +
-				"A page holds --page-size tasks, " + config.TaskPageSizeKey + " from the project config or the global config when left out, 20 when both leave it unset. 0 shows every task on one page.",
+				"A filter lists the tasks it keeps without grouping them.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				flags := &taskListFlags{}
 				flags.declare(fs)

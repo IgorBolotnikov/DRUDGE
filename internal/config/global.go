@@ -265,7 +265,7 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 }
 
 // ResolveProjectPageSize returns how many projects one page of a listing
-// holds, falling back to 20 when the global config leaves it unset.
+// holds, falling back to the default page size.
 func ResolveProjectPageSize(global *GlobalConfig) int {
 	if global.Project.PageSize != nil {
 		return *global.Project.PageSize

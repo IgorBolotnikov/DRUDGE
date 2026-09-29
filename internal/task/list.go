@@ -32,12 +32,10 @@ type ListedTask struct {
 }
 
 // ListTasks returns the page numbered page of the tasks of a project that
-// pass filter, newest first, with size rows on every page. A size of 0 puts
-// every row on page 1. An unfiltered listing puts the children of a task right
-// after it. A filtered listing is flat. Pages are cut by row, so a page may
-// start with children whose parent sits on the page before. It refuses a
-// parent id that names no task or several, a page below 1 and a page past the
-// last one.
+// pass filter, newest first, with size rows on every page. An unfiltered
+// listing puts the children of a task right after it. A filtered listing is
+// flat. A page may start with children whose parent sits on the page before.
+// It refuses a parent id that names no task or several.
 func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter, page int, size int) (common.Page[ListedTask], error) {
 	rows, err := service.listRows(projectSlug, filter)
 	if err != nil {
