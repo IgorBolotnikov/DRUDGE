@@ -16,6 +16,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -663,7 +664,7 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	// A run needs the repositories of the project. Tests that care about the
 	// shape of a project name them.
 	if len(localCfg.Repositories) == 0 {
-		localCfg.Repositories = []config.Repository{{Path: testRepoPath}}
+		localCfg.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
 	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
@@ -1163,22 +1164,22 @@ func TestDrudgerService_RunTask_FillsTheWorkspacePlaceholders(t *testing.T) {
 
 	cases := []struct {
 		name              string
-		repositories      []config.Repository
+		repositories      []project.Repository
 		wantDefaultBranch string
 	}{
 		{
 			name:              "one repository",
-			repositories:      []config.Repository{{Path: testRepoPath}},
+			repositories:      []project.Repository{{Path: testRepoPath}},
 			wantDefaultBranch: testDefaultBranch,
 		},
 		{
 			name:              "repositories sharing a default branch name it once",
-			repositories:      []config.Repository{{Path: "api"}, {Path: "ui"}},
+			repositories:      []project.Repository{{Path: "api"}, {Path: "ui"}},
 			wantDefaultBranch: testDefaultBranch,
 		},
 		{
 			name:              "repositories with different default branches name both",
-			repositories:      []config.Repository{{Path: "api"}, {Path: "ui", DefaultBranch: "trunk"}},
+			repositories:      []project.Repository{{Path: "api"}, {Path: "ui", DefaultBranch: "trunk"}},
 			wantDefaultBranch: testDefaultBranch + ", trunk",
 		},
 	}

@@ -15,3 +15,9 @@ type ProjectRepository interface {
 	RenameProject(slug string, newName string) error
 	DeleteProject(slug string) error
 }
+
+// DirectoryLinker links the current directory to the project with the slug
+// slug and records the repositories of the project.
+type DirectoryLinker interface {
+	LinkDirectory(slug string, repositories []Repository) error
+}

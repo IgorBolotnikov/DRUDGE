@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
@@ -119,7 +118,7 @@ func newFakeGit(projectDir string, roots []string, branches map[string]string) *
 }
 
 func newTestService(gitOps git.Operations) *ProjectService {
-	return NewProjectService(nil, gitOps, common.NewLogger(""))
+	return NewProjectService(nil, nil, gitOps, common.NewLogger(""))
 }
 
 func makeProjectDir(t *testing.T, subdirs []string) string {
@@ -138,25 +137,25 @@ func TestDiscoverRepositories(t *testing.T) {
 		name    string
 		subdirs []string
 		roots   []string
-		want    []config.Repository
+		want    []Repository
 		wantErr bool
 	}{
 		{
 			name:  "project directory is a repository",
 			roots: []string{"."},
-			want:  []config.Repository{{Path: "."}},
+			want:  []Repository{{Path: "."}},
 		},
 		{
 			name:    "project directory holds repositories",
 			subdirs: []string{"api", "docs", "ui"},
 			roots:   []string{"api", "ui"},
-			want:    []config.Repository{{Path: "api"}, {Path: "ui"}},
+			want:    []Repository{{Path: "api"}, {Path: "ui"}},
 		},
 		{
 			name:    "a repository wins over the subdirectories under it",
 			subdirs: []string{"vendor"},
 			roots:   []string{".", "vendor"},
-			want:    []config.Repository{{Path: "."}},
+			want:    []Repository{{Path: "."}},
 		},
 		{
 			name:    "no repository anywhere",
@@ -209,7 +208,7 @@ func TestDiscoverRepositories(t *testing.T) {
 func TestDefaultBranch(t *testing.T) {
 	tests := []struct {
 		name           string
-		repository     config.Repository
+		repository     Repository
 		roots          []string
 		branches       map[string]string
 		want           string
@@ -218,28 +217,28 @@ func TestDefaultBranch(t *testing.T) {
 	}{
 		{
 			name:           "the config key wins",
-			repository:     config.Repository{Path: "api", DefaultBranch: "trunk"},
+			repository:     Repository{Path: "api", DefaultBranch: "trunk"},
 			branches:       map[string]string{"api": "main"},
 			want:           "trunk",
 			isGitLeftAlone: true,
 		},
 		{
 			name:       "origin/HEAD answers",
-			repository: config.Repository{Path: "api"},
+			repository: Repository{Path: "api"},
 			roots:      []string{"api"},
 			branches:   map[string]string{"api": "main"},
 			want:       "main",
 		},
 		{
 			name:       "neither answers",
-			repository: config.Repository{Path: "api"},
+			repository: Repository{Path: "api"},
 			roots:      []string{"api"},
-			wantErr:    []string{"git remote set-head origin -a", config.DefaultBranchKey, "api"},
+			wantErr:    []string{"git remote set-head origin -a", DefaultBranchKey, "api"},
 		},
 		{
 			name:       "the path is not a repository",
-			repository: config.Repository{Path: "api"},
-			wantErr:    []string{"api", config.RepositoriesKey},
+			repository: Repository{Path: "api"},
+			wantErr:    []string{"api", RepositoriesKey},
 		},
 	}
 
@@ -288,7 +287,7 @@ func TestResolveRepositories(t *testing.T) {
 	projectDir := t.TempDir()
 	service := newTestService(newFakeGit(projectDir, []string{"api", "ui"}, map[string]string{"api": "main"}))
 
-	resolved := service.ResolveRepositories(projectDir, []config.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs"}})
+	resolved := service.ResolveRepositories(projectDir, []Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs"}})
 
 	if len(resolved) != len(want) {
 		t.Fatalf("ResolveRepositories returned %d entries, want %d", len(resolved), len(want))

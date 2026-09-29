@@ -46,14 +46,19 @@ func newCommandDeps() (*commandDeps, error) {
 	}, nil
 }
 
-// newProjectService wires a project service over the project records and the
-// git binary.
+// newProjectService wires a project service over the project records, the
+// local config file and the git binary.
 func newProjectService(log *common.Logger) (*project.ProjectService, error) {
 	globalCfg, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	return project.NewProjectService(persistence.NewFileProjectRepository(""), newGitOperations(globalCfg), log), nil
+	home, err := common.HomeDir()
+	if err != nil {
+		return nil, err
+	}
+	linker := config.NewLocalConfigLinker(home)
+	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), log), nil
 }
 
 // newGitOperations wires the git adapter with the configured timeouts.

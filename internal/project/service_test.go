@@ -2,14 +2,11 @@ package project
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // fakeProjectRepo holds projects in memory.
@@ -49,6 +46,20 @@ func (repo *fakeProjectRepo) DeleteProject(slug string) error {
 	return errFakeProjectNotFound
 }
 
+// fakeLinker records the links it is handed.
+type fakeLinker struct {
+	wasCalled    bool
+	slug         string
+	repositories []Repository
+}
+
+func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository) error {
+	linker.wasCalled = true
+	linker.slug = slug
+	linker.repositories = repositories
+	return nil
+}
+
 func TestProjectService_InitProject(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -58,7 +69,7 @@ func TestProjectService_InitProject(t *testing.T) {
 		// projectName is what the user names the project.
 		projectName      string
 		wantSlug         string
-		wantRepositories []config.Repository
+		wantRepositories []Repository
 		// wantErrText is a fragment a refusal must carry. A case without it
 		// expects the project to be made.
 		wantErrText string
@@ -68,7 +79,7 @@ func TestProjectService_InitProject(t *testing.T) {
 			projectName:      "Test Project",
 			roots:            []string{"."},
 			wantSlug:         "test-project",
-			wantRepositories: []config.Repository{{Path: "."}},
+			wantRepositories: []Repository{{Path: "."}},
 		},
 		{
 			name:             "a directory holding repositories",
@@ -76,7 +87,7 @@ func TestProjectService_InitProject(t *testing.T) {
 			subdirs:          []string{"api", "docs", "ui"},
 			roots:            []string{"api", "ui"},
 			wantSlug:         "my-cool-app",
-			wantRepositories: []config.Repository{{Path: "api"}, {Path: "ui"}},
+			wantRepositories: []Repository{{Path: "api"}, {Path: "ui"}},
 		},
 		{
 			name:        "a directory holding no repository",
@@ -107,13 +118,12 @@ func TestProjectService_InitProject(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("HOME", home)
+			t.Setenv("HOME", t.TempDir())
 			projectDir := makeProjectDir(t, test.subdirs)
-			t.Chdir(projectDir)
 
 			repo := &fakeProjectRepo{projects: test.existing}
-			service := NewProjectService(repo, newFakeGit(projectDir, test.roots, nil), common.NewLogger(""))
+			linker := &fakeLinker{}
+			service := NewProjectService(repo, linker, newFakeGit(projectDir, test.roots, nil), common.NewLogger(""))
 
 			created, repositories, err := service.InitProject(test.projectName, projectDir)
 
@@ -127,8 +137,8 @@ func TestProjectService_InitProject(t *testing.T) {
 				if len(repo.projects) != len(test.existing) {
 					t.Errorf("expected a refused project to be left unwritten, got %d projects", len(repo.projects))
 				}
-				if _, err := os.Stat(common.LocalConfigPath()); !errors.Is(err, os.ErrNotExist) {
-					t.Errorf("expected no local config file, got %v", err)
+				if linker.wasCalled {
+					t.Errorf("expected a refused project to be left unlinked, got a link to %q", linker.slug)
 				}
 				return
 			}
@@ -142,20 +152,11 @@ func TestProjectService_InitProject(t *testing.T) {
 			if !reflect.DeepEqual(repositories, test.wantRepositories) {
 				t.Errorf("expected the repositories %+v, got %+v", test.wantRepositories, repositories)
 			}
-
-			saved, err := config.LoadLocal()
-			if err != nil {
-				t.Fatalf("could not read the local config: %v", err)
+			if linker.slug != test.wantSlug {
+				t.Errorf("expected the directory to be linked to %q, got %q", test.wantSlug, linker.slug)
 			}
-			wantSchema := filepath.Join(home, ".drudge", "schema", "local-config.json")
-			if saved.Schema != wantSchema {
-				t.Errorf("expected the local config to point at the schema %q, got %q", wantSchema, saved.Schema)
-			}
-			if saved.ProjectSlug != test.wantSlug {
-				t.Errorf("expected the local config to link %q, got %q", test.wantSlug, saved.ProjectSlug)
-			}
-			if !reflect.DeepEqual(saved.Repositories, test.wantRepositories) {
-				t.Errorf("expected the local config to record %+v, got %+v", test.wantRepositories, saved.Repositories)
+			if !reflect.DeepEqual(linker.repositories, test.wantRepositories) {
+				t.Errorf("expected the link to record %+v, got %+v", test.wantRepositories, linker.repositories)
 			}
 		})
 	}
@@ -184,7 +185,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, common.NewLogger(""))
+			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
 
 			found, err := service.LookupProject(testCase.slugOrName)
 			if err != nil {
@@ -198,7 +199,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 }
 
 func TestProjectService_LookupProject_RefusesAnUnknownProject(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, common.NewLogger(""))
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
 
 	_, err := service.LookupProject("wiki")
 	if err == nil || !strings.Contains(err.Error(), `project "wiki" not found`) {
@@ -270,7 +271,7 @@ func TestProjectService_RenameProject(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects()}
-			service := NewProjectService(repo, nil, common.NewLogger(""))
+			service := NewProjectService(repo, nil, nil, common.NewLogger(""))
 
 			err := service.RenameProject(testCase.slugOrName, testCase.newName)
 
@@ -296,7 +297,7 @@ func TestProjectService_RenameProject(t *testing.T) {
 
 func TestProjectService_DeleteProject(t *testing.T) {
 	repo := &fakeProjectRepo{projects: renamedProjects()}
-	service := NewProjectService(repo, nil, common.NewLogger(""))
+	service := NewProjectService(repo, nil, nil, common.NewLogger(""))
 
 	if err := service.DeleteProject("demo"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -317,7 +318,7 @@ func TestProjectService_DeleteProject(t *testing.T) {
 }
 
 func TestProjectService_DeleteProject_ReturnsTheErrorOfTheRepository(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, common.NewLogger(""))
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
 
 	err := service.DeleteProject("wiki")
 	if !errors.Is(err, errFakeProjectNotFound) {
@@ -343,7 +344,7 @@ func TestProjectService_ListProjects(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, common.NewLogger(""))
+			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, common.NewLogger(""))
 
 			listed, err := service.ListProjects(test.page, test.size)
 			if test.wantErr != "" {

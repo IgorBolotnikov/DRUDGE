@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
@@ -119,7 +118,7 @@ func (service *DrudgerService) resolveRepositories(layout projectLayout) ([]proj
 
 // resolveRepository works out where one repository of a project sits and what
 // it cuts work from.
-func (service *DrudgerService) resolveRepository(layout projectLayout, repository config.Repository) (projectRepository, error) {
+func (service *DrudgerService) resolveRepository(layout projectLayout, repository project.Repository) (projectRepository, error) {
 	branch, err := project.DefaultBranchOf(service.gitOps, layout.Dir, repository)
 	if err != nil {
 		return projectRepository{}, err

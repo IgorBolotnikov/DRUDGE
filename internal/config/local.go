@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -19,23 +20,12 @@ type LocalConfig struct {
 	Task                  TaskConfig         `json:"task,omitzero"`
 	Drudger               LocalDrudgerConfig `json:"drudger,omitzero"`
 	// Repositories is empty for a project initialized before drudge knew about repositories.
-	Repositories []Repository `json:"repositories,omitempty"`
+	Repositories []project.Repository `json:"repositories,omitempty"`
 }
 
 // LocalDrudgerConfig holds the Drudger settings a local config overrides.
 type LocalDrudgerConfig struct {
 	PageSize *int `json:"pageSize,omitempty"` // Drudgers on one page of a listing, nil means unset and zero means every Drudger on one page
-}
-
-// Repository is one git repository of a project. `drg project init` writes the
-// list and a user may edit it afterwards.
-type Repository struct {
-	// Path is where the repository sits relative to the project directory. A
-	// project directory that is itself a repository records ".".
-	Path string `json:"path"`
-	// DefaultBranch is the branch work is cut from. An empty value means
-	// drudge reads it from origin/HEAD.
-	DefaultBranch string `json:"defaultBranch,omitempty"`
 }
 
 // LocalSchemaRef returns the $schema reference for the local config file, the
@@ -102,13 +92,13 @@ func (cfg *LocalConfig) Save() error {
 // validateRepositories rejects a repository that names no path, and one whose
 // path reaches outside the project directory. An empty list passes, since that
 // is what an absent key unmarshals to.
-func validateRepositories(repositories []Repository, path string) error {
+func validateRepositories(repositories []project.Repository, path string) error {
 	for _, repository := range repositories {
 		if repository.Path == "" {
-			return fmt.Errorf("%s has a %s entry with no %q", path, RepositoriesKey, repositoryPathKey)
+			return fmt.Errorf("%s has a %s entry with no %q", path, project.RepositoriesKey, project.RepositoryPathKey)
 		}
 		if filepath.IsAbs(repository.Path) || escapesDir(repository.Path) {
-			return fmt.Errorf("%s has %s entry %q, a repository path must stay inside the project directory", path, RepositoriesKey, repository.Path)
+			return fmt.Errorf("%s has %s entry %q, a repository path must stay inside the project directory", path, project.RepositoriesKey, repository.Path)
 		}
 	}
 	return nil

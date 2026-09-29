@@ -66,11 +66,6 @@ const (
 	fetchTimeoutKey      = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey   = "gitTimeouts.worktreeSeconds"
 	gitCommandTimeoutKey = "gitTimeouts.commandSeconds"
-	// RepositoriesKey and DefaultBranchKey are exported so the project package
-	// can name them when a repository does not resolve.
-	RepositoriesKey   = "repositories"
-	DefaultBranchKey  = "defaultBranch"
-	repositoryPathKey = "path"
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
 	DefaultTaskStatusKey = "task.defaultStatus"
 	// ProjectPageSizeKey is exported so the project commands can name it in their help.

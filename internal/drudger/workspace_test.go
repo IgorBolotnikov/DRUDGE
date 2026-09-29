@@ -10,15 +10,16 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // localConfigWith is the config of a project whose repositories sit at the
 // given paths.
 func localConfigWith(paths ...string) *config.LocalConfig {
-	repositories := make([]config.Repository, 0, len(paths))
+	repositories := make([]project.Repository, 0, len(paths))
 	for _, path := range paths {
-		repositories = append(repositories, config.Repository{Path: path})
+		repositories = append(repositories, project.Repository{Path: path})
 	}
 	return &config.LocalConfig{ProjectSlug: testProjectSlug, Repositories: repositories}
 }

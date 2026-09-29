@@ -6,18 +6,18 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 type ProjectService struct {
 	repo   ProjectRepository
+	linker DirectoryLinker
 	gitOps git.Operations
 	log    *common.Logger
 }
 
-func NewProjectService(repo ProjectRepository, gitOps git.Operations, log *common.Logger) *ProjectService {
-	return &ProjectService{repo: repo, gitOps: gitOps, log: log}
+func NewProjectService(repo ProjectRepository, linker DirectoryLinker, gitOps git.Operations, log *common.Logger) *ProjectService {
+	return &ProjectService{repo: repo, linker: linker, gitOps: gitOps, log: log}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {
@@ -57,16 +57,11 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 }
 
 // InitProject creates a project for projectDir and links the current directory
-// to it in the local config file, together with the repositories of
+// to it through the DirectoryLinker, together with the repositories of
 // projectDir. A directory holding no repository is refused before the project
 // is created.
-func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []config.Repository, error) {
+func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []Repository, error) {
 	repositories, err := p.DiscoverRepositories(projectDir)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	home, err := common.HomeDir()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -76,12 +71,7 @@ func (p *ProjectService) InitProject(name string, projectDir string) (*Project, 
 		return nil, nil, err
 	}
 
-	localCfg := config.LocalConfig{
-		Schema:       config.LocalSchemaRef(home),
-		ProjectSlug:  created.Slug,
-		Repositories: repositories,
-	}
-	if err := localCfg.Save(); err != nil {
+	if err := p.linker.LinkDirectory(created.Slug, repositories); err != nil {
 		return nil, nil, err
 	}
 	return created, repositories, nil

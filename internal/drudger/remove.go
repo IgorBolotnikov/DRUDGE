@@ -6,8 +6,8 @@ import (
 	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -70,13 +70,13 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 
 // recordedRepository finds the repository of the local config that a name
 // stands for.
-func (service *DrudgerService) recordedRepository(layout projectLayout, name string) (config.Repository, bool) {
+func (service *DrudgerService) recordedRepository(layout projectLayout, name string) (project.Repository, bool) {
 	for _, repository := range service.localCfg.Repositories {
 		if repositoryNameOf(filepath.Join(layout.Dir, repository.Path)) == name {
 			return repository, true
 		}
 	}
-	return config.Repository{}, false
+	return project.Repository{}, false
 }
 
 // removeEmptyBranch deletes the branch of one repository when it holds nothing

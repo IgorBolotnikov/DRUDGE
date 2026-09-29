@@ -7,8 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+)
+
+// JSON keys of the repository list in the local config file, named in error
+// messages so they match what a user writes there.
+const (
+	RepositoriesKey   = "repositories"
+	RepositoryPathKey = "path"
+	DefaultBranchKey  = "defaultBranch"
 )
 
 // selfPath is the recorded path of a project directory that is itself a
@@ -23,13 +30,13 @@ const hiddenPrefix = "."
 // A directory that is itself a repository is the single entry ".". Otherwise
 // every immediate subdirectory that is a repository becomes one entry, as a
 // path relative to the project directory. A directory that is neither fails.
-func (service *ProjectService) DiscoverRepositories(projectDir string) ([]config.Repository, error) {
+func (service *ProjectService) DiscoverRepositories(projectDir string) ([]Repository, error) {
 	isRepository, err := service.gitOps.IsRepositoryRoot(projectDir)
 	if err != nil {
 		return nil, err
 	}
 	if isRepository {
-		return []config.Repository{{Path: selfPath}}, nil
+		return []Repository{{Path: selfPath}}, nil
 	}
 
 	entries, err := os.ReadDir(projectDir)
@@ -37,7 +44,7 @@ func (service *ProjectService) DiscoverRepositories(projectDir string) ([]config
 		return nil, fmt.Errorf("could not read %s: %w", projectDir, err)
 	}
 
-	repositories := make([]config.Repository, 0, len(entries))
+	repositories := make([]Repository, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), hiddenPrefix) {
 			continue
@@ -47,7 +54,7 @@ func (service *ProjectService) DiscoverRepositories(projectDir string) ([]config
 			return nil, err
 		}
 		if isRepository {
-			repositories = append(repositories, config.Repository{Path: entry.Name()})
+			repositories = append(repositories, Repository{Path: entry.Name()})
 		}
 	}
 
@@ -61,7 +68,7 @@ func (service *ProjectService) DiscoverRepositories(projectDir string) ([]config
 // repository whose default branch does not resolve carries the reason in
 // Problem and an empty DefaultBranch.
 type ResolvedRepository struct {
-	Repository    config.Repository
+	Repository    Repository
 	DefaultBranch string
 	Problem       error
 }
@@ -69,7 +76,7 @@ type ResolvedRepository struct {
 // ResolveRepositories works out the default branch of every repository. One
 // repository that does not resolve carries its reason and the others are still
 // answered, so a listing shows the whole project.
-func (service *ProjectService) ResolveRepositories(projectDir string, repositories []config.Repository) []ResolvedRepository {
+func (service *ProjectService) ResolveRepositories(projectDir string, repositories []Repository) []ResolvedRepository {
 	resolved := make([]ResolvedRepository, 0, len(repositories))
 	for _, repository := range repositories {
 		branch, err := service.DefaultBranch(projectDir, repository)
@@ -83,7 +90,7 @@ func (service *ProjectService) ResolveRepositories(projectDir string, repositori
 }
 
 // DefaultBranch works out the branch a repository's work is cut from.
-func (service *ProjectService) DefaultBranch(projectDir string, repository config.Repository) (string, error) {
+func (service *ProjectService) DefaultBranch(projectDir string, repository Repository) (string, error) {
 	return DefaultBranchOf(service.gitOps, projectDir, repository)
 }
 
@@ -91,7 +98,7 @@ func (service *ProjectService) DefaultBranch(projectDir string, repository confi
 // defaultBranch key of the repository wins, and git is left alone when it is
 // set. Otherwise the branch comes from origin/HEAD. A repository that answers
 // neither fails with both fixes named.
-func DefaultBranchOf(gitOps git.Operations, projectDir string, repository config.Repository) (string, error) {
+func DefaultBranchOf(gitOps git.Operations, projectDir string, repository Repository) (string, error) {
 	if repository.DefaultBranch != "" {
 		return repository.DefaultBranch, nil
 	}
@@ -102,14 +109,14 @@ func DefaultBranchOf(gitOps git.Operations, projectDir string, repository config
 		return "", err
 	}
 	if !isRepository {
-		return "", fmt.Errorf("%s is not a git repository, fix the %q entry for %q in the local config", dir, config.RepositoriesKey, repository.Path)
+		return "", fmt.Errorf("%s is not a git repository, fix the %q entry for %q in the local config", dir, RepositoriesKey, repository.Path)
 	}
 
 	branch, err := gitOps.DefaultBranch(dir)
 	if errors.Is(err, git.ErrNoDefaultBranch) {
 		return "", fmt.Errorf(
 			"could not work out the default branch of %s, run `git remote set-head origin -a` in it, or set %q for it in the local config",
-			repository.Path, config.DefaultBranchKey,
+			repository.Path, DefaultBranchKey,
 		)
 	}
 	if err != nil {

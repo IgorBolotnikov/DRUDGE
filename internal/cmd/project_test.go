@@ -8,7 +8,6 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
@@ -62,15 +61,15 @@ func TestPrintRepositories(t *testing.T) {
 		{
 			name: "a repository that is the project directory",
 			resolved: []project.ResolvedRepository{
-				{Repository: config.Repository{Path: "."}, DefaultBranch: "main"},
+				{Repository: project.Repository{Path: "."}, DefaultBranch: "main"},
 			},
 			wantLines: []string{"Repositories (1):", "REPOSITORY", "DEFAULT BRANCH", ".", "main"},
 		},
 		{
 			name: "a repository whose default branch does not resolve",
 			resolved: []project.ResolvedRepository{
-				{Repository: config.Repository{Path: "api"}, DefaultBranch: "trunk"},
-				{Repository: config.Repository{Path: "ui"}, Problem: errors.New("no origin/HEAD is set")},
+				{Repository: project.Repository{Path: "api"}, DefaultBranch: "trunk"},
+				{Repository: project.Repository{Path: "ui"}, Problem: errors.New("no origin/HEAD is set")},
 			},
 			wantLines: []string{"Repositories (2):", "api", "trunk", "ui", unresolvedBranch},
 		},
@@ -191,7 +190,7 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, common.NewLogger(""))
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, common.NewLogger(""))
 			captureOutput(func() {
 				for _, name := range testCase.projects {
 					if _, err := service.CreateProject(name); err != nil {

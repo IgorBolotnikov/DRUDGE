@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -48,7 +49,7 @@ func TestLoadLocal(t *testing.T) {
 		wantSlug        string
 		wantPrompt      string
 		wantDrudgers    int
-		wantRepos       []Repository
+		wantRepos       []project.Repository
 		wantTaskStatus  task.TaskStatus
 	}{
 		{
@@ -125,14 +126,14 @@ func TestLoadLocal(t *testing.T) {
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "."}]}`,
 			wantSlug:        "test-project",
-			wantRepos:       []Repository{{Path: "."}},
+			wantRepos:       []project.Repository{{Path: "."}},
 		},
 		{
 			name:            "repositories with a default branch",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "defaultBranch": "trunk"}, {"path": "ui"}]}`,
 			wantSlug:        "test-project",
-			wantRepos:       []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
+			wantRepos:       []project.Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 		},
 		{
 			name:            "repository with no path",
@@ -250,7 +251,7 @@ func TestSave_RoundTrips(t *testing.T) {
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
 		Task:                  TaskConfig{DefaultStatus: task.StatusTodo},
-		Repositories:          []Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
+		Repositories:          []project.Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
