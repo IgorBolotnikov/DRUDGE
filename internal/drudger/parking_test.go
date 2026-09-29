@@ -72,12 +72,11 @@ func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
 
 			projectDir := setupProjectDir(t)
 			tracked := handedOverTask(repositories...)
-			runDir := common.RunDir(projectDir, string(tracked.ID))
-			writeStream(t, runDir, initEvent, resultEvent)
-			writeExit(t, runDir, "0\n")
 
 			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
 			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+			service.runs.writeExit(tracked.ID, "0\n")
 			worktrees := worktreesOf(projectDir, repositories)
 			makeWorktrees(t, worktrees)
 			testCase.leave(service.git, worktrees)
@@ -111,10 +110,10 @@ func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
 func TestDrudgerService_SessionStatus_LeavesTheWorkspaceOfALiveSession(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	tracked := handedOverTask(testRepositoryName)
-	writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, assistantEvent)
 
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+	service.runs.writeStream(tracked.ID, initEvent, assistantEvent)
 	worktrees := worktreesOf(projectDir, []string{testRepositoryName})
 	makeWorktrees(t, worktrees)
 	service.git.leaveOn(worktrees[testRepositoryName], testTaskBranch, testHeadSHA)
@@ -140,13 +139,13 @@ func TestDrudgerService_ReclaimDrudgers_ParksEveryIdleDrudger(t *testing.T) {
 	working := busyDrudger(1)
 	working.Workspace = slotRoot(projectDir, 1)
 	working.LastChecked = time.Now().UTC().Add(-time.Hour)
-	writeStream(t, common.RunDir(projectDir, string(working.TaskID)), initEvent, assistantEvent)
 
 	idle := idleDrudgerAt(projectDir, 2)
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	pool := []*Drudger{working, idle}
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service.runs.writeStream(working.TaskID, initEvent, assistantEvent)
 
 	worktrees := map[string]string{"working": slotWorktree(projectDir, 1), "idle": slotWorktree(projectDir, 2)}
 	makeWorktrees(t, worktrees)
@@ -189,9 +188,9 @@ func TestDrudgerService_ListDrudgers_RunsNoGitCommands(t *testing.T) {
 
 	claimed := busyDrudger(1)
 	claimed.Workspace = slotRoot(projectDir, 1)
-	finishSession(t, projectDir, claimed.TaskID)
 
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, []*Drudger{claimed})
+	service.runs.finishSession(claimed.TaskID)
 	service.gitOps = &refusingGit{t: t}
 
 	var err error

@@ -1,13 +1,9 @@
 package drudger
 
 import (
-	"errors"
-	"io/fs"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -139,8 +135,8 @@ func TestDrudgerService_RefusesATaskWithAnUnfinishedBlocker(t *testing.T) {
 				if dependent.Status != launch.status || !dependent.StartedAt.IsZero() {
 					t.Errorf("expected the task record to be left alone, got status %q", dependent.Status)
 				}
-				if _, err := os.Stat(common.RunDir(projectDir, string(dependent.ID))); !errors.Is(err, fs.ErrNotExist) {
-					t.Errorf("expected a refused launch to write no run directory, got %v", err)
+				if hasRun, err := service.runs.HasRun(dependent.ID); err != nil || hasRun {
+					t.Errorf("expected a refused launch to write no run directory, exists %t (%v)", hasRun, err)
 				}
 			})
 		}

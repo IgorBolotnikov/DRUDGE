@@ -1,5 +1,11 @@
 package drudger
 
+import (
+	"time"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+)
+
 // DrudgerRepository stores the Drudgers a project has. An entry appears when a
 // Drudger is first claimed and leaves only by deliberate destructionl. The
 // store usually does not grow beyond the bounds of the pool.
@@ -14,4 +20,31 @@ type DrudgerRepository interface {
 	// else holds the lock. isStored says whether the Drudgers went through change
 	// and were written back.
 	TryUpdateDrudgers(projectSlug string, change func(drudgers []*Drudger) ([]*Drudger, error)) (isStored bool, err error)
+}
+
+// RunRepository stores the latest run of each task. A run holds the prompt the
+// agent is given, and the event stream, the stderr log and the exit code the
+// agent leaves behind. The agent writes its files from inside its sandbox, so
+// the repository only reads them.
+type RunRepository interface {
+	// PrepareRun deletes whatever an earlier run of a task left and stores the
+	// prompt of a fresh run.
+	PrepareRun(taskID task.TaskID, prompt string) error
+	// HasRun tells whether a task has a run.
+	HasRun(taskID task.TaskID) (bool, error)
+	// ReadStream returns the event stream of a run as far as the agent has
+	// written it. isPresent is false while the agent has not created it.
+	ReadStream(taskID task.TaskID) (content []byte, isPresent bool, err error)
+	// LastWrite returns when the event stream of a run was last written, or
+	// when the run was prepared if the agent has not created the stream. It
+	// refuses a task with no run.
+	LastWrite(taskID task.TaskID) (time.Time, error)
+	// ReadExit returns what the launcher wrote to the exit file of a run.
+	// hasExited is false while the agent has not exited.
+	ReadExit(taskID task.TaskID) (written string, hasExited bool, err error)
+	// ReadStderr returns the stderr log of a run. isPresent is false while the
+	// agent has not created it.
+	ReadStderr(taskID task.TaskID) (content []byte, isPresent bool, err error)
+	// RemoveRun deletes the run of a task and reports whether it had one.
+	RemoveRun(taskID task.TaskID) (isRemoved bool, err error)
 }

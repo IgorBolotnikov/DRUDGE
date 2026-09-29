@@ -2,14 +2,12 @@ package drudger
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // TODO: this whole file has to be revisited after a live testing
@@ -78,51 +76,45 @@ func (event streamEvent) carriesSessionID() bool {
 	return event.Type == streamEventSystem && event.Subtype == streamSubtypeInit
 }
 
-// readSessionID picks the agent's session id out of the event stream of a run
-// directory. An empty id means the agent has not written the event carrying it
-// yet, which is the normal state right after a launch.
-func readSessionID(runDir string) (string, error) {
-	return readStream(runDir, sessionIDFromStream)
+// readSessionID picks the agent's session id out of the event stream of a run.
+// An empty id means the agent has not written the event carrying it yet, which
+// is the normal state right after a launch.
+func readSessionID(runs RunRepository, taskID task.TaskID) (string, error) {
+	return readStream(runs, taskID, sessionIDFromStream)
 }
 
-// readOutcome picks what the end of a run says out of the event stream of a
-// run directory.
-func readOutcome(runDir string) (streamOutcome, error) {
-	return readStream(runDir, outcomeFromStream)
+// readOutcome picks what the end of a run says out of its event stream.
+func readOutcome(runs RunRepository, taskID task.TaskID) (streamOutcome, error) {
+	return readStream(runs, taskID, outcomeFromStream)
 }
 
 // streamHasContent reports whether the agent has written anything at all to
 // its event stream.
-func streamHasContent(runDir string) (bool, error) {
-	stream, err := os.Stat(common.RunStreamPath(runDir))
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
+func streamHasContent(runs RunRepository, taskID task.TaskID) (bool, error) {
+	content, _, err := runs.ReadStream(taskID)
 	if err != nil {
-		return false, fmt.Errorf("could not check the event stream of run directory %s: %w", runDir, err)
+		return false, fmt.Errorf("could not read the event stream of task %s: %w", taskID, err)
 	}
-	return stream.Size() > 0, nil
+	return len(content) > 0, nil
 }
 
-// readStream opens the event stream of a run directory and hands it to a
-// reader. A run directory with no stream file yet gets the zero value, since
-// an agent that has not written anything is the normal state right after a
-// launch.
-func readStream[T any](runDir string, read func(io.Reader) (T, error)) (T, error) {
+// readStream hands the event stream of a run to a reader. A run with no stream
+// yet gets the zero value, since an agent that has not written anything is the
+// normal state right after a launch.
+func readStream[T any](runs RunRepository, taskID task.TaskID, read func(io.Reader) (T, error)) (T, error) {
 	var zero T
 
-	stream, err := os.Open(common.RunStreamPath(runDir))
-	if errors.Is(err, fs.ErrNotExist) {
+	content, isPresent, err := runs.ReadStream(taskID)
+	if err != nil {
+		return zero, fmt.Errorf("could not read the event stream of task %s: %w", taskID, err)
+	}
+	if !isPresent {
 		return zero, nil
 	}
-	if err != nil {
-		return zero, fmt.Errorf("could not open the event stream of run directory %s: %w", runDir, err)
-	}
-	defer stream.Close()
 
-	value, err := read(stream)
+	value, err := read(bytes.NewReader(content))
 	if err != nil {
-		return zero, fmt.Errorf("could not read the event stream of run directory %s: %w", runDir, err)
+		return zero, fmt.Errorf("could not read the event stream of task %s: %w", taskID, err)
 	}
 	return value, nil
 }

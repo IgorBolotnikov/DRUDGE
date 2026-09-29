@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -14,24 +13,7 @@ import (
 // RemoveRun deletes the run directory of a task and reports whether the task
 // had one.
 func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
-	layout, err := service.layout()
-	if err != nil {
-		return false, err
-	}
-
-	runDir := layout.RunDir(taskID)
-	hasRunDir, err := common.Exists(runDir)
-	if err != nil {
-		return false, err
-	}
-	if !hasRunDir {
-		return false, nil
-	}
-
-	if err := common.RemoveAll(runDir); err != nil {
-		return false, err
-	}
-	return true, nil
+	return service.runs.RemoveRun(taskID)
 }
 
 // RemoveEmptyBranches deletes the branch a task left in every repository where

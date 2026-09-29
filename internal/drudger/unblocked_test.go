@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -45,13 +44,12 @@ func (finish unblockedFinish) finish(t *testing.T, service *testService, project
 		changes := task.EditTaskDto{Status: &outcome, AllowsManagedStatus: true}
 		output = captureOutput(func() { _, err = service.EditTask(testProjectSlug, finished.ID, changes) })
 	default:
-		runDir := common.RunDir(projectDir, string(finished.ID))
-		writeStream(t, runDir, initEvent, resultEvent)
+		service.runs.writeStream(finished.ID, initEvent, resultEvent)
 		exitCode := "0\n"
 		if outcome == task.StatusFuckedUp {
 			exitCode = "1\n"
 		}
-		writeExit(t, runDir, exitCode)
+		service.runs.writeExit(finished.ID, exitCode)
 		output = captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, finished.ID) })
 	}
 

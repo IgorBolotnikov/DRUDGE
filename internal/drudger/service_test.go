@@ -163,10 +163,13 @@ type fakeCommandRunner struct {
 	outputs    []string
 	stderrs    []string
 	errs       []error
-	// onStart stands in for the agent, which writes to its run directory only
-	// after it is started. A runner without one writes an init event, which is
-	// what a real agent writes first.
-	onStart func()
+	// runs is where the agent writes its run. newTestServiceWithPool hands
+	// the runner the runs of its service.
+	runs *fakeRunRepo
+	// onStart stands in for the agent, which writes to its run only after it is
+	// started. A runner without one writes an init event, which is what a real
+	// agent writes first.
+	onStart func(runs *fakeRunRepo)
 	// isAgentSilent stands for a start that forked and died, leaving an empty
 	// run directory behind.
 	isAgentSilent bool
@@ -180,21 +183,22 @@ func (runner *fakeCommandRunner) Start(argv []string) error {
 	}
 	switch {
 	case runner.onStart != nil:
-		runner.onStart()
+		runner.onStart(runner.runs)
 	case !runner.isAgentSilent:
-		writeInitEventOf(argv)
+		runner.writeInitEventOf(argv)
 	}
 	return nil
 }
 
-// writeInitEventOf writes an init event into the stream file that a launcher
-// script redirects its agent to.
-func writeInitEventOf(argv []string) {
+// writeInitEventOf writes an init event into the stream of the run that a
+// launcher script redirects its agent to. The run directory is named after its
+// task.
+func (runner *fakeCommandRunner) writeInitEventOf(argv []string) {
 	path := streamPathIn(argv)
 	if path == "" {
 		return
 	}
-	_ = os.WriteFile(path, []byte(initEvent+"\n"), common.DefaultFilePerm)
+	runner.runs.writeStream(task.TaskID(filepath.Base(filepath.Dir(path))), initEvent)
 }
 
 // streamPathIn reads the event stream path out of a launcher script. The
@@ -641,9 +645,119 @@ func copyDrudgers(drudgers []*Drudger) []*Drudger {
 	return copied
 }
 
+// fakeRun is one run the fake keeps. files holds the run files the agent or
+// the launch has written, keyed by their name.
+type fakeRun struct {
+	files     map[string]string
+	lastWrite time.Time
+}
+
+type fakeRunRepo struct {
+	runs map[task.TaskID]*fakeRun
+	// streamErr stands for a stream that is there but cannot be read.
+	streamErr error
+}
+
+func newFakeRunRepo() *fakeRunRepo {
+	return &fakeRunRepo{runs: map[task.TaskID]*fakeRun{}}
+}
+
+func (repo *fakeRunRepo) PrepareRun(taskID task.TaskID, prompt string) error {
+	repo.runs[taskID] = &fakeRun{files: map[string]string{common.RunPromptName: prompt}, lastWrite: time.Now()}
+	return nil
+}
+
+func (repo *fakeRunRepo) HasRun(taskID task.TaskID) (bool, error) {
+	_, ok := repo.runs[taskID]
+	return ok, nil
+}
+
+func (repo *fakeRunRepo) ReadStream(taskID task.TaskID) ([]byte, bool, error) {
+	if repo.streamErr != nil {
+		return nil, false, repo.streamErr
+	}
+	content, isPresent := repo.file(taskID, common.RunStreamName)
+	return []byte(content), isPresent, nil
+}
+
+func (repo *fakeRunRepo) LastWrite(taskID task.TaskID) (time.Time, error) {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		return time.Time{}, fmt.Errorf("task %s has no run", taskID)
+	}
+	return run.lastWrite, nil
+}
+
+func (repo *fakeRunRepo) ReadExit(taskID task.TaskID) (string, bool, error) {
+	content, isPresent := repo.file(taskID, common.RunExitName)
+	return content, isPresent, nil
+}
+
+func (repo *fakeRunRepo) ReadStderr(taskID task.TaskID) ([]byte, bool, error) {
+	content, isPresent := repo.file(taskID, common.RunStderrName)
+	return []byte(content), isPresent, nil
+}
+
+func (repo *fakeRunRepo) RemoveRun(taskID task.TaskID) (bool, error) {
+	_, ok := repo.runs[taskID]
+	delete(repo.runs, taskID)
+	return ok, nil
+}
+
+// file returns one file of a run and whether it is there.
+func (repo *fakeRunRepo) file(taskID task.TaskID, name string) (string, bool) {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		return "", false
+	}
+	content, isPresent := run.files[name]
+	return content, isPresent
+}
+
+// ensureRun creates a run holding no files, unless the task has one.
+func (repo *fakeRunRepo) ensureRun(taskID task.TaskID) *fakeRun {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		run = &fakeRun{files: map[string]string{}, lastWrite: time.Now()}
+		repo.runs[taskID] = run
+	}
+	return run
+}
+
+// write puts one file in a run, creating the run if the test has not. Only a
+// write to the stream moves the last write of a run that has one.
+func (repo *fakeRunRepo) write(taskID task.TaskID, name string, content string) {
+	run := repo.ensureRun(taskID)
+	run.files[name] = content
+	if name == common.RunStreamName {
+		run.lastWrite = time.Now()
+	}
+}
+
+// writeStream puts event lines in the stream of a run.
+func (repo *fakeRunRepo) writeStream(taskID task.TaskID, lines ...string) {
+	repo.write(taskID, common.RunStreamName, joinLines(lines))
+}
+
+// writeExit puts the exit file the launcher writes when its agent exits in a run.
+func (repo *fakeRunRepo) writeExit(taskID task.TaskID, contents string) {
+	repo.write(taskID, common.RunExitName, contents)
+}
+
+// finishSession puts the exit file of a clean exit in a run.
+func (repo *fakeRunRepo) finishSession(taskID task.TaskID) {
+	repo.writeExit(taskID, "0\n")
+}
+
+// writeStderr puts the stderr log in a run.
+func (repo *fakeRunRepo) writeStderr(taskID task.TaskID, contents string) {
+	repo.write(taskID, common.RunStderrName, contents)
+}
+
 type testService struct {
 	*DrudgerService
 	drudgers *fakeDrudgerRepo
+	runs     *fakeRunRepo
 	taskRepo *fakeTaskRepo
 	git      *fakeGit
 }
@@ -661,12 +775,16 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
 	taskRepo := &fakeTaskRepo{tasks: tasks, lockedTasks: map[task.TaskID]bool{}}
 	gitOps := &fakeGit{}
+	runs := newFakeRunRepo()
+	if runner, ok := commands.(*fakeCommandRunner); ok {
+		runner.runs = runs
+	}
 	// A run needs the repositories of the project. Tests that care about the
 	// shape of a project name them.
 	if len(localCfg.Repositories) == 0 {
 		localCfg.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
-	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, commands, gitOps)
+	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, runs, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -674,6 +792,7 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	return &testService{
 		DrudgerService: service,
 		drudgers:       drudgers,
+		runs:           runs,
 		taskRepo:       taskRepo,
 		git:            gitOps,
 	}
@@ -731,11 +850,6 @@ func busyTaskID(slot int) task.TaskID {
 
 func testSandboxOfSlot(slot int) string {
 	return fmt.Sprintf("drudge-claude-%s-%d", testProjectSlug, slot)
-}
-
-func finishSession(t *testing.T, projectDir string, taskID task.TaskID) {
-	t.Helper()
-	writeExit(t, common.RunDir(projectDir, string(taskID)), "0\n")
 }
 
 func inProjectDir(value, projectDir string) string {
@@ -923,8 +1037,8 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 			if testCase.lines != nil {
-				commands.onStart = func() {
-					writeStream(t, common.RunDir(projectDir, string(taskToRun.ID)), testCase.lines...)
+				commands.onStart = func(runs *fakeRunRepo) {
+					runs.writeStream(taskToRun.ID, testCase.lines...)
 				}
 			}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
@@ -1147,10 +1261,9 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	runDir := common.RunDir(projectDir, string(taskToRun.ID))
-	prompt, err := common.ReadFile(common.RunPromptPath(runDir))
-	if err != nil {
-		t.Fatalf("expected the prompt to be written to the run directory: %v", err)
+	prompt, isPresent := service.runs.file(taskToRun.ID, common.RunPromptName)
+	if !isPresent {
+		t.Fatal("expected the prompt to be written to the run directory")
 	}
 	for _, want := range []string{taskToRun.Title, taskToRun.Description, testTaskBranch} {
 		if !strings.Contains(prompt, want) {
@@ -1283,7 +1396,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 
 			// A launch creates the run directory before the sandbox steps, so
 			// it is there whatever fails afterwards.
-			isPresent, err := common.Exists(common.RunDir(projectDir, string(taskToRun.ID)))
+			isPresent, err := service.runs.HasRun(taskToRun.ID)
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
@@ -1338,9 +1451,6 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 		t.Run(testCase.name, func(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
-			for _, finishedTask := range testCase.finished {
-				finishSession(t, projectDir, finishedTask)
-			}
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWithPool(
@@ -1350,6 +1460,9 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 				testCase.pool,
 				taskToRun,
 			)
+			for _, finishedTask := range testCase.finished {
+				service.runs.finishSession(finishedTask)
+			}
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1806,12 +1919,10 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 	taskToRun.VendorError = authRefusedText
 	taskToRun.VendorErrorClass = task.VendorErrorAuth
 
-	runDir := common.RunDir(projectDir, string(taskToRun.ID))
-	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
-	writeExit(t, runDir, "1\n")
-
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service.runs.writeStream(taskToRun.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
+	service.runs.writeExit(taskToRun.ID, "1\n")
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1819,7 +1930,7 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	hasFinished, err := sessionFinished(runDir)
+	hasFinished, err := sessionFinished(service.runs, taskToRun.ID)
 	if err != nil {
 		t.Fatalf("could not check the run directory: %v", err)
 	}
@@ -1827,7 +1938,7 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 		t.Error("expected the exit code of the previous run to be gone")
 	}
 
-	report, err := readSessionReport(runDir, time.Now().UTC())
+	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -1864,12 +1975,12 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRerun := todoTask()
 			taskToRerun.Status = testCase.status
-			if testCase.hasFinishedRun {
-				finishSession(t, projectDir, taskToRerun.ID)
-			}
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+			if testCase.hasFinishedRun {
+				service.runs.finishSession(taskToRerun.ID)
+			}
 
 			var err error
 			out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
@@ -1909,8 +2020,6 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 	taskToRerun.Status = task.StatusInProgress
 
 	// A stream with no exit file beside it is an agent that is still writing.
-	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
-	writeStream(t, runDir, initEvent)
 
 	working := idleDrudger(1)
 	working.TaskID = taskToRerun.ID
@@ -1923,6 +2032,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 		[]*Drudger{working},
 		taskToRerun,
 	)
+	service.runs.writeStream(taskToRerun.ID, initEvent)
 
 	var err error
 	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
@@ -1942,7 +2052,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 		t.Error("expected the task record to be left alone")
 	}
 
-	report, err := readSessionReport(runDir, time.Now().UTC())
+	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -1959,8 +2069,6 @@ func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) 
 	// The agent died without writing an exit file, so its run directory reads
 	// as unfinished. A reclaim has already cleared its slot, and that idle
 	// slot is what says the agent is gone.
-	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
-	writeStream(t, runDir, initEvent)
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWithPool(
@@ -1970,6 +2078,7 @@ func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) 
 		[]*Drudger{idleDrudger(1)},
 		taskToRerun,
 	)
+	service.runs.writeStream(taskToRerun.ID, initEvent)
 
 	var err error
 	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
@@ -1993,12 +2102,10 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 	taskToRerun.SessionTurns = 12
 	taskToRerun.FinishedAt = time.Now().UTC()
 
-	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "1\n")
-
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+	service.runs.writeStream(taskToRerun.ID, initEvent, resultEvent)
+	service.runs.writeExit(taskToRerun.ID, "1\n")
 
 	var err error
 	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
@@ -2006,7 +2113,7 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	report, err := readSessionReport(runDir, time.Now().UTC())
+	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -2039,7 +2146,7 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	}
 	firstRun := slices.Clone(commands.calls)
 
-	finishSession(t, projectDir, taskToRun.ID)
+	service.runs.finishSession(taskToRun.ID)
 	taskToRun.Status = task.StatusFuckedUp
 	commands.calls = nil
 	commands.started = nil
@@ -2059,10 +2166,6 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 	taskToRerun := todoTask()
 	taskToRerun.Status = task.StatusFuckedUp
 
-	runDir := common.RunDir(projectDir, string(taskToRerun.ID))
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "0\n")
-
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
 		&config.LocalConfig{ProjectSlug: testProjectSlug},
@@ -2071,6 +2174,8 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 		[]*Drudger{busyDrudger(1)},
 		taskToRerun,
 	)
+	service.runs.writeStream(taskToRerun.ID, initEvent, resultEvent)
+	service.runs.writeExit(taskToRerun.ID, "0\n")
 
 	var err error
 	out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, true) })
@@ -2092,7 +2197,7 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 		t.Errorf("expected the task to stay %q, got %q", task.StatusFuckedUp, taskToRerun.Status)
 	}
 
-	report, err := readSessionReport(runDir, time.Now().UTC())
+	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -2174,10 +2279,9 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 				errs:       []error{nil, testCase.createErr},
 			}
 			if len(testCase.stream) > 0 {
-				commands.onStart = func() {
-					runDir := common.RunDir(projectDir, string(taskToRun.ID))
-					writeStream(t, runDir, testCase.stream...)
-					writeExit(t, runDir, testCase.exit)
+				commands.onStart = func(runs *fakeRunRepo) {
+					runs.writeStream(taskToRun.ID, testCase.stream...)
+					runs.writeExit(taskToRun.ID, testCase.exit)
 				}
 			}
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, testCase.pool, taskToRun)
@@ -2270,24 +2374,22 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 
 			claimed := busyDrudger(1)
 			claimed.SandboxHealth = SandboxUsable
 			claimed.LastChecked = claimedAt
 
-			if !testCase.hasNoRunDir {
-				runDir := common.RunDir(projectDir, string(claimed.TaskID))
-				writeStream(t, runDir, testCase.stream...)
-				if testCase.exit != noExitFile {
-					writeExit(t, runDir, testCase.exit)
-				}
-			}
-
 			pool := []*Drudger{idleDrudger(2), claimed}
 			commands := &fakeCommandRunner{}
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
 			service.drudgers.isLockHeld = testCase.isLockHeld
+			if !testCase.hasNoRunDir {
+				service.runs.writeStream(claimed.TaskID, testCase.stream...)
+				if testCase.exit != noExitFile {
+					service.runs.writeExit(claimed.TaskID, testCase.exit)
+				}
+			}
 
 			var listed common.Page[*Drudger]
 			var err error
@@ -2449,17 +2551,15 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 			claimed.SandboxHealth = SandboxUsable
 			claimed.LastChecked = claimedAt
 
-			if !testCase.hasNoRunDir {
-				runDir := common.RunDir(projectDir, string(claimed.TaskID))
-				writeStream(t, runDir, testCase.stream...)
-				if testCase.exit != noExitFile {
-					writeExit(t, runDir, testCase.exit)
-				}
-			}
-
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			pool := []*Drudger{claimed, idleDrudger(2)}
 			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
+			if !testCase.hasNoRunDir {
+				service.runs.writeStream(claimed.TaskID, testCase.stream...)
+				if testCase.exit != noExitFile {
+					service.runs.writeExit(claimed.TaskID, testCase.exit)
+				}
+			}
 
 			var freed []FreedSlot
 			var err error
@@ -2521,11 +2621,9 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 	claimed.TaskID = held.ID
 	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
 
-	runDir := common.RunDir(projectDir, string(held.ID))
-	writeStream(t, runDir, initEvent, assistantEvent)
-
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingStopped(testSandbox)}}
 	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed}, held)
+	service.runs.writeStream(held.ID, initEvent, assistantEvent)
 
 	var freed []FreedSlot
 	var err error
@@ -2546,7 +2644,7 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 
 	// The run directory holds what the dead agent wrote, and a reclaim does
 	// not touch it.
-	isPresent, err := common.Exists(runDir)
+	isPresent, err := service.runs.HasRun(held.ID)
 	if err != nil {
 		t.Fatalf("could not check the run directory: %v", err)
 	}

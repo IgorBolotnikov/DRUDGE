@@ -61,17 +61,16 @@ func TestDrudgerService_RunLogs(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			tracked := todoTask()
-			if testCase.stream != nil {
-				runDir := common.RunDir(projectDir, string(tracked.ID))
-				writeStream(t, runDir, testCase.stream...)
-				if testCase.stderr != noStderr {
-					writeStderr(t, runDir, testCase.stderr)
-				}
-			}
 
 			service := newTestService(tracked)
+			if testCase.stream != nil {
+				service.runs.writeStream(tracked.ID, testCase.stream...)
+				if testCase.stderr != noStderr {
+					service.runs.writeStderr(tracked.ID, testCase.stderr)
+				}
+			}
 			requestedID := testCase.requestedID
 			if requestedID == "" {
 				requestedID = tracked.ID
@@ -109,13 +108,5 @@ func TestDrudgerService_RunLogs(t *testing.T) {
 				t.Errorf("expected the stderr log missing %v, got %v", testCase.wantStderrMissing, stderr.IsMissing)
 			}
 		})
-	}
-}
-
-func writeStderr(t *testing.T, runDir string, contents string) {
-	t.Helper()
-	ensureRunDir(t, runDir)
-	if err := common.WriteFile(common.RunStderrPath(runDir), contents); err != nil {
-		t.Fatalf("could not write the stderr log: %v", err)
 	}
 }

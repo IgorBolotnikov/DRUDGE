@@ -171,9 +171,6 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			projectDir := setupProjectDir(t)
-			for _, finishedID := range testCase.finished {
-				finishSession(t, projectDir, finishedID)
-			}
 
 			commands := &fakeCommandRunner{
 				projectDir: projectDir,
@@ -191,6 +188,9 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 				testCase.pool,
 				occupied,
 			)
+			for _, finishedID := range testCase.finished {
+				service.runs.finishSession(finishedID)
+			}
 
 			var err error
 			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, testCase.slot, testCase.isForced) })
@@ -395,11 +395,11 @@ func TestDrudgerService_NukeDrudger_TakesTheWorkspaceBeforeTheSandbox(t *testing
 func TestDrudgerService_NukeDrudger_KeepsTheWorkspaceOfALiveSession(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	tracked := handedOverTask(testRepositoryName)
-	writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, assistantEvent)
 
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool, tracked)
+	service.runs.writeStream(tracked.ID, initEvent, assistantEvent)
 	service.gitOps = &refusingGit{t: t}
 
 	var err error

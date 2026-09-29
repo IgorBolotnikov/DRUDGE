@@ -1,11 +1,9 @@
 package drudger
 
 import (
-	"os"
+	"errors"
 	"strings"
 	"testing"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Sample events of a real run, one per line of the stream.
@@ -89,12 +87,13 @@ func TestReadSessionID(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			runDir := t.TempDir()
+			runs := newFakeRunRepo()
+			taskID := todoTask().ID
 			if testCase.lines != nil {
-				writeStream(t, runDir, testCase.lines...)
+				runs.writeStream(taskID, testCase.lines...)
 			}
 
-			got, err := readSessionID(runDir)
+			got, err := readSessionID(runs, taskID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -106,33 +105,13 @@ func TestReadSessionID(t *testing.T) {
 }
 
 func TestReadSessionID_UnreadableStream(t *testing.T) {
-	runDir := t.TempDir()
-	// A directory standing where the stream file belongs is not a missing
-	// file, so the read has to say so instead of answering with an empty id.
-	if err := os.Mkdir(common.RunStreamPath(runDir), 0o755); err != nil {
-		t.Fatalf("could not create the stand-in stream: %v", err)
-	}
+	// A stream that cannot be read is not a missing stream, so the read has to
+	// say so instead of answering with an empty id.
+	runs := newFakeRunRepo()
+	runs.streamErr = errors.New("is a directory")
 
-	if _, err := readSessionID(runDir); err == nil {
+	if _, err := readSessionID(runs, todoTask().ID); err == nil {
 		t.Fatal("expected an error for a stream that cannot be read")
-	}
-}
-
-// writeStream puts event lines in the stream file of a run directory, creating
-// the directory if the test has not.
-func writeStream(t *testing.T, runDir string, lines ...string) {
-	t.Helper()
-	ensureRunDir(t, runDir)
-	if err := common.WriteFile(common.RunStreamPath(runDir), joinLines(lines)); err != nil {
-		t.Fatalf("could not write the event stream: %v", err)
-	}
-}
-
-// ensureRunDir creates a run directory for a fixture to live in.
-func ensureRunDir(t *testing.T, runDir string) {
-	t.Helper()
-	if err := common.EnsureDir(runDir); err != nil {
-		t.Fatalf("could not create the run directory: %v", err)
 	}
 }
 

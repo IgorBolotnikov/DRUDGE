@@ -1,10 +1,7 @@
 package drudger
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -39,42 +36,37 @@ func (service *DrudgerService) RunLogs(projectSlug string, requestedID task.Task
 		return nil, err
 	}
 
-	runDir := layout.RunDir(tracked.ID)
-	hasRunDir, err := common.Exists(runDir)
+	hasRun, err := service.runs.HasRun(tracked.ID)
 	if err != nil {
 		return nil, err
 	}
-	if !hasRunDir {
+	if !hasRun {
 		return nil, fmt.Errorf("task %s is %q and has no run to show the logs of, run it first", tracked.ID, tracked.Status)
 	}
 
-	logs := []RunLog{}
-	for _, path := range []string{common.RunStreamPath(runDir), common.RunStderrPath(runDir)} {
-		log, err := readRunLog(path)
-		if err != nil {
-			return nil, err
-		}
-		logs = append(logs, log)
+	runDir := layout.RunDir(tracked.ID)
+	stream, isStreamPresent, err := service.runs.ReadStream(tracked.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the logs of task %s: %w", tracked.ID, err)
+	}
+	stderr, isStderrPresent, err := service.runs.ReadStderr(tracked.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the logs of task %s: %w", tracked.ID, err)
+	}
+
+	logs := []RunLog{
+		runLogOf(common.RunStreamPath(runDir), stream, isStreamPresent),
+		runLogOf(common.RunStderrPath(runDir), stderr, isStderrPresent),
 	}
 	return &TaskRunLogs{Task: tracked, Logs: logs}, nil
 }
 
-// readRunLog reads one log file of a run directory. It reports a file the
-// agent has not written yet as missing.
-func readRunLog(path string) (RunLog, error) {
-	log := RunLog{Name: filepath.Base(path), Path: path}
-
-	content, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		log.IsMissing = true
-		return log, nil
-	}
-	if err != nil {
-		return RunLog{}, fmt.Errorf("could not read the run log %s: %w", path, err)
-	}
-
+// runLogOf splits the content of one log file of a run directory into lines.
+// It reports a file the agent has not written yet as missing.
+func runLogOf(path string, content []byte, isPresent bool) RunLog {
+	log := RunLog{Name: filepath.Base(path), Path: path, IsMissing: !isPresent}
 	if len(content) > 0 {
 		log.Lines = strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
 	}
-	return log, nil
+	return log
 }

@@ -204,7 +204,7 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 	if commands.calls != nil {
 		t.Errorf("expected a dry run not to run anything, got %v", commands.subcommands())
 	}
-	if isPresent, err := common.Exists(common.LocalRunsDir()); err != nil || isPresent {
-		t.Errorf("expected a dry run not to write a run directory, exists %t (%v)", isPresent, err)
+	if len(service.runs.runs) != 0 {
+		t.Errorf("expected a dry run not to write a run directory, got %v", service.runs.runs)
 	}
 }

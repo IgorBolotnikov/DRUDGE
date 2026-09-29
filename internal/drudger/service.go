@@ -54,6 +54,7 @@ type DrudgerService struct {
 	globalCfg *config.GlobalConfig
 	tasks     *task.TaskService
 	drudgers  DrudgerRepository
+	runs      RunRepository
 	commands  CommandRunner
 	gitOps    git.Operations
 	// daemonRetryDelay and launchGrace default to the constants above. A test
@@ -65,13 +66,14 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
+func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
 	return &DrudgerService{
 		logger:           logger,
 		localCfg:         localCfg,
 		globalCfg:        globalCfg,
 		tasks:            tasks,
 		drudgers:         drudgers,
+		runs:             runs,
 		commands:         commands,
 		gitOps:           gitOps,
 		daemonRetryDelay: sbxDaemonRetryDelay,
@@ -244,7 +246,7 @@ func (service *DrudgerService) workingDrudger(projectSlug string, layout project
 // sessionStillRunning reports whether the run directory of a task says its
 // Session has not ended.
 func (service *DrudgerService) sessionStillRunning(layout projectLayout, taskID task.TaskID) (bool, error) {
-	report, err := readSessionReport(layout.RunDir(taskID), time.Now().UTC())
+	report, err := readSessionReport(service.runs, layout, taskID, time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return false, nil
 	}
@@ -345,7 +347,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	if err := prepareRunDir(runDir, prompt); err != nil {
+	if err := service.runs.PrepareRun(taskID, prompt); err != nil {
 		return err
 	}
 
@@ -369,7 +371,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	}
 	isLaunched = true
 
-	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(runDir))
+	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(taskID))
 	for _, repository := range prepared.Repositories {
 		taskToRun.RecordStash(repository.Name, repository.Stash)
 		taskToRun.RecordLanding(repository.Name, task.Landing{Branch: prepared.Branch, Base: repository.Base})
@@ -441,7 +443,7 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 	deadline := time.Now().Add(service.launchGrace)
 
 	for {
-		hasStarted, err := agentStarted(runDir)
+		hasStarted, err := agentStarted(service.runs, taskID)
 		if err != nil {
 			return err
 		}
@@ -461,8 +463,8 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 // launchedSessionID reads the session id the agent has written so far. The
 // line carrying the id can still be half written, so an empty id is a normal
 // answer.
-func (service *DrudgerService) launchedSessionID(runDir string) string {
-	sessionID, err := readSessionID(runDir)
+func (service *DrudgerService) launchedSessionID(taskID task.TaskID) string {
+	sessionID, err := readSessionID(service.runs, taskID)
 	if err != nil {
 		service.logger.Error("%v, the task is recorded without a session id", err)
 	}
@@ -587,17 +589,4 @@ func (service *DrudgerService) noteDaemonStart(stderr string) {
 	if daemonJustStarted(stderr) {
 		service.logger.Info("The sbx daemon was not running, sbx has just started it")
 	}
-}
-
-// prepareRunDir clears whatever the previous run left in the run directory and
-// puts the rendered prompt there, where the agent reads it from inside its
-// sandbox.
-func prepareRunDir(runDir string, prompt string) error {
-	if err := common.RemoveAll(runDir); err != nil {
-		return err
-	}
-	if err := common.EnsureDir(runDir); err != nil {
-		return err
-	}
-	return common.WriteFile(common.RunPromptPath(runDir), prompt)
 }

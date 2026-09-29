@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -125,7 +124,7 @@ func (service *DrudgerService) recordAgentHealth(projectSlug string, taskID task
 func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug string, taskID task.TaskID, layout projectLayout) (chosen *Drudger, pool []*Drudger, err error) {
 	now := time.Now().UTC()
 
-	if err := reclaimFinished(drudgers, layout, now); err != nil {
+	if err := reclaimFinished(drudgers, service.runs, layout, now); err != nil {
 		return nil, nil, err
 	}
 
@@ -191,13 +190,13 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 
 // reclaimFinished frees every Drudger whose Session has finished, and records
 // what that Session said about the agent that ran it.
-func reclaimFinished(drudgers []*Drudger, layout projectLayout, now time.Time) error {
+func reclaimFinished(drudgers []*Drudger, runs RunRepository, layout projectLayout, now time.Time) error {
 	for _, candidate := range drudgers {
 		if candidate.Idle() {
 			continue
 		}
 
-		report, err := readSessionReport(layout.RunDir(candidate.TaskID), now)
+		report, err := readSessionReport(runs, layout, candidate.TaskID, now)
 		if errors.Is(err, errNoRunDirectory) {
 			continue
 		}
@@ -233,7 +232,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, layout proj
 
 	var reclaimed []*Drudger
 	isStored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
-		if err := reclaimFinished(drudgers, layout, time.Now().UTC()); err != nil {
+		if err := reclaimFinished(drudgers, service.runs, layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 		reclaimed = drudgers
@@ -290,10 +289,10 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 	var pool []*Drudger
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		now := time.Now().UTC()
-		if err := reclaimFinished(drudgers, layout, now); err != nil {
+		if err := reclaimFinished(drudgers, service.runs, layout, now); err != nil {
 			return nil, err
 		}
-		stuck, err := freeStuckSlots(drudgers, layout, running, now)
+		stuck, err := freeStuckSlots(drudgers, service.runs, running, now)
 		if err != nil {
 			return nil, err
 		}
@@ -311,7 +310,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 
 // freeStuckSlots clears the claim of every Drudger that stuckClaimReason
 // finds without an agent, and returns what it cleared.
-func freeStuckSlots(drudgers []*Drudger, layout projectLayout, running map[string]bool, now time.Time) ([]FreedSlot, error) {
+func freeStuckSlots(drudgers []*Drudger, runs RunRepository, running map[string]bool, now time.Time) ([]FreedSlot, error) {
 	var freed []FreedSlot
 
 	for _, candidate := range drudgers {
@@ -319,7 +318,7 @@ func freeStuckSlots(drudgers []*Drudger, layout projectLayout, running map[strin
 			continue
 		}
 
-		reason, err := stuckClaimReason(candidate, layout, running, now)
+		reason, err := stuckClaimReason(candidate, runs, running, now)
 		if err != nil {
 			return nil, err
 		}
@@ -346,14 +345,12 @@ func freeStuckSlots(drudgers []*Drudger, layout projectLayout, running map[strin
 // A stale stream is no proof of a dead agent. One tool call can run for
 // minutes, which is what needs babysitting reports. The sandbox status is the
 // proof, because a sandbox that is not running holds no process.
-func stuckClaimReason(claimed *Drudger, layout projectLayout, running map[string]bool, now time.Time) (string, error) {
-	runDir := layout.RunDir(claimed.TaskID)
-
-	hasRunDir, err := common.Exists(runDir)
+func stuckClaimReason(claimed *Drudger, runs RunRepository, running map[string]bool, now time.Time) (string, error) {
+	hasRun, err := runs.HasRun(claimed.TaskID)
 	if err != nil {
 		return "", err
 	}
-	if !hasRunDir {
+	if !hasRun {
 		// A launch creates the run directory right after it claims the slot,
 		// so a claim older than the grace period has no launch behind it.
 		if now.Sub(claimed.LastChecked) <= launchGracePeriod {
@@ -366,7 +363,7 @@ func stuckClaimReason(claimed *Drudger, layout projectLayout, running map[string
 	// still be creating the sandbox, which takes minutes on a first run. The
 	// sandbox status only proves a dead agent once the agent has written
 	// something.
-	hasContent, err := streamHasContent(runDir)
+	hasContent, err := streamHasContent(runs, claimed.TaskID)
 	if err != nil {
 		return "", err
 	}

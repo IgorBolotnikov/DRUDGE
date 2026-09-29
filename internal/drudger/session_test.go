@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -158,15 +157,18 @@ func TestReadSessionReport(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			runDir := t.TempDir()
+			runs := newFakeRunRepo()
+			layout := projectLayout{Dir: t.TempDir()}
+			taskID := runningTask().ID
+			runs.ensureRun(taskID)
 			if testCase.stream != nil {
-				writeStream(t, runDir, testCase.stream...)
+				runs.writeStream(taskID, testCase.stream...)
 			}
 			if testCase.exit != noExitFile {
-				writeExit(t, runDir, testCase.exit)
+				runs.writeExit(taskID, testCase.exit)
 			}
 
-			report, err := readSessionReport(runDir, time.Now().UTC().Add(testCase.since))
+			report, err := readSessionReport(runs, layout, taskID, time.Now().UTC().Add(testCase.since))
 
 			if testCase.wantErr {
 				if err == nil {
@@ -193,8 +195,8 @@ func TestReadSessionReport(t *testing.T) {
 			if vendorClassOf(report) != testCase.wantVendorClass {
 				t.Errorf("expected vendor error class %q, got %q", testCase.wantVendorClass, vendorClassOf(report))
 			}
-			if report.RunDir != runDir {
-				t.Errorf("expected run directory %q, got %q", runDir, report.RunDir)
+			if report.RunDir != layout.RunDir(taskID) {
+				t.Errorf("expected run directory %q, got %q", layout.RunDir(taskID), report.RunDir)
 			}
 			if report.LastWrite.IsZero() {
 				t.Error("expected the last write to be stamped")
@@ -204,19 +206,20 @@ func TestReadSessionReport(t *testing.T) {
 }
 
 func TestReadSessionReport_MissingRunDirectory(t *testing.T) {
-	missing := common.RunDir(t.TempDir(), "never-run")
+	layout := projectLayout{Dir: t.TempDir()}
 
-	if _, err := readSessionReport(missing, time.Now().UTC()); err == nil {
+	if _, err := readSessionReport(newFakeRunRepo(), layout, "never-run", time.Now().UTC()); err == nil {
 		t.Fatal("expected an error for a run directory that is not there")
 	}
 }
 
 func TestReadSessionReport_KeepsTheFactsOfATerminalEvent(t *testing.T) {
-	runDir := t.TempDir()
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "0\n")
+	runs := newFakeRunRepo()
+	taskID := runningTask().ID
+	runs.writeStream(taskID, initEvent, resultEvent)
+	runs.writeExit(taskID, "0\n")
 
-	report, err := readSessionReport(runDir, time.Now().UTC())
+	report, err := readSessionReport(runs, projectLayout{Dir: t.TempDir()}, taskID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,18 +290,17 @@ func TestDrudgerService_SessionStatus(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			tracked := todoTask()
 			tracked.Status = testCase.status
-			if testCase.stream != nil {
-				runDir := common.RunDir(projectDir, string(tracked.ID))
-				writeStream(t, runDir, testCase.stream...)
-				if testCase.exit != noExitFile {
-					writeExit(t, runDir, testCase.exit)
-				}
-			}
 
 			service := newTestService(tracked)
+			if testCase.stream != nil {
+				service.runs.writeStream(tracked.ID, testCase.stream...)
+				if testCase.exit != noExitFile {
+					service.runs.writeExit(tracked.ID, testCase.exit)
+				}
+			}
 			requestedID := testCase.requestedID
 			if requestedID == "" {
 				requestedID = tracked.ID
@@ -336,16 +338,6 @@ func TestDrudgerService_SessionStatus_NeverRunTaskNamesItsStatus(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), string(task.StatusTodo)) {
 		t.Errorf("expected the error to name the task status, got %q", err)
-	}
-}
-
-// writeExit puts the exit file of a finished run in a run directory, creating
-// the directory if the test has not.
-func writeExit(t *testing.T, runDir string, contents string) {
-	t.Helper()
-	ensureRunDir(t, runDir)
-	if err := common.WriteFile(common.RunExitPath(runDir), contents); err != nil {
-		t.Fatalf("could not write the exit file: %v", err)
 	}
 }
 
@@ -410,15 +402,14 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(projectDir, string(tracked.ID))
-			writeStream(t, runDir, testCase.stream...)
-			if testCase.exit != noExitFile {
-				writeExit(t, runDir, testCase.exit)
-			}
 
 			service := newTestService(tracked)
+			service.runs.writeStream(tracked.ID, testCase.stream...)
+			if testCase.exit != noExitFile {
+				service.runs.writeExit(tracked.ID, testCase.exit)
+			}
 			if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -457,13 +448,12 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcome(t *testing.T) {
 }
 
 func TestDrudgerService_SessionStatus_RecordsTheOutcomeOnce(t *testing.T) {
-	projectDir := setupProjectDir(t)
+	setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(projectDir, string(tracked.ID))
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "0\n")
 
 	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
 	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
 		t.Fatalf("unexpected error on the first check: %v", err)
 	}
@@ -551,13 +541,12 @@ func TestDrudgerService_SessionStatus_RollsBackARefusedRun(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(projectDir, string(tracked.ID))
-			writeStream(t, runDir, testCase.stream...)
-			writeExit(t, runDir, "1\n")
 
 			service := newTestService(tracked)
+			service.runs.writeStream(tracked.ID, testCase.stream...)
+			service.runs.writeExit(tracked.ID, "1\n")
 
 			var err error
 			captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
@@ -632,13 +621,13 @@ func TestDrudgerService_SessionStatus_RecordsTheSameRefusalOnEveryCheck(t *testi
 func serviceWithAnAuthRefusal(t *testing.T) (*testService, *task.Task) {
 	t.Helper()
 
-	projectDir := setupProjectDir(t)
+	setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(projectDir, string(tracked.ID))
-	writeStream(t, runDir, initEvent, authRefusedEvent, authRefusedResultEvent)
-	writeExit(t, runDir, "1\n")
 
-	return newTestService(tracked), tracked
+	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
+	service.runs.writeExit(tracked.ID, "1\n")
+	return service, tracked
 }
 
 // checkRefusedTask reports on a refused Session and reads back what the check
@@ -680,14 +669,13 @@ func TestDrudgerService_SessionStatus_AnAuthRefusalNamesTheSbxCredentials(t *tes
 }
 
 func TestDrudgerService_SessionStatus_KeepsTheStartFieldsOfTheRunItRecords(t *testing.T) {
-	projectDir := setupProjectDir(t)
+	setupProjectDir(t)
 	tracked := runningTask()
 	startedAt := tracked.StartedAt
-	runDir := common.RunDir(projectDir, string(tracked.ID))
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "0\n")
 
 	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
 	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -733,13 +721,12 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			tracked := runningTask()
-			runDir := common.RunDir(projectDir, string(tracked.ID))
-			writeStream(t, runDir, testCase.stream...)
-			writeExit(t, runDir, testCase.exit)
 
 			service := newTestService(tracked)
+			service.runs.writeStream(tracked.ID, testCase.stream...)
+			service.runs.writeExit(tracked.ID, testCase.exit)
 
 			// The launch that put the task on a new run, landing after this
 			// check read the task and before it records anything.
@@ -783,13 +770,12 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 }
 
 func TestDrudgerService_SessionStatus_ReportsWithoutRecordingOnAHeldTask(t *testing.T) {
-	projectDir := setupProjectDir(t)
+	setupProjectDir(t)
 	tracked := runningTask()
-	runDir := common.RunDir(projectDir, string(tracked.ID))
-	writeStream(t, runDir, initEvent, resultEvent)
-	writeExit(t, runDir, "0\n")
 
 	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
 	service.taskRepo.lockedTasks[tracked.ID] = true
 
 	var session *TaskSession

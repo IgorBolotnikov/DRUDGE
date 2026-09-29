@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -141,11 +140,11 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 
 			projectDir := setupProjectDir(t)
 			tracked := handedOverTask(repositories...)
-			writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, resultEvent)
-			writeExit(t, common.RunDir(projectDir, string(tracked.ID)), "0\n")
 
 			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
 			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+			service.runs.writeExit(tracked.ID, "0\n")
 			worktrees := worktreesOf(projectDir, repositories)
 			testCase.leave(service.git, worktrees)
 
@@ -179,12 +178,12 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 }
 
 func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(t *testing.T) {
-	projectDir := setupProjectDir(t)
+	setupProjectDir(t)
 	tracked := handedOverTask(testRepositoryName)
-	writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, resultEvent)
-	writeExit(t, common.RunDir(projectDir, string(tracked.ID)), "0\n")
 
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, nil, tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
 
 	var session *TaskSession
 	var err error
@@ -208,11 +207,11 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 func TestDrudgerService_SessionStatus_ARefusedRunClosesOutNothing(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	tracked := handedOverTask(testRepositoryName)
-	writeStream(t, common.RunDir(projectDir, string(tracked.ID)), initEvent, authRefusedEvent, authRefusedResultEvent)
-	writeExit(t, common.RunDir(projectDir, string(tracked.ID)), "1\n")
 
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
 	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+	service.runs.writeStream(tracked.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
+	service.runs.writeExit(tracked.ID, "1\n")
 	service.git.leaveOn(filepath.Join(slotRoot(projectDir, 1), testRepositoryName), testTaskBranch, testBaseSHA)
 
 	var err error

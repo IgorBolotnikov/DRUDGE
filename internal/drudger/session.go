@@ -3,13 +3,10 @@ package drudger
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -103,7 +100,7 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
-	report, err := readSessionReport(layout.RunDir(tracked.ID), time.Now().UTC())
+	report, err := readSessionReport(service.runs, layout, tracked.ID, time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return nil, fmt.Errorf("task %s is %q and has no run to report on, run it first", tracked.ID, tracked.Status)
 	}
@@ -286,31 +283,33 @@ func taskStatusOf(status SessionStatus, finished *task.Task) task.TaskStatus {
 	return task.StatusDone
 }
 
-func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
-	hasRunDir, err := common.Exists(runDir)
+func readSessionReport(runs RunRepository, layout projectLayout, taskID task.TaskID, now time.Time) (SessionReport, error) {
+	runDir := layout.RunDir(taskID)
+
+	hasRun, err := runs.HasRun(taskID)
 	if err != nil {
 		return SessionReport{}, err
 	}
-	if !hasRunDir {
+	if !hasRun {
 		return SessionReport{}, fmt.Errorf("%w at %s", errNoRunDirectory, runDir)
 	}
 
 	report := SessionReport{RunDir: runDir}
 
-	if report.SessionID, err = readSessionID(runDir); err != nil {
+	if report.SessionID, err = readSessionID(runs, taskID); err != nil {
 		return SessionReport{}, err
 	}
-	if report.LastWrite, err = readLastWrite(runDir); err != nil {
+	if report.LastWrite, err = runs.LastWrite(taskID); err != nil {
 		return SessionReport{}, err
 	}
 
-	outcome, err := readOutcome(runDir)
+	outcome, err := readOutcome(runs, taskID)
 	if err != nil {
 		return SessionReport{}, err
 	}
 	report.Result = sessionResultOf(outcome)
 
-	hasFinished, err := sessionFinished(runDir)
+	hasFinished, err := sessionFinished(runs, taskID)
 	if err != nil {
 		return SessionReport{}, err
 	}
@@ -319,7 +318,7 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 		return report, nil
 	}
 
-	if report.ExitCode, err = readExitCode(runDir); err != nil {
+	if report.ExitCode, err = readExitCode(runs, taskID, runDir); err != nil {
 		return SessionReport{}, err
 	}
 	report.Status = statusOfFinished(report.ExitCode, report.Result)
@@ -329,24 +328,24 @@ func readSessionReport(runDir string, now time.Time) (SessionReport, error) {
 // agentStarted reports whether a run has produced evidence that its agent
 // ran. Content in the event stream is that evidence. So is an exit file, which
 // the launcher script writes after the agent exits.
-func agentStarted(runDir string) (bool, error) {
-	hasContent, err := streamHasContent(runDir)
+func agentStarted(runs RunRepository, taskID task.TaskID) (bool, error) {
+	hasContent, err := streamHasContent(runs, taskID)
 	if err != nil {
 		return false, err
 	}
 	if hasContent {
 		return true, nil
 	}
-	return sessionFinished(runDir)
+	return sessionFinished(runs, taskID)
 }
 
 // sessionFinished reports whether a Session has stopped.
-func sessionFinished(runDir string) (bool, error) {
-	hasExitFile, err := common.Exists(common.RunExitPath(runDir))
+func sessionFinished(runs RunRepository, taskID task.TaskID) (bool, error) {
+	_, hasExited, err := runs.ReadExit(taskID)
 	if err != nil {
-		return false, fmt.Errorf("could not tell whether the Session in run directory %s has finished: %w", runDir, err)
+		return false, fmt.Errorf("could not tell whether the Session of task %s has finished: %w", taskID, err)
 	}
-	return hasExitFile, nil
+	return hasExited, nil
 }
 
 // statusOfRunning judges a Session that has not written its exit file.
@@ -373,26 +372,9 @@ func statusOfFinished(exitCode int, result *SessionResult) SessionStatus {
 	return StatusGotShitDone
 }
 
-// readLastWrite reports when the Session last produced output.
-func readLastWrite(runDir string) (time.Time, error) {
-	stream, err := os.Stat(common.RunStreamPath(runDir))
-	if err == nil {
-		return stream.ModTime(), nil
-	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return time.Time{}, fmt.Errorf("could not check the event stream of run directory %s: %w", runDir, err)
-	}
-
-	directory, err := os.Stat(runDir)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("could not check run directory %s: %w", runDir, err)
-	}
-	return directory.ModTime(), nil
-}
-
 // readExitCode reads what the agent of a finished Session exited with.
-func readExitCode(runDir string) (int, error) {
-	raw, err := common.ReadFile(common.RunExitPath(runDir))
+func readExitCode(runs RunRepository, taskID task.TaskID, runDir string) (int, error) {
+	raw, _, err := runs.ReadExit(taskID)
 	if err != nil {
 		return 0, err
 	}

@@ -48,14 +48,6 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToEdit := todoTask()
 
-			runDir := common.RunDir(projectDir, string(taskToEdit.ID))
-			if testCase.stream != "" {
-				writeStream(t, runDir, testCase.stream)
-			}
-			if testCase.exit != "" {
-				writeExit(t, runDir, testCase.exit)
-			}
-
 			pool := []*Drudger{idleDrudger(1)}
 			if testCase.hasHolder {
 				pool[0].TaskID = taskToEdit.ID
@@ -68,6 +60,12 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 				pool,
 				taskToEdit,
 			)
+			if testCase.stream != "" {
+				service.runs.writeStream(taskToEdit.ID, testCase.stream)
+			}
+			if testCase.exit != "" {
+				service.runs.writeExit(taskToEdit.ID, testCase.exit)
+			}
 
 			err := service.RefuseWhileWorking(testProjectSlug, taskToEdit)
 

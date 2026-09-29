@@ -29,7 +29,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		// Reclaim to get the up-to-date state of all Drudgers.
-		if err := reclaimFinished(drudgers, layout, time.Now().UTC()); err != nil {
+		if err := reclaimFinished(drudgers, service.runs, layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 

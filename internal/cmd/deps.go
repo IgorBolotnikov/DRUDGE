@@ -35,6 +35,7 @@ func newCommandDeps() (*commandDeps, error) {
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	tasks := task.NewTaskService(repo, log, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
 	drudgers := persistence.NewFileDrudgerRepository("")
+	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
 
 	return &commandDeps{
@@ -42,7 +43,7 @@ func newCommandDeps() (*commandDeps, error) {
 		globalCfg: globalCfg,
 		log:       log,
 		tasks:     tasks,
-		drudger:   drudger.New(log, localCfg, globalCfg, tasks, drudgers, cmdRunner, newGitOperations(globalCfg)),
+		drudger:   drudger.New(log, localCfg, globalCfg, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
 	}, nil
 }
 

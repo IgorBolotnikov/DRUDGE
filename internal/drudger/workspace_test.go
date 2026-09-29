@@ -162,7 +162,7 @@ func TestDrudgerService_RunTask_ReusesTheWorkspaceOfTheSlot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the first run failed: %v", err)
 	}
-	finishSession(t, projectDir, firstTask.ID)
+	service.runs.finishSession(firstTask.ID)
 
 	captureOutput(func() { err = service.RunTask(testProjectSlug, secondTask.ID, false) })
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -31,15 +30,13 @@ func TestDrudgerService_RemoveRun(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			projectDir := setupProjectDir(t)
+			setupProjectDir(t)
 			taskToRemove := todoTask()
 
-			runDir := common.RunDir(projectDir, string(taskToRemove.ID))
-			if testCase.stream != "" {
-				writeStream(t, runDir, testCase.stream)
-			}
-
 			service := newTestService(taskToRemove)
+			if testCase.stream != "" {
+				service.runs.writeStream(taskToRemove.ID, testCase.stream)
+			}
 
 			hasRun, err := service.RemoveRun(taskToRemove.ID)
 			if err != nil {
@@ -49,7 +46,7 @@ func TestDrudgerService_RemoveRun(t *testing.T) {
 				t.Errorf("expected a run directory to be reported: %v, got %v", testCase.wantRun, hasRun)
 			}
 
-			isLeft, err := common.Exists(runDir)
+			isLeft, err := service.runs.HasRun(taskToRemove.ID)
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
