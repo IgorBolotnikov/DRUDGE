@@ -39,18 +39,29 @@ type column struct {
 // printList prints a listing: the total count of rows on every page, a header,
 // a rule under it and one line per row.
 func printList(log *common.Logger, title string, total int, columns []column, rows [][]string) {
-	for _, line := range listLines(title, total, columns, rows) {
+	printColoredList(log, title, total, columns, rows, nil)
+}
+
+// printColoredList prints a listing like printList. A row with a color in
+// rowColors prints its whole line in that color, and the colors of the
+// columns skip it.
+func printColoredList(log *common.Logger, title string, total int, columns []column, rows [][]string, rowColors []func(text string) string) {
+	for _, line := range listLines(title, total, columns, rows, rowColors) {
 		// The line is already formatted and may hold a percent sign.
 		log.Info("%s", line)
 	}
 }
 
-func listLines(title string, total int, columns []column, rows [][]string) []string {
+func listLines(title string, total int, columns []column, rows [][]string, rowColors []func(text string) string) []string {
 	lines := make([]string, 0, len(rows)+3)
 	lines = append(lines, fmt.Sprintf("%s (%d):", title, total))
 	lines = append(lines, listLine(columns, columnTitles(columns), false))
 	lines = append(lines, listLine(columns, columnRules(columns), false))
-	for _, row := range rows {
+	for index, row := range rows {
+		if index < len(rowColors) && rowColors[index] != nil {
+			lines = append(lines, colorCell(listLine(columns, row, false), rowColors[index]))
+			continue
+		}
 		lines = append(lines, listLine(columns, row, true))
 	}
 	return lines

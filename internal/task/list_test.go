@@ -301,10 +301,34 @@ func TestTaskService_ListTasks_Pages(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "a page may start with children whose parent is on the page before",
-			page: 2,
-			size: 4,
+			name: "a page that starts with children repeats their parent as a context row",
+			page: 3,
+			size: 2,
 			want: []ListedTask{
+				{Task: stored("parent", StatusTodo, 0, ""), IsContext: true},
+				{Task: stored("second-child", StatusDone, 2, "parent"), IsUnderParent: true},
+				{Task: stored("first-child", StatusTodo, 1, "parent"), IsUnderParent: true},
+			},
+			wantTotalItems: 6,
+			wantTotalPages: 3,
+		},
+		{
+			name: "a page that starts with the last child repeats its parent",
+			page: 2,
+			size: 5,
+			want: []ListedTask{
+				{Task: stored("parent", StatusTodo, 0, ""), IsContext: true},
+				{Task: stored("first-child", StatusTodo, 1, "parent"), IsUnderParent: true},
+			},
+			wantTotalItems: 6,
+			wantTotalPages: 2,
+		},
+		{
+			name: "a page that starts with a top-level task gets no context row",
+			page: 2,
+			size: 3,
+			want: []ListedTask{
+				{Task: stored("parent", StatusTodo, 0, "")},
 				{Task: stored("second-child", StatusDone, 2, "parent"), IsUnderParent: true},
 				{Task: stored("first-child", StatusTodo, 1, "parent"), IsUnderParent: true},
 			},
@@ -312,7 +336,7 @@ func TestTaskService_ListTasks_Pages(t *testing.T) {
 			wantTotalPages: 2,
 		},
 		{
-			name:   "a filtered listing counts only the rows it keeps",
+			name:   "a filtered listing counts only the rows it keeps and gets no context row",
 			filter: ListTasksFilter{Status: pointerTo(StatusTodo)},
 			page:   2,
 			size:   2,
@@ -367,6 +391,9 @@ func describeListing(listed []ListedTask) string {
 	var description string
 	for _, entry := range listed {
 		description += string(entry.Task.ID)
+		if entry.IsContext {
+			description += " as context"
+		}
 		if entry.IsUnderParent {
 			description += " under parent"
 		}

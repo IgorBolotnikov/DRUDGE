@@ -265,6 +265,69 @@ func TestPrintTaskListColors(t *testing.T) {
 	}
 }
 
+func TestPrintTaskListContextRow(t *testing.T) {
+	parent := &task.Task{ID: "9c8d7e6f-dbe9-4316-8aba-8a67a8f01f8f", Title: "Dependency tracking", Status: task.StatusInProgress, TicketID: "R-005"}
+	child := &task.Task{ID: "2b3c4d5e-dbe9-4316-8aba-8a67a8f01f8f", Title: "Pick the next task", Status: task.StatusDone}
+	listed := common.Page[task.ListedTask]{
+		Items: []task.ListedTask{
+			{Task: parent, IsContext: true},
+			{Task: child, IsUnderParent: true},
+		},
+		Number:     2,
+		TotalPages: 2,
+		TotalItems: 2,
+	}
+	const header = "Tasks (2):\n" +
+		"  STATUS           ID        TITLE                                     BLOCKED BY  TICKET\n" +
+		"  ---------------  --------  ----------------------------------------  ----------  ------\n"
+	const contextRow = "in-progress      9c8d7e6f  Dependency tracking                                   R-005"
+
+	cases := []struct {
+		name string
+		env  map[string]string
+		want func(palette *theme.Theme) string
+	}{
+		{
+			name: "forced color mutes the whole context row",
+			env:  map[string]string{"FORCE_COLOR": "1"},
+			want: func(palette *theme.Theme) string {
+				paint := func(role, text string) string { return palette.Color(role) + text + palette.Reset() }
+				return header +
+					"  " + paint(theme.RoleMuted, contextRow) + "\n" +
+					"    " + paint(theme.RoleSuccess, "done") + "           2b3c4d5e    Pick the next task\n" +
+					paint(theme.RoleMuted, "Page 2 of 2") + "\n"
+			},
+		},
+		{
+			name: "no color prints the context row plain",
+			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
+			want: func(*theme.Theme) string {
+				return header +
+					"  " + contextRow + "\n" +
+					"    done           2b3c4d5e    Pick the next task\n" +
+					"Page 2 of 2\n"
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "")
+			for name, value := range testCase.env {
+				t.Setenv(name, value)
+			}
+			log := common.NewLogger("")
+
+			out := captureOutput(func() { printTaskList(log, listed) })
+
+			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
+				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
+			}
+		})
+	}
+}
+
 func TestTaskList(t *testing.T) {
 	const header = "  STATUS           ID        TITLE                                     BLOCKED BY  TICKET\n" +
 		"  ---------------  --------  ----------------------------------------  ----------  ------\n"
@@ -275,7 +338,9 @@ func TestTaskList(t *testing.T) {
 		name string
 		// titles are the tasks to create, oldest first.
 		titles []string
-		args   []string
+		// parents maps the index of a title to the index of its parent.
+		parents map[int]int
+		args    []string
 		// localTask is the task section of the local config when set.
 		localTask string
 		// want renders the output from the short ids of the tasks.
@@ -326,6 +391,18 @@ func TestTaskList(t *testing.T) {
 			},
 		},
 		{
+			name:    "a page that starts with a child repeats its parent without counting it",
+			titles:  []string{"Parent task", "Child task", "Newest task"},
+			parents: map[int]int{1: 0},
+			args:    []string{"--page", "2", "--page-size", "2"},
+			want: func(ids []string) string {
+				return "Tasks (3):\n" + header +
+					"  todo             " + ids[0] + "  Parent task\n" +
+					"    todo           " + ids[1] + "    Child task\n" +
+					"Page 2 of 2\n"
+			},
+		},
+		{
 			name: "no tasks",
 			want: func([]string) string { return "No tasks found\n" },
 		},
@@ -358,17 +435,24 @@ func TestTaskList(t *testing.T) {
 			}
 			repo := persistence.NewFileTaskRepository(localConfig.ProjectSlug)
 			var ids []string
+			var fullIDs []task.TaskID
 			for age, title := range testCase.titles {
+				var parentID task.TaskID
+				if parent, ok := testCase.parents[age]; ok {
+					parentID = fullIDs[parent]
+				}
 				created, err := repo.CreateTask(task.CreateTaskDto{
-					Title:       title,
-					Status:      task.StatusTodo,
-					ProjectSlug: localConfig.ProjectSlug,
-					CreatedAt:   monday.AddDate(0, 0, age),
+					Title:        title,
+					Status:       task.StatusTodo,
+					ProjectSlug:  localConfig.ProjectSlug,
+					ParentTaskID: parentID,
+					CreatedAt:    monday.AddDate(0, 0, age),
 				})
 				if err != nil {
 					t.Fatal(err)
 				}
 				ids = append(ids, task.ShortID(created.ID))
+				fullIDs = append(fullIDs, created.ID)
 			}
 
 			var err error

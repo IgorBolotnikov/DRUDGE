@@ -16,10 +16,11 @@ func testColor(text string) string {
 
 func TestListLines(t *testing.T) {
 	cases := []struct {
-		name    string
-		columns []column
-		rows    [][]string
-		want    []string
+		name      string
+		columns   []column
+		rows      [][]string
+		rowColors []func(text string) string
+		want      []string
 	}{
 		{
 			name:    "counts the rows and rules each column",
@@ -123,6 +124,19 @@ func TestListLines(t *testing.T) {
 			},
 		},
 		{
+			name:      "a row color paints the whole line and skips the column colors",
+			columns:   []column{{Title: "SLUG", Width: 6, Color: strings.ToUpper}, {Title: "NAME"}},
+			rows:      [][]string{{"drudge", "Drudge"}, {"other", "Other"}},
+			rowColors: []func(text string) string{testColor},
+			want: []string{
+				"Things (2):",
+				"  SLUG    NAME",
+				"  ------  ----",
+				"  " + testColor("drudge  Drudge"),
+				"  OTHER   Other",
+			},
+		},
+		{
 			name:    "no rows leaves the header standing",
 			columns: []column{{Title: "SLUG", Width: 6}, {Title: "NAME"}},
 			rows:    nil,
@@ -136,7 +150,7 @@ func TestListLines(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := listLines("Things", len(testCase.rows), testCase.columns, testCase.rows)
+			got := listLines("Things", len(testCase.rows), testCase.columns, testCase.rows, testCase.rowColors)
 
 			if len(got) != len(testCase.want) {
 				t.Fatalf("expected %d lines, got %d:\n%s", len(testCase.want), len(got), strings.Join(got, "\n"))

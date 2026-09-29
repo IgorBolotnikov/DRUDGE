@@ -26,6 +26,10 @@ type ListedTask struct {
 	Task *Task
 	// IsUnderParent is true for a task listed right after its parent.
 	IsUnderParent bool
+	// IsContext is true for a parent repeated at the top of a page that
+	// starts with its children. A context row counts toward no page size and
+	// no total.
+	IsContext bool
 	// Holding are the blockers of Task that are not done or that name no
 	// stored task, in the order the task names them.
 	Holding []TaskID
@@ -33,9 +37,10 @@ type ListedTask struct {
 
 // ListTasks returns the page numbered page of the tasks of a project that
 // pass filter, newest first, with size rows on every page. An unfiltered
-// listing puts the children of a task right after it. A filtered listing is
-// flat. A page may start with children whose parent sits on the page before.
-// It refuses a parent id that names no task or several.
+// listing puts the children of a task right after it. A page that starts with
+// children whose parent sits on the page before gets that parent first as a
+// context row. A filtered listing is flat. It refuses a parent id that names
+// no task or several.
 func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter, page int, size int) (common.Page[ListedTask], error) {
 	rows, err := service.listRows(projectSlug, filter)
 	if err != nil {
@@ -47,7 +52,28 @@ func (service *TaskService) ListTasks(projectSlug string, filter ListTasksFilter
 	if errors.As(err, &notFound) {
 		notFound.Noun = "tasks"
 	}
-	return listed, err
+	if err != nil {
+		return listed, err
+	}
+	if parentRow, ok := contextRow(rows, listed.Items); ok {
+		listed.Items = append([]ListedTask{parentRow}, listed.Items...)
+	}
+	return listed, nil
+}
+
+// contextRow returns the parent row of the children that start page. It
+// reports false for a page that starts with a task listed under no parent.
+func contextRow(rows []ListedTask, page []ListedTask) (ListedTask, bool) {
+	if len(page) == 0 || !page[0].IsUnderParent {
+		return ListedTask{}, false
+	}
+	for _, row := range rows {
+		if row.Task.ID == page[0].Task.ParentTaskID {
+			row.IsContext = true
+			return row, true
+		}
+	}
+	return ListedTask{}, false
 }
 
 // listRows returns every row of the listing ListTasks pages.
