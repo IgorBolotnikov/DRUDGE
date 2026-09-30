@@ -36,6 +36,24 @@ type column struct {
 	Color func(text string) string
 }
 
+// loadRoleColor returns what wraps a text in the color of its role in roles,
+// taken from the loaded theme. A text with no role prints plain. A theme that
+// fails to load is logged with the subject and leaves every text plain.
+func loadRoleColor[Text ~string](log *common.Logger, subject string, roles map[Text]string) func(text string) string {
+	palette, err := theme.Load("")
+	if err != nil {
+		log.Error("cannot color the %s: %v", subject, err)
+		return func(text string) string { return text }
+	}
+	return func(text string) string {
+		role, ok := roles[Text(text)]
+		if !ok {
+			return text
+		}
+		return palette.Color(role) + text + palette.Reset()
+	}
+}
+
 // printList prints a listing: the total count of rows on every page, a header,
 // a rule under it and one line per row.
 func printList(log *common.Logger, title string, total int, columns []column, rows [][]string) {

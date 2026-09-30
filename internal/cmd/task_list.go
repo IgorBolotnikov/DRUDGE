@@ -34,24 +34,9 @@ var statusRoles = map[task.TaskStatus]string{
 	task.StatusDone:       theme.RoleSuccess,
 }
 
-// colorStatus wraps a status in the color of its role.
-func colorStatus(palette *theme.Theme, status task.TaskStatus) string {
-	role, ok := statusRoles[status]
-	if !ok {
-		return string(status)
-	}
-	return palette.Color(role) + string(status) + palette.Reset()
-}
-
-// loadStatusColor returns what colors a task status in the loaded theme. A
-// theme that fails to load is logged and leaves the statuses plain.
+// loadStatusColor returns what colors a task status in the loaded theme.
 func loadStatusColor(log *common.Logger) func(text string) string {
-	palette, err := theme.Load("")
-	if err != nil {
-		log.Error("cannot color the task statuses: %v", err)
-		return func(text string) string { return text }
-	}
-	return func(text string) string { return colorStatus(palette, task.TaskStatus(text)) }
+	return loadRoleColor(log, "task statuses", statusRoles)
 }
 
 // taskListFlags holds the filters and the page of drg task list. A filter
