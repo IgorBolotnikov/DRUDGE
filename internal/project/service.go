@@ -10,14 +10,26 @@ import (
 )
 
 type ProjectService struct {
-	repo   ProjectRepository
-	linker DirectoryLinker
-	gitOps git.Operations
-	log    *common.Logger
+	repo     ProjectRepository
+	linker   DirectoryLinker
+	gitOps   git.Operations
+	progress common.Progress
 }
 
-func NewProjectService(repo ProjectRepository, linker DirectoryLinker, gitOps git.Operations, log *common.Logger) *ProjectService {
-	return &ProjectService{repo: repo, linker: linker, gitOps: gitOps, log: log}
+// ProjectCreated reports a project CreateProject made.
+type ProjectCreated struct {
+	Project *Project
+}
+
+// ProjectRenamed reports a project RenameProject gave a new name.
+type ProjectRenamed struct {
+	Slug    string
+	OldName string
+	NewName string
+}
+
+func NewProjectService(repo ProjectRepository, linker DirectoryLinker, gitOps git.Operations, progress common.Progress) *ProjectService {
+	return &ProjectService{repo: repo, linker: linker, gitOps: gitOps, progress: progress}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {
@@ -52,7 +64,7 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 		return nil, fmt.Errorf("could not create project %q: %w", name, err)
 	}
 
-	p.log.Info("Created project %s", name)
+	p.progress.Report(ProjectCreated{Project: proj})
 	return proj, nil
 }
 
@@ -122,10 +134,11 @@ func (p *ProjectService) RenameProject(slugOrName string, newName string) error 
 		return err
 	}
 
+	oldName := found.Name
 	if err := p.repo.RenameProject(found.Slug, newName); err != nil {
 		return fmt.Errorf("could not rename project %s: %w", found.Slug, err)
 	}
-	p.log.Info("Renamed project %s from %q to %q", found.Slug, found.Name, newName)
+	p.progress.Report(ProjectRenamed{Slug: found.Slug, OldName: oldName, NewName: newName})
 	return nil
 }
 

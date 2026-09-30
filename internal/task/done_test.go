@@ -1,6 +1,7 @@
 package task
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,7 +33,8 @@ func TestTaskService_MarkDone(t *testing.T) {
 			stored := editableTask()
 			stored.Status = testCase.status
 			repo := &fakeTaskRepo{tasks: []*Task{stored}, locked: map[TaskID]bool{stored.ID: testCase.isLocked}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			progress := &fakeProgress{}
+			service := NewTaskService(repo, common.NewLogger(""), progress, StatusDraft)
 
 			marked, err := service.MarkDone(testProjectSlug, testCase.id)
 
@@ -42,6 +44,10 @@ func TestTaskService_MarkDone(t *testing.T) {
 				}
 				if marked.Status != StatusDone || stored.Status != StatusDone {
 					t.Errorf("expected the task to be stored %q, got %q", StatusDone, stored.Status)
+				}
+				wantEvents := []any{TaskMarkedDone{Task: marked}}
+				if !reflect.DeepEqual(progress.events, wantEvents) {
+					t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
 				}
 				return
 			}
@@ -54,6 +60,9 @@ func TestTaskService_MarkDone(t *testing.T) {
 			}
 			if stored.Status != testCase.status {
 				t.Errorf("expected the task to stay %q, got %q", testCase.status, stored.Status)
+			}
+			if len(progress.events) != 0 {
+				t.Errorf("expected a refusal to report nothing, got %+v", progress.events)
 			}
 		})
 	}

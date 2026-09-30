@@ -26,7 +26,8 @@ func update(version string) error {
 		return err
 	}
 	repo := github.New(github.RepositoryURL, github.RequestTimeout)
-	service := release.NewReleaseService(repo, common.NewLogger(""))
+	log := common.NewLogger("")
+	service := release.NewReleaseService(repo, newCLIProgress(log))
 
 	result, err := service.Update(version, binaryPath)
 	if err != nil {

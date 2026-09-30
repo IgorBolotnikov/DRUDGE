@@ -250,7 +250,7 @@ func TestTaskService_ListTasks(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{tasks: testCase.tasks}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			listed, err := service.ListTasks(testProjectSlug, testCase.filter, 1, 0)
 			if err != nil {
@@ -265,7 +265,7 @@ func TestTaskService_ListTasks(t *testing.T) {
 
 func TestTaskService_ListTasks_RefusesAParentThatNamesNoTask(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{{ID: "parent"}}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	_, err := service.ListTasks(testProjectSlug, ListTasksFilter{ParentID: pointerTo[TaskID]("missing")}, 1, 0)
 
@@ -364,7 +364,7 @@ func TestTaskService_ListTasks_Pages(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewTaskService(&fakeTaskRepo{tasks: tasks}, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(&fakeTaskRepo{tasks: tasks}, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			listed, err := service.ListTasks(testProjectSlug, testCase.filter, testCase.page, testCase.size)
 			if testCase.wantErr != "" {

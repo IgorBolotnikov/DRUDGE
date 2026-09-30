@@ -35,12 +35,18 @@ const (
 var releaseVersionPattern = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
 
 type ReleaseService struct {
-	repo ReleaseRepository
-	log  *common.Logger
+	repo     ReleaseRepository
+	progress common.Progress
 }
 
-func NewReleaseService(repo ReleaseRepository, log *common.Logger) *ReleaseService {
-	return &ReleaseService{repo: repo, log: log}
+// DownloadStarted reports that Update started downloading a release archive.
+type DownloadStarted struct {
+	ArchiveName string
+	Version     string
+}
+
+func NewReleaseService(repo ReleaseRepository, progress common.Progress) *ReleaseService {
+	return &ReleaseService{repo: repo, progress: progress}
 }
 
 // Update replaces the binary at binaryPath with the newest release when that
@@ -71,7 +77,7 @@ func (r *ReleaseService) Update(currentVersion string, binaryPath string) (*Upda
 	}
 
 	archiveName := fmt.Sprintf(archiveNamePattern, runtime.GOOS, runtime.GOARCH)
-	r.log.Info("Downloading %s (%s)", archiveName, latestVersion)
+	r.progress.Report(DownloadStarted{ArchiveName: archiveName, Version: latestVersion})
 	archive, err := r.repo.DownloadFile(latestVersion, archiveName)
 	if err != nil {
 		return nil, fmt.Errorf("could not download %s of %s: %w", archiveName, latestVersion, err)

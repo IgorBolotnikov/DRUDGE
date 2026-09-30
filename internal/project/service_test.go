@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // fakeProjectRepo holds projects in memory.
@@ -44,6 +42,15 @@ func (repo *fakeProjectRepo) DeleteProject(slug string) error {
 		}
 	}
 	return errFakeProjectNotFound
+}
+
+// fakeProgress records the events a service reports.
+type fakeProgress struct {
+	events []any
+}
+
+func (progress *fakeProgress) Report(event any) {
+	progress.events = append(progress.events, event)
 }
 
 // fakeLinker records the links it is handed.
@@ -123,7 +130,8 @@ func TestProjectService_InitProject(t *testing.T) {
 
 			repo := &fakeProjectRepo{projects: test.existing}
 			linker := &fakeLinker{}
-			service := NewProjectService(repo, linker, newFakeGit(projectDir, test.roots, nil), common.NewLogger(""))
+			progress := &fakeProgress{}
+			service := NewProjectService(repo, linker, newFakeGit(projectDir, test.roots, nil), progress)
 
 			created, repositories, err := service.InitProject(test.projectName, projectDir)
 
@@ -139,6 +147,9 @@ func TestProjectService_InitProject(t *testing.T) {
 				}
 				if linker.wasCalled {
 					t.Errorf("expected a refused project to be left unlinked, got a link to %q", linker.slug)
+				}
+				if len(progress.events) != 0 {
+					t.Errorf("expected a refused project to report nothing, got %+v", progress.events)
 				}
 				return
 			}
@@ -157,6 +168,10 @@ func TestProjectService_InitProject(t *testing.T) {
 			}
 			if !reflect.DeepEqual(linker.repositories, test.wantRepositories) {
 				t.Errorf("expected the link to record %+v, got %+v", test.wantRepositories, linker.repositories)
+			}
+			wantEvents := []any{ProjectCreated{Project: created}}
+			if !reflect.DeepEqual(progress.events, wantEvents) {
+				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
 			}
 		})
 	}
@@ -185,7 +200,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
+			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, &fakeProgress{})
 
 			found, err := service.LookupProject(testCase.slugOrName)
 			if err != nil {
@@ -199,7 +214,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 }
 
 func TestProjectService_LookupProject_RefusesAnUnknownProject(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, &fakeProgress{})
 
 	_, err := service.LookupProject("wiki")
 	if err == nil || !strings.Contains(err.Error(), `project "wiki" not found`) {
@@ -217,30 +232,36 @@ func TestProjectService_RenameProject(t *testing.T) {
 		// done.
 		wantNames   map[string]string
 		wantErrText string
+		// wantEvent is the event a successful rename reports.
+		wantEvent ProjectRenamed
 	}{
 		{
 			name:       "a project named by its slug",
 			slugOrName: "blog",
 			newName:    "Journal",
 			wantNames:  map[string]string{"demo": "Shop", "blog": "Journal"},
+			wantEvent:  ProjectRenamed{Slug: "blog", OldName: "Blog", NewName: "Journal"},
 		},
 		{
 			name:       "a project named by its name",
 			slugOrName: "Shop",
 			newName:    "Store",
 			wantNames:  map[string]string{"demo": "Store", "blog": "Blog"},
+			wantEvent:  ProjectRenamed{Slug: "demo", OldName: "Shop", NewName: "Store"},
 		},
 		{
 			name:       "a new name in the slug form of the old one",
 			slugOrName: "Shop",
 			newName:    "shop",
 			wantNames:  map[string]string{"demo": "shop", "blog": "Blog"},
+			wantEvent:  ProjectRenamed{Slug: "demo", OldName: "Shop", NewName: "shop"},
 		},
 		{
 			name:       "a project given its slug back as its name",
 			slugOrName: "Shop",
 			newName:    "Demo",
 			wantNames:  map[string]string{"demo": "Demo", "blog": "Blog"},
+			wantEvent:  ProjectRenamed{Slug: "demo", OldName: "Shop", NewName: "Demo"},
 		},
 		{
 			name:        "a name another project goes by",
@@ -271,17 +292,25 @@ func TestProjectService_RenameProject(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects()}
-			service := NewProjectService(repo, nil, nil, common.NewLogger(""))
+			progress := &fakeProgress{}
+			service := NewProjectService(repo, nil, nil, progress)
 
 			err := service.RenameProject(testCase.slugOrName, testCase.newName)
 
+			var wantEvents []any
 			if testCase.wantErrText != "" {
 				if err == nil || !strings.Contains(err.Error(), testCase.wantErrText) {
 					t.Fatalf("expected the error to carry %q, got %v", testCase.wantErrText, err)
 				}
 				testCase.wantNames = map[string]string{"demo": "Shop", "blog": "Blog"}
-			} else if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				wantEvents = []any{testCase.wantEvent}
+			}
+			if !reflect.DeepEqual(progress.events, wantEvents) {
+				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
 			}
 
 			gotNames := map[string]string{}
@@ -297,7 +326,7 @@ func TestProjectService_RenameProject(t *testing.T) {
 
 func TestProjectService_DeleteProject(t *testing.T) {
 	repo := &fakeProjectRepo{projects: renamedProjects()}
-	service := NewProjectService(repo, nil, nil, common.NewLogger(""))
+	service := NewProjectService(repo, nil, nil, &fakeProgress{})
 
 	if err := service.DeleteProject("demo"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -318,7 +347,7 @@ func TestProjectService_DeleteProject(t *testing.T) {
 }
 
 func TestProjectService_DeleteProject_ReturnsTheErrorOfTheRepository(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, common.NewLogger(""))
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, &fakeProgress{})
 
 	err := service.DeleteProject("wiki")
 	if !errors.Is(err, errFakeProjectNotFound) {
@@ -344,7 +373,7 @@ func TestProjectService_ListProjects(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, common.NewLogger(""))
+			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, &fakeProgress{})
 
 			listed, err := service.ListProjects(test.page, test.size)
 			if test.wantErr != "" {

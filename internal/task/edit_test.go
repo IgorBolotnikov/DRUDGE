@@ -117,6 +117,15 @@ func (repo *fakeTaskRepo) DeleteTask(projectSlug string, id TaskID, accept func(
 	return true, nil
 }
 
+// fakeProgress records the events a service reports.
+type fakeProgress struct {
+	events []any
+}
+
+func (progress *fakeProgress) Report(event any) {
+	progress.events = append(progress.events, event)
+}
+
 // fakeSessionGuard stands for the live Session check the drudger service does.
 type fakeSessionGuard struct {
 	refusal error
@@ -209,7 +218,8 @@ func TestTaskService_EditTask(t *testing.T) {
 			testCase.expect(wanted)
 
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			progress := &fakeProgress{}
+			service := NewTaskService(repo, common.NewLogger(""), progress, StatusDraft)
 
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, testCase.changes, &fakeSessionGuard{})
 			if err != nil {
@@ -224,6 +234,10 @@ func TestTaskService_EditTask(t *testing.T) {
 			if repo.writes != 1 {
 				t.Errorf("expected one write, got %d", repo.writes)
 			}
+			wantEvents := []any{TaskEdited{Task: edited}}
+			if !reflect.DeepEqual(progress.events, wantEvents) {
+				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
+			}
 		})
 	}
 }
@@ -231,7 +245,7 @@ func TestTaskService_EditTask(t *testing.T) {
 func TestTaskService_EditTask_ResolvesAnIDPrefix(t *testing.T) {
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	edited, err := service.EditTask(testProjectSlug, "006684e3", EditTaskDto{Status: pointerTo(StatusTodo)}, &fakeSessionGuard{})
 	if err != nil {
@@ -249,7 +263,7 @@ func TestTaskService_EditTask_RefusesAStatusDrudgeMaintains(t *testing.T) {
 		t.Run(string(managed), func(t *testing.T) {
 			stored := editableTask()
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{Status: pointerTo(managed)}, &fakeSessionGuard{})
 			if err == nil {
@@ -273,7 +287,7 @@ func TestTaskService_EditTask_TakesAStatusDrudgeMaintainsUnderForce(t *testing.T
 		t.Run(string(managed), func(t *testing.T) {
 			stored := editableTask()
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			changes := EditTaskDto{Status: pointerTo(managed), AllowsManagedStatus: true}
 			if _, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{}); err != nil {
@@ -289,7 +303,7 @@ func TestTaskService_EditTask_TakesAStatusDrudgeMaintainsUnderForce(t *testing.T
 func TestTaskService_EditTask_RefusesAnUnknownStatus(t *testing.T) {
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	changes := EditTaskDto{Status: pointerTo(TaskStatus("almost-done")), AllowsManagedStatus: true}
 	_, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{})
@@ -309,7 +323,7 @@ func TestTaskService_EditTask_RefusesAnUnknownStatus(t *testing.T) {
 func TestTaskService_EditTask_RefusesABlankTitle(t *testing.T) {
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{Title: pointerTo("  ")}, &fakeSessionGuard{})
 	if err == nil {
@@ -323,7 +337,7 @@ func TestTaskService_EditTask_RefusesABlankTitle(t *testing.T) {
 func TestTaskService_EditTask_RefusesAnEditThatChangesNothing(t *testing.T) {
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{}, &fakeSessionGuard{})
 	if !errors.Is(err, ErrNoChanges) {
@@ -336,7 +350,7 @@ func TestTaskService_EditTask_RefusesAnEditThatChangesNothing(t *testing.T) {
 
 func TestTaskService_EditTask_RefusesAnEmptyID(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	_, err := service.EditTask(testProjectSlug, "", EditTaskDto{Title: pointerTo("Fix logout")}, &fakeSessionGuard{})
 	if !errors.Is(err, ErrNoTaskID) {
@@ -361,7 +375,7 @@ func TestTaskService_EditTask_SurfacesTheLookupFailure(t *testing.T) {
 			other.Title = "Fix logout"
 
 			repo := &fakeTaskRepo{tasks: []*Task{editableTask(), other}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			_, err := service.EditTask(testProjectSlug, testCase.id, EditTaskDto{Title: pointerTo("Fix signup")}, &fakeSessionGuard{})
 			if err == nil {
@@ -381,7 +395,7 @@ func TestTaskService_EditTask_RefusesATaskAnAgentIsWorkingOn(t *testing.T) {
 	stored := editableTask()
 	stored.Status = StatusInProgress
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	guard := &fakeSessionGuard{refusal: errors.New("Drudger 1 (drudge-claude-demo-1) is still working on this task")}
 
@@ -407,7 +421,7 @@ func TestTaskService_EditTask_TakesATaskWhoseSessionHasFinished(t *testing.T) {
 	stored := editableTask()
 	stored.Status = StatusFuckedUp
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	changes := EditTaskDto{Status: pointerTo(StatusTodo)}
 	if _, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{}); err != nil {
@@ -424,7 +438,7 @@ func TestTaskService_EditTask_ReportsAnotherCommandHoldingTheTask(t *testing.T) 
 		tasks:  []*Task{stored},
 		locked: map[TaskID]bool{editableTaskID: true},
 	}
-	service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+	service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 	_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{Title: pointerTo("Fix logout")}, &fakeSessionGuard{})
 	if err == nil {

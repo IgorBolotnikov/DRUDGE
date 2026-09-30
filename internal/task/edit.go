@@ -43,6 +43,11 @@ func (changes EditTaskDto) HasChanges() bool {
 		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil || changes.ParentTaskID != nil
 }
 
+// TaskEdited reports a task EditTask changed.
+type TaskEdited struct {
+	Task *Task
+}
+
 // SessionGuard refuses a change to a task whose agent is still working.
 // Telling a live Session apart from a finished one means reading the run
 // directory and the Drudgers of the project, which the drudger service does.
@@ -112,7 +117,7 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 		return nil, fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
 
-	service.log.Info("Updated task [%s] %s, it is now %q", edited.ID, edited.Title, edited.Status)
+	service.progress.Report(TaskEdited{Task: edited})
 	return edited, nil
 }
 

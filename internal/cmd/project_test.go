@@ -190,7 +190,8 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, common.NewLogger(""))
+			log := common.NewLogger("")
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, newCLIProgress(log))
 			captureOutput(func() {
 				for _, name := range testCase.projects {
 					if _, err := service.CreateProject(name); err != nil {

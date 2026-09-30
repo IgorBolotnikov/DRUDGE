@@ -51,6 +51,13 @@ const (
 // testBaseCommittedAt is when the commit the fake git resolves was made.
 var testBaseCommittedAt = time.Date(2025, 3, 4, 10, 0, 0, 0, time.UTC)
 
+// noopTaskProgress discards the events the task service reports. These tests
+// exercise the drudger service, not what the task service reports about
+// itself.
+type noopTaskProgress struct{}
+
+func (noopTaskProgress) Report(any) {}
+
 // fakeTaskRepo stores tasks the way the file repository does. A lookup hands
 // back a copy, and an update hands the stored task to change under a lock the
 // test can hold.
@@ -798,7 +805,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 	if len(settings.Repositories) == 0 {
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
-	service := New(logger, settings, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, runs, commands, gitOps)
+	service := New(logger, settings, task.NewTaskService(taskRepo, logger, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0

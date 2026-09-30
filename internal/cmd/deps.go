@@ -33,7 +33,7 @@ func newCommandDeps() (*commandDeps, error) {
 
 	log := common.NewLogger("")
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	tasks := task.NewTaskService(repo, log, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
+	tasks := task.NewTaskService(repo, log, newCLIProgress(log), config.ResolveDefaultTaskStatus(localCfg, globalCfg))
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
@@ -85,7 +85,7 @@ func newProjectService(log *common.Logger) (*project.ProjectService, error) {
 		return nil, err
 	}
 	linker := config.NewLocalConfigLinker(home)
-	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), log), nil
+	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), newCLIProgress(log)), nil
 }
 
 // newGitOperations wires the git adapter with the configured timeouts.

@@ -124,7 +124,7 @@ func TestTaskService_EditTask_Parent(t *testing.T) {
 			stored.ParentTaskID = testCase.storedParent
 			stored.BlockedBy = testCase.storedBlockers
 			repo := &fakeTaskRepo{tasks: append([]*Task{stored}, testCase.others...)}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			changes := EditTaskDto{ParentTaskID: &testCase.parent}
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{})
@@ -210,7 +210,7 @@ func TestTaskService_CreateTask_Parent(t *testing.T) {
 				backlogTask(endpointTaskID, "Add the endpoint", StatusTodo),
 				childTask(docsTaskID, "Write the docs", migrationTaskID),
 			}}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			created, err := service.CreateTask(CreateTaskDto{
 				Title:        "Wire the service",
@@ -285,7 +285,7 @@ func TestTaskService_Family(t *testing.T) {
 			member := editableTask()
 			member.ParentTaskID = testCase.parent
 			repo := &fakeTaskRepo{tasks: append([]*Task{member}, testCase.others...)}
-			service := NewTaskService(repo, common.NewLogger(""), StatusDraft)
+			service := NewTaskService(repo, common.NewLogger(""), &fakeProgress{}, StatusDraft)
 
 			family, err := service.Family(testProjectSlug, member)
 			if err != nil {

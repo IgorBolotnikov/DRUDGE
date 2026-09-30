@@ -94,7 +94,7 @@ func TestDrudgerService_RunTask_TakesATaskEditedIntoTodo(t *testing.T) {
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(testSettings(), commands, draft)
-	tasks := task.NewTaskService(service.taskRepo, common.NewLogger(""), task.StatusDraft)
+	tasks := task.NewTaskService(service.taskRepo, common.NewLogger(""), noopTaskProgress{}, task.StatusDraft)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, draft.ID, false) })

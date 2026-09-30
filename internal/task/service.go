@@ -32,13 +32,19 @@ func FormatTaskCount(count int) string {
 type TaskService struct {
 	repo          TaskRepository
 	log           *common.Logger
+	progress      common.Progress
 	defaultStatus TaskStatus
+}
+
+// TaskCreated reports a task CreateTask made.
+type TaskCreated struct {
+	Task *Task
 }
 
 // NewTaskService builds a task service. defaultStatus is the status CreateTask
 // gives a task that names none, and draft applies when it is empty too.
-func NewTaskService(repo TaskRepository, log *common.Logger, defaultStatus TaskStatus) *TaskService {
-	return &TaskService{repo: repo, log: log, defaultStatus: defaultStatus}
+func NewTaskService(repo TaskRepository, log *common.Logger, progress common.Progress, defaultStatus TaskStatus) *TaskService {
+	return &TaskService{repo: repo, log: log, progress: progress, defaultStatus: defaultStatus}
 }
 
 func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -78,7 +84,7 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 		return nil, fmt.Errorf("could not create task: %w", err)
 	}
 
-	service.log.Info("Created task [%s] %s", task.ID, task.Title)
+	service.progress.Report(TaskCreated{Task: task})
 	return task, nil
 }
 

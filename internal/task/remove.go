@@ -40,6 +40,28 @@ type Removal struct {
 // removal off.
 type ConfirmRemoval func(removal Removal) (bool, error)
 
+// TaskRemovalDeclined reports that the user turned a removal down.
+type TaskRemovalDeclined struct {
+	Task *Task
+}
+
+// TaskRemoved reports a task RemoveTask deleted. HasRun says whether the task
+// had a run directory removed with it.
+type TaskRemoved struct {
+	Task   *Task
+	HasRun bool
+}
+
+// TasksUnblocked reports how many tasks a removal took off their blockers.
+type TasksUnblocked struct {
+	Count int
+}
+
+// TasksUngrouped reports how many tasks a removal ungrouped.
+type TasksUngrouped struct {
+	Count int
+}
+
 // RemoveTask deletes one task and the run directory of its Sessions, then
 // takes the task off the blockers of its dependents and ungroups its children.
 // The id may be a prefix. A task whose agent is still working is refused and
@@ -71,7 +93,7 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 		return approveRemoval(removal, isForced, confirm)
 	})
 	if errors.Is(err, errRemovalDeclined) {
-		service.log.Info("Left task [%s] %s alone", found.ID, found.Title)
+		service.progress.Report(TaskRemovalDeclined{Task: found})
 		return nil
 	}
 	if err != nil {
@@ -86,10 +108,7 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 		return fmt.Errorf("task %s was removed, but its run directory was not: %w", found.ID, err)
 	}
 
-	service.log.Info("Removed task [%s] %s", found.ID, found.Title)
-	if hasRun {
-		service.log.Info("Its run directory went with it")
-	}
+	service.progress.Report(TaskRemoved{Task: found, HasRun: hasRun})
 
 	// The task file is already gone. A cleanup that fails is reported and the
 	// removal stands.
@@ -162,10 +181,10 @@ func (service *TaskService) unlink(projectSlug string, removedID TaskID, depende
 	}
 
 	if unblockedCount > 0 {
-		service.log.Info("Took it off the blockers of %s", FormatTaskCount(unblockedCount))
+		service.progress.Report(TasksUnblocked{Count: unblockedCount})
 	}
 	if ungroupedCount > 0 {
-		service.log.Info("Ungrouped %s that belonged to it", FormatTaskCount(ungroupedCount))
+		service.progress.Report(TasksUngrouped{Count: ungroupedCount})
 	}
 }
 

@@ -2,6 +2,11 @@ package task
 
 import "fmt"
 
+// TaskMarkedDone reports a task MarkDone set to done.
+type TaskMarkedDone struct {
+	Task *Task
+}
+
 // MarkDone sets an unmerged task to done and returns the task as it stands
 // afterwards. The id may be a prefix. A task in any other status is refused,
 // and so is one another command holds the lock of.
@@ -31,6 +36,6 @@ func (service *TaskService) MarkDone(projectSlug string, id TaskID) (*Task, erro
 		return nil, fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
 
-	service.log.Info("Task [%s] %s is %q", marked.ID, marked.Title, marked.Status)
+	service.progress.Report(TaskMarkedDone{Task: marked})
 	return marked, nil
 }

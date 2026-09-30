@@ -10,11 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 const (
@@ -27,6 +26,15 @@ type fakeReleaseRepository struct {
 	latestErr     error
 	files         map[string][]byte
 	downloaded    []string
+}
+
+// fakeProgress records the events a service reports.
+type fakeProgress struct {
+	events []any
+}
+
+func (progress *fakeProgress) Report(event any) {
+	progress.events = append(progress.events, event)
 }
 
 func (f *fakeReleaseRepository) LatestVersion() (string, error) {
@@ -92,6 +100,8 @@ func TestUpdate(t *testing.T) {
 		wantResult     UpdateResult
 		wantErr        string
 		wantBinary     string
+		// wantsDownload says whether Update should report starting a download.
+		wantsDownload bool
 	}{
 		{
 			name:           "replaces an older binary",
@@ -100,6 +110,7 @@ func TestUpdate(t *testing.T) {
 			files:          releaseFiles,
 			wantResult:     UpdateResult{PreviousVersion: "v0.1.0", Version: "v0.1.1"},
 			wantBinary:     newBinary,
+			wantsDownload:  true,
 		},
 		{
 			name:           "compares versions as numbers",
@@ -108,6 +119,7 @@ func TestUpdate(t *testing.T) {
 			files:          releaseFiles,
 			wantResult:     UpdateResult{PreviousVersion: "v0.9.0", Version: "v0.10.0"},
 			wantBinary:     newBinary,
+			wantsDownload:  true,
 		},
 		{
 			name:           "leaves the latest release alone",
@@ -167,8 +179,9 @@ func TestUpdate(t *testing.T) {
 				delete(files, currentArchiveName())
 				return files
 			},
-			wantErr:    "could not download " + currentArchiveName() + " of v0.1.1",
-			wantBinary: oldBinary,
+			wantErr:       "could not download " + currentArchiveName() + " of v0.1.1",
+			wantBinary:    oldBinary,
+			wantsDownload: true,
 		},
 		{
 			name:           "refuses a checksum mismatch",
@@ -179,8 +192,9 @@ func TestUpdate(t *testing.T) {
 				files[currentArchiveName()] = makeArchive(t, binaryName, "tampered binary")
 				return files
 			},
-			wantErr:    "checksum of " + currentArchiveName() + " is",
-			wantBinary: oldBinary,
+			wantErr:       "checksum of " + currentArchiveName() + " is",
+			wantBinary:    oldBinary,
+			wantsDownload: true,
 		},
 		{
 			name:           "refuses an archive missing from the checksums",
@@ -191,8 +205,9 @@ func TestUpdate(t *testing.T) {
 				files[checksumsFileName] = []byte(checksumLine([]byte("other"), "drg_plan9_mips.tar.gz"))
 				return files
 			},
-			wantErr:    "checksums.txt has no entry for " + currentArchiveName(),
-			wantBinary: oldBinary,
+			wantErr:       "checksums.txt has no entry for " + currentArchiveName(),
+			wantBinary:    oldBinary,
+			wantsDownload: true,
 		},
 		{
 			name:           "refuses an archive without the binary",
@@ -205,8 +220,9 @@ func TestUpdate(t *testing.T) {
 					checksumsFileName:    []byte(checksumLine(archive, currentArchiveName())),
 				}
 			},
-			wantErr:    "the archive has no drg binary",
-			wantBinary: oldBinary,
+			wantErr:       "the archive has no drg binary",
+			wantBinary:    oldBinary,
+			wantsDownload: true,
 		},
 	}
 
@@ -220,9 +236,18 @@ func TestUpdate(t *testing.T) {
 			if testCase.files != nil {
 				repo.files = testCase.files(t)
 			}
-			service := NewReleaseService(repo, common.NewLogger(""))
+			progress := &fakeProgress{}
+			service := NewReleaseService(repo, progress)
 
 			result, err := service.Update(testCase.currentVersion, binaryPath)
+
+			var wantEvents []any
+			if testCase.wantsDownload {
+				wantEvents = []any{DownloadStarted{ArchiveName: currentArchiveName(), Version: testCase.latestVersion}}
+			}
+			if !reflect.DeepEqual(progress.events, wantEvents) {
+				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
+			}
 
 			if testCase.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
@@ -263,7 +288,7 @@ func TestUpdate_MakesTheBinaryExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := &fakeReleaseRepository{latestVersion: "v0.1.1", files: releaseFiles(t)}
-	service := NewReleaseService(repo, common.NewLogger(""))
+	service := NewReleaseService(repo, &fakeProgress{})
 
 	if _, err := service.Update("v0.1.0", binaryPath); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -296,7 +321,7 @@ func TestUpdate_RefusesAnUnwritableDirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
 	repo := &fakeReleaseRepository{latestVersion: "v0.1.1", files: releaseFiles(t)}
-	service := NewReleaseService(repo, common.NewLogger(""))
+	service := NewReleaseService(repo, &fakeProgress{})
 
 	_, err := service.Update("v0.1.0", binaryPath)
 
