@@ -14,12 +14,20 @@ import (
 //   - this is an error (breaks the program) -> Error level
 //   - everything else (the program still works) -> Info level
 type Logger struct {
-	prefix string
+	prefix     string
+	errorLabel string
 }
 
-// NewLogger creates a logger with an optional prefix printed before each message.
-func NewLogger(prefix string) *Logger {
-	return &Logger{prefix: prefix}
+const plainErrorLabel = "Error:"
+
+// NewLogger creates a logger with an optional prefix printed before each
+// message. Error prints errorLabel before its message, or a plain label when
+// errorLabel is empty.
+func NewLogger(prefix string, errorLabel string) *Logger {
+	if errorLabel == "" {
+		errorLabel = plainErrorLabel
+	}
+	return &Logger{prefix: prefix, errorLabel: errorLabel}
 }
 
 // Info prints an info-level message.
@@ -37,5 +45,5 @@ func (l *Logger) Error(format string, args ...any) {
 	if l.prefix != "" {
 		msg = fmt.Sprintf("[%s] %s", l.prefix, msg)
 	}
-	fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+	fmt.Fprintf(os.Stderr, "%s %s\n", l.errorLabel, msg)
 }

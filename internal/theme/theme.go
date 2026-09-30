@@ -246,7 +246,7 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
-	logger := common.NewLogger("theme")
+	logger := common.NewLogger("theme", "")
 	for role, color := range cfg.Overrides {
 		if !validHex(color) {
 			logger.Info("invalid hex color %q for role %q, falling back to palette default", color, role)
@@ -256,6 +256,16 @@ func Load(name string) (*Theme, error) {
 	}
 
 	return &Theme{colors: merged, isColorOn: colorOnStreams()}, nil
+}
+
+// LoadOrDefault is like Load with an empty name but returns the default theme
+// when loading fails.
+func LoadOrDefault() *Theme {
+	loaded, err := Load("")
+	if err != nil {
+		return NewTheme(DefaultTheme())
+	}
+	return loaded
 }
 
 // MustLoad is like Load but panics on error.

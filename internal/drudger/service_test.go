@@ -838,7 +838,7 @@ func newTestServiceWith(settings Settings, commands CommandRunner, tasks ...*tas
 }
 
 func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
-	logger := common.NewLogger("")
+	logger := common.NewLogger("", "")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
 	taskRepo := &fakeTaskRepo{tasks: tasks, lockedTasks: map[task.TaskID]bool{}}
 	gitOps := &fakeGit{}

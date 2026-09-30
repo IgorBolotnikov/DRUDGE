@@ -83,7 +83,7 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 		return err
 	}
 
-	log := common.NewLogger("")
+	log := newLogger()
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, log, newCLIProgress(log), config.ResolveDefaultTaskStatus(cfg, globalCfg))
 

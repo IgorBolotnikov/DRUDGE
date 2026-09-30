@@ -10,6 +10,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 type commandDeps struct {
@@ -18,6 +19,12 @@ type commandDeps struct {
 	log       *common.Logger
 	tasks     *task.TaskService
 	drudger   *drudger.DrudgerService
+}
+
+// newLogger builds the logger of a command. Its errors carry the error label
+// of the loaded theme.
+func newLogger() *common.Logger {
+	return common.NewLogger("", theme.LoadOrDefault().ErrorLabel())
 }
 
 func newCommandDeps() (*commandDeps, error) {
@@ -31,7 +38,7 @@ func newCommandDeps() (*commandDeps, error) {
 		return nil, err
 	}
 
-	log := common.NewLogger("")
+	log := newLogger()
 	progress := newCLIProgress(log)
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	tasks := task.NewTaskService(repo, log, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg))

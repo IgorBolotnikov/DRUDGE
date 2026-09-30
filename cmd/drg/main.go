@@ -18,11 +18,7 @@ func main() {
 	root.Validate()
 
 	if err := root.Execute(os.Args[1:]); err != nil {
-		outputTheme, loadErr := theme.Load("")
-		if loadErr != nil {
-			outputTheme = theme.NewTheme(theme.DefaultTheme())
-		}
-		fmt.Fprintln(os.Stderr, outputTheme.ErrorLabel(), err)
+		fmt.Fprintln(os.Stderr, theme.LoadOrDefault().ErrorLabel(), err)
 		os.Exit(1)
 	}
 }

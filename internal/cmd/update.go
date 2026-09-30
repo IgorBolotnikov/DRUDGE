@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/github"
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 )
 
@@ -26,7 +25,7 @@ func update(version string) error {
 		return err
 	}
 	repo := github.New(github.RepositoryURL, github.RequestTimeout)
-	log := common.NewLogger("")
+	log := newLogger()
 	service := release.NewReleaseService(repo, newCLIProgress(log))
 
 	result, err := service.Update(version, binaryPath)

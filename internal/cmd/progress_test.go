@@ -281,7 +281,7 @@ func TestCLIProgress_Report(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			progress := newCLIProgress(common.NewLogger(""))
+			progress := newCLIProgress(common.NewLogger("", ""))
 			output := captureOutput(func() { progress.Report(testCase.event) })
 			if output != testCase.want {
 				t.Errorf("output = %q, want %q", output, testCase.want)

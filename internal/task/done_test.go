@@ -34,7 +34,7 @@ func TestTaskService_MarkDone(t *testing.T) {
 			stored.Status = testCase.status
 			repo := &fakeTaskRepo{tasks: []*Task{stored}, locked: map[TaskID]bool{stored.ID: testCase.isLocked}}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, common.NewLogger(""), progress, StatusDraft)
+			service := NewTaskService(repo, common.NewLogger("", ""), progress, StatusDraft)
 
 			marked, err := service.MarkDone(testProjectSlug, testCase.id)
 
