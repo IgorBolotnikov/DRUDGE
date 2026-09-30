@@ -386,7 +386,7 @@ func ResolveProjectDir(slug string) (string, error) {
 
 // ThemeConfigPath returns a path to a global theme config file
 func ThemeConfigPath(home string) string {
-	return filepath.Join(home, ThemeConfigName)
+	return filepath.Join(DrudgeDir(home), ThemeConfigName)
 }
 
 // GlobalConfigPath returns the path to the global drudge config file.

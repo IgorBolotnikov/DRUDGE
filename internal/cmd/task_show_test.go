@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -348,7 +347,10 @@ func TestPrintTaskColors(t *testing.T) {
 				t.Setenv(name, value)
 			}
 			if testCase.themeFile != "" {
-				if err := os.WriteFile(filepath.Join(home, common.ThemeConfigName), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
+				if err := os.MkdirAll(common.DrudgeDir(home), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,6 +119,30 @@ func TestSetup_DefaultConfigsLoad(t *testing.T) {
 	}
 	if _, err := theme.Load(themeDocument.Theme); err != nil {
 		t.Errorf("theme.Load(%q): %v", themeDocument.Theme, err)
+	}
+}
+
+func TestSetup_ThemeConfigSharesLoadPath(t *testing.T) {
+	home := tempHome(t)
+	result, err := NewSetupService(home).Setup()
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	const wantTheme = "monokai"
+	document := theme.NewDefaultDocument()
+	document.Theme = wantTheme
+	if err := common.WriteJSON(result.ThemeConfig.Path, document); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+
+	got, err := theme.Load("")
+	if err != nil {
+		t.Fatalf("theme.Load: %v", err)
+	}
+	want := theme.NewTheme(wantTheme)
+	if !maps.Equal(got.Colors(), want.Colors()) {
+		t.Errorf("theme.Load(\"\") = %v, want %v", got.Colors(), want.Colors())
 	}
 }
 

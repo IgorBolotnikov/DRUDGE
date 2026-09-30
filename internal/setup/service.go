@@ -71,7 +71,7 @@ func (s *SetupService) Setup() (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	result.ThemeConfig, err = writeConfigFile(filepath.Join(drudgeDir, common.ThemeConfigName), theme.NewDefaultDocument())
+	result.ThemeConfig, err = writeConfigFile(common.ThemeConfigPath(s.home), theme.NewDefaultDocument())
 	if err != nil {
 		return nil, err
 	}

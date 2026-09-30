@@ -379,6 +379,9 @@ func setupTempHome(t *testing.T, content string) string {
 	})
 
 	if content != "" {
+		if err := os.MkdirAll(common.DrudgeDir(home), 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
 		if err := os.WriteFile(common.ThemeConfigPath(home), []byte(content), common.DefaultFilePerm); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
