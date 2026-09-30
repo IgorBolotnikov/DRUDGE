@@ -11,6 +11,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 var DrudgerCmd = &Cmd{
@@ -88,6 +89,37 @@ const (
 	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
+// healthLabelRoles maps a health label to the theme role it prints in. A
+// label left out, like a state this build does not know, prints plain.
+var healthLabelRoles = map[string]string{
+	healthOkLabel: theme.RoleSuccess,
+
+	healthUncheckedLabel:    theme.RoleMuted,
+	sandboxUncheckedLabel:   theme.RoleMuted,
+	workspaceUncheckedLabel: theme.RoleMuted,
+	agentUncheckedLabel:     theme.RoleMuted,
+
+	sandboxGoneLabel:        theme.RoleError,
+	sandboxMisplacedLabel:   theme.RoleError,
+	workspaceGoneLabel:      theme.RoleError,
+	workspaceMisplacedLabel: theme.RoleError,
+	agentRefusedLabel:       theme.RoleError,
+}
+
+// loadHealthColor returns what colors a health cell in the loaded theme. A
+// cell can hold several labels joined by healthPartSeparator, and each one is
+// colored on its own so the separator stays plain.
+func loadHealthColor(log *common.Logger) func(text string) string {
+	labelColor := loadRoleColor(log, "Drudger health", healthLabelRoles)
+	return func(text string) string {
+		labels := strings.Split(text, healthPartSeparator)
+		for index, label := range labels {
+			labels[index] = labelColor(label)
+		}
+		return strings.Join(labels, healthPartSeparator)
+	}
+}
+
 func drudgerList(page pageFlags) error {
 	deps, err := newCommandDeps()
 	if err != nil {
@@ -119,7 +151,7 @@ func printDrudgers(log *common.Logger, projectSlug string, listed common.Page[*d
 		{Title: "SLOT", Width: 4},
 		{Title: "DRUDGER", Width: 40},
 		{Title: "TASK", Width: task.ShortIDLength},
-		{Title: "HEALTH", Width: healthColumnWidth},
+		{Title: "HEALTH", Width: healthColumnWidth, Color: loadHealthColor(log)},
 		{Title: "LAST CHECKED"},
 	}
 	rows := make([][]string, 0, len(listed.Items))

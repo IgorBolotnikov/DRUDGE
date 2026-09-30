@@ -13,6 +13,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 const (
@@ -186,6 +187,124 @@ func TestPrintDrudgers(t *testing.T) {
 				if strings.Contains(output, absent) {
 					t.Errorf("expected %q to stay out of the listing, got:\n%s", absent, output)
 				}
+			}
+		})
+	}
+}
+
+func TestPrintDrudgersColors(t *testing.T) {
+	pool := []*drudger.Drudger{
+		{Slot: 1, Sandbox: testSandboxName(1), SandboxHealth: drudger.SandboxUsable, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+		{Slot: 2, Sandbox: testSandboxName(2)},
+		{Slot: 3, Sandbox: testSandboxName(3), SandboxHealth: drudger.SandboxGone, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+		{Slot: 4, Sandbox: testSandboxName(4), WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentRefused},
+		{Slot: 5, Sandbox: testSandboxName(5), SandboxHealth: "hand-edited", WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+	}
+	// plainHealths are what formatHealth renders for pool.
+	plainHealths := []string{"ok", "unchecked", "SANDBOX GONE", "sandbox unchecked, AGENT REFUSED", "hand-edited"}
+
+	header := fmt.Sprintf("Drudgers (%d):\n", len(pool)) +
+		fmt.Sprintf("  SLOT  %-40s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", healthColumnWidth, "HEALTH") +
+		fmt.Sprintf("  ----  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", healthColumnWidth))
+	rowLine := func(slot int, healthCell string) string {
+		return fmt.Sprintf("  %-4d  %-40s  %-8s  %s  never\n", slot, testSandboxName(slot), idleLabel, healthCell)
+	}
+	plainRows := func() string {
+		var lines strings.Builder
+		for index, health := range plainHealths {
+			lines.WriteString(rowLine(index+1, fmt.Sprintf("%-*s", healthColumnWidth, health)))
+		}
+		return lines.String()
+	}
+
+	// healthRoles names the role of each label independently of
+	// healthLabelRoles, so the test catches that map drifting from these roles.
+	healthRoles := map[string]string{
+		healthOkLabel:           theme.RoleSuccess,
+		healthUncheckedLabel:    theme.RoleMuted,
+		sandboxUncheckedLabel:   theme.RoleMuted,
+		workspaceUncheckedLabel: theme.RoleMuted,
+		agentUncheckedLabel:     theme.RoleMuted,
+		sandboxGoneLabel:        theme.RoleError,
+		sandboxMisplacedLabel:   theme.RoleError,
+		workspaceGoneLabel:      theme.RoleError,
+		workspaceMisplacedLabel: theme.RoleError,
+		agentRefusedLabel:       theme.RoleError,
+	}
+	coloredRows := func(palette *theme.Theme) string {
+		var lines strings.Builder
+		for index, health := range plainHealths {
+			labels := strings.Split(health, healthPartSeparator)
+			for labelIndex, label := range labels {
+				role, ok := healthRoles[label]
+				if !ok {
+					continue
+				}
+				labels[labelIndex] = palette.Color(role) + label + palette.Reset()
+			}
+			padding := strings.Repeat(" ", healthColumnWidth-len(health))
+			lines.WriteString(rowLine(index+1, strings.Join(labels, healthPartSeparator)+padding))
+		}
+		return lines.String()
+	}
+
+	cases := []struct {
+		name          string
+		env           map[string]string
+		themeFile     string
+		want          func(palette *theme.Theme) string
+		wantErrorText string
+	}{
+		{
+			name: "forced color paints each label in its role, leaving the separator plain",
+			env:  map[string]string{"FORCE_COLOR": "1"},
+			want: func(palette *theme.Theme) string { return header + coloredRows(palette) },
+		},
+		{
+			name: "no color prints every label plain",
+			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
+			want: func(*theme.Theme) string { return header + plainRows() },
+		},
+		{
+			name:          "a theme that fails to load prints every label plain",
+			env:           map[string]string{"FORCE_COLOR": "1"},
+			themeFile:     `{"theme": "no-such-theme"}`,
+			want:          func(*theme.Theme) string { return header + plainRows() },
+			wantErrorText: "cannot color the Drudger health",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("NO_COLOR", "")
+			for name, value := range testCase.env {
+				t.Setenv(name, value)
+			}
+			if testCase.themeFile != "" {
+				if err := os.MkdirAll(common.DrudgeDir(home), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			log := common.NewLogger("")
+
+			var out string
+			errOut := captureStderr(func() {
+				out = captureOutput(func() { printDrudgers(log, testProjectSlug, drudgersOnOnePage(pool), time.Time{}) })
+			})
+
+			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
+				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
+			}
+			if testCase.wantErrorText == "" && errOut != "" {
+				t.Errorf("expected nothing on stderr, got %q", errOut)
+			}
+			if testCase.wantErrorText != "" && strings.Count(errOut, testCase.wantErrorText) != 1 {
+				t.Errorf("expected one error naming %q on stderr, got %q", testCase.wantErrorText, errOut)
 			}
 		})
 	}
