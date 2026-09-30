@@ -17,14 +17,6 @@ var ProjectCmd = &Cmd{
 	Desc: "Project management commands",
 	Subcommands: []*Cmd{
 		{
-			Name: "create",
-			Args: []string{projectNameArg},
-			Desc: "Record a project without linking a directory to it",
-			Help: "Record a project in the drudge home directory without linking any directory to it.\n" +
-				"Run drg project init inside the project directory to record a project and link the directory in one go.",
-			Setup: func(*flag.FlagSet) func(args []string) error { return projectCreate },
-		},
-		{
 			Name: "init",
 			Args: []string{projectNameArg},
 			Desc: "Record a project and link the current directory to it",
@@ -68,19 +60,6 @@ var ProjectCmd = &Cmd{
 }
 
 const projectNameArg = "name"
-
-func projectCreate(args []string) error {
-	name := args[0]
-
-	log := newLogger()
-	svc, err := newProjectService(log)
-	if err != nil {
-		return err
-	}
-
-	_, err = svc.CreateProject(name)
-	return err
-}
 
 func projectInit(args []string) error {
 	name := args[0]

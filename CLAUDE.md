@@ -32,7 +32,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 - `service.go` — a `XService` holding a `XRepository` + `*common.Logger`, doing validation and orchestration
 - optionally, if a service is large enough, it is split among multiple files named after a facet they implement, like `internal/drudger` does
 
-`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectCreate` in `internal/cmd`.
+`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectInit` in `internal/cmd`.
 
 **Storage layout** (see `docs/DOMAIN_MODEL.md`), all under `~/.drudge/`:
 
