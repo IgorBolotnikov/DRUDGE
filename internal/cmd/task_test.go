@@ -12,6 +12,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 func TestPrintSessionStatus(t *testing.T) {
@@ -81,6 +82,92 @@ func TestPrintSessionStatus(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPrintSessionStatusColors(t *testing.T) {
+	statuses := []struct {
+		status drudger.SessionStatus
+		role   string
+	}{
+		{status: drudger.StatusWorking, role: theme.RoleInfo},
+		{status: drudger.StatusNeedsBabysitting, role: theme.RoleWarning},
+		{status: drudger.StatusFuckedUp, role: theme.RoleError},
+		{status: drudger.StatusGotShitDone, role: theme.RoleSuccess},
+		{status: drudger.StatusNeverGotGoing, role: theme.RoleError},
+	}
+	plain := func(_ *theme.Theme, _ string, text string) string { return text }
+
+	cases := []struct {
+		name          string
+		env           map[string]string
+		themeFile     string
+		paint         func(palette *theme.Theme, role string, text string) string
+		wantErrorText string
+	}{
+		{
+			name: "forced color paints the status in its role",
+			env:  map[string]string{"FORCE_COLOR": "1"},
+			paint: func(palette *theme.Theme, role string, text string) string {
+				return palette.Color(role) + text + palette.Reset()
+			},
+		},
+		{
+			name:  "no color prints the status plain",
+			env:   map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
+			paint: plain,
+		},
+		{
+			name:          "a theme that fails to load prints the status plain",
+			env:           map[string]string{"FORCE_COLOR": "1"},
+			themeFile:     `{"theme": "no-such-theme"}`,
+			paint:         plain,
+			wantErrorText: "cannot color the Session status",
+		},
+	}
+
+	for _, testCase := range cases {
+		for _, entry := range statuses {
+			t.Run(testCase.name+"/"+string(entry.status), func(t *testing.T) {
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				t.Setenv("NO_COLOR", "")
+				for name, value := range testCase.env {
+					t.Setenv(name, value)
+				}
+				if testCase.themeFile != "" {
+					if err := os.MkdirAll(common.DrudgeDir(home), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
+						t.Fatal(err)
+					}
+				}
+				session := &drudger.TaskSession{
+					Task:   &task.Task{ID: "abc123", Title: "Fix login"},
+					Report: drudger.SessionReport{Status: entry.status, RunDir: "/tmp/run", LastWrite: time.Now()},
+				}
+				log := common.NewLogger("")
+
+				var out string
+				errOut := captureStderr(func() { out = captureOutput(func() { printSessionStatus(log, session) }) })
+
+				palette := theme.NewTheme(theme.DefaultTheme())
+				want := "  Session:    " + testCase.paint(palette, entry.role, string(entry.status)) + "\n" +
+					"  Session id: " + notReportedLabel + "\n" +
+					"  Last write: just now\n" +
+					"  Run dir:    /tmp/run\n"
+				if !strings.Contains(out, want) {
+					t.Errorf("expected the report to hold:\n%q\ngot:\n%q", want, out)
+				}
+				if testCase.wantErrorText == "" && errOut != "" {
+					t.Errorf("expected nothing on stderr, got %q", errOut)
+				}
+				if testCase.wantErrorText != "" && strings.Count(errOut, testCase.wantErrorText) != 1 {
+					t.Errorf("expected one error naming %q on stderr, got %q", testCase.wantErrorText, errOut)
+				}
+			})
+		}
 	}
 }
 

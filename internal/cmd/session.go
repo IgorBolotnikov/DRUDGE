@@ -7,6 +7,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 const (
@@ -17,14 +18,24 @@ const (
 	notReportedLabel = "not reported yet"
 )
 
+// sessionStatusRoles maps a Session status to the theme role it prints in.
+var sessionStatusRoles = map[drudger.SessionStatus]string{
+	drudger.StatusWorking:          theme.RoleInfo,
+	drudger.StatusNeedsBabysitting: theme.RoleWarning,
+	drudger.StatusFuckedUp:         theme.RoleError,
+	drudger.StatusGotShitDone:      theme.RoleSuccess,
+	drudger.StatusNeverGotGoing:    theme.RoleError,
+}
+
 // printSessionStatus prints what the run directory of a task says about the
 // Session working on it.
 func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
 	report := session.Report
+	statusColor := loadRoleColor(log, "Session status", sessionStatusRoles)
 
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", session.Task.ID, session.Task.Title),
-		sessionLine("Session", string(report.Status)),
+		sessionLine("Session", statusColor(string(report.Status))),
 		sessionLine("Session id", orNotReported(report.SessionID)),
 		sessionLine("Last write", formatAgo(report.LastWrite, time.Now().UTC())),
 		sessionLine("Run dir", report.RunDir),
