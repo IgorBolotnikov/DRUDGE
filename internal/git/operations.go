@@ -62,11 +62,11 @@ type Operations interface {
 	BranchExists(dir string, branch string) (bool, error)
 	// CommitCount returns how many commits tip holds that base does not.
 	CommitCount(dir string, base string, tip string) (int, error)
-	// CreateBranch creates a branch at start and checks it out. A name the
-	// repository already has fails.
+	// CreateBranch creates a branch at start with no upstream and checks it
+	// out. A name the repository already has fails.
 	CreateBranch(dir string, branch string, start string) error
-	// ResetBranch moves a branch to start and checks it out. A name the
-	// repository does not have yet is created.
+	// ResetBranch moves a branch to start, drops its upstream and checks it
+	// out. A name the repository does not have yet is created.
 	ResetBranch(dir string, branch string, start string) error
 	// DeleteBranch removes a branch, whatever it holds. A branch checked out
 	// in a work tree fails.

@@ -50,6 +50,8 @@ const (
 	switchSubcommand      = "switch"
 	createBranchFlag      = "-c"
 	resetBranchFlag       = "-C"
+	noTrackFlag           = "--no-track"
+	unsetUpstreamFlag     = "--unset-upstream"
 	branchSubcommand      = "branch"
 	deleteBranchFlag      = "-D"
 	forEachRefSubcommand  = "for-each-ref"
@@ -57,9 +59,10 @@ const (
 	headRef               = "HEAD"
 	// refNameFormatFlag prints one ref name per line, with none of the
 	// decoration git adds for a terminal.
-	refNameFormatFlag = "--format=%(refname:short)"
-	showSubcommand    = "show"
-	noPatchFlag       = "--no-patch"
+	refNameFormatFlag  = "--format=%(refname:short)"
+	upstreamFormatFlag = "--format=%(upstream)"
+	showSubcommand     = "show"
+	noPatchFlag        = "--no-patch"
 	// commitFormatFlag prints a commit as its sha and its committer date.
 	commitFormatFlag = "--format=%H%n%cI"
 )
@@ -288,23 +291,49 @@ func (adapter *Git) CommitCount(dir string, base string, tip string) (int, error
 	return count, nil
 }
 
-// CreateBranch creates a branch at start and checks it out. A name the
-// repository already has fails.
+// CreateBranch creates a branch at start with no upstream and checks it out. A
+// name the repository already has fails.
 func (adapter *Git) CreateBranch(dir string, branch string, start string) error {
 	return adapter.switchTo(dir, createBranchFlag, branch, start)
 }
 
-// ResetBranch moves a branch to start and checks it out. A name the repository
-// does not have yet is created.
+// ResetBranch moves a branch to start, drops its upstream and checks it out. A
+// name the repository does not have yet is created.
 func (adapter *Git) ResetBranch(dir string, branch string, start string) error {
-	return adapter.switchTo(dir, resetBranchFlag, branch, start)
+	err := adapter.switchTo(dir, resetBranchFlag, branch, start)
+	if err != nil {
+		return err
+	}
+	return adapter.unsetUpstream(dir, branch)
 }
 
-// switchTo checks a branch out at start, creating it the way flag says.
+// switchTo checks a branch out at start, creating it the way flag says. A
+// branch cut from a remote-tracking branch would get it as its upstream, and
+// git branch -d then refuses to delete the branch until that remote branch has
+// its commits.
 func (adapter *Git) switchTo(dir string, flag string, branch string, start string) error {
-	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, switchSubcommand, flag, branch, start)
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Command, switchSubcommand, noTrackFlag, flag, branch, start)
 	if err != nil {
 		return fmt.Errorf("could not check out branch %s at %s in %s: %w: %s", branch, start, dir, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// unsetUpstream drops the upstream of a branch. A switch with no tracking
+// keeps the upstream a branch already has, and git refuses to unset an
+// upstream that is not there.
+func (adapter *Git) unsetUpstream(dir string, branch string) error {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, forEachRefSubcommand, upstreamFormatFlag, branchRefPrefix+branch)
+	if err != nil {
+		return fmt.Errorf("could not read the upstream of branch %s in %s: %w: %s", branch, dir, err, strings.TrimSpace(stderr))
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+
+	_, stderr, err = adapter.run(dir, adapter.timeouts.Command, branchSubcommand, unsetUpstreamFlag, branch)
+	if err != nil {
+		return fmt.Errorf("could not unset the upstream of branch %s in %s: %w: %s", branch, dir, err, strings.TrimSpace(stderr))
 	}
 	return nil
 }

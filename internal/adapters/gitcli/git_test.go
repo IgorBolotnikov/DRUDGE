@@ -681,6 +681,9 @@ func TestCreateBranch(t *testing.T) {
 	if got, want := revisionOf(t, worktree, "HEAD"), revisionOf(t, clone, "origin/main"); got != want {
 		t.Errorf("the branch is at %s, want %s", got, want)
 	}
+	if upstream := upstreamOf(t, clone, "drudge/task-1"); upstream != "" {
+		t.Errorf("expected the branch to have no upstream, got %q", upstream)
+	}
 
 	if err := adapter.CreateBranch(worktree, "drudge/task-1", "origin/main"); err == nil {
 		t.Fatal("expected creating a branch that is already there to fail")
@@ -699,13 +702,13 @@ func TestResetBranch(t *testing.T) {
 		{
 			name: "a branch an earlier attempt left",
 			build: func(t *testing.T, clone string, worktree string) {
-				runGit(t, clone, "branch", "drudge/task-1", "origin/main")
+				runGit(t, clone, "branch", "--track", "drudge/task-1", "origin/main")
 			},
 		},
 		{
 			name: "the branch the worktree is already on",
 			build: func(t *testing.T, clone string, worktree string) {
-				runGit(t, worktree, "switch", "-c", "drudge/task-1", "origin/main")
+				runGit(t, worktree, "switch", "--track", "-c", "drudge/task-1", "origin/main")
 			},
 		},
 	}
@@ -730,8 +733,18 @@ func TestResetBranch(t *testing.T) {
 			if got, want := revisionOf(t, worktree, "HEAD"), revisionOf(t, clone, "main"); got != want {
 				t.Errorf("the branch is at %s, want %s", got, want)
 			}
+			if upstream := upstreamOf(t, clone, "drudge/task-1"); upstream != "" {
+				t.Errorf("expected the branch to have no upstream, got %q", upstream)
+			}
 		})
 	}
+}
+
+// upstreamOf returns the upstream of a branch, and an empty string when it has
+// none.
+func upstreamOf(t *testing.T, dir string, branch string) string {
+	t.Helper()
+	return strings.TrimSpace(gitOutput(t, dir, "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+branch))
 }
 
 func TestResolveCommit(t *testing.T) {

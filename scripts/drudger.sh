@@ -126,6 +126,6 @@ merge)
   git merge --ff-only "$branch"
   go run ./cmd/drg task done "$task_id"
   git worktree remove "$worktree"
-  # git branch --delete "$branch"
+  git branch --delete "$branch"
   ;;
 esac
