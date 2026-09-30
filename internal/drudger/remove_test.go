@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -100,7 +99,7 @@ func TestDrudgerService_RemoveEmptyBranches(t *testing.T) {
 			}
 
 			removed := landedTask(repositories...)
-			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), &fakeCommandRunner{}, nil, removed)
+			service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, nil, removed)
 
 			dirs := repositoryDirsOf(projectDir, repositories)
 			for repository, commits := range testCase.holds {
@@ -139,7 +138,7 @@ func TestDrudgerService_RemoveEmptyBranches_ReadsNoGitForATaskThatNeverRan(t *te
 	setupProjectDir(t)
 
 	removed := todoTask()
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, nil, removed)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, removed)
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
@@ -158,7 +157,7 @@ func TestDrudgerService_RemoveEmptyBranches_ReportsABranchItCouldNotDelete(t *te
 	projectDir := setupProjectDir(t)
 
 	removed := landedTask(testRepositoryName)
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, nil, removed)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, removed)
 
 	dir := repositoryDirsOf(projectDir, []string{testRepositoryName})[testRepositoryName]
 	service.git.branchHolding(dir, testTaskBranch, 0)

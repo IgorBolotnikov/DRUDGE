@@ -37,7 +37,7 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 
 		recorded, isRecorded := service.recordedRepository(layout, name)
 		if !isRecorded {
-			service.logger.Info("Branch %s stays, project %s records no repository %s", landing.Branch, service.localCfg.ProjectSlug, name)
+			service.logger.Info("Branch %s stays, project %s records no repository %s", landing.Branch, service.settings.ProjectSlug, name)
 			continue
 		}
 		repository, err := service.resolveRepository(layout, recorded)
@@ -53,7 +53,7 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 // recordedRepository finds the repository of the local config that a name
 // stands for.
 func (service *DrudgerService) recordedRepository(layout projectLayout, name string) (project.Repository, bool) {
-	for _, repository := range service.localCfg.Repositories {
+	for _, repository := range service.settings.Repositories {
 		if repositoryNameOf(filepath.Join(layout.Dir, repository.Path)) == name {
 			return repository, true
 		}

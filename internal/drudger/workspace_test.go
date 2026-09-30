@@ -9,19 +9,20 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
-// localConfigWith is the config of a project whose repositories sit at the
+// settingsWith are the settings of a project whose repositories sit at the
 // given paths.
-func localConfigWith(paths ...string) *config.LocalConfig {
+func settingsWith(paths ...string) Settings {
 	repositories := make([]project.Repository, 0, len(paths))
 	for _, path := range paths {
 		repositories = append(repositories, project.Repository{Path: path})
 	}
-	return &config.LocalConfig{ProjectSlug: testProjectSlug, Repositories: repositories}
+	settings := testSettings()
+	settings.Repositories = repositories
+	return settings
 }
 
 // pathsIn prefixes relative paths with the directory they live in.
@@ -62,7 +63,7 @@ func TestDrudgerService_RunTask_CreatesAWorktreePerRepository(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testCase.repositories...), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testCase.repositories...), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -112,7 +113,7 @@ func TestDrudgerService_RunTask_CutsAWorktreeFromTheDefaultBranch(t *testing.T) 
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
@@ -155,7 +156,7 @@ func TestDrudgerService_RunTask_ReusesTheWorkspaceOfTheSlot(t *testing.T) {
 		// The second run lists the sandbox the first one created.
 		outputs: []string{sandboxListingWith(), "", "", sandboxListingWith(testSandbox)},
 	}
-	service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, firstTask, secondTask)
+	service := newTestServiceWith(settingsWith(testRepoPath), commands, firstTask, secondTask)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, firstTask.ID, false) })
@@ -184,7 +185,7 @@ func TestDrudgerService_RunTask_WorkspaceFailureLeavesTheTaskAlone(t *testing.T)
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(localConfigWith("api", "ui"), config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settingsWith("api", "ui"), commands, taskToRun)
 	service.git.worktreeErr = fmt.Errorf("fatal: invalid reference: origin/main")
 
 	var err error
@@ -213,9 +214,9 @@ func TestDrudgerService_RunTask_RefusesAProjectWithNoRepositories(t *testing.T) 
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 	// A project initialized before drudge recorded repositories has none.
-	service.localCfg.Repositories = nil
+	service.settings.Repositories = nil
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -274,7 +275,7 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepositoryName), commands, taskToRun)
 			worktree := filepath.Join(slotRoot(projectDir, 1), testRepositoryName)
 			if testCase.isPresent {
 				if err := common.EnsureDir(worktree); err != nil {
@@ -330,7 +331,7 @@ func TestDrudgerService_RunTask_CreatesOnlyTheWorktreesASlotIsMissing(t *testing
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(localConfigWith("api", "ui"), config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settingsWith("api", "ui"), commands, taskToRun)
 	worktrees := pathsIn(slotRoot(projectDir, 1), "api", "ui")
 	// The second repository is where the last Session left it, the first has
 	// no worktree at all.

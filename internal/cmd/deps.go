@@ -37,13 +37,39 @@ func newCommandDeps() (*commandDeps, error) {
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
+	settings, err := newDrudgerSettings(localCfg, globalCfg)
+	if err != nil {
+		return nil, err
+	}
 
 	return &commandDeps{
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
 		log:       log,
 		tasks:     tasks,
-		drudger:   drudger.New(log, localCfg, globalCfg, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
+		drudger:   drudger.New(log, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
+	}, nil
+}
+
+// newDrudgerSettings picks what the Drudger service reads out of the configs.
+func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig) (drudger.Settings, error) {
+	promptPath, err := config.ResolvePromptPath(localCfg, globalCfg)
+	if err != nil {
+		return drudger.Settings{}, err
+	}
+	timeouts := globalCfg.Drudger.SandboxTimeouts
+	return drudger.Settings{
+		ProjectSlug:           localCfg.ProjectSlug,
+		Repositories:          localCfg.Repositories,
+		Env:                   globalCfg.Drudger.Env,
+		Harness:               globalCfg.Drudger.Harness,
+		MaxConcurrentDrudgers: config.ResolveMaxConcurrentDrudgers(localCfg, globalCfg),
+		PromptPath:            promptPath,
+		SandboxTimeouts: drudger.SandboxTimeouts{
+			List:   timeouts.List(),
+			Create: timeouts.Create(),
+			Remove: timeouts.Remove(),
+		},
 	}, nil
 }
 

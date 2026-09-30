@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -83,13 +82,9 @@ func renderPrompt(template string, taskToRun *task.Task, workspace promptWorkspa
 }
 
 // resolvePromptTemplate returns the prompt template to hand an agent, along
-// with a description of where it came from for error messages. A prompt file
-// named in either config wins over the built-in default.
-func resolvePromptTemplate(local *config.LocalConfig, global *config.GlobalConfig) (template string, source string, err error) {
-	path, err := config.ResolvePromptPath(local, global)
-	if err != nil {
-		return "", "", err
-	}
+// with a description of where it came from for error messages. An empty path
+// means the built-in default.
+func resolvePromptTemplate(path string) (template string, source string, err error) {
 	if path == "" {
 		return defaultPromptTemplate, promptSourceDefault, nil
 	}

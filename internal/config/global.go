@@ -8,20 +8,22 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
-type Env string
+// Env and Harness are the drudger types, named here for the config files.
+type Env = drudger.Env
 
 const (
-	EnvDockerSbx Env = "docker-sbx"
+	EnvDockerSbx = drudger.EnvDockerSbx
 )
 
-type Harness string
+type Harness = drudger.Harness
 
 const (
-	HarnessClaudeCode Harness = "claude-code"
-	HarnessOpencode   Harness = "opencode"
+	HarnessClaudeCode = drudger.HarnessClaudeCode
+	HarnessOpencode   = drudger.HarnessOpencode
 )
 
 const (
@@ -54,18 +56,15 @@ const (
 
 // JSON keys, named in error messages so they match what a user writes in a config file.
 const (
-	projectSlugKey = "projectSlug"
-	promptFileKey  = "promptFile"
-	// MaxConcurrentDrudgersKey is exported so the drudger package can name it when a project's pool is full.
-	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
+	projectSlugKey           = "projectSlug"
+	promptFileKey            = "promptFile"
+	maxConcurrentDrudgersKey = drudger.MaxConcurrentDrudgersKey
 	listTimeoutKey           = "sandboxTimeouts.listSeconds"
-	// CreateTimeoutKey is exported so the drudger package can name it when a
-	// sandbox create is killed.
-	CreateTimeoutKey     = "sandboxTimeouts.createSeconds"
-	removeTimeoutKey     = "sandboxTimeouts.removeSeconds"
-	fetchTimeoutKey      = "gitTimeouts.fetchSeconds"
-	worktreeTimeoutKey   = "gitTimeouts.worktreeSeconds"
-	gitCommandTimeoutKey = "gitTimeouts.commandSeconds"
+	createTimeoutKey         = drudger.CreateTimeoutKey
+	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
+	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
+	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
+	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
 	DefaultTaskStatusKey = "task.defaultStatus"
 	// ProjectPageSizeKey is exported so the project commands can name it in their help.
@@ -320,7 +319,7 @@ func validateDefaultTaskStatus(value task.TaskStatus, path string) error {
 // validateMaxConcurrentDrudgers rejects a negative Drudger limit. Zero passes, since that is what an absent key unmarshals to.
 func validateMaxConcurrentDrudgers(value int, path string) error {
 	if value < 0 {
-		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, MaxConcurrentDrudgersKey, value)
+		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, maxConcurrentDrudgersKey, value)
 	}
 	return nil
 }
@@ -333,7 +332,7 @@ func validateSandboxTimeouts(timeouts SandboxTimeouts, path string) error {
 		value int
 	}{
 		{key: listTimeoutKey, value: timeouts.ListSeconds},
-		{key: CreateTimeoutKey, value: timeouts.CreateSeconds},
+		{key: createTimeoutKey, value: timeouts.CreateSeconds},
 		{key: removeTimeoutKey, value: timeouts.RemoveSeconds},
 	}
 	for _, timeout := range seconds {

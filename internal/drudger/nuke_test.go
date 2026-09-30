@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -182,8 +181,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 				occupied.Status = testCase.taskStatus
 			}
 			service := newTestServiceWithPool(
-				&config.LocalConfig{ProjectSlug: testProjectSlug},
-				config.DefaultConfig(),
+				testSettings(),
 				commands,
 				testCase.pool,
 				occupied,
@@ -239,9 +237,10 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 func TestDrudgerService_NukeDrudger_UnsupportedEnvironment(t *testing.T) {
 	setupProjectDir(t)
 	commands := &fakeCommandRunner{}
+	settings := testSettings()
+	settings.Env = Env("bare-metal")
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		&config.GlobalConfig{Drudger: config.DrudgerConfig{Env: config.Env("bare-metal")}},
+		settings,
 		commands,
 		[]*Drudger{idleDrudger(1)},
 	)
@@ -317,7 +316,7 @@ func TestDrudgerService_NukeDrudger_TakesTheWorkspace(t *testing.T) {
 			doomed := handedOverTask(repositories...)
 			pool := []*Drudger{holdingDrudger(projectDir, doomed.ID)}
 			commands := &fakeCommandRunner{projectDir: projectDir}
-			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), commands, pool, doomed)
+			service := newTestServiceWithPool(settingsWith(repositories...), commands, pool, doomed)
 
 			worktrees := worktreesOf(projectDir, repositories)
 			makeWorktrees(t, worktrees)
@@ -377,7 +376,7 @@ func TestDrudgerService_NukeDrudger_TakesTheWorkspaceBeforeTheSandbox(t *testing
 	projectDir := setupProjectDir(t)
 	commands := &fakeCommandRunner{projectDir: projectDir, errs: []error{errors.New("sbx said no")}}
 	pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
 	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
 
 	var err error
@@ -398,7 +397,7 @@ func TestDrudgerService_NukeDrudger_KeepsTheWorkspaceOfALiveSession(t *testing.T
 
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool, tracked)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool, tracked)
 	service.runs.writeStream(tracked.ID, initEvent, assistantEvent)
 	service.gitOps = &refusingGit{t: t}
 
@@ -415,7 +414,7 @@ func TestDrudgerService_NukeDrudger_KeepsTheWorkspaceOfALiveSession(t *testing.T
 func TestDrudgerService_NukeDrudger_RunsNoGitWithoutAWorkspace(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	commands := &fakeCommandRunner{projectDir: projectDir}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, []*Drudger{idleDrudger(1)})
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, []*Drudger{idleDrudger(1)})
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
@@ -432,7 +431,7 @@ func TestDrudgerService_NukeDrudger_ReportsAWorkspaceItCannotTakeApart(t *testin
 	projectDir := setupProjectDir(t)
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
 	service.git.removalErr = errors.New("git said no")
 	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
 

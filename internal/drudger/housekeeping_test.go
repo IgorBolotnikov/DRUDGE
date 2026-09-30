@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -31,7 +30,7 @@ func TestDrudgerService_RunTask_StashesOnlyADirtyWorktree(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 			worktree := slotRoot(projectDir, 1)
 			if testCase.isDirty {
 				service.git.dirtyWorktrees = map[string]bool{worktree: true}
@@ -91,7 +90,7 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
@@ -158,7 +157,7 @@ func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 			taskToRun.ID = testCase.id
 			taskToRun.Title = testCase.title
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -210,7 +209,7 @@ func TestDrudgerService_RerunTask_ReusesABranchThatHoldsNoCommits(t *testing.T) 
 			taskToRerun := todoTask()
 			taskToRerun.Status = task.StatusFuckedUp
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRerun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRerun)
 			service.git.branchCommits = maps.Clone(testCase.existing)
 
 			var err error
@@ -263,7 +262,7 @@ func TestDrudgerService_RunTask_HousekeepingFailureStopsTheRun(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(localConfigWith(testRepoPath), config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 			service.git.stashErr = testCase.stashErr
 			service.git.branchErr = testCase.branchErr
 			if testCase.isDirty {
@@ -298,7 +297,7 @@ func TestDrudgerService_RunTask_RunsHousekeepingInEveryRepository(t *testing.T) 
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(localConfigWith(repositories...), config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settingsWith(repositories...), commands, taskToRun)
 	worktrees := pathsIn(slotRoot(projectDir, 1), repositories...)
 	service.git.dirtyWorktrees = map[string]bool{worktrees[0]: true, worktrees[1]: true}
 
@@ -334,7 +333,7 @@ func TestDrudgerService_RunTask_RecordsWhereTheWorkWillBe(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(localConfigWith(repositories...), config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settingsWith(repositories...), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })

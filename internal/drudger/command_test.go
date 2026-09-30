@@ -7,20 +7,19 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // runTaskFor drives a run to completion in a project directory against a given
 // sandbox listing, and returns the commands it issued.
-func runTaskFor(t *testing.T, localCfg *config.LocalConfig, projectDir, listing string) *fakeCommandRunner {
+func runTaskFor(t *testing.T, settings Settings, projectDir, listing string) *fakeCommandRunner {
 	t.Helper()
 	taskToRun := todoTask()
-	taskToRun.ProjectSlug = localCfg.ProjectSlug
+	taskToRun.ProjectSlug = settings.ProjectSlug
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{listing}}
-	service := newTestServiceWith(localCfg, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(settings, commands, taskToRun)
 
 	var err error
-	captureOutput(func() { err = service.RunTask(localCfg.ProjectSlug, taskToRun.ID, false) })
+	captureOutput(func() { err = service.RunTask(settings.ProjectSlug, taskToRun.ID, false) })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,7 +28,7 @@ func runTaskFor(t *testing.T, localCfg *config.LocalConfig, projectDir, listing 
 
 func TestDrudgerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 	projectDir := setupProjectDir(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith())
+	commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith())
 
 	wantInspect := []string{"sbx", "ls", "--json"}
 	if got := commands.call(sbxLsSubcommand); !slices.Equal(got, wantInspect) {
@@ -55,13 +54,13 @@ func TestDrudgerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 	cases := []struct {
 		name            string
-		env             config.Env
-		harness         config.Harness
+		env             Env
+		harness         Harness
 		wantErrContains string
 	}{
-		{name: "opencode is not wired up yet", env: config.EnvDockerSbx, harness: config.HarnessOpencode, wantErrContains: "opencode"},
-		{name: "unknown harness", env: config.EnvDockerSbx, harness: config.Harness("codex"), wantErrContains: "codex"},
-		{name: "unknown environment", env: config.Env("bare-metal"), harness: config.HarnessClaudeCode, wantErrContains: "bare-metal"},
+		{name: "opencode is not wired up yet", env: EnvDockerSbx, harness: HarnessOpencode, wantErrContains: "opencode"},
+		{name: "unknown harness", env: EnvDockerSbx, harness: Harness("codex"), wantErrContains: "codex"},
+		{name: "unknown environment", env: Env("bare-metal"), harness: HarnessClaudeCode, wantErrContains: "bare-metal"},
 		{name: "empty Drudger settings", wantErrContains: "Drudger settings"},
 	}
 
@@ -69,9 +68,11 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			setupProjectDir(t)
 			commands := &fakeCommandRunner{}
+			settings := testSettings()
+			settings.Env = testCase.env
+			settings.Harness = testCase.harness
 			service := newTestServiceWith(
-				&config.LocalConfig{ProjectSlug: testProjectSlug},
-				&config.GlobalConfig{Drudger: config.DrudgerConfig{Env: testCase.env, Harness: testCase.harness}},
+				settings,
 				commands,
 				todoTask(),
 			)
@@ -93,7 +94,7 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 
 func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
 	projectDir := setupProjectDir(t)
-	commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith(testSandbox))
+	commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
 
 	start := commands.call(sbxExecSubcommand)
 	launcher := start[len(start)-1]
@@ -128,7 +129,7 @@ func TestDrudgerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			projectDir := setupProjectDirNamed(t, testCase.dirName)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testProjectSlug}, projectDir, sandboxListingWith(testSandbox))
+			commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			launcher := start[len(start)-1]
@@ -163,7 +164,9 @@ func TestDrudgerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			projectDir := setupProjectDir(t)
-			commands := runTaskFor(t, &config.LocalConfig{ProjectSlug: testCase.projectSlug}, projectDir, sandboxListingWith(testCase.wantSandbox))
+			settings := testSettings()
+			settings.ProjectSlug = testCase.projectSlug
+			commands := runTaskFor(t, settings, projectDir, sandboxListingWith(testCase.wantSandbox))
 
 			start := commands.call(sbxExecSubcommand)
 			if !slices.Contains(start, testCase.wantSandbox) {
@@ -181,7 +184,7 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 	taskToRun := todoTask()
 	taskToRun.TicketID = "PROJ-123"
 	commands := &fakeCommandRunner{}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	var err error
 	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })

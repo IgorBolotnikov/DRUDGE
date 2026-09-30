@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -128,7 +127,7 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 		return nil, nil, err
 	}
 
-	limit := config.ResolveMaxConcurrentDrudgers(service.localCfg, service.globalCfg)
+	limit := service.settings.MaxConcurrentDrudgers
 	service.warnAboveLimit(drudgers, projectSlug, limit)
 
 	bySlot := make(map[int]*Drudger, len(drudgers))
@@ -141,7 +140,7 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 		if !isKnown {
 			created := &Drudger{
 				Slot:        slot,
-				Sandbox:     formatDrudgerName(projectSlug, slot, service.globalCfg.Drudger.Harness),
+				Sandbox:     formatDrudgerName(projectSlug, slot, service.settings.Harness),
 				Workspace:   layout.WorkspaceRoot(slot),
 				TaskID:      taskID,
 				LastChecked: now,
@@ -161,7 +160,7 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 		}
 	}
 
-	return nil, nil, fmt.Errorf("all %d Drudgers of project %s are busy, wait for one to finish, run %s to free the slots whose agent is gone, or raise %s in the config", limit, projectSlug, reclaimCommand, config.MaxConcurrentDrudgersKey)
+	return nil, nil, fmt.Errorf("all %d Drudgers of project %s are busy, wait for one to finish, run %s to free the slots whose agent is gone, or raise %s in the config", limit, projectSlug, reclaimCommand, MaxConcurrentDrudgersKey)
 }
 
 // warnAboveLimit names the Drudgers whose slot is above the configured limit.
@@ -184,8 +183,8 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 		names = append(names, fmt.Sprintf("slot %d (%s)", candidate.Slot, candidate.Sandbox))
 	}
 
-	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, config.MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
-	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or nuke them if you are done with them.", config.MaxConcurrentDrudgersKey)
+	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
+	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or nuke them if you are done with them.", MaxConcurrentDrudgersKey)
 }
 
 // reclaimFinished frees every Drudger whose Session has finished, and records

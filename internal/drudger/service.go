@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -49,14 +48,13 @@ const initCommand = "drg project init"
 var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp, task.StatusUnmerged}
 
 type DrudgerService struct {
-	logger    *common.Logger
-	localCfg  *config.LocalConfig
-	globalCfg *config.GlobalConfig
-	tasks     *task.TaskService
-	drudgers  DrudgerRepository
-	runs      RunRepository
-	commands  CommandRunner
-	gitOps    git.Operations
+	logger   *common.Logger
+	settings Settings
+	tasks    *task.TaskService
+	drudgers DrudgerRepository
+	runs     RunRepository
+	commands CommandRunner
+	gitOps   git.Operations
 	// daemonRetryDelay and launchGrace default to the constants above. A test
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
@@ -66,11 +64,10 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(logger *common.Logger, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
+func New(logger *common.Logger, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
 	return &DrudgerService{
 		logger:           logger,
-		localCfg:         localCfg,
-		globalCfg:        globalCfg,
+		settings:         settings,
 		tasks:            tasks,
 		drudgers:         drudgers,
 		runs:             runs,
@@ -386,7 +383,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 // renderTaskPrompt renders the prompt an agent is given for a task in a
 // workspace put on branch, and names where the template came from.
 func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slotWorkspace, branch string) (prompt string, promptSource string, err error) {
-	promptTemplate, promptSource, err := resolvePromptTemplate(service.localCfg, service.globalCfg)
+	promptTemplate, promptSource, err := resolvePromptTemplate(service.settings.PromptPath)
 	if err != nil {
 		return "", "", err
 	}
@@ -579,7 +576,7 @@ func (service *DrudgerService) createSandbox(create sandboxCommand) error {
 	})
 	service.noteDaemonStart(stderr)
 	if timedOut(err) {
-		return fmt.Errorf("sbx did not finish within %s, raise %q in the global config if it needs longer: %w", create.timeout, config.CreateTimeoutKey, err)
+		return fmt.Errorf("sbx did not finish within %s, raise %q in the global config if it needs longer: %w", create.timeout, CreateTimeoutKey, err)
 	}
 	return err
 }

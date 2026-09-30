@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
@@ -74,7 +73,7 @@ func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
 			tracked := handedOverTask(repositories...)
 
 			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
-			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+			service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, pool, tracked)
 			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
 			service.runs.writeExit(tracked.ID, "0\n")
 			worktrees := worktreesOf(projectDir, repositories)
@@ -112,7 +111,7 @@ func TestDrudgerService_SessionStatus_LeavesTheWorkspaceOfALiveSession(t *testin
 	tracked := handedOverTask(testRepositoryName)
 
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, pool, tracked)
 	service.runs.writeStream(tracked.ID, initEvent, assistantEvent)
 	worktrees := worktreesOf(projectDir, []string{testRepositoryName})
 	makeWorktrees(t, worktrees)
@@ -144,7 +143,7 @@ func TestDrudgerService_ReclaimDrudgers_ParksEveryIdleDrudger(t *testing.T) {
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	pool := []*Drudger{working, idle}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
 	service.runs.writeStream(working.TaskID, initEvent, assistantEvent)
 
 	worktrees := map[string]string{"working": slotWorktree(projectDir, 1), "idle": slotWorktree(projectDir, 2)}
@@ -173,7 +172,7 @@ func TestDrudgerService_ReclaimDrudgers_ParksNoDrudgerWithoutAWorkspace(t *testi
 
 	commands := &fakeCommandRunner{outputs: []string{sandboxListingWith()}}
 	pool := []*Drudger{idleDrudger(1)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), commands, pool)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
@@ -189,7 +188,7 @@ func TestDrudgerService_ListDrudgers_RunsNoGitCommands(t *testing.T) {
 	claimed := busyDrudger(1)
 	claimed.Workspace = slotRoot(projectDir, 1)
 
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, []*Drudger{claimed})
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, []*Drudger{claimed})
 	service.runs.finishSession(claimed.TaskID)
 	service.gitOps = &refusingGit{t: t}
 

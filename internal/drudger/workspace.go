@@ -96,12 +96,12 @@ func (service *DrudgerService) resolveWorkspace(layout projectLayout, drudger *D
 // what it cuts work from. It reads git and writes nothing. A project with no
 // repositories recorded is refused.
 func (service *DrudgerService) resolveRepositories(layout projectLayout) ([]projectRepository, error) {
-	recorded := service.localCfg.Repositories
+	recorded := service.settings.Repositories
 	if len(recorded) == 0 {
 		return nil, fmt.Errorf(
 			"project %s has no repositories recorded, run %s to record them",
 			// TODO: make init rerunnable on the existing project, or create another command, like `sync`
-			service.localCfg.ProjectSlug, initCommand,
+			service.settings.ProjectSlug, initCommand,
 		)
 	}
 

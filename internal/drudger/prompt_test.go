@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -171,85 +170,49 @@ func writePromptFile(t *testing.T, dir string, name string, content string) {
 
 func TestResolvePromptTemplate(t *testing.T) {
 	const (
-		localFileName  = "local.md"
-		globalFileName = "global.md"
-		localTemplate  = "local {{taskTitle}} {{taskDescription}}"
-		globalTemplate = "global {{taskTitle}} {{taskDescription}}"
+		fileName = "impl.md"
+		template = "custom {{taskTitle}} {{taskDescription}}"
 	)
-	localPathSuffix := filepath.Join(common.LocalPromptsDir(), localFileName)
-	globalPathSuffix := filepath.Join(common.DotDrudgeDirName, common.PromptsDirName, globalFileName)
 
 	cases := []struct {
-		name                  string
-		localPromptFile       string
-		globalPromptFile      string
-		shouldWriteLocalFile  bool
-		shouldWriteGlobalFile bool
-		want                  string
-		wantSource            string
-		wantErrContains       string
+		name            string
+		shouldNamePath  bool
+		shouldWriteFile bool
+		want            string
+		wantSource      string
+		wantErrContains string
 	}{
 		{
-			name:       "falls back to the default when neither config names a file",
+			name:       "falls back to the default when no prompt file is named",
 			want:       defaultPromptTemplate,
 			wantSource: promptSourceDefault,
 		},
 		{
-			name:                 "reads the local prompt file",
-			localPromptFile:      localFileName,
-			shouldWriteLocalFile: true,
-			want:                 localTemplate,
-			wantSource:           localPathSuffix,
+			name:            "reads the named prompt file",
+			shouldNamePath:  true,
+			shouldWriteFile: true,
+			want:            template,
+			wantSource:      fileName,
 		},
 		{
-			name:                  "reads the global prompt file",
-			globalPromptFile:      globalFileName,
-			shouldWriteGlobalFile: true,
-			want:                  globalTemplate,
-			wantSource:            globalPathSuffix,
-		},
-		{
-			name:                  "local prompt file wins over the global one",
-			localPromptFile:       localFileName,
-			globalPromptFile:      globalFileName,
-			shouldWriteLocalFile:  true,
-			shouldWriteGlobalFile: true,
-			want:                  localTemplate,
-			wantSource:            localPathSuffix,
-		},
-		{
-			name:            "missing local prompt file is an error",
-			localPromptFile: localFileName,
-			wantErrContains: localPathSuffix,
-		},
-		{
-			name:             "missing global prompt file is an error",
-			globalPromptFile: globalFileName,
-			wantErrContains:  globalPathSuffix,
-		},
-		{
-			name:                  "missing local prompt file does not fall back to the global one",
-			localPromptFile:       localFileName,
-			globalPromptFile:      globalFileName,
-			shouldWriteGlobalFile: true,
-			wantErrContains:       localPathSuffix,
+			name:            "missing prompt file is an error",
+			shouldNamePath:  true,
+			wantErrContains: fileName,
 		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			home := setupPromptDirs(t)
-			if testCase.shouldWriteLocalFile {
-				writePromptFile(t, common.LocalPromptsDir(), localFileName, localTemplate)
+			setupPromptDirs(t)
+			if testCase.shouldWriteFile {
+				writePromptFile(t, common.LocalPromptsDir(), fileName, template)
 			}
-			if testCase.shouldWriteGlobalFile {
-				writePromptFile(t, common.PromptsDir(home), globalFileName, globalTemplate)
+			path := ""
+			if testCase.shouldNamePath {
+				path = filepath.Join(common.LocalPromptsDir(), fileName)
 			}
 
-			local := &config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: testCase.localPromptFile}
-			global := &config.GlobalConfig{Drudger: config.DrudgerConfig{PromptFile: testCase.globalPromptFile}}
-
-			got, source, err := resolvePromptTemplate(local, global)
+			got, source, err := resolvePromptTemplate(path)
 
 			if testCase.wantErrContains != "" {
 				if err == nil {

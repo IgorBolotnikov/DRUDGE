@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
 // CommandRunner runs the commands that put a Drudger to work.
@@ -126,9 +125,9 @@ type sandbox struct {
 // pickInspectCommand builds the command that lists the sandboxes of the
 // configured environment.
 func (service *DrudgerService) pickInspectCommand() (sandboxCommand, error) {
-	env := service.globalCfg.Drudger.Env
+	env := service.settings.Env
 
-	if env == config.EnvDockerSbx {
+	if env == EnvDockerSbx {
 		return service.sbxInspectCommand(), nil
 	}
 
@@ -139,7 +138,7 @@ func (service *DrudgerService) pickInspectCommand() (sandboxCommand, error) {
 func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
 	return sandboxCommand{
 		argv:    []string{sbxBinary, sbxLsSubcommand, sbxJSONFlag},
-		timeout: service.globalCfg.Drudger.SandboxTimeouts.List(),
+		timeout: service.settings.SandboxTimeouts.List,
 	}
 }
 
@@ -147,11 +146,11 @@ func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
 // put an agent to work on the configured prompt. The sandbox is created over
 // every mount, and the agent works in the workspace root.
 func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceRoot string, mounts []string, runDir string) (sandboxPlan, error) {
-	env := service.globalCfg.Drudger.Env
-	harness := service.globalCfg.Drudger.Harness
+	env := service.settings.Env
+	harness := service.settings.Harness
 
 	// TODO: at some point need to move concrete implementations to adapters
-	if env == config.EnvDockerSbx && harness == config.HarnessClaudeCode {
+	if env == EnvDockerSbx && harness == HarnessClaudeCode {
 		create := []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude}
 		create = append(create, mounts...)
 		create = append(create, sbxNameFlag, sandboxName)
@@ -160,7 +159,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 			inspect: service.sbxInspectCommand(),
 			create: sandboxCommand{
 				argv:    create,
-				timeout: service.globalCfg.Drudger.SandboxTimeouts.Create(),
+				timeout: service.settings.SandboxTimeouts.Create,
 			},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
@@ -174,12 +173,12 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 
 // pickRemoveCommand builds the command that deletes a Drudger's sandbox.
 func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCommand, error) {
-	env := service.globalCfg.Drudger.Env
+	env := service.settings.Env
 
-	if env == config.EnvDockerSbx {
+	if env == EnvDockerSbx {
 		return sandboxCommand{
 			argv:    []string{sbxBinary, sbxRmSubcommand, sbxForceFlag, sandboxName},
-			timeout: service.globalCfg.Drudger.SandboxTimeouts.Remove(),
+			timeout: service.settings.SandboxTimeouts.Remove,
 		}, nil
 	}
 
@@ -295,12 +294,12 @@ func formatMounts(mounts []string) string {
 }
 
 // formatDrudgerName names the sandbox a Drudger slot works in.
-func formatDrudgerName(projectSlug string, drudgerSlot int, harness config.Harness) string {
+func formatDrudgerName(projectSlug string, drudgerSlot int, harness Harness) string {
 	prefix := unknownDrudgerPrefix
 	switch harness {
-	case config.HarnessClaudeCode:
+	case HarnessClaudeCode:
 		prefix = claudeCodeDrudgerPrefix
-	case config.HarnessOpencode:
+	case HarnessOpencode:
 		prefix = opencodeDrudgerPrefix
 	}
 	return fmt.Sprintf("%s-%s-%d", prefix, normaliseNameSlug(projectSlug), drudgerSlot)

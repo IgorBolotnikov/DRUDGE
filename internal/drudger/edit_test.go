@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -54,8 +53,7 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 			}
 
 			service := newTestServiceWithPool(
-				&config.LocalConfig{ProjectSlug: testProjectSlug},
-				config.DefaultConfig(),
+				testSettings(),
 				&fakeCommandRunner{projectDir: projectDir},
 				pool,
 				taskToEdit,
@@ -95,7 +93,7 @@ func TestDrudgerService_RunTask_TakesATaskEditedIntoTodo(t *testing.T) {
 	draft.Status = task.StatusDraft
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, draft)
+	service := newTestServiceWith(testSettings(), commands, draft)
 	tasks := task.NewTaskService(service.taskRepo, common.NewLogger(""), task.StatusDraft)
 
 	var err error

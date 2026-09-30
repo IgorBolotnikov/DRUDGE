@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -145,7 +144,7 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 				}
 
 				stored := append([]*task.Task{finished}, testCase.others...)
-				service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, pool, stored...)
+				service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, pool, stored...)
 				if testCase.commits > 0 {
 					service.git.leaveOn(worktree, testTaskBranch, testHeadSHA)
 					service.git.commitsOn(testHeadSHA, testCase.commits)

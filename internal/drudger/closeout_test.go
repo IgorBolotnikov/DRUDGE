@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -142,7 +141,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 			tracked := handedOverTask(repositories...)
 
 			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
-			service := newTestServiceWithPool(localConfigWith(repositories...), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+			service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, pool, tracked)
 			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
 			service.runs.writeExit(tracked.ID, "0\n")
 			worktrees := worktreesOf(projectDir, repositories)
@@ -181,7 +180,7 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 	setupProjectDir(t)
 	tracked := handedOverTask(testRepositoryName)
 
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, nil, tracked)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, tracked)
 	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
 	service.runs.writeExit(tracked.ID, "0\n")
 
@@ -209,7 +208,7 @@ func TestDrudgerService_SessionStatus_ARefusedRunClosesOutNothing(t *testing.T) 
 	tracked := handedOverTask(testRepositoryName)
 
 	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
-	service := newTestServiceWithPool(localConfigWith(testRepositoryName), config.DefaultConfig(), &fakeCommandRunner{}, pool, tracked)
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, pool, tracked)
 	service.runs.writeStream(tracked.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
 	service.runs.writeExit(tracked.ID, "1\n")
 	service.git.leaveOn(filepath.Join(slotRoot(projectDir, 1), testRepositoryName), testTaskBranch, testBaseSHA)

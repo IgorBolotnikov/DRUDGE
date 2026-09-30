@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -762,15 +761,30 @@ type testService struct {
 	git      *fakeGit
 }
 
+// testSettings are the settings of the built-in default configs.
+func testSettings() Settings {
+	return Settings{
+		ProjectSlug:           testProjectSlug,
+		Env:                   EnvDockerSbx,
+		Harness:               HarnessClaudeCode,
+		MaxConcurrentDrudgers: 3,
+		SandboxTimeouts: SandboxTimeouts{
+			List:   30 * time.Second,
+			Create: 10 * time.Minute,
+			Remove: 2 * time.Minute,
+		},
+	}
+}
+
 func newTestService(tasks ...*task.Task) *testService {
-	return newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, tasks...)
+	return newTestServiceWith(testSettings(), &fakeCommandRunner{}, tasks...)
 }
 
-func newTestServiceWith(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, tasks ...*task.Task) *testService {
-	return newTestServiceWithPool(localCfg, globalCfg, commands, nil, tasks...)
+func newTestServiceWith(settings Settings, commands CommandRunner, tasks ...*task.Task) *testService {
+	return newTestServiceWithPool(settings, commands, nil, tasks...)
 }
 
-func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
+func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*Drudger, tasks ...*task.Task) *testService {
 	logger := common.NewLogger("")
 	drudgers := &fakeDrudgerRepo{drudgers: pool}
 	taskRepo := &fakeTaskRepo{tasks: tasks, lockedTasks: map[task.TaskID]bool{}}
@@ -781,10 +795,10 @@ func newTestServiceWithPool(localCfg *config.LocalConfig, globalCfg *config.Glob
 	}
 	// A run needs the repositories of the project. Tests that care about the
 	// shape of a project name them.
-	if len(localCfg.Repositories) == 0 {
-		localCfg.Repositories = []project.Repository{{Path: testRepoPath}}
+	if len(settings.Repositories) == 0 {
+		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
-	service := New(logger, localCfg, globalCfg, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, runs, commands, gitOps)
+	service := New(logger, settings, task.NewTaskService(taskRepo, logger, task.StatusDraft), drudgers, runs, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -985,7 +999,7 @@ func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1041,7 +1055,7 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 					runs.writeStream(taskToRun.ID, testCase.lines...)
 				}
 			}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1081,7 +1095,7 @@ func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1132,7 +1146,7 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 			outputs:         []string{sandboxListingWith(), pullProgress},
 			errs:            []error{nil, createKilled},
 			wantLogContains: []string{"sbx: " + pullProgress},
-			wantErrContains: config.CreateTimeoutKey,
+			wantErrContains: CreateTimeoutKey,
 		},
 	}
 
@@ -1141,7 +1155,7 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: testCase.outputs, errs: testCase.errs}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1198,7 +1212,7 @@ func TestDrudgerService_RunTask_RefusesASandboxMissingAMount(t *testing.T) {
 				projectDir: projectDir,
 				outputs:    []string{sandboxListingMountedOn(testSandbox, testCase.mounts...)},
 			}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1253,7 +1267,7 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1303,9 +1317,11 @@ func TestDrudgerService_RunTask_FillsTheWorkspacePlaceholders(t *testing.T) {
 			writePromptFile(t, common.LocalPromptsDir(), promptFileName, "{{taskTitle}} {{taskDescription}} on {{branch}} off {{defaultBranch}}")
 
 			taskToRun := todoTask()
+			settings := testSettings()
+			settings.Repositories = testCase.repositories
+			settings.PromptPath = filepath.Join(common.LocalPromptsDir(), promptFileName)
 			service := newTestServiceWith(
-				&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName, Repositories: testCase.repositories},
-				config.DefaultConfig(),
+				settings,
 				&fakeCommandRunner{},
 				taskToRun,
 			)
@@ -1376,7 +1392,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 				errs:          testCase.errs,
 				isAgentSilent: testCase.isAgentSilent,
 			}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1453,9 +1469,10 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 			taskToRun := todoTask()
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			settings := testSettings()
+			settings.MaxConcurrentDrudgers = testCase.limit
 			service := newTestServiceWithPool(
-				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
-				config.DefaultConfig(),
+				settings,
 				commands,
 				testCase.pool,
 				taskToRun,
@@ -1471,7 +1488,7 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 				if err == nil {
 					t.Fatal("expected an error, the pool should have been full")
 				}
-				if !strings.Contains(err.Error(), config.MaxConcurrentDrudgersKey) {
+				if !strings.Contains(err.Error(), MaxConcurrentDrudgersKey) {
 					t.Errorf("expected the error to name the config key, got %q", err)
 				}
 				return
@@ -1538,9 +1555,10 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			taskToRun := todoTask()
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			settings := testSettings()
+			settings.MaxConcurrentDrudgers = testCase.limit
 			service := newTestServiceWithPool(
-				&config.LocalConfig{ProjectSlug: testProjectSlug, MaxConcurrentDrudgers: testCase.limit},
-				config.DefaultConfig(),
+				settings,
 				commands,
 				testCase.pool,
 				taskToRun,
@@ -1550,11 +1568,11 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 			warnings := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
 
 			if len(testCase.wantNamed) == 0 {
-				if strings.Contains(warnings, config.MaxConcurrentDrudgersKey) {
+				if strings.Contains(warnings, MaxConcurrentDrudgersKey) {
 					t.Errorf("expected no warning about the limit, got %q", warnings)
 				}
 			} else {
-				if !strings.Contains(warnings, config.MaxConcurrentDrudgersKey) {
+				if !strings.Contains(warnings, MaxConcurrentDrudgersKey) {
 					t.Errorf("expected the warning to name the config key, got %q", warnings)
 				}
 				for _, entry := range testCase.pool {
@@ -1597,8 +1615,7 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(namedByAnEarlierHarness)}}
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
+		testSettings(),
 		commands,
 		[]*Drudger{{Slot: 1, Sandbox: namedByAnEarlierHarness}},
 		taskToRun,
@@ -1625,7 +1642,7 @@ func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1649,8 +1666,7 @@ func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
+		testSettings(),
 		commands,
 		[]*Drudger{busyDrudger(1)},
 		taskToRun,
@@ -1686,9 +1702,10 @@ func TestDrudgerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "custom prompt for {{taskTitle}}: {{taskDescription}}")
 
 	taskToRun := todoTask()
+	settings := testSettings()
+	settings.PromptPath = filepath.Join(common.LocalPromptsDir(), promptFileName)
 	service := newTestServiceWith(
-		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
-		config.DefaultConfig(),
+		settings,
 		&fakeCommandRunner{},
 		taskToRun,
 	)
@@ -1711,9 +1728,10 @@ func TestDrudgerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *test
 	setupProjectDir(t)
 	writePromptFile(t, common.LocalPromptsDir(), promptFileName, "nothing to substitute here")
 
+	settings := testSettings()
+	settings.PromptPath = filepath.Join(common.LocalPromptsDir(), promptFileName)
 	service := newTestServiceWith(
-		&config.LocalConfig{ProjectSlug: testProjectSlug, PromptFile: promptFileName},
-		config.DefaultConfig(),
+		settings,
 		&fakeCommandRunner{},
 		todoTask(),
 	)
@@ -1782,7 +1800,7 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 				outputs:    []string{testCase.listing},
 				errs:       []error{testCase.listErr, testCase.createErr},
 			}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1876,7 +1894,7 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 				stderrs:    testCase.stderrs,
 				errs:       testCase.errs,
 			}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 			var err error
 			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -1920,7 +1938,7 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 	taskToRun.VendorErrorClass = task.VendorErrorAuth
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 	service.runs.writeStream(taskToRun.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
 	service.runs.writeExit(taskToRun.ID, "1\n")
 
@@ -1977,7 +1995,7 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 			taskToRerun.Status = testCase.status
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-			service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+			service := newTestServiceWith(testSettings(), commands, taskToRerun)
 			if testCase.hasFinishedRun {
 				service.runs.finishSession(taskToRerun.ID)
 			}
@@ -2026,8 +2044,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
+		testSettings(),
 		commands,
 		[]*Drudger{working},
 		taskToRerun,
@@ -2072,8 +2089,7 @@ func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) 
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
+		testSettings(),
 		commands,
 		[]*Drudger{idleDrudger(1)},
 		taskToRerun,
@@ -2103,7 +2119,7 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 	taskToRerun.FinishedAt = time.Now().UTC()
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRerun)
+	service := newTestServiceWith(testSettings(), commands, taskToRerun)
 	service.runs.writeStream(taskToRerun.ID, initEvent, resultEvent)
 	service.runs.writeExit(taskToRerun.ID, "1\n")
 
@@ -2137,7 +2153,7 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	taskToRun := todoTask()
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	var err error
 	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
@@ -2168,8 +2184,7 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 
 	commands := &fakeCommandRunner{projectDir: projectDir}
 	service := newTestServiceWithPool(
-		&config.LocalConfig{ProjectSlug: testProjectSlug},
-		config.DefaultConfig(),
+		testSettings(),
 		commands,
 		[]*Drudger{busyDrudger(1)},
 		taskToRerun,
@@ -2284,7 +2299,7 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 					runs.writeExit(taskToRun.ID, testCase.exit)
 				}
 			}
-			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, testCase.pool, taskToRun)
+			service := newTestServiceWithPool(testSettings(), commands, testCase.pool, taskToRun)
 
 			captureOutput(func() {
 				// A launch that fails says so, and the run it never made is the
@@ -2382,7 +2397,7 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 
 			pool := []*Drudger{idleDrudger(2), claimed}
 			commands := &fakeCommandRunner{}
-			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
+			service := newTestServiceWithPool(testSettings(), commands, pool)
 			service.drudgers.isLockHeld = testCase.isLockHeld
 			if !testCase.hasNoRunDir {
 				service.runs.writeStream(claimed.TaskID, testCase.stream...)
@@ -2553,7 +2568,7 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			pool := []*Drudger{claimed, idleDrudger(2)}
-			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, pool)
+			service := newTestServiceWithPool(testSettings(), commands, pool)
 			if !testCase.hasNoRunDir {
 				service.runs.writeStream(claimed.TaskID, testCase.stream...)
 				if testCase.exit != noExitFile {
@@ -2622,7 +2637,7 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingStopped(testSandbox)}}
-	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed}, held)
+	service := newTestServiceWithPool(testSettings(), commands, []*Drudger{claimed}, held)
 	service.runs.writeStream(held.ID, initEvent, assistantEvent)
 
 	var freed []FreedSlot
@@ -2659,7 +2674,7 @@ func TestDrudgerService_ReclaimDrudgers_RefusesToGuessWithoutAListing(t *testing
 	claimed := busyDrudger(1)
 	claimed.LastChecked = time.Now().UTC().Add(-time.Hour)
 	commands := &fakeCommandRunner{errs: []error{fmt.Errorf("sbx: no such binary")}}
-	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, []*Drudger{claimed})
+	service := newTestServiceWithPool(testSettings(), commands, []*Drudger{claimed})
 
 	var err error
 	captureOutput(func() { _, err = service.ReclaimDrudgers(testProjectSlug) })
@@ -2679,7 +2694,7 @@ func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T)
 	setupProjectDir(t)
 
 	pool := []*Drudger{idleDrudger(1), idleDrudger(2)}
-	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+	service := newTestServiceWithPool(testSettings(), &fakeCommandRunner{}, pool)
 
 	var err error
 	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug, 1, 0) })
@@ -2712,7 +2727,7 @@ func TestDrudgerService_ListDrudgers_Pages(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			setupProjectDir(t)
 			pool := []*Drudger{idleDrudger(3), idleDrudger(1), idleDrudger(2)}
-			service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), &fakeCommandRunner{}, pool)
+			service := newTestServiceWithPool(testSettings(), &fakeCommandRunner{}, pool)
 
 			var listed common.Page[*Drudger]
 			var err error
@@ -2744,9 +2759,9 @@ func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testi
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-	globalCfg := config.DefaultConfig()
-	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, taskToRun)
+	settings := testSettings()
+	settings.SandboxTimeouts = SandboxTimeouts{List: 5 * time.Second, Create: time.Minute, Remove: 7 * time.Second}
+	service := newTestServiceWith(settings, commands, taskToRun)
 
 	captureOutput(func() {
 		if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
@@ -2772,9 +2787,9 @@ func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testi
 func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	commands := &fakeCommandRunner{projectDir: projectDir}
-	globalCfg := config.DefaultConfig()
-	globalCfg.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
-	service := newTestServiceWithPool(&config.LocalConfig{ProjectSlug: testProjectSlug}, globalCfg, commands, []*Drudger{idleDrudger(1)})
+	settings := testSettings()
+	settings.SandboxTimeouts = SandboxTimeouts{List: 5 * time.Second, Create: time.Minute, Remove: 7 * time.Second}
+	service := newTestServiceWithPool(settings, commands, []*Drudger{idleDrudger(1)})
 
 	captureOutput(func() {
 		if err := service.NukeDrudger(testProjectSlug, 1, false); err != nil {
@@ -2791,7 +2806,7 @@ func TestDrudgerService_RunTask_RefusesASecondLaunchOfATaskAlreadyRunning(t *tes
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
 	// The launch that got there first, landing after this one read the task as
 	// still waiting for an agent.
@@ -2820,7 +2835,7 @@ func TestDrudgerService_RunTask_GivesUpOnATaskAnotherCommandHolds(t *testing.T) 
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, taskToRun)
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
 	service.taskRepo.lockedTasks[taskToRun.ID] = true
 
 	var err error
@@ -2846,7 +2861,7 @@ func TestDrudgerService_RunTask_RunsATaskWhileAnotherTaskIsHeld(t *testing.T) {
 	other.ID = "task-2"
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
-	service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, held, other)
+	service := newTestServiceWith(testSettings(), commands, held, other)
 	service.taskRepo.lockedTasks[held.ID] = true
 
 	var err error

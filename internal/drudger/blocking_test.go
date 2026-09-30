@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -107,7 +106,7 @@ func TestDrudgerService_RefusesATaskWithAnUnfinishedBlocker(t *testing.T) {
 
 				commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 				stored := append([]*task.Task{dependent}, testCase.blockers...)
-				service := newTestServiceWith(&config.LocalConfig{ProjectSlug: testProjectSlug}, config.DefaultConfig(), commands, stored...)
+				service := newTestServiceWith(testSettings(), commands, stored...)
 
 				var err error
 				captureOutput(func() { err = launch.start(service, dependent.ID) })
