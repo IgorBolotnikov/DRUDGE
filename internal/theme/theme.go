@@ -148,6 +148,18 @@ func (t *Theme) Reset() string {
 	return ansiReset
 }
 
+const errorLabel = "Error:"
+
+// ErrorLabel returns the label of an error printed to stderr. The label is in
+// the color of the error role when color is on for stderr.
+func (t *Theme) ErrorLabel() string {
+	roleColor, ok := t.colors[RoleError]
+	if !t.IsColorOn(Stderr) || !ok {
+		return errorLabel
+	}
+	return roleColor.escape() + errorLabel + ansiReset
+}
+
 // Hex returns the raw "#rrggbb" string for the given role, or an empty string
 // when the role is unknown or its color is not a hex color.
 func (t *Theme) Hex(role string) string {

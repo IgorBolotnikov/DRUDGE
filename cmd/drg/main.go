@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 // version is stamped by the release build with -ldflags "-X main.version=...".
@@ -17,7 +18,11 @@ func main() {
 	root.Validate()
 
 	if err := root.Execute(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
+		outputTheme, loadErr := theme.Load("")
+		if loadErr != nil {
+			outputTheme = theme.NewTheme(theme.DefaultTheme())
+		}
+		fmt.Fprintln(os.Stderr, outputTheme.ErrorLabel(), err)
 		os.Exit(1)
 	}
 }
