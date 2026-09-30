@@ -77,3 +77,52 @@ const (
 func (drudger *Drudger) Idle() bool {
 	return drudger.TaskID == ""
 }
+
+// HealthPart names one of the parts of a Drudger that break independently.
+type HealthPart string
+
+const (
+	SandboxPart   HealthPart = "sandbox"
+	WorkspacePart HealthPart = "workspace"
+	AgentPart     HealthPart = "agent"
+)
+
+// HealthFault is a part of a Drudger that is not fine. State holds the health
+// value of that part as it is stored.
+type HealthFault struct {
+	Part  HealthPart
+	State string
+}
+
+// HealthSummary is what drudge last saw of a Drudger as a whole.
+type HealthSummary struct {
+	IsUnchecked bool          // Drudge has not looked at any part
+	Faults      []HealthFault // Parts that are not fine, in the order sandbox, workspace, agent
+}
+
+// IsOk reports whether every part of the Drudger is fine.
+func (summary HealthSummary) IsOk() bool {
+	return !summary.IsUnchecked && len(summary.Faults) == 0
+}
+
+// Health summarizes what drudge last saw of the sandbox, the workspace and the
+// agent. Three unchecked parts read as one unchecked Drudger and carry no
+// faults. Otherwise every part that is not usable or ready is a fault, and so
+// is a state this build does not know.
+func (drudger *Drudger) Health() HealthSummary {
+	if drudger.SandboxHealth == SandboxUnchecked && drudger.WorkspaceHealth == WorkspaceUnchecked && drudger.AgentHealth == AgentUnchecked {
+		return HealthSummary{IsUnchecked: true}
+	}
+
+	var faults []HealthFault
+	if drudger.SandboxHealth != SandboxUsable {
+		faults = append(faults, HealthFault{Part: SandboxPart, State: string(drudger.SandboxHealth)})
+	}
+	if drudger.WorkspaceHealth != WorkspaceUsable {
+		faults = append(faults, HealthFault{Part: WorkspacePart, State: string(drudger.WorkspaceHealth)})
+	}
+	if drudger.AgentHealth != AgentReady {
+		faults = append(faults, HealthFault{Part: AgentPart, State: string(drudger.AgentHealth)})
+	}
+	return HealthSummary{Faults: faults}
+}

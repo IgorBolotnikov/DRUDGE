@@ -194,78 +194,53 @@ func occupyingTask(entry *drudger.Drudger) string {
 // formatHealth renders what drudge last saw of a Drudger. Only a Drudger whose
 // sandbox, workspace and agent are all fine reads as ok. Anything else names
 // the part that is at fault, so the reader knows which one to fix.
-//
-// TODO: move this to the drudger package to be reused in other UI layers.
 func formatHealth(entry *drudger.Drudger) string {
-	// The three parts of a Drudger drudge has not looked at yet share one
-	// label.
-	if entry.SandboxHealth == drudger.SandboxUnchecked && entry.WorkspaceHealth == drudger.WorkspaceUnchecked && entry.AgentHealth == drudger.AgentUnchecked {
+	summary := entry.Health()
+	if summary.IsUnchecked {
 		return healthUncheckedLabel
 	}
-
-	parts := make([]string, 0, 3)
-	if label := sandboxHealthLabel(entry.SandboxHealth); label != "" {
-		parts = append(parts, label)
-	}
-	if label := workspaceHealthLabel(entry.WorkspaceHealth); label != "" {
-		parts = append(parts, label)
-	}
-	if label := agentHealthLabel(entry.AgentHealth); label != "" {
-		parts = append(parts, label)
-	}
-	if len(parts) == 0 {
+	if summary.IsOk() {
 		return healthOkLabel
 	}
-	return strings.Join(parts, healthPartSeparator)
+
+	labels := make([]string, 0, len(summary.Faults))
+	for _, fault := range summary.Faults {
+		labels = append(labels, healthFaultLabel(fault))
+	}
+	return strings.Join(labels, healthPartSeparator)
 }
 
-// sandboxHealthLabel names a sandbox that is not fine. A usable sandbox has
-// nothing to report and gets an empty label.
-func sandboxHealthLabel(health drudger.SandboxHealth) string {
-	switch health {
-	case drudger.SandboxUsable:
-		return ""
-	case drudger.SandboxGone:
-		return sandboxGoneLabel
-	case drudger.SandboxMisplaced:
-		return sandboxMisplacedLabel
-	case drudger.SandboxUnchecked:
-		return sandboxUncheckedLabel
-	default:
-		return string(health)
+// healthFaultLabel names a part that is not fine. A state this build does not
+// know is printed as it is stored.
+func healthFaultLabel(fault drudger.HealthFault) string {
+	switch fault.Part {
+	case drudger.SandboxPart:
+		switch drudger.SandboxHealth(fault.State) {
+		case drudger.SandboxGone:
+			return sandboxGoneLabel
+		case drudger.SandboxMisplaced:
+			return sandboxMisplacedLabel
+		case drudger.SandboxUnchecked:
+			return sandboxUncheckedLabel
+		}
+	case drudger.WorkspacePart:
+		switch drudger.WorkspaceHealth(fault.State) {
+		case drudger.WorkspaceGone:
+			return workspaceGoneLabel
+		case drudger.WorkspaceMisplaced:
+			return workspaceMisplacedLabel
+		case drudger.WorkspaceUnchecked:
+			return workspaceUncheckedLabel
+		}
+	case drudger.AgentPart:
+		switch drudger.AgentHealth(fault.State) {
+		case drudger.AgentRefused:
+			return agentRefusedLabel
+		case drudger.AgentUnchecked:
+			return agentUncheckedLabel
+		}
 	}
-}
-
-// workspaceHealthLabel names a workspace that is not fine. A usable workspace
-// has nothing to report and gets an empty label.
-func workspaceHealthLabel(health drudger.WorkspaceHealth) string {
-	switch health {
-	case drudger.WorkspaceUsable:
-		return ""
-	case drudger.WorkspaceGone:
-		return workspaceGoneLabel
-	case drudger.WorkspaceMisplaced:
-		return workspaceMisplacedLabel
-	case drudger.WorkspaceUnchecked:
-		return workspaceUncheckedLabel
-	default:
-		return string(health)
-	}
-}
-
-// agentHealthLabel names an agent that is not fine. A ready agent has nothing
-// to report and gets an empty label.
-func agentHealthLabel(health drudger.AgentHealth) string {
-	switch health {
-	case drudger.AgentReady:
-		return ""
-	case drudger.AgentRefused:
-		return agentRefusedLabel
-	case drudger.AgentUnchecked:
-		return agentUncheckedLabel
-	default:
-		return string(health)
-	}
+	return fault.State
 }
 
 // formatAgo renders roughly how long ago a moment was.
