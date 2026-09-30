@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,6 +58,50 @@ var testBaseCommittedAt = time.Date(2025, 3, 4, 10, 0, 0, 0, time.UTC)
 type noopTaskProgress struct{}
 
 func (noopTaskProgress) Report(any) {}
+
+// fakeProgress records the events the drudger service reports, in order.
+type fakeProgress struct {
+	events []any
+}
+
+func (progress *fakeProgress) Report(event any) {
+	progress.events = append(progress.events, event)
+}
+
+// reportedEvents returns the events of one type a service reported, in order.
+func reportedEvents[Event any](progress *fakeProgress) []Event {
+	var reported []Event
+	for _, event := range progress.events {
+		if matching, ok := event.(Event); ok {
+			reported = append(reported, matching)
+		}
+	}
+	return reported
+}
+
+// reportedInOrder reports whether a service reported every wanted event in the
+// order given. Other events may come between them.
+func reportedInOrder(progress *fakeProgress, want []any) bool {
+	next := 0
+	for _, event := range progress.events {
+		if next < len(want) && reflect.DeepEqual(event, want[next]) {
+			next++
+		}
+	}
+	return next == len(want)
+}
+
+// singleEvent returns the one event of a type a service reported, and fails
+// the test when it reported none or several.
+func singleEvent[Event any](t *testing.T, progress *fakeProgress) Event {
+	t.Helper()
+	reported := reportedEvents[Event](progress)
+	if len(reported) != 1 {
+		var zero Event
+		t.Fatalf("expected one %T event, got %d in %+v", zero, len(reported), progress.events)
+	}
+	return reported[0]
+}
 
 // fakeTaskRepo stores tasks the way the file repository does. A lookup hands
 // back a copy, and an update hands the stored task to change under a lock the
@@ -766,6 +811,7 @@ type testService struct {
 	runs     *fakeRunRepo
 	taskRepo *fakeTaskRepo
 	git      *fakeGit
+	progress *fakeProgress
 }
 
 // testSettings are the settings of the built-in default configs.
@@ -805,7 +851,8 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 	if len(settings.Repositories) == 0 {
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
-	service := New(logger, settings, task.NewTaskService(taskRepo, logger, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps)
+	progress := &fakeProgress{}
+	service := New(logger, progress, settings, task.NewTaskService(taskRepo, logger, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -816,6 +863,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 		runs:           runs,
 		taskRepo:       taskRepo,
 		git:            gitOps,
+		progress:       progress,
 	}
 }
 
@@ -932,17 +980,6 @@ func sandboxListingOf(entries ...string) string {
 	return fmt.Sprintf(`{"sandboxes":[%s]}`, strings.Join(entries, ","))
 }
 
-func captureOutput(f func()) string {
-	orig := os.Stdout
-	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
-	f()
-	writer.Close()
-	os.Stdout = orig
-	out, _ := io.ReadAll(reader)
-	return string(out)
-}
-
 func captureErrors(f func()) string {
 	orig := os.Stderr
 	reader, writer, _ := os.Pipe()
@@ -974,8 +1011,7 @@ func TestDrudgerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
 			taskToRun.Status = testCase.status
 			service := newTestService(taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, true)
 
 			if testCase.wantErr {
 				if err == nil {
@@ -1008,8 +1044,7 @@ func TestDrudgerService_RunTask_RecordsTheClaimOnTheDrudger(t *testing.T) {
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1064,8 +1099,7 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 			}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1104,8 +1138,7 @@ func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1122,37 +1155,40 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 	createKilled := fmt.Errorf("command sbx create did not finish within 600s and was killed: %w", context.DeadlineExceeded)
 
 	cases := []struct {
-		name            string
-		outputs         []string
-		errs            []error
-		wantLogContains []string
+		name    string
+		outputs []string
+		errs    []error
+		// wantEvents are events the launch reports after it claims a Drudger,
+		// in the order given.
+		wantEvents      []any
 		wantErrContains string
 	}{
 		{
 			name:    "a missing sandbox is created with sbx output echoed",
 			outputs: []string{sandboxListingWith(), pullProgress},
-			wantLogContains: []string{
-				"goes to Drudger 1 (" + testSandbox + ")",
-				"Looking for sandbox " + testSandbox,
-				"does not exist yet, creating it",
-				"sbx: " + pullProgress,
-				"Starting the agent",
+			wantEvents: []any{
+				BranchCheckoutStarted{Branch: testTaskBranch},
+				SandboxLookupStarted{Sandbox: testSandbox},
+				SandboxCreationStarted{Sandbox: testSandbox, Timeout: testSettings().SandboxTimeouts.Create},
+				SbxOutput{Binary: sbxBinary, Line: pullProgress},
+				AgentLaunchStarted{Sandbox: testSandbox},
 			},
 		},
 		{
 			name:    "an existing sandbox is reused",
 			outputs: []string{sandboxListingWith(testSandbox)},
-			wantLogContains: []string{
-				"goes to Drudger 1 (" + testSandbox + ")",
-				"Sandbox " + testSandbox + " exists, reusing it",
-				"Starting the agent",
+			wantEvents: []any{
+				BranchCheckoutStarted{Branch: testTaskBranch},
+				SandboxLookupStarted{Sandbox: testSandbox},
+				SandboxReused{Sandbox: testSandbox},
+				AgentLaunchStarted{Sandbox: testSandbox},
 			},
 		},
 		{
 			name:            "a create killed for outrunning its timeout names the setting",
 			outputs:         []string{sandboxListingWith(), pullProgress},
 			errs:            []error{nil, createKilled},
-			wantLogContains: []string{"sbx: " + pullProgress},
+			wantEvents:      []any{SbxOutput{Binary: sbxBinary, Line: pullProgress}},
 			wantErrContains: CreateTimeoutKey,
 		},
 	}
@@ -1164,13 +1200,14 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: testCase.outputs, errs: testCase.errs}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
-			for _, want := range testCase.wantLogContains {
-				if !strings.Contains(logged, want) {
-					t.Errorf("expected the log to say %q, got %q", want, logged)
-				}
+			claimed := singleEvent[DrudgerClaimed](t, service.progress)
+			if claimed.Task.ID != taskToRun.ID || claimed.Slot != 1 || claimed.Sandbox != testSandbox {
+				t.Errorf("expected task %s to go to Drudger 1 (%s), got %+v", taskToRun.ID, testSandbox, claimed)
+			}
+			if !reportedInOrder(service.progress, testCase.wantEvents) {
+				t.Errorf("expected the events %+v in that order, got %+v", testCase.wantEvents, service.progress.events)
 			}
 
 			if testCase.wantErrContains != "" {
@@ -1221,8 +1258,7 @@ func TestDrudgerService_RunTask_RefusesASandboxMissingAMount(t *testing.T) {
 			}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 			if len(testCase.wantMissing) == 0 {
 				if err != nil {
@@ -1276,8 +1312,7 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1333,15 +1368,13 @@ func TestDrudgerService_RunTask_FillsTheWorkspacePlaceholders(t *testing.T) {
 				taskToRun,
 			)
 
-			var err error
-			out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-			if err != nil {
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
 			want := fmt.Sprintf("%s %s on %s off %s", taskToRun.Title, taskToRun.Description, testTaskBranch, testCase.wantDefaultBranch)
-			if !strings.Contains(out, want) {
-				t.Errorf("expected dry run output to contain %q, got %q", want, out)
+			if described := singleEvent[RunDescribed](t, service.progress); !strings.Contains(described.Prompt, want) {
+				t.Errorf("expected the prompt to contain %q, got %q", want, described.Prompt)
 			}
 		})
 	}
@@ -1401,8 +1434,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err == nil {
 				t.Fatal("expected the failure to surface")
 			}
@@ -1488,8 +1520,7 @@ func TestDrudgerService_RunTask_AllocatesTheLowestFreeDrudgerSlot(t *testing.T) 
 				service.runs.finishSession(finishedTask)
 			}
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 			if testCase.wantErr {
 				if err == nil {
@@ -1571,23 +1602,21 @@ func TestDrudgerService_RunTask_WarnsAboutDrudgersAboveTheLimit(t *testing.T) {
 				taskToRun,
 			)
 
-			var err error
-			warnings := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
+			warnings := reportedEvents[DrudgersAboveLimit](service.progress)
 			if len(testCase.wantNamed) == 0 {
-				if strings.Contains(warnings, MaxConcurrentDrudgersKey) {
-					t.Errorf("expected no warning about the limit, got %q", warnings)
+				if len(warnings) != 0 {
+					t.Errorf("expected no warning about the limit, got %+v", warnings)
 				}
 			} else {
-				if !strings.Contains(warnings, MaxConcurrentDrudgersKey) {
-					t.Errorf("expected the warning to name the config key, got %q", warnings)
+				warning := singleEvent[DrudgersAboveLimit](t, service.progress)
+				named := make([]int, 0, len(warning.Drudgers))
+				for _, above := range warning.Drudgers {
+					named = append(named, above.Slot)
 				}
-				for _, entry := range testCase.pool {
-					isNamed := strings.Contains(warnings, entry.Sandbox)
-					wanted := slices.Contains(testCase.wantNamed, entry.Slot)
-					if isNamed != wanted {
-						t.Errorf("expected slot %d named in the warning: %t, got %t (warning %q)", entry.Slot, wanted, isNamed, warnings)
-					}
+				if warning.ProjectSlug != testProjectSlug || warning.Limit != testCase.limit || !slices.Equal(named, testCase.wantNamed) {
+					t.Errorf("expected project %s to warn about slots %v above the limit of %d, got %+v", testProjectSlug, testCase.wantNamed, testCase.limit, warning)
 				}
 			}
 
@@ -1628,8 +1657,7 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 		taskToRun,
 	)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1651,8 +1679,7 @@ func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1679,15 +1706,13 @@ func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
 		taskToRun,
 	)
 
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// A dry run still says which Drudger the real run would take.
-	if !strings.Contains(out, testSandboxSlot2) {
-		t.Errorf("expected the dry run to name sandbox %q, got %q", testSandboxSlot2, out)
+	if described := singleEvent[RunDescribed](t, service.progress); described.Slot != 2 || described.Sandbox != testSandboxSlot2 {
+		t.Errorf("expected the dry run to name Drudger 2 (%s), got %+v", testSandboxSlot2, described)
 	}
 	if len(service.drudgers.drudgers) != 1 {
 		t.Errorf("expected the pool to be left alone, got %v", service.drudgers.drudgers)
@@ -1717,16 +1742,16 @@ func TestDrudgerService_RunTask_UsesTheConfiguredPromptFile(t *testing.T) {
 		taskToRun,
 	)
 
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, want := range []string{"custom prompt for Fix login: SSO is broken", promptFileName} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected dry run output to contain %q, got %q", want, out)
-		}
+	described := singleEvent[RunDescribed](t, service.progress)
+	if want := "custom prompt for Fix login: SSO is broken"; !strings.Contains(described.Prompt, want) {
+		t.Errorf("expected the prompt to contain %q, got %q", want, described.Prompt)
+	}
+	if described.PromptSource != settings.PromptPath {
+		t.Errorf("expected the prompt to come from %s, got %s", settings.PromptPath, described.PromptSource)
 	}
 }
 
@@ -1743,8 +1768,7 @@ func TestDrudgerService_RunTask_PromptFileMissingPlaceholderNamesTheFile(t *test
 		todoTask(),
 	)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, "task-1", true) })
+	err := service.RunTask(testProjectSlug, "task-1", true)
 	if err == nil {
 		t.Fatal("expected an error for a prompt file without the required placeholders")
 	}
@@ -1809,8 +1833,7 @@ func TestDrudgerService_RunTask_RecordsWhatItSawOfTheSandbox(t *testing.T) {
 			}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if testCase.wantErr != (err != nil) {
 				t.Fatalf("expected an error %t, got %v", testCase.wantErr, err)
 			}
@@ -1842,28 +1865,30 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 	listingKilled := fmt.Errorf("command sbx ls --json did not finish within 30s and was killed: %w", context.DeadlineExceeded)
 
 	cases := []struct {
-		name            string
-		outputs         []string
-		stderrs         []string
-		errs            []error
-		wantListings    int
-		wantLogContains string
+		name         string
+		outputs      []string
+		stderrs      []string
+		errs         []error
+		wantListings int
+		// wantEvent is an event the launch reports about the daemon. A nil
+		// one expects no daemon event.
+		wantEvent       any
 		wantErrContains string
 	}{
 		{
-			name:            "a cold start is reported and the run goes on",
-			outputs:         []string{sandboxListingWith(testSandbox)},
-			stderrs:         []string{coldStartStderr},
-			wantListings:    1,
-			wantLogContains: "daemon was not running",
+			name:         "a cold start is reported and the run goes on",
+			outputs:      []string{sandboxListingWith(testSandbox)},
+			stderrs:      []string{coldStartStderr},
+			wantListings: 1,
+			wantEvent:    SbxDaemonStarted{},
 		},
 		{
-			name:            "a daemon that comes up on the second try costs one retry",
-			outputs:         []string{"", sandboxListingWith(testSandbox)},
-			stderrs:         []string{daemonDownStderr},
-			errs:            []error{daemonDown},
-			wantListings:    2,
-			wantLogContains: "one more try",
+			name:         "a daemon that comes up on the second try costs one retry",
+			outputs:      []string{"", sandboxListingWith(testSandbox)},
+			stderrs:      []string{daemonDownStderr},
+			errs:         []error{daemonDown},
+			wantListings: 2,
+			wantEvent:    SbxDaemonRetried{},
 		},
 		{
 			name:            "a daemon that never comes up names the daemon",
@@ -1903,14 +1928,13 @@ func TestDrudgerService_RunTask_CopesWithTheSbxDaemon(t *testing.T) {
 			}
 			service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-			var err error
-			logged := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 			if got := commands.callCount(sbxLsSubcommand); got != testCase.wantListings {
 				t.Errorf("expected %d listings, got %d in %v", testCase.wantListings, got, commands.subcommands())
 			}
-			if testCase.wantLogContains != "" && !strings.Contains(logged, testCase.wantLogContains) {
-				t.Errorf("expected the log to say %q, got %q", testCase.wantLogContains, logged)
+			if testCase.wantEvent != nil && !slices.Contains(service.progress.events, testCase.wantEvent) {
+				t.Errorf("expected the event %+v, got %+v", testCase.wantEvent, service.progress.events)
 			}
 
 			if testCase.wantErrContains != "" {
@@ -1949,8 +1973,7 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 	service.runs.writeStream(taskToRun.ID, initEvent, authRefusedEvent, authRefusedResultEvent)
 	service.runs.writeExit(taskToRun.ID, "1\n")
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2007,8 +2030,7 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 				service.runs.finishSession(taskToRerun.ID)
 			}
 
-			var err error
-			out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+			err := service.RerunTask(testProjectSlug, taskToRerun.ID, false)
 
 			if testCase.wantErr {
 				if err == nil {
@@ -2032,8 +2054,9 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 			if taskToRerun.StartedAt.IsZero() {
 				t.Error("expected started at to be stamped")
 			}
-			if !strings.Contains(out, string(testCase.status)) {
-				t.Errorf("expected the rerun to say the task was %q, got %q", testCase.status, out)
+			restarted := singleEvent[TaskRestarted](t, service.progress)
+			if restarted.Task.ID != taskToRerun.ID || restarted.CameFrom != testCase.status {
+				t.Errorf("expected task %s to restart from %q, got %+v", taskToRerun.ID, testCase.status, restarted)
 			}
 		})
 	}
@@ -2058,8 +2081,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 	)
 	service.runs.writeStream(taskToRerun.ID, initEvent)
 
-	var err error
-	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	err := service.RerunTask(testProjectSlug, taskToRerun.ID, false)
 	if err == nil {
 		t.Fatal("expected a rerun of a task with a working agent to be refused")
 	}
@@ -2103,8 +2125,7 @@ func TestDrudgerService_RerunTask_TakesATaskWhoseSlotWasReclaimed(t *testing.T) 
 	)
 	service.runs.writeStream(taskToRerun.ID, initEvent)
 
-	var err error
-	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	err := service.RerunTask(testProjectSlug, taskToRerun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2130,8 +2151,7 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 	service.runs.writeStream(taskToRerun.ID, initEvent, resultEvent)
 	service.runs.writeExit(taskToRerun.ID, "1\n")
 
-	var err error
-	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+	err := service.RerunTask(testProjectSlug, taskToRerun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2162,8 +2182,7 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error on the first run: %v", err)
 	}
@@ -2174,7 +2193,7 @@ func TestDrudgerService_RerunTask_LaunchesTheSameWayARunDoes(t *testing.T) {
 	commands.calls = nil
 	commands.started = nil
 
-	captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRun.ID, false) })
+	err = service.RerunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error on the rerun: %v", err)
 	}
@@ -2199,15 +2218,13 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 	service.runs.writeStream(taskToRerun.ID, initEvent, resultEvent)
 	service.runs.writeExit(taskToRerun.ID, "0\n")
 
-	var err error
-	out := captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, true) })
-	if err != nil {
+	if err := service.RerunTask(testProjectSlug, taskToRerun.ID, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// A dry run still says which Drudger the real rerun would take.
-	if !strings.Contains(out, testSandboxSlot2) {
-		t.Errorf("expected the dry run to name sandbox %q, got %q", testSandboxSlot2, out)
+	if described := singleEvent[RunDescribed](t, service.progress); described.Slot != 2 || described.Sandbox != testSandboxSlot2 {
+		t.Errorf("expected the dry run to name Drudger 2 (%s), got %+v", testSandboxSlot2, described)
 	}
 	if len(commands.calls) != 0 {
 		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
@@ -2308,16 +2325,13 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 			}
 			service := newTestServiceWithPool(testSettings(), commands, testCase.pool, taskToRun)
 
-			captureOutput(func() {
-				// A launch that fails says so, and the run it never made is the
-				// point of the case that does it.
-				if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
-					return
-				}
+			// A launch that fails says so, and the run it never made is the
+			// point of the case that does it.
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
 				if _, err := service.SessionStatus(testProjectSlug, taskToRun.ID); err != nil {
 					t.Errorf("could not report on the Session: %v", err)
 				}
-			})
+			}
 
 			recorded := service.drudgers.atSlot(1)
 			if recorded == nil {
@@ -2415,7 +2429,7 @@ func TestDrudgerService_ListDrudgers_ReclaimsFinishedSessions(t *testing.T) {
 
 			var listed common.Page[*Drudger]
 			var err error
-			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug, 1, 0) })
+			listed, err = service.ListDrudgers(testProjectSlug, 1, 0)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -2585,7 +2599,7 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 
 			var freed []FreedSlot
 			var err error
-			captureOutput(func() { freed, err = service.ReclaimDrudgers(testProjectSlug) })
+			freed, err = service.ReclaimDrudgers(testProjectSlug)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -2649,7 +2663,7 @@ func TestDrudgerService_ReclaimDrudgers_LeavesTheTaskAlone(t *testing.T) {
 
 	var freed []FreedSlot
 	var err error
-	captureOutput(func() { freed, err = service.ReclaimDrudgers(testProjectSlug) })
+	freed, err = service.ReclaimDrudgers(testProjectSlug)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2684,7 +2698,7 @@ func TestDrudgerService_ReclaimDrudgers_RefusesToGuessWithoutAListing(t *testing
 	service := newTestServiceWithPool(testSettings(), commands, []*Drudger{claimed})
 
 	var err error
-	captureOutput(func() { _, err = service.ReclaimDrudgers(testProjectSlug) })
+	_, err = service.ReclaimDrudgers(testProjectSlug)
 	if err == nil {
 		t.Fatal("expected a listing that failed to stop the reclaim")
 	}
@@ -2704,7 +2718,7 @@ func TestDrudgerService_ListDrudgers_WritesNothingWithNoSlotToFree(t *testing.T)
 	service := newTestServiceWithPool(testSettings(), &fakeCommandRunner{}, pool)
 
 	var err error
-	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug, 1, 0) })
+	_, err = service.ListDrudgers(testProjectSlug, 1, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2738,7 +2752,7 @@ func TestDrudgerService_ListDrudgers_Pages(t *testing.T) {
 
 			var listed common.Page[*Drudger]
 			var err error
-			captureOutput(func() { listed, err = service.ListDrudgers(testProjectSlug, testCase.page, testCase.size) })
+			listed, err = service.ListDrudgers(testProjectSlug, testCase.page, testCase.size)
 			if testCase.wantErr != "" {
 				if err == nil || err.Error() != testCase.wantErr {
 					t.Fatalf("error = %v, want %q", err, testCase.wantErr)
@@ -2770,11 +2784,9 @@ func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testi
 	settings.SandboxTimeouts = SandboxTimeouts{List: 5 * time.Second, Create: time.Minute, Remove: 7 * time.Second}
 	service := newTestServiceWith(settings, commands, taskToRun)
 
-	captureOutput(func() {
-		if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	cases := []struct {
 		subcommand string
@@ -2798,11 +2810,9 @@ func TestDrudgerService_NukeDrudger_GivesTheRemovalItsConfiguredTimeout(t *testi
 	settings.SandboxTimeouts = SandboxTimeouts{List: 5 * time.Second, Create: time.Minute, Remove: 7 * time.Second}
 	service := newTestServiceWithPool(settings, commands, []*Drudger{idleDrudger(1)})
 
-	captureOutput(func() {
-		if err := service.NukeDrudger(testProjectSlug, 1, false); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
+	if err := service.NukeDrudger(testProjectSlug, 1, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if got := commands.timeoutOf(sbxRmSubcommand); got != 7*time.Second {
 		t.Errorf("expected %s to be given %s, got %s", sbxRmSubcommand, 7*time.Second, got)
@@ -2822,8 +2832,7 @@ func TestDrudgerService_RunTask_RefusesASecondLaunchOfATaskAlreadyRunning(t *tes
 		taskToRun.StartRun(time.Now().UTC(), "sess-first")
 	}
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err == nil {
 		t.Fatal("expected the second launch to be refused")
 	}
@@ -2845,8 +2854,7 @@ func TestDrudgerService_RunTask_GivesUpOnATaskAnotherCommandHolds(t *testing.T) 
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 	service.taskRepo.lockedTasks[taskToRun.ID] = true
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err == nil {
 		t.Fatal("expected the launch to be refused")
 	}
@@ -2871,8 +2879,7 @@ func TestDrudgerService_RunTask_RunsATaskWhileAnotherTaskIsHeld(t *testing.T) {
 	service := newTestServiceWith(testSettings(), commands, held, other)
 	service.taskRepo.lockedTasks[held.ID] = true
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, other.ID, false) })
+	err := service.RunTask(testProjectSlug, other.ID, false)
 	if err != nil {
 		t.Fatalf("expected a lock on another task to be no obstacle, got %v", err)
 	}

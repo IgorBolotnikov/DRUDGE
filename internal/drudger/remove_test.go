@@ -67,8 +67,7 @@ func TestDrudgerService_RemoveEmptyBranches(t *testing.T) {
 		holds map[string]int
 
 		wantDeletedIn []string
-		// wantKeptIn names the repositories whose branch the output has to
-		// name.
+		// wantKeptIn names the repositories whose branch is reported as kept.
 		wantKeptIn []string
 	}{
 		{
@@ -106,10 +105,7 @@ func TestDrudgerService_RemoveEmptyBranches(t *testing.T) {
 				service.git.branchHolding(dirs[repository], testTaskBranch, commits)
 			}
 
-			var err error
-			output := captureOutput(func() {
-				err = service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
-			})
+			err := service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -122,10 +118,20 @@ func TestDrudgerService_RemoveEmptyBranches(t *testing.T) {
 				t.Errorf("expected the branches %v to be deleted, got %v", wantDeleted, service.git.deletedBranches)
 			}
 
+			var wantKept []BranchWithCommitsKept
 			for _, repository := range testCase.wantKeptIn {
-				if !strings.Contains(output, testTaskBranch) || !strings.Contains(output, repository) {
-					t.Errorf("expected the output to name branch %s of repository %s, got %q", testTaskBranch, repository, output)
-				}
+				wantKept = append(wantKept, BranchWithCommitsKept{Repository: repository, Branch: testTaskBranch})
+			}
+			if got := reportedEvents[BranchWithCommitsKept](service.progress); !slices.Equal(got, wantKept) {
+				t.Errorf("expected the kept branches %+v to be reported, got %+v", wantKept, got)
+			}
+
+			var wantRemoved []EmptyBranchRemoved
+			for _, repository := range testCase.wantDeletedIn {
+				wantRemoved = append(wantRemoved, EmptyBranchRemoved{Repository: repository, Branch: testTaskBranch})
+			}
+			if got := reportedEvents[EmptyBranchRemoved](service.progress); !slices.Equal(got, wantRemoved) {
+				t.Errorf("expected the deleted branches %+v to be reported, got %+v", wantRemoved, got)
 			}
 			if _, lookupErr := service.taskRepo.GetTask(testProjectSlug, removed.ID); lookupErr == nil {
 				t.Error("expected the task to be gone")
@@ -141,10 +147,7 @@ func TestDrudgerService_RemoveEmptyBranches_ReadsNoGitForATaskThatNeverRan(t *te
 	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, removed)
 	service.gitOps = &refusingGit{t: t}
 
-	var err error
-	captureOutput(func() {
-		err = service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
-	})
+	err := service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,11 +168,8 @@ func TestDrudgerService_RemoveEmptyBranches_ReportsABranchItCouldNotDelete(t *te
 	service.git.rememberBranch(dir, testTaskBranch)
 
 	var err error
-	var output string
-	captureOutput(func() {
-		output = captureErrors(func() {
-			err = service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
-		})
+	output := captureErrors(func() {
+		err = service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -549,7 +549,7 @@ func TestDrudgerService_SessionStatus_RollsBackARefusedRun(t *testing.T) {
 			service.runs.writeExit(tracked.ID, "1\n")
 
 			var err error
-			captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+			_, err = service.SessionStatus(testProjectSlug, tracked.ID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -637,7 +637,7 @@ func checkRefusedTask(t *testing.T, service *testService, taskID task.TaskID) ta
 
 	var session *TaskSession
 	var err error
-	captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, taskID) })
+	session, err = service.SessionStatus(testProjectSlug, taskID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -652,19 +652,16 @@ func checkRefusedTask(t *testing.T, service *testService, taskID task.TaskID) ta
 	return *recorded
 }
 
-func TestDrudgerService_SessionStatus_AnAuthRefusalNamesTheSbxCredentials(t *testing.T) {
+func TestDrudgerService_SessionStatus_ReportsAnAuthRefusal(t *testing.T) {
 	service, tracked := serviceWithAnAuthRefusal(t)
 
-	var err error
-	output := captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
-	if err != nil {
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, wanted := range []string{"sbx", authRefusedText, string(task.StatusTodo)} {
-		if !strings.Contains(output, wanted) {
-			t.Errorf("expected the report to mention %q, got:\n%s", wanted, output)
-		}
+	refused := singleEvent[RunRefused](t, service.progress).Task
+	if refused.ID != tracked.ID || refused.Status != task.StatusTodo || refused.VendorErrorClass != task.VendorErrorAuth || refused.VendorError != authRefusedText {
+		t.Errorf("expected task %s back in %q after an auth refusal saying %q, got %+v", tracked.ID, task.StatusTodo, authRefusedText, refused)
 	}
 }
 
@@ -736,11 +733,9 @@ func TestDrudgerService_SessionStatus_LeavesARunStartedSinceAlone(t *testing.T) 
 				tracked.StartRun(startedAt, "sess-relaunch")
 			}
 
-			captureOutput(func() {
-				if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			})
+			if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
 			recorded, err := service.tasks.GetTask(testProjectSlug, tracked.ID)
 			if err != nil {
@@ -780,7 +775,7 @@ func TestDrudgerService_SessionStatus_ReportsWithoutRecordingOnAHeldTask(t *test
 
 	var session *TaskSession
 	var err error
-	captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	session, err = service.SessionStatus(testProjectSlug, tracked.ID)
 	if err != nil {
 		t.Fatalf("expected a held task to be reported anyway, got %v", err)
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -163,6 +162,20 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 	return nil, nil, fmt.Errorf("all %d Drudgers of project %s are busy, wait for one to finish, run %s to free the slots whose agent is gone, or raise %s in the config", limit, projectSlug, reclaimCommand, MaxConcurrentDrudgersKey)
 }
 
+// DrudgersAboveLimit reports the Drudgers of a project whose slot is above the
+// limit, in slot order. A launch leaves them alone.
+type DrudgersAboveLimit struct {
+	ProjectSlug string
+	Limit       int
+	Drudgers    []*Drudger
+}
+
+// DrudgerListBehind reports a list that shows what was last written, because
+// another command holds the Drudgers of the project.
+type DrudgerListBehind struct {
+	ProjectSlug string
+}
+
 // warnAboveLimit names the Drudgers whose slot is above the configured limit.
 func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug string, limit int) {
 	above := make([]*Drudger, 0, len(drudgers))
@@ -178,13 +191,7 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 		return cmp.Compare(first.Slot, second.Slot)
 	})
 
-	names := make([]string, 0, len(above))
-	for _, candidate := range above {
-		names = append(names, fmt.Sprintf("slot %d (%s)", candidate.Slot, candidate.Sandbox))
-	}
-
-	service.logger.Info("Project %s has Drudgers above the %s limit of %d: %s", projectSlug, MaxConcurrentDrudgersKey, limit, strings.Join(names, ", "))
-	service.logger.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or nuke them if you are done with them.", MaxConcurrentDrudgersKey)
+	service.progress.Report(DrudgersAboveLimit{ProjectSlug: projectSlug, Limit: limit, Drudgers: above})
 }
 
 // reclaimFinished frees every Drudger whose Session has finished, and records
@@ -241,7 +248,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, layout proj
 		return nil, err
 	}
 	if !isStored {
-		service.logger.Info("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", projectSlug)
+		service.progress.Report(DrudgerListBehind{ProjectSlug: projectSlug})
 		return asRead, nil
 	}
 	return reclaimed, nil

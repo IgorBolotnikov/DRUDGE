@@ -1,13 +1,14 @@
 package drudger
 
 import (
-	"fmt"
-
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
-// unblockedTaskLine lays out one task a finished task unblocked.
-const unblockedTaskLine = "  %s  %s"
+// DependentsUnblocked reports the tasks that became runnable once a task was
+// done.
+type DependentsUnblocked struct {
+	Tasks []*task.Task
+}
 
 // EditTask changes the fields a user owns on one task, the way
 // task.TaskService.EditTask does. An edit that sets the task to done also
@@ -34,8 +35,8 @@ func (service *DrudgerService) MarkDone(projectSlug string, id task.TaskID) (*ta
 	return marked, nil
 }
 
-// reportUnblocked names the tasks that became runnable once finished is done.
-// It prints nothing when no task became runnable.
+// reportUnblocked reports the tasks that became runnable once finished is
+// done. It reports nothing when no task became runnable.
 //
 // The task is stored as done by the time this runs, so a failure is logged
 // and the command still succeeds.
@@ -48,14 +49,5 @@ func (service *DrudgerService) reportUnblocked(projectSlug string, finished *tas
 	if len(unblocked) == 0 {
 		return
 	}
-
-	lines := []string{fmt.Sprintf("It unblocked %s:", task.FormatTaskCount(len(unblocked)))}
-	for _, dependent := range unblocked {
-		lines = append(lines, fmt.Sprintf(unblockedTaskLine, task.ShortID(dependent.ID), dependent.Title))
-	}
-
-	for _, line := range lines {
-		// A task title may hold a percent sign.
-		service.logger.Info("%s", line)
-	}
+	service.progress.Report(DependentsUnblocked{Tasks: unblocked})
 }

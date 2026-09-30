@@ -36,8 +36,7 @@ func TestDrudgerService_RunTask_StashesOnlyADirtyWorktree(t *testing.T) {
 				service.git.dirtyWorktrees = map[string]bool{worktree: true}
 			}
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -96,7 +95,7 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 
 			var err error
 			warnings := captureErrors(func() {
-				captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+				err = service.RunTask(testProjectSlug, taskToRun.ID, false)
 			})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -159,8 +158,7 @@ func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -212,8 +210,7 @@ func TestDrudgerService_RerunTask_ReusesABranchThatHoldsNoCommits(t *testing.T) 
 			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRerun)
 			service.git.branchCommits = maps.Clone(testCase.existing)
 
-			var err error
-			captureOutput(func() { err = service.RerunTask(testProjectSlug, taskToRerun.ID, false) })
+			err := service.RerunTask(testProjectSlug, taskToRerun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -269,8 +266,7 @@ func TestDrudgerService_RunTask_HousekeepingFailureStopsTheRun(t *testing.T) {
 				service.git.dirtyWorktrees = map[string]bool{slotRoot(projectDir, 1): true}
 			}
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 			if err == nil {
 				t.Fatal("expected housekeeping that failed to stop the run")
@@ -301,8 +297,7 @@ func TestDrudgerService_RunTask_RunsHousekeepingInEveryRepository(t *testing.T) 
 	worktrees := pathsIn(slotRoot(projectDir, 1), repositories...)
 	service.git.dirtyWorktrees = map[string]bool{worktrees[0]: true, worktrees[1]: true}
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,8 +330,7 @@ func TestDrudgerService_RunTask_RecordsWhereTheWorkWillBe(t *testing.T) {
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 	service := newTestServiceWith(settingsWith(repositories...), commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

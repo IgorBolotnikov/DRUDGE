@@ -190,8 +190,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 				service.runs.finishSession(finishedID)
 			}
 
-			var err error
-			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, testCase.slot, testCase.isForced) })
+			err := service.NukeDrudger(testProjectSlug, testCase.slot, testCase.isForced)
 
 			if testCase.wantErrContains == "" && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -245,8 +244,7 @@ func TestDrudgerService_NukeDrudger_UnsupportedEnvironment(t *testing.T) {
 		[]*Drudger{idleDrudger(1)},
 	)
 
-	var err error
-	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	err := service.NukeDrudger(testProjectSlug, 1, false)
 	if err == nil {
 		t.Fatal("expected an error naming the environment")
 	}
@@ -329,8 +327,7 @@ func TestDrudgerService_NukeDrudger_TakesTheWorkspace(t *testing.T) {
 				testCase.leave(service.git, worktrees)
 			}
 
-			var err error
-			captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, true) })
+			err := service.NukeDrudger(testProjectSlug, 1, true)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -379,8 +376,7 @@ func TestDrudgerService_NukeDrudger_TakesTheWorkspaceBeforeTheSandbox(t *testing
 	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
 	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
 
-	var err error
-	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	err := service.NukeDrudger(testProjectSlug, 1, false)
 	if err == nil {
 		t.Fatal("expected the failed sandbox removal to be reported")
 	}
@@ -401,8 +397,7 @@ func TestDrudgerService_NukeDrudger_KeepsTheWorkspaceOfALiveSession(t *testing.T
 	service.runs.writeStream(tracked.ID, initEvent, assistantEvent)
 	service.gitOps = &refusingGit{t: t}
 
-	var err error
-	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	err := service.NukeDrudger(testProjectSlug, 1, false)
 	if err == nil {
 		t.Fatal("expected a working Drudger to be refused")
 	}
@@ -417,8 +412,7 @@ func TestDrudgerService_NukeDrudger_RunsNoGitWithoutAWorkspace(t *testing.T) {
 	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, []*Drudger{idleDrudger(1)})
 	service.gitOps = &refusingGit{t: t}
 
-	var err error
-	captureOutput(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
+	err := service.NukeDrudger(testProjectSlug, 1, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

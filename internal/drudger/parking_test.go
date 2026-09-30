@@ -82,7 +82,7 @@ func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
 
 			var session *TaskSession
 			var err error
-			captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+			session, err = service.SessionStatus(testProjectSlug, tracked.ID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -119,7 +119,7 @@ func TestDrudgerService_SessionStatus_LeavesTheWorkspaceOfALiveSession(t *testin
 	service.git.leaveDirty(worktrees[testRepositoryName])
 
 	var err error
-	captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	_, err = service.SessionStatus(testProjectSlug, tracked.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestDrudgerService_ReclaimDrudgers_ParksEveryIdleDrudger(t *testing.T) {
 	service.git.leaveDirty(worktrees["idle"])
 
 	var err error
-	captureOutput(func() { _, err = service.ReclaimDrudgers(testProjectSlug) })
+	_, err = service.ReclaimDrudgers(testProjectSlug)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestDrudgerService_ReclaimDrudgers_ParksNoDrudgerWithoutAWorkspace(t *testi
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
-	captureOutput(func() { _, err = service.ReclaimDrudgers(testProjectSlug) })
+	_, err = service.ReclaimDrudgers(testProjectSlug)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestDrudgerService_ListDrudgers_RunsNoGitCommands(t *testing.T) {
 	service.gitOps = &refusingGit{t: t}
 
 	var err error
-	captureOutput(func() { _, err = service.ListDrudgers(testProjectSlug, 1, 0) })
+	_, err = service.ListDrudgers(testProjectSlug, 1, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

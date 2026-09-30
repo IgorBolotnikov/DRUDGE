@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -340,13 +339,4 @@ func daemonJustStarted(stderr string) bool {
 // never came up.
 func daemonWouldNotStart(stderr string) bool {
 	return strings.Contains(stderr, sbxDaemonFailureNotice)
-}
-
-// formatArgv renders an argv for display.
-func formatArgv(argv []string) string {
-	quoted := make([]string, len(argv))
-	for index, arg := range argv {
-		quoted[index] = strconv.Quote(arg)
-	}
-	return strings.Join(quoted, " ")
 }

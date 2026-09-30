@@ -108,8 +108,7 @@ func TestDrudgerService_RefusesATaskWithAnUnfinishedBlocker(t *testing.T) {
 				stored := append([]*task.Task{dependent}, testCase.blockers...)
 				service := newTestServiceWith(testSettings(), commands, stored...)
 
-				var err error
-				captureOutput(func() { err = launch.start(service, dependent.ID) })
+				err := launch.start(service, dependent.ID)
 
 				if len(testCase.wantLines) == 0 {
 					if err != nil {

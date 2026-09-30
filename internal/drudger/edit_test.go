@@ -96,20 +96,17 @@ func TestDrudgerService_RunTask_TakesATaskEditedIntoTodo(t *testing.T) {
 	service := newTestServiceWith(testSettings(), commands, draft)
 	tasks := task.NewTaskService(service.taskRepo, common.NewLogger(""), noopTaskProgress{}, task.StatusDraft)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, draft.ID, false) })
+	err := service.RunTask(testProjectSlug, draft.ID, false)
 	if err == nil {
 		t.Fatal("expected a draft task to be refused")
 	}
 
-	captureOutput(func() {
-		_, err = tasks.EditTask(testProjectSlug, draft.ID, statusChange(task.StatusTodo), service.DrudgerService)
-	})
+	_, err = tasks.EditTask(testProjectSlug, draft.ID, statusChange(task.StatusTodo), service.DrudgerService)
 	if err != nil {
 		t.Fatalf("unexpected error editing the draft: %v", err)
 	}
 
-	captureOutput(func() { err = service.RunTask(testProjectSlug, draft.ID, false) })
+	err = service.RunTask(testProjectSlug, draft.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error running the edited task: %v", err)
 	}

@@ -16,6 +16,28 @@ func (service *DrudgerService) RemoveRun(taskID task.TaskID) (bool, error) {
 	return service.runs.RemoveRun(taskID)
 }
 
+// BranchOfUnknownRepositoryKept reports a branch RemoveEmptyBranches keeps
+// because the project records no repository of that name.
+type BranchOfUnknownRepositoryKept struct {
+	ProjectSlug string
+	Repository  string
+	Branch      string
+}
+
+// BranchWithCommitsKept reports a branch RemoveEmptyBranches keeps because it
+// holds commits.
+type BranchWithCommitsKept struct {
+	Repository string
+	Branch     string
+}
+
+// EmptyBranchRemoved reports a branch RemoveEmptyBranches deleted because it
+// held nothing.
+type EmptyBranchRemoved struct {
+	Repository string
+	Branch     string
+}
+
 // RemoveEmptyBranches deletes the branch a task left in every repository where
 // it holds no commits, and names the branches it keeps. A task that never ran
 // records no branch and reads no git.
@@ -37,7 +59,7 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 
 		recorded, isRecorded := service.recordedRepository(layout, name)
 		if !isRecorded {
-			service.logger.Info("Branch %s stays, project %s records no repository %s", landing.Branch, service.settings.ProjectSlug, name)
+			service.progress.Report(BranchOfUnknownRepositoryKept{ProjectSlug: service.settings.ProjectSlug, Repository: name, Branch: landing.Branch})
 			continue
 		}
 		repository, err := service.resolveRepository(layout, recorded)
@@ -80,7 +102,7 @@ func (service *DrudgerService) removeEmptyBranch(name string, dir string, landin
 		return
 	}
 	if hasCommits {
-		service.logger.Info("Branch %s of repository %s holds commits, it stays", landing.Branch, name)
+		service.progress.Report(BranchWithCommitsKept{Repository: name, Branch: landing.Branch})
 		return
 	}
 
@@ -88,5 +110,5 @@ func (service *DrudgerService) removeEmptyBranch(name string, dir string, landin
 		service.logger.Error("Could not delete branch %s of repository %s, it stays: %v", landing.Branch, name, err)
 		return
 	}
-	service.logger.Info("Branch %s of repository %s held nothing, it is deleted", landing.Branch, name)
+	service.progress.Report(EmptyBranchRemoved{Repository: name, Branch: landing.Branch})
 }

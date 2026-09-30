@@ -49,6 +49,7 @@ var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuc
 
 type DrudgerService struct {
 	logger   *common.Logger
+	progress common.Progress
 	settings Settings
 	tasks    *task.TaskService
 	drudgers DrudgerRepository
@@ -64,9 +65,10 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(logger *common.Logger, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
+func New(logger *common.Logger, progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
 	return &DrudgerService{
 		logger:           logger,
+		progress:         progress,
 		settings:         settings,
 		tasks:            tasks,
 		drudgers:         drudgers,
@@ -140,6 +142,13 @@ func (service *DrudgerService) acceptRunnable(projectSlug string, taskToRun *tas
 	return service.refuseBlocked(projectSlug, taskToRun)
 }
 
+// TaskRestarted reports a task RerunTask handed back to a Drudger. CameFrom is
+// the status the task had before the rerun.
+type TaskRestarted struct {
+	Task     *task.Task
+	CameFrom task.TaskStatus
+}
+
 // RerunTask hands a task back to a Drudger and starts it over from scratch.
 func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
 	taskToRerun, err := service.tasks.GetTask(projectSlug, requestedID)
@@ -169,7 +178,7 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 		return err
 	}
 
-	service.logger.Info("Task [%s] %s was %q, its previous run is cleared and it starts over", taskToRerun.ID, taskToRerun.Title, cameFrom)
+	service.progress.Report(TaskRestarted{Task: taskToRerun, CameFrom: cameFrom})
 	return nil
 }
 
@@ -295,6 +304,34 @@ func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, la
 	return nil
 }
 
+// DrudgerClaimed reports the Drudger a launch claimed for a task.
+type DrudgerClaimed struct {
+	Task    *task.Task
+	Slot    int
+	Sandbox string
+}
+
+// BranchCheckoutStarted reports the branch a launch puts the workspace on.
+type BranchCheckoutStarted struct {
+	Branch string
+}
+
+// AgentLaunchStarted reports a launch starting the agent in a sandbox. It waits
+// up to GracePeriod for the first output of the agent.
+type AgentLaunchStarted struct {
+	Sandbox     string
+	GracePeriod time.Duration
+}
+
+// AgentLaunched reports an agent that wrote its first output. RunDir is where
+// its Session writes what it does.
+type AgentLaunched struct {
+	Task    *task.Task
+	Sandbox string
+	Branch  string
+	RunDir  string
+}
+
 // startAgent claims a Drudger, starts an agent on a task and marks the task as
 // in progress. The caller writes the task back.
 func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
@@ -305,7 +342,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	if err != nil {
 		return err
 	}
-	service.logger.Info("Task [%s] %s goes to Drudger %d (%s)", taskID, taskToRun.Title, claimed.Slot, claimed.Sandbox)
+	service.progress.Report(DrudgerClaimed{Task: taskToRun, Slot: claimed.Slot, Sandbox: claimed.Sandbox})
 
 	isLaunched := false
 	defer func() {
@@ -348,7 +385,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	service.logger.Info("Putting the workspace on branch %s", branch)
+	service.progress.Report(BranchCheckoutStarted{Branch: branch})
 	prepared, err := service.prepareWorkspace(space, taskToRun, branch)
 	if err != nil {
 		return err
@@ -358,7 +395,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	service.logger.Info("Starting the agent in sandbox %s and waiting up to %s for its first output", claimed.Sandbox, service.launchGrace)
+	service.progress.Report(AgentLaunchStarted{Sandbox: claimed.Sandbox, GracePeriod: service.launchGrace})
 	if err := service.commands.Start(plan.start); err != nil {
 		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
 	}
@@ -374,9 +411,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		taskToRun.RecordLanding(repository.Name, task.Landing{Branch: prepared.Branch, Base: repository.Base})
 	}
 
-	service.logger.Info("Drudger %s is working on task [%s] %s", claimed.Sandbox, taskToRun.ID, taskToRun.Title)
-	service.logger.Info("Branch: %s", prepared.Branch)
-	service.logger.Info("Run directory: %s", runDir)
+	service.progress.Report(AgentLaunched{Task: taskToRun, Sandbox: claimed.Sandbox, Branch: prepared.Branch, RunDir: runDir})
 	return nil
 }
 
@@ -396,7 +431,18 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 	return prompt, promptSource, nil
 }
 
-// describeRun prints the Drudger, the prompt and the commands a run would use,
+// RunDescribed reports what a dry run would use: the Drudger, the prompt and
+// where it came from, and the argv of every command in the order they run.
+type RunDescribed struct {
+	Task         *task.Task
+	Slot         int
+	Sandbox      string
+	PromptSource string
+	Prompt       string
+	Commands     [][]string
+}
+
+// describeRun reports the Drudger, the prompt and the commands a run would use,
 // and writes nothing.
 func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
 	runDir := layout.RunDir(taskToRun.ID)
@@ -426,9 +472,14 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	service.logger.Info("Drudger %d (%s) for task [%s] %s", wouldUse.Slot, wouldUse.Sandbox, taskToRun.ID, taskToRun.Title)
-	service.logger.Info("Prompt (from %s):\n\n%s", promptSource, prompt)
-	service.logger.Info("Commands:\n\n%s\n%s\n%s", formatArgv(plan.inspect.argv), formatArgv(plan.create.argv), formatArgv(plan.start))
+	service.progress.Report(RunDescribed{
+		Task:         taskToRun,
+		Slot:         wouldUse.Slot,
+		Sandbox:      wouldUse.Sandbox,
+		PromptSource: promptSource,
+		Prompt:       prompt,
+		Commands:     [][]string{plan.inspect.argv, plan.create.argv, plan.start},
+	})
 	return nil
 }
 
@@ -468,6 +519,24 @@ func (service *DrudgerService) launchedSessionID(taskID task.TaskID) string {
 	return sessionID
 }
 
+// SandboxLookupStarted reports a launch looking for the sandbox of its
+// Drudger.
+type SandboxLookupStarted struct {
+	Sandbox string
+}
+
+// SandboxCreationStarted reports a launch creating a sandbox. It waits up to
+// Timeout for sbx to finish.
+type SandboxCreationStarted struct {
+	Sandbox string
+	Timeout time.Duration
+}
+
+// SandboxReused reports a launch reusing a sandbox that exists.
+type SandboxReused struct {
+	Sandbox string
+}
+
 // ensureSandbox creates the Drudger's sandbox unless it already exists.
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds every mount of this run.
@@ -475,7 +544,7 @@ func (service *DrudgerService) launchedSessionID(taskID task.TaskID) string {
 // What the listing says about the sandbox is recorded as the Drudger's
 // sandbox health.
 func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, mounts []string) error {
-	service.logger.Info("Looking for sandbox %s", claimed.Sandbox)
+	service.progress.Report(SandboxLookupStarted{Sandbox: claimed.Sandbox})
 	listing, err := service.listSandboxes(plan.inspect)
 	if err != nil {
 		return fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
@@ -487,10 +556,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 	}
 
 	if existing == nil {
-		service.logger.Info(
-			"Sandbox %s does not exist yet, creating it. The first sandbox of a harness pulls its image, which takes minutes. DRUDGE waits up to %s",
-			claimed.Sandbox, plan.create.timeout,
-		)
+		service.progress.Report(SandboxCreationStarted{Sandbox: claimed.Sandbox, Timeout: plan.create.timeout})
 		if err := service.createSandbox(plan.create); err != nil {
 			service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxGone)
 			return fmt.Errorf("could not create sandbox %s: %w", claimed.Sandbox, err)
@@ -503,7 +569,7 @@ func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudge
 		service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxMisplaced)
 		return err
 	}
-	service.logger.Info("Sandbox %s exists, reusing it", claimed.Sandbox)
+	service.progress.Report(SandboxReused{Sandbox: claimed.Sandbox})
 	service.recordSandboxHealth(projectSlug, claimed.Slot, SandboxUsable)
 	return nil
 }
@@ -529,6 +595,19 @@ func (service *DrudgerService) observeSandboxes(projectSlug string) (map[string]
 	return running, nil
 }
 
+// SbxDaemonRetried reports a second try at an sbx call whose daemon did not
+// come up.
+type SbxDaemonRetried struct{}
+
+// SbxDaemonStarted reports an sbx call that had to start the sbx daemon.
+type SbxDaemonStarted struct{}
+
+// SbxOutput reports one line sbx wrote while it created a sandbox.
+type SbxOutput struct {
+	Binary string
+	Line   string
+}
+
 // listSandboxes lists the sandboxes, coping with an sbx daemon that is not up
 // yet.
 // TODO: This method is OK for now while I'm still trying to make everything
@@ -540,7 +619,7 @@ func (service *DrudgerService) listSandboxes(inspect sandboxCommand) (string, er
 	// A call killed for outrunning its timeout is not the daemon-not-up
 	// condition, and retrying it would wait out a second full timeout.
 	if err != nil && daemonWouldNotStart(stderr) && !timedOut(err) {
-		service.logger.Info("The sbx daemon did not come up, DRUDGE gives it one more try")
+		service.progress.Report(SbxDaemonRetried{})
 		time.Sleep(service.daemonRetryDelay)
 
 		listing, stderr, err = service.runSbx(inspect)
@@ -555,7 +634,7 @@ func (service *DrudgerService) listSandboxes(inspect sandboxCommand) (string, er
 	return listing, nil
 }
 
-// runSbx runs one sbx command and logs when the call had to start the sbx
+// runSbx runs one sbx command and reports when the call had to start the sbx
 // daemon, which explains the delay the user sees. A call killed for outrunning
 // its timeout is reported as a daemon that stopped answering.
 func (service *DrudgerService) runSbx(command sandboxCommand) (string, string, error) {
@@ -567,12 +646,12 @@ func (service *DrudgerService) runSbx(command sandboxCommand) (string, string, e
 	return stdout, stderr, err
 }
 
-// createSandbox runs the create command of a plan and prints every line sbx
+// createSandbox runs the create command of a plan and reports every line sbx
 // writes while it runs. A create killed for outrunning its timeout names the
 // setting that raises it.
 func (service *DrudgerService) createSandbox(create sandboxCommand) error {
 	_, stderr, err := service.commands.RunEchoed(create.argv, create.timeout, func(line string) {
-		service.logger.Info("%s: %s", sbxBinary, line)
+		service.progress.Report(SbxOutput{Binary: sbxBinary, Line: line})
 	})
 	service.noteDaemonStart(stderr)
 	if timedOut(err) {
@@ -581,9 +660,9 @@ func (service *DrudgerService) createSandbox(create sandboxCommand) error {
 	return err
 }
 
-// noteDaemonStart logs when an sbx call had to start the sbx daemon.
+// noteDaemonStart reports when an sbx call had to start the sbx daemon.
 func (service *DrudgerService) noteDaemonStart(stderr string) {
 	if daemonJustStarted(stderr) {
-		service.logger.Info("The sbx daemon was not running, sbx has just started it")
+		service.progress.Report(SbxDaemonStarted{})
 	}
 }

@@ -2,7 +2,6 @@ package drudger
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -18,8 +17,7 @@ func runTaskFor(t *testing.T, settings Settings, projectDir, listing string) *fa
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{listing}}
 	service := newTestServiceWith(settings, commands, taskToRun)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(settings.ProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(settings.ProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,8 +75,7 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 				todoTask(),
 			)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, "task-1", false) })
+			err := service.RunTask(testProjectSlug, "task-1", false)
 			if err == nil {
 				t.Fatalf("expected an error naming %s", testCase.wantErrContains)
 			}
@@ -186,22 +183,34 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 	commands := &fakeCommandRunner{}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
-	var err error
-	out := captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, true) })
-	if err != nil {
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID, testSandbox} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected the preview to contain %q, got %q", want, out)
+	described := singleEvent[RunDescribed](t, service.progress)
+	if described.Task.ID != taskToRun.ID || described.Slot != 1 || described.Sandbox != testSandbox {
+		t.Errorf("expected task %s to preview on Drudger 1 (%s), got %+v", taskToRun.ID, testSandbox, described)
+	}
+	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID} {
+		if !strings.Contains(described.Prompt, want) {
+			t.Errorf("expected the prompt to contain %q, got %q", want, described.Prompt)
 		}
 	}
 
-	for _, argument := range []string{sbxBinary, sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxDetachedFlag, slotRoot(projectDir, 1)} {
-		if !strings.Contains(out, strconv.Quote(argument)) {
-			t.Errorf("expected the preview to contain the argument %q, got %q", argument, out)
+	wantSubcommands := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
+	if len(described.Commands) != len(wantSubcommands) {
+		t.Fatalf("expected the commands %v, got %v", wantSubcommands, described.Commands)
+	}
+	for index, argv := range described.Commands {
+		if argv[0] != sbxBinary || !slices.Contains(argv, wantSubcommands[index]) {
+			t.Errorf("expected command %d to be sbx %s, got %v", index+1, wantSubcommands[index], argv)
 		}
+	}
+	if create := described.Commands[1]; !slices.Contains(create, slotRoot(projectDir, 1)) {
+		t.Errorf("expected the create command to mount %s, got %v", slotRoot(projectDir, 1), create)
+	}
+	if start := described.Commands[2]; !slices.Contains(start, sbxDetachedFlag) {
+		t.Errorf("expected the start command to hold the argument %q, got %v", sbxDetachedFlag, start)
 	}
 
 	if commands.calls != nil {

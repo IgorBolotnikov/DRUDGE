@@ -149,7 +149,7 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 
 			var session *TaskSession
 			var err error
-			captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+			session, err = service.SessionStatus(testProjectSlug, tracked.ID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -186,7 +186,7 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 
 	var session *TaskSession
 	var err error
-	output := captureOutput(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	output := captureErrors(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestDrudgerService_SessionStatus_ARefusedRunClosesOutNothing(t *testing.T) 
 	service.git.leaveOn(filepath.Join(slotRoot(projectDir, 1), testRepositoryName), testTaskBranch, testBaseSHA)
 
 	var err error
-	captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	_, err = service.SessionStatus(testProjectSlug, tracked.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

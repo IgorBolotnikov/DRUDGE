@@ -142,6 +142,23 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 	return current, nil
 }
 
+// SessionRecorded reports the status a finished Session left its task in.
+type SessionRecorded struct {
+	Task *task.Task
+}
+
+// SessionLeftUnrecorded reports a check that wrote nothing, because another
+// command holds the task.
+type SessionLeftUnrecorded struct {
+	TaskID task.TaskID
+}
+
+// RunRefused reports a task the vendor refused to run, put back in todo. The
+// task carries the class and the text of the refusal.
+type RunRefused struct {
+	Task *task.Task
+}
+
 // recordFinishedRun records what a finished Session left behind on its task. It
 // writes nothing when the task has moved on to another run, when another
 // command already recorded this one, or when another command holds the task.
@@ -170,7 +187,7 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		return service.reportWithoutRecording(tracked), false, nil
 	}
 	if isRecorded {
-		service.logger.Info("Task [%s] %s is %s, its Session is over", current.ID, current.Title, current.Status)
+		service.progress.Report(SessionRecorded{Task: current})
 		if current.Status == task.StatusDone {
 			service.reportUnblocked(projectSlug, current)
 		}
@@ -188,7 +205,7 @@ func sameRun(stored *task.Task, readBefore *task.Task) bool {
 // reportWithoutRecording says that another command holds the task, so a check
 // reports what it read and writes nothing. It hands back the copy it read.
 func (service *DrudgerService) reportWithoutRecording(tracked *task.Task) *task.Task {
-	service.logger.Info("Another drudge command is working on task %s, so this check reports the run directory without recording it", tracked.ID)
+	service.progress.Report(SessionLeftUnrecorded{TaskID: tracked.ID})
 	return tracked
 }
 
@@ -240,25 +257,9 @@ func (service *DrudgerService) rollBackRefusedRun(projectSlug string, tracked *t
 		return service.reportWithoutRecording(tracked), false, nil
 	}
 	if isRecorded {
-		service.logger.Info("The vendor refused the agent on task [%s] %s (%s): %s", current.ID, current.Title, current.VendorErrorClass, current.VendorError)
-		service.logger.Info("Nothing ran, so the task is back in %q.", task.StatusTodo)
-		service.logger.Info("%s", vendorErrorAdvice(current.VendorErrorClass))
+		service.progress.Report(RunRefused{Task: current})
 	}
 	return current, isRecorded, nil
-}
-
-// vendorErrorAdvice tells the user what to do about a refusal.
-func vendorErrorAdvice(class task.VendorErrorClass) string {
-	switch class {
-	case task.VendorErrorAuth:
-		return "Log in again, then re-seed the credentials inside sbx. sbx keeps its own copy of the token, and a host login does not refresh it."
-	case task.VendorErrorRateLimit:
-		return "Run the task again once the vendor lets you through."
-	case task.VendorErrorOutage:
-		return "Run the task again once the vendor is serving requests."
-	default:
-		return "Read the error above, fix what it names, then run the task again."
-	}
 }
 
 // agentHealthOf reads what a finished Session says about the agent that ran

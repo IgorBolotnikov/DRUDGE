@@ -8,6 +8,23 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
+// DrudgerNuked reports a Drudger NukeDrudger destroyed and the sandbox it
+// deleted.
+type DrudgerNuked struct {
+	Slot    int
+	Sandbox string
+}
+
+// SandboxAlreadyGone reports a sandbox a nuke found deleted already.
+type SandboxAlreadyGone struct {
+	Sandbox string
+}
+
+// TaskKilled reports a task whose agent died with its Drudger.
+type TaskKilled struct {
+	Task *task.Task
+}
+
 // NukeDrudger destroys a Drudger: takes its workspace apart, deletes its
 // sandbox and removes the entry from the store.
 //
@@ -66,7 +83,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 		return err
 	}
 
-	service.logger.Info("Drudger %d is gone, sandbox %s was deleted", slot, sandboxName)
+	service.progress.Report(DrudgerNuked{Slot: slot, Sandbox: sandboxName})
 
 	if killedTaskID == "" {
 		return nil
@@ -90,7 +107,7 @@ func (service *DrudgerService) removeSandbox(remove sandboxCommand, sandboxName 
 		return fmt.Errorf("could not remove sandbox %s: %w", sandboxName, removeErr)
 	}
 
-	service.logger.Info("Sandbox %s was already gone", sandboxName)
+	service.progress.Report(SandboxAlreadyGone{Sandbox: sandboxName})
 	return nil
 }
 
@@ -183,7 +200,7 @@ func (service *DrudgerService) recordKilledTask(projectSlug string, taskID task.
 		return nil
 	}
 
-	service.logger.Info("Task [%s] %s is %s, its agent was killed with the Drudger", killed.ID, killed.Title, task.StatusFuckedUp)
+	service.progress.Report(TaskKilled{Task: killed})
 	return nil
 }
 

@@ -12,6 +12,27 @@ import (
 // branch reaches.
 const rescueBranchSuffix = "-rescue"
 
+// WorkFoundOnBranch reports a repository an agent left on a branch other than
+// the one its handover made. The branch holds the work of the run.
+type WorkFoundOnBranch struct {
+	Repository string
+	Branch     string
+}
+
+// RescueBranchCreated reports a branch close-out put on commits an agent left
+// on no branch.
+type RescueBranchCreated struct {
+	Repository string
+	Branch     string
+}
+
+// EmptyBranchDropped reports a branch close-out deleted because the agent
+// committed nothing on it.
+type EmptyBranchDropped struct {
+	Repository string
+	Branch     string
+}
+
 // finishRun records where the work of a finished run landed and parks the
 // workspace it ran in. The caller writes the task back.
 //
@@ -95,7 +116,7 @@ func (service *DrudgerService) closeOutRepository(finished *task.Task, repositor
 	}
 
 	if branch != landing.Branch {
-		service.logger.Info("The agent left repository %s on branch %s, which is where its work is", repository.Name, branch)
+		service.progress.Report(WorkFoundOnBranch{Repository: repository.Name, Branch: branch})
 	}
 
 	finished.RecordLanding(repository.Name, task.Landing{Branch: branch, Base: landing.Base, Head: tip.SHA, Commits: commits})
@@ -165,7 +186,7 @@ func (service *DrudgerService) rescueBranch(repository repositoryWorktree, hande
 		if err := service.gitOps.CreateBranch(repository.Worktree, candidate, head); err != nil {
 			return "", err
 		}
-		service.logger.Info("The agent left repository %s on no branch, its commits are on %s", repository.Name, candidate)
+		service.progress.Report(RescueBranchCreated{Repository: repository.Name, Branch: candidate})
 		return candidate, nil
 	}
 
@@ -208,6 +229,6 @@ func (service *DrudgerService) dropEmptyBranch(repository repositoryWorktree, la
 	if err := service.gitOps.DeleteBranch(repository.Worktree, landing.Branch); err != nil {
 		return err
 	}
-	service.logger.Info("The agent committed nothing in repository %s, so branch %s is deleted", repository.Name, landing.Branch)
+	service.progress.Report(EmptyBranchDropped{Repository: repository.Name, Branch: landing.Branch})
 	return nil
 }

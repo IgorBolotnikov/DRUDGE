@@ -2,7 +2,7 @@ package drudger
 
 import (
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -29,19 +29,17 @@ func (finish unblockedFinish) canReach(outcome task.TaskStatus) bool {
 	return !finish.isMarkDone || outcome == task.StatusDone
 }
 
-// finish ends the work on finished with the outcome given and returns what the
-// command printed.
-func (finish unblockedFinish) finish(t *testing.T, service *testService, projectDir string, finished *task.Task, outcome task.TaskStatus) string {
+// finish ends the work on finished with the outcome given.
+func (finish unblockedFinish) finish(t *testing.T, service *testService, finished *task.Task, outcome task.TaskStatus) {
 	t.Helper()
 
 	var err error
-	var output string
 	switch {
 	case finish.isMarkDone:
-		output = captureOutput(func() { _, err = service.MarkDone(testProjectSlug, finished.ID) })
+		_, err = service.MarkDone(testProjectSlug, finished.ID)
 	case finish.isByHand:
 		changes := task.EditTaskDto{Status: &outcome, AllowsManagedStatus: true}
-		output = captureOutput(func() { _, err = service.EditTask(testProjectSlug, finished.ID, changes) })
+		_, err = service.EditTask(testProjectSlug, finished.ID, changes)
 	default:
 		service.runs.writeStream(finished.ID, initEvent, resultEvent)
 		exitCode := "0\n"
@@ -49,7 +47,7 @@ func (finish unblockedFinish) finish(t *testing.T, service *testService, project
 			exitCode = "1\n"
 		}
 		service.runs.writeExit(finished.ID, exitCode)
-		output = captureOutput(func() { _, err = service.SessionStatus(testProjectSlug, finished.ID) })
+		_, err = service.SessionStatus(testProjectSlug, finished.ID)
 	}
 
 	if err != nil {
@@ -58,7 +56,6 @@ func (finish unblockedFinish) finish(t *testing.T, service *testService, project
 	if finished.Status != outcome {
 		t.Fatalf("expected the task to end %q, got %q", outcome, finished.Status)
 	}
-	return output
 }
 
 func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
@@ -69,9 +66,9 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 		others []*task.Task
 		// commits is how many commits the run of the finished task left.
 		commits int
-		// wantLines are what the command prints about the dependents, and none
-		// means it says nothing about them.
-		wantLines []string
+		// wantUnblocked are the dependents the finish reports as runnable, and
+		// none means it reports nothing about them.
+		wantUnblocked []task.TaskID
 	}{
 		{
 			name:    "a task nothing waits for",
@@ -79,13 +76,10 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 			others:  []*task.Task{blockerTask("4f2a1b3c-0001", task.StatusTodo, "Wire the repository")},
 		},
 		{
-			name:    "one dependent that became runnable",
-			outcome: task.StatusDone,
-			others:  []*task.Task{dependentOf("4f2a1b3c-0001", "Wire the repository")},
-			wantLines: []string{
-				"It unblocked 1 task:",
-				"  4f2a1b3c  Wire the repository",
-			},
+			name:          "one dependent that became runnable",
+			outcome:       task.StatusDone,
+			others:        []*task.Task{dependentOf("4f2a1b3c-0001", "Wire the repository")},
+			wantUnblocked: []task.TaskID{"4f2a1b3c-0001"},
 		},
 		{
 			name:    "a dependent still held by another blocker",
@@ -103,10 +97,7 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 				dependentOf("7e6d5c4b-0002", "Add the endpoint", "1a2b3c4d-0003"),
 				blockerTask("1a2b3c4d-0003", task.StatusTodo, "Refuse a cycle"),
 			},
-			wantLines: []string{
-				"It unblocked 1 task:",
-				"  4f2a1b3c  Wire the repository",
-			},
+			wantUnblocked: []task.TaskID{"4f2a1b3c-0001"},
 		},
 		{
 			name:    "a task whose work is not merged",
@@ -152,16 +143,28 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 					service.git.leaveOn(worktree, testTaskBranch, testBaseSHA)
 				}
 
-				output := finish.finish(t, service, projectDir, finished, testCase.outcome)
+				finish.finish(t, service, finished, testCase.outcome)
 
-				if len(testCase.wantLines) == 0 {
-					if strings.Contains(output, "unblocked") {
-						t.Errorf("expected nothing about dependents, got\n%s", output)
+				reported := reportedEvents[DependentsUnblocked](service.progress)
+				if len(testCase.wantUnblocked) == 0 {
+					if len(reported) != 0 {
+						t.Errorf("expected nothing about dependents, got %+v", reported)
 					}
 					return
 				}
-				if want := strings.Join(testCase.wantLines, "\n") + "\n"; !strings.HasSuffix(output, want) {
-					t.Errorf("expected the output to end with\n%s\ngot\n%s", want, output)
+				// The dependents are reported after everything else the finish
+				// reports.
+				events := service.progress.events
+				last, ok := events[len(events)-1].(DependentsUnblocked)
+				if len(reported) != 1 || !ok {
+					t.Fatalf("expected the dependents to be reported once and last, got %+v", events)
+				}
+				unblocked := make([]task.TaskID, 0, len(last.Tasks))
+				for _, dependent := range last.Tasks {
+					unblocked = append(unblocked, dependent.ID)
+				}
+				if !slices.Equal(unblocked, testCase.wantUnblocked) {
+					t.Errorf("expected the dependents %v to be reported, got %v", testCase.wantUnblocked, unblocked)
 				}
 			})
 		}

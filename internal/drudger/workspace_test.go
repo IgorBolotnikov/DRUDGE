@@ -65,8 +65,7 @@ func TestDrudgerService_RunTask_CreatesAWorktreePerRepository(t *testing.T) {
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
 			service := newTestServiceWith(settingsWith(testCase.repositories...), commands, taskToRun)
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -117,8 +116,7 @@ func TestDrudgerService_RunTask_CutsAWorktreeFromTheDefaultBranch(t *testing.T) 
 			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -158,14 +156,13 @@ func TestDrudgerService_RunTask_ReusesTheWorkspaceOfTheSlot(t *testing.T) {
 	}
 	service := newTestServiceWith(settingsWith(testRepoPath), commands, firstTask, secondTask)
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, firstTask.ID, false) })
+	err := service.RunTask(testProjectSlug, firstTask.ID, false)
 	if err != nil {
 		t.Fatalf("the first run failed: %v", err)
 	}
 	service.runs.finishSession(firstTask.ID)
 
-	captureOutput(func() { err = service.RunTask(testProjectSlug, secondTask.ID, false) })
+	err = service.RunTask(testProjectSlug, secondTask.ID, false)
 	if err != nil {
 		t.Fatalf("the second run failed: %v", err)
 	}
@@ -188,8 +185,7 @@ func TestDrudgerService_RunTask_WorkspaceFailureLeavesTheTaskAlone(t *testing.T)
 	service := newTestServiceWith(settingsWith("api", "ui"), commands, taskToRun)
 	service.git.worktreeErr = fmt.Errorf("fatal: invalid reference: origin/main")
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 	if err == nil {
 		t.Fatal("expected a workspace that could not be created to stop the run")
@@ -218,8 +214,7 @@ func TestDrudgerService_RunTask_RefusesAProjectWithNoRepositories(t *testing.T) 
 	// A project initialized before drudge recorded repositories has none.
 	service.settings.Repositories = nil
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 	if err == nil {
 		t.Fatal("expected a project with no repositories to refuse the run")
@@ -286,8 +281,7 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 				service.git.registerWorktree(worktree)
 			}
 
-			var err error
-			captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 
 			if got := service.drudgers.atSlot(1).WorkspaceHealth; got != testCase.wantHealth {
 				t.Errorf("expected workspace health %q, got %q", testCase.wantHealth, got)
@@ -340,8 +334,7 @@ func TestDrudgerService_RunTask_CreatesOnlyTheWorktreesASlotIsMissing(t *testing
 	}
 	service.git.registerWorktree(worktrees[1])
 
-	var err error
-	captureOutput(func() { err = service.RunTask(testProjectSlug, taskToRun.ID, false) })
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

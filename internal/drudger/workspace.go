@@ -158,6 +158,26 @@ func (space slotWorkspace) mounts(runsDir string) []string {
 	return append(paths, runsDir)
 }
 
+// BaseFetchStarted reports a fetch of the branch a repository cuts work from.
+type BaseFetchStarted struct {
+	Repository string
+	Branch     string
+	Remote     string
+}
+
+// WorktreeStashed reports the commit a worktree's uncommitted changes were
+// stashed at.
+type WorktreeStashed struct {
+	Repository string
+	Commit     string
+}
+
+// WorktreeCreationStarted reports a worktree being checked out at Path.
+type WorktreeCreationStarted struct {
+	Repository string
+	Path       string
+}
+
 // fetchBase updates the tracking ref a repository cuts work from. A fetch that
 // fails only warns and names the commit the work is cut from, because that
 // base is still a correct one to branch from.
@@ -175,7 +195,7 @@ func (service *DrudgerService) tryFetchBase(repository projectRepository) bool {
 		return true
 	}
 
-	service.logger.Info("Fetching %s of repository %s from %s", repository.DefaultBranch, repository.Name, git.OriginRemote)
+	service.progress.Report(BaseFetchStarted{Repository: repository.Name, Branch: repository.DefaultBranch, Remote: git.OriginRemote})
 	err := service.gitOps.Fetch(repository.Dir, git.OriginRemote, repository.DefaultBranch)
 	if err == nil {
 		return true
@@ -211,7 +231,7 @@ func (service *DrudgerService) stashWorktree(repository repositoryWorktree, mess
 		return "", fmt.Errorf("could not stash what is uncommitted in the workspace of repository %s: %w", repository.Name, err)
 	}
 
-	service.logger.Info("Repository %s held uncommitted changes, they are stashed at %s", repository.Name, git.ShortSHA(commit))
+	service.progress.Report(WorktreeStashed{Repository: repository.Name, Commit: commit})
 	return commit, nil
 }
 
@@ -292,7 +312,7 @@ func (service *DrudgerService) ensureWorktree(repository repositoryWorktree) (Wo
 		return WorkspaceGone, nil
 	}
 
-	service.logger.Info("Creating the workspace of repository %s at %s", repository.Name, repository.Worktree)
+	service.progress.Report(WorktreeCreationStarted{Repository: repository.Name, Path: repository.Worktree})
 	if err := service.gitOps.AddDetachedWorktree(repository.Dir, repository.Worktree, repository.BaseRef()); err != nil {
 		return "", fmt.Errorf("could not create the workspace of repository %s: %w", repository.Name, err)
 	}
