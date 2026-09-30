@@ -89,8 +89,7 @@ const (
 	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
-// healthLabelRoles maps a health label to the theme role it prints in. A
-// label left out, like a state this build does not know, prints plain.
+// healthLabelRoles maps a health label to the theme role it prints in.
 var healthLabelRoles = map[string]string{
 	healthOkLabel: theme.RoleSuccess,
 
@@ -106,9 +105,9 @@ var healthLabelRoles = map[string]string{
 	agentRefusedLabel:       theme.RoleError,
 }
 
-// loadHealthColor returns what colors a health cell in the loaded theme. A
-// cell can hold several labels joined by healthPartSeparator, and each one is
-// colored on its own so the separator stays plain.
+// loadHealthColor returns a function that colors a health cell in the loaded
+// theme. It colors each label in the cell on its own and leaves the separator
+// plain.
 func loadHealthColor(log *common.Logger) func(text string) string {
 	labelColor := loadRoleColor(log, "Drudger health", healthLabelRoles)
 	return func(text string) string {

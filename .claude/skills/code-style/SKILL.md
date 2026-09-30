@@ -54,7 +54,8 @@ A comment earns its place when it saves the reader work. Test every sentence you
 
 **What to leave out**
 
-- Do not reference files or directories by path, because that is as bad as hardcoding them. Use the plain name of the thing. Example: "~/.drudge/config.json" -> "global config file". Go identifiers are welcome, because a reader can grep for them.
+- Do not reference files or directories by path, because that is as bad as hardcoding them. Use the plain name of the thing. Example: "~/.drudge/config.json" -> "global config file".
+- Do not name variables, functions, types or other code elements. Name the thing in plain English. Examples: `healthLabelRoles` -> "health labels", `healthPartSeparator` -> "separator". An identifier in a comment is as bad as a hardcoded path and goes stale on the next rename. The one exception is the name that opens a doc comment.
 - Do not restate the signature in English. Write what the reader cannot see: the constraint, the failure the code guards against, the thing it deliberately leaves alone.
 - Do not repeat the same comment in more than one place, because that is as bad as copy-pasting code. Put the fact where it lives.
 - Delete the comment when the name already says it. This bites hardest on test helpers and named consts.

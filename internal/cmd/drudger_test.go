@@ -200,7 +200,7 @@ func TestPrintDrudgersColors(t *testing.T) {
 		{Slot: 4, Sandbox: testSandboxName(4), WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentRefused},
 		{Slot: 5, Sandbox: testSandboxName(5), SandboxHealth: "hand-edited", WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
 	}
-	// plainHealths are what formatHealth renders for pool.
+	// plainHealths are the health cells of the Drudgers above, without color.
 	plainHealths := []string{"ok", "unchecked", "SANDBOX GONE", "sandbox unchecked, AGENT REFUSED", "hand-edited"}
 
 	header := fmt.Sprintf("Drudgers (%d):\n", len(pool)) +
@@ -217,8 +217,8 @@ func TestPrintDrudgersColors(t *testing.T) {
 		return lines.String()
 	}
 
-	// healthRoles names the role of each label independently of
-	// healthLabelRoles, so the test catches that map drifting from these roles.
+	// healthRoles repeats the roles of the health labels on purpose. A test
+	// that reads them from the production map passes whatever roles it holds.
 	healthRoles := map[string]string{
 		healthOkLabel:           theme.RoleSuccess,
 		healthUncheckedLabel:    theme.RoleMuted,
