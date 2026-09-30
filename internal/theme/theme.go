@@ -26,8 +26,22 @@ const (
 // Theme holds the effective foreground color of each role after all merges.
 // It is immutable after creation.
 type Theme struct {
-	colors      map[string]color
-	isColorless bool
+	colors    map[string]color
+	isColorOn map[Stream]bool
+}
+
+// Stream is an output stream the theme decides color for.
+type Stream int
+
+// Output streams of the process.
+const (
+	Stdout Stream = iota
+	Stderr
+)
+
+var streamFiles = map[Stream]*os.File{
+	Stdout: os.Stdout,
+	Stderr: os.Stderr,
 }
 
 // Environment variables that decide whether color is on. See
@@ -46,9 +60,9 @@ const (
 	dumbTerm      = "dumb"
 )
 
-// isColorlessEnv decides whether color is off. The order of the cases is the
-// precedence of the rules, and the first case that matches wins.
-func isColorlessEnv() bool {
+// isColorlessEnv decides whether color is off for file. The order of the cases
+// is the precedence of the rules, and the first case that matches wins.
+func isColorlessEnv(file *os.File) bool {
 	switch {
 	case os.Getenv(noColorEnv) != "":
 		return true
@@ -59,8 +73,16 @@ func isColorlessEnv() bool {
 	case os.Getenv(termEnv) == dumbTerm:
 		return true
 	default:
-		return !common.IsTerminal(os.Stdout)
+		return !common.IsTerminal(file)
 	}
+}
+
+func colorOnStreams() map[Stream]bool {
+	isColorOn := make(map[Stream]bool, len(streamFiles))
+	for stream, file := range streamFiles {
+		isColorOn[stream] = !isColorlessEnv(file)
+	}
+	return isColorOn
 }
 
 func isForcedEnv(name string) bool {
@@ -94,15 +116,20 @@ func NewTheme(name string) *Theme {
 		colors = make(map[string]color)
 	}
 	return &Theme{
-		colors:      colors,
-		isColorless: isColorlessEnv(),
+		colors:    colors,
+		isColorOn: colorOnStreams(),
 	}
 }
 
+// IsColorOn reports whether color is on for stream.
+func (t *Theme) IsColorOn(stream Stream) bool {
+	return t.isColorOn[stream]
+}
+
 // Color returns the ANSI escape sequence of the color of the given role. It
-// returns an empty string when color is off or the role is unknown.
+// returns an empty string when color is off for stdout or the role is unknown.
 func (t *Theme) Color(role string) string {
-	if t.isColorless {
+	if !t.IsColorOn(Stdout) {
 		return ""
 	}
 	roleColor, ok := t.colors[role]
@@ -113,9 +140,9 @@ func (t *Theme) Color(role string) string {
 }
 
 // Reset returns the ANSI reset sequence, or an empty string when color is
-// off.
+// off for stdout.
 func (t *Theme) Reset() string {
-	if t.isColorless {
+	if !t.IsColorOn(Stdout) {
 		return ""
 	}
 	return ansiReset
@@ -216,7 +243,7 @@ func Load(name string) (*Theme, error) {
 		merged[role] = hexColor(color)
 	}
 
-	return &Theme{colors: merged, isColorless: isColorlessEnv()}, nil
+	return &Theme{colors: merged, isColorOn: colorOnStreams()}, nil
 }
 
 // MustLoad is like Load but panics on error.

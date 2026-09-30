@@ -73,6 +73,31 @@ func TestColorShadeAndReset_FollowColorEnv(t *testing.T) {
 	}
 }
 
+func TestIsColorOn_FollowsColorEnvOnEveryStream(t *testing.T) {
+	cases := []struct {
+		name      string
+		env       map[string]string
+		isColorOn bool
+	}{
+		{name: "NO_COLOR set", env: map[string]string{noColorEnv: "1"}, isColorOn: false},
+		{name: "FORCE_COLOR set", env: map[string]string{forceColorEnv: "1"}, isColorOn: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, name := range []string{noColorEnv, forceColorEnv, cliColorForceEnv, cliColorEnv, termEnv} {
+				t.Setenv(name, testCase.env[name])
+			}
+			theme := NewTheme("nord")
+			for stream, streamName := range map[Stream]string{Stdout: "Stdout", Stderr: "Stderr"} {
+				if got := theme.IsColorOn(stream); got != testCase.isColorOn {
+					t.Errorf("IsColorOn(%s) = %v, want %v", streamName, got, testCase.isColorOn)
+				}
+			}
+		})
+	}
+}
+
 func TestHex_ExactValue(t *testing.T) {
 	th := NewTheme("dracula")
 	tests := []struct {

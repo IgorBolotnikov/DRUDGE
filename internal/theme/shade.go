@@ -7,10 +7,10 @@ const shadeFallbackTheme = "nord"
 // Shade returns the ANSI escape sequence for the color of a role with its HSV
 // value shifted by valueShift. The hue and saturation of the role stay as they
 // are, and the value is clamped to 0..1. It returns an empty string when
-// color is off or the role is unknown. A role whose color has no RGB shades
-// the color of that role in the shadeFallbackTheme palette.
+// color is off for stdout or the role is unknown. A role whose color has no
+// RGB shades the color of that role in the shadeFallbackTheme palette.
 func (t *Theme) Shade(role string, valueShift float64) string {
-	if t.isColorless {
+	if !t.IsColorOn(Stdout) {
 		return ""
 	}
 	roleColor, ok := t.colors[role]
