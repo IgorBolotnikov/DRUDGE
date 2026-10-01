@@ -105,9 +105,8 @@ func mutedColor(palette *theme.Theme) func(text string) string {
 // listed under a parent and muting the context rows. The blockers column is as
 // wide as its widest value on the page.
 func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
-	log := out.log
 	if listed.TotalItems == 0 {
-		log.Info("No tasks found")
+		out.skip("No tasks found")
 		return
 	}
 
@@ -145,6 +144,6 @@ func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
 		{Title: blockedByTitle, Width: blockedByWidth},
 		{Title: "TICKET"},
 	}
-	printColoredList(log, "Tasks", listed.TotalItems, columns, rows, rowColors)
-	printPageFooter(out, listed.Number, listed.TotalPages)
+	lines := listLines("Tasks", listed.TotalItems, columns, rows, rowColors)
+	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
 }

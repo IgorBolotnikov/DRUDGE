@@ -237,7 +237,7 @@ func TestProjectList(t *testing.T) {
 		},
 		{
 			name: "no projects",
-			want: "No projects yet, run drg project init <name> in a project directory to create one\n",
+			want: "· No projects yet, run drg project init <name> in a project directory to create one\n",
 		},
 		{
 			name:    "a page of no projects past the first one",
@@ -308,30 +308,41 @@ func TestProjectList(t *testing.T) {
 }
 
 func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
+	const listing = "Projects (2):\n" +
+		"  SLUG                  NAME\n" +
+		"  --------------------  ----\n" +
+		"  alpha                 alpha\n" +
+		"Page 1 of 2, see the next one with --page 2\n"
+
 	cases := []struct {
 		name       string
 		themeFile  string
+		wantStdout string
 		wantStderr string
 	}{
 		{
 			name:       "a valid theme warns nothing",
 			themeFile:  `{"theme": "nord", "overrides": {"error": "#ff0000"}}`,
+			wantStdout: listing,
 			wantStderr: "",
 		},
 		{
 			name:       "a bad override warns once",
 			themeFile:  `{"theme": "nord", "overrides": {"error": "#zzz"}}`,
+			wantStdout: "\n" + listing,
 			wantStderr: "! theme.json: \"#zzz\" is not a color for role error, using the theme's own\n",
 		},
 		{
-			name:      "every bad override warns once",
-			themeFile: `{"theme": "nord", "overrides": {"warning": "yellow", "error": "#zzz"}}`,
+			name:       "every bad override warns once",
+			themeFile:  `{"theme": "nord", "overrides": {"warning": "yellow", "error": "#zzz"}}`,
+			wantStdout: "\n" + listing,
 			wantStderr: "! theme.json: \"#zzz\" is not a color for role error, using the theme's own\n" +
 				"! theme.json: \"yellow\" is not a color for role warning, using the theme's own\n",
 		},
 		{
 			name:       "a theme that fails to load warns once",
 			themeFile:  `{"theme": "no-such-theme"}`,
+			wantStdout: "\n" + listing,
 			wantStderr: "! cannot load the theme, using the default one: unknown theme \"no-such-theme\"\n",
 		},
 	}
@@ -357,14 +368,18 @@ func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
 			})
 
 			var err error
+			var stdout string
 			stderr := captureStderr(func() {
-				captureOutput(func() {
+				stdout = captureOutput(func() {
 					err = NewRoot("v1.2.3").Execute([]string{ProjectCmd.Name, "list", "--page-size", "1"})
 				})
 			})
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if stdout != testCase.wantStdout {
+				t.Errorf("stdout:\n%q\nwant:\n%q", stdout, testCase.wantStdout)
 			}
 			if stderr != testCase.wantStderr {
 				t.Errorf("stderr:\n%q\nwant:\n%q", stderr, testCase.wantStderr)

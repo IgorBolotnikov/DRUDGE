@@ -100,7 +100,7 @@ func TestPrintTaskList(t *testing.T) {
 		{
 			name:   "no tasks",
 			listed: nil,
-			want:   "No tasks found\n",
+			want:   "· No tasks found\n",
 		},
 		{
 			name:   "tasks that belong to no other task",
@@ -399,7 +399,7 @@ func TestTaskList(t *testing.T) {
 		},
 		{
 			name: "no tasks",
-			want: func([]string) string { return "No tasks found\n" },
+			want: func([]string) string { return "· No tasks found\n" },
 		},
 		{
 			name:    "a page past the last one",

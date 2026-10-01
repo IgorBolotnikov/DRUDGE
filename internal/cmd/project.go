@@ -165,7 +165,6 @@ func projectList(flags pageFlags) error {
 	}
 
 	out := newCommandPrinter()
-	log := out.log
 	svc, err := newProjectService(out)
 	if err != nil {
 		return err
@@ -177,7 +176,7 @@ func projectList(flags pageFlags) error {
 	}
 
 	if listed.TotalItems == 0 {
-		log.Info("No projects yet, run drg project init <name> in a project directory to create one")
+		out.skip("No projects yet, run drg project init <name> in a project directory to create one")
 		return nil
 	}
 
@@ -190,7 +189,7 @@ func projectList(flags pageFlags) error {
 		rows = append(rows, []string{p.Slug, p.Name})
 	}
 
-	printList(log, "Projects", listed.TotalItems, columns, rows)
-	printPageFooter(out, listed.Number, listed.TotalPages)
+	lines := listLines("Projects", listed.TotalItems, columns, rows, nil)
+	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
 	return nil
 }

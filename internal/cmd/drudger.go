@@ -140,9 +140,8 @@ func drudgerList(page pageFlags) error {
 // printDrudgers prints a page of the Drudgers of a project in the order given,
 // one row each, and its footer.
 func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
-	log := out.log
 	if listed.TotalItems == 0 {
-		log.Info("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
+		out.skip("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
 		return
 	}
 
@@ -164,8 +163,8 @@ func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger
 		})
 	}
 
-	printList(log, "Drudgers", listed.TotalItems, columns, rows)
-	printPageFooter(out, listed.Number, listed.TotalPages)
+	lines := listLines("Drudgers", listed.TotalItems, columns, rows, nil)
+	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.

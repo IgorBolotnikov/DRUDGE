@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
@@ -48,22 +47,10 @@ func roleColor[Text ~string](palette *theme.Theme, roles map[Text]string) func(t
 	}
 }
 
-// printList prints a listing: the total count of rows on every page, a header,
-// a rule under it and one line per row.
-func printList(log *common.Logger, title string, total int, columns []column, rows [][]string) {
-	printColoredList(log, title, total, columns, rows, nil)
-}
-
-// printColoredList prints a listing like printList. A row with a color in
+// listLines builds the lines of a listing: the total count of rows on every
+// page, a header, a rule under it and one line per row. A row with a color in
 // rowColors prints its whole line in that color, and the colors of the
 // columns skip it.
-func printColoredList(log *common.Logger, title string, total int, columns []column, rows [][]string, rowColors []func(text string) string) {
-	for _, line := range listLines(title, total, columns, rows, rowColors) {
-		// The line is already formatted and may hold a percent sign.
-		log.Info("%s", line)
-	}
-}
-
 func listLines(title string, total int, columns []column, rows [][]string, rowColors []func(text string) string) []string {
 	lines := make([]string, 0, len(rows)+3)
 	lines = append(lines, fmt.Sprintf("%s (%d):", title, total))
@@ -165,18 +152,18 @@ func (flags *pageFlags) pageSize(fallback int) (int, error) {
 	return *flags.size.value, nil
 }
 
-// printPageFooter prints which page of how many a listing shows, in the muted
-// color of the theme. Every page but the last names the flag that shows the
-// next one. A listing of one page prints nothing.
-func printPageFooter(out *printer, number int, totalPages int) {
+// pageFooterLines builds the line that says which page of how many a listing
+// shows, in the muted color of palette. Every page but the last names the flag
+// that shows the next one. A listing of one page has no footer.
+func pageFooterLines(palette *theme.Theme, number int, totalPages int) []string {
 	if totalPages <= 1 {
-		return
+		return nil
 	}
 	footer := fmt.Sprintf("Page %d of %d", number, totalPages)
 	if number < totalPages {
 		footer += fmt.Sprintf(", see the next one with --%s %d", pageFlagName, number+1)
 	}
-	out.log.Info("%s", out.theme.Paint(theme.Stdout, theme.RoleMuted, footer))
+	return []string{palette.Paint(theme.Stdout, theme.RoleMuted, footer)}
 }
 
 // fitColumn cuts a value short so it fits its column.

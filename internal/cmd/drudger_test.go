@@ -165,7 +165,7 @@ func TestPrintDrudgers(t *testing.T) {
 		{
 			name:       "no Drudgers yet",
 			pool:       nil,
-			wantLines:  []string{"has no Drudgers"},
+			wantLines:  []string{"· Project " + testProjectSlug + " has no Drudgers"},
 			wantAbsent: []string{"SLOT", "DRUDGER", "HEALTH"},
 		},
 	}
@@ -376,7 +376,7 @@ func TestDrudgerList(t *testing.T) {
 		},
 		{
 			name: "no Drudgers",
-			want: "Project " + testProjectSlug + " has no Drudgers, the first one is built when you run a task\n",
+			want: "· Project " + testProjectSlug + " has no Drudgers, the first one is built when you run a task\n",
 		},
 		{
 			name:    "a page past the last one",
