@@ -17,6 +17,7 @@ type commandDeps struct {
 	localCfg  *config.LocalConfig
 	globalCfg *config.GlobalConfig
 	log       *common.Logger
+	out       *printer
 	tasks     *task.TaskService
 	drudger   *drudger.DrudgerService
 }
@@ -66,6 +67,7 @@ func newCommandDeps() (*commandDeps, error) {
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
 		log:       out.log,
+		out:       out,
 		tasks:     tasks,
 		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
 	}, nil

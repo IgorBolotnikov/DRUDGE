@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -29,9 +28,9 @@ var sessionStatusRoles = map[drudger.SessionStatus]string{
 
 // printSessionStatus prints what the run directory of a task says about the
 // Session working on it.
-func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
+func printSessionStatus(out *printer, session *drudger.TaskSession) {
 	report := session.Report
-	statusColor := loadRoleColor(log, "Session status", sessionStatusRoles)
+	statusColor := loadRoleColor(out.log, "Session status", sessionStatusRoles)
 
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", session.Task.ID, session.Task.Title),
@@ -58,10 +57,7 @@ func printSessionStatus(log *common.Logger, session *drudger.TaskSession) {
 		}
 	}
 
-	for _, line := range lines {
-		// The line is already formatted and may hold a percent sign.
-		log.Info("%s", line)
-	}
+	out.view(lines)
 }
 
 func sessionLine(label string, value string) string {

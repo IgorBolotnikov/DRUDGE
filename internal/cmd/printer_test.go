@@ -213,6 +213,42 @@ func TestPrinter(t *testing.T) {
 			wantStdout: "✓ a\n✓ b\n",
 		},
 		{
+			name: "a warning result and a failed result close the group at column 0",
+			print: func(out *printer) {
+				out.header("Recording")
+				out.done("a")
+				out.resultWarn("Needs babysitting")
+				out.header("Recording")
+				out.resultFailed("Fucked up")
+			},
+			wantStdout: "Recording\n  ✓ a\n! Needs babysitting\n\nRecording\n✗ Fucked up\n",
+		},
+		{
+			name: "fields after a warning result sit at the detail indent",
+			print: func(out *printer) {
+				out.header("Recording")
+				out.resultWarn("Refused")
+				out.field("Advice", "Log in again")
+				out.flush()
+			},
+			wantStdout: "Recording\n! Refused\n    Advice  Log in again\n",
+		},
+		{
+			name: "a view closes the group and gets one blank line before it",
+			print: func(out *printer) {
+				out.header("Recording")
+				out.result("Done")
+				out.field("Unblocked", "b")
+				out.view([]string{"Task a", "  Session:  100%"})
+			},
+			wantStdout: "Recording\n✓ Done\n    Unblocked  b\n\nTask a\n  Session:  100%\n",
+		},
+		{
+			name:       "a view printed first has no blank line before it",
+			print:      func(out *printer) { out.view([]string{"Task a"}) },
+			wantStdout: "Task a\n",
+		},
+		{
 			name:       "a task reads as its short id, two spaces and its title",
 			print:      func(out *printer) { out.done("Picked %s", out.task(sampleTask)) },
 			wantStdout: "✓ Picked 3f9a1c2e  Add retry to uploader\n",
@@ -272,6 +308,16 @@ func TestPrinter(t *testing.T) {
 				"  \x1b[2m·\x1b[0m b already exists\n" +
 				"\x1b[32m✓\x1b[0m Set up\n",
 			wantStderr: "  \x1b[33m!\x1b[0m c is broken\n",
+		},
+		{
+			name: "forced color paints the warning and the failed result in their roles",
+			env:  map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			print: func(out *printer) {
+				out.resultWarn("Needs babysitting")
+				out.resultFailed("Fucked up")
+			},
+			wantStdout: "\x1b[33m!\x1b[0m Needs babysitting\n" +
+				"\x1b[31m✗\x1b[0m Fucked up\n",
 		},
 	}
 

@@ -384,7 +384,7 @@ func taskSessionStatus(args []string) error {
 		return err
 	}
 
-	printSessionStatus(deps.log, session)
+	printSessionStatus(deps.out, session)
 	return nil
 }
 

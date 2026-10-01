@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	doneGlyph = "✓"
-	skipGlyph = "·"
-	stepGlyph = "›"
+	doneGlyph   = "✓"
+	skipGlyph   = "·"
+	stepGlyph   = "›"
+	warnGlyph   = "!"
+	failedGlyph = "✗"
 )
 
 // stepEnding ends the line of a step that started.
@@ -158,11 +160,38 @@ func (p *printer) result(format string, args ...any) {
 	p.done(format, args...)
 }
 
+// resultWarn closes the group and prints at column 0 an outcome that went
+// wrong while the command goes on.
+func (p *printer) resultWarn(format string, args ...any) {
+	p.closeGroup()
+	p.glyphLine(theme.RoleWarning, warnGlyph, format, args...)
+}
+
+// resultFailed closes the group and prints at column 0 an outcome of work
+// that failed.
+func (p *printer) resultFailed(format string, args ...any) {
+	p.closeGroup()
+	p.glyphLine(theme.RoleError, failedGlyph, format, args...)
+}
+
 // skipResult closes the group and prints at column 0 that there was nothing
 // to do.
 func (p *printer) skipResult(format string, args ...any) {
 	p.closeGroup()
 	p.skip(format, args...)
+}
+
+// view closes the group and prints lines at column 0 as they are. A blank
+// line goes before them when anything was printed before.
+func (p *printer) view(lines []string) {
+	p.closeGroup()
+	if p.hasPrinted {
+		p.log.Info("")
+	}
+	for _, line := range lines {
+		// The line is already formatted and may hold a percent sign.
+		p.info("%s", line)
+	}
 }
 
 func (p *printer) closeGroup() {

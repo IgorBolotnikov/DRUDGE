@@ -12,10 +12,13 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
-// unblockedTaskLine lays out one task a finished task unblocked.
-const unblockedTaskLine = "  %s  %s"
+const (
+	unblockedLabel = "Unblocked"
+	adviceLabel    = "Advice"
+)
 
 // cliProgress renders the events a domain service reports as the lines drg
 // prints.
@@ -131,25 +134,29 @@ func (p *cliProgress) reportDrudger(event any) {
 		)
 	case drudger.DrudgerListBehind:
 		p.out.warn("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", event.ProjectSlug)
-	case drudger.SessionRecorded:
-		p.log.Info("Task [%s] %s is %s, its Session is over", event.Task.ID, event.Task.Title, event.Task.Status)
-	case drudger.SessionLeftUnrecorded:
-		p.log.Info("Another drudge command is working on task %s, so this check reports the run directory without recording it", event.TaskID)
-	case drudger.RunRefused:
-		p.log.Info("The vendor refused the agent on task [%s] %s (%s): %s", event.Task.ID, event.Task.Title, event.Task.VendorErrorClass, event.Task.VendorError)
-		p.log.Info("Nothing ran, so the task is back in %q.", event.Task.Status)
-		p.log.Info("%s", vendorErrorAdvice(event.Task.VendorErrorClass))
+	case drudger.SessionRecordingStarted:
+		p.out.header("Recording the Session of task %s", p.out.task(event.Task))
 	case drudger.WorkFoundOnBranch:
-		p.log.Info("The agent left repository %s on branch %s, which is where its work is", event.Repository, event.Branch)
+		p.out.done("The agent left %s on branch %s, its work is there", event.Repository, event.Branch)
 	case drudger.RescueBranchCreated:
-		p.log.Info("The agent left repository %s on no branch, its commits are on %s", event.Repository, event.Branch)
+		p.out.done("The agent left %s on no branch, its commits are on %s", event.Repository, event.Branch)
 	case drudger.EmptyBranchDropped:
-		p.log.Info("The agent committed nothing in repository %s, so branch %s is deleted", event.Repository, event.Branch)
+		p.out.skip("The agent committed nothing in %s, branch %s is deleted", event.Repository, event.Branch)
+	case drudger.SessionRecorded:
+		p.sessionResult(event.Status)("Task %s %s, it is %s", p.out.task(event.Task), event.Status, event.Task.Status)
 	case drudger.DependentsUnblocked:
-		p.log.Info("It unblocked %s:", task.FormatTaskCount(len(event.Tasks)))
+		label := unblockedLabel
 		for _, dependent := range event.Tasks {
-			p.log.Info(unblockedTaskLine, task.ShortID(dependent.ID), dependent.Title)
+			p.out.field(label, p.out.task(dependent))
+			label = ""
 		}
+		p.out.flush()
+	case drudger.SessionLeftUnrecorded:
+		p.out.skip("Another drudge command is working on task %s, so this check reports the run directory without recording it", event.TaskID)
+	case drudger.RunRefused:
+		p.out.resultWarn("The vendor refused task %s (%s), it is back in %s", p.out.task(event.Task), event.Task.VendorErrorClass, event.Task.Status)
+		p.out.field(adviceLabel, vendorErrorAdvice(event.Task.VendorErrorClass))
+		p.out.flush()
 	case drudger.DrudgerNuked:
 		p.log.Info("Drudger %d is gone, sandbox %s was deleted", event.Slot, event.Sandbox)
 	case drudger.SandboxAlreadyGone:
@@ -178,6 +185,19 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.warn("Drudger %d of project %s stays claimed for a run that never started: %v", event.Slot, event.ProjectSlug, event.Err)
 	case drudger.SessionIDReadFailed:
 		p.out.warn("%v, the task is recorded without a session id", event.Err)
+	}
+}
+
+// sessionResult picks the result line of a recorded Session by the role its
+// status prints in.
+func (p *cliProgress) sessionResult(status drudger.SessionStatus) func(format string, args ...any) {
+	switch sessionStatusRoles[status] {
+	case theme.RoleWarning:
+		return p.out.resultWarn
+	case theme.RoleError:
+		return p.out.resultFailed
+	default:
+		return p.out.result
 	}
 }
 

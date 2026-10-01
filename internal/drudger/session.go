@@ -142,9 +142,17 @@ func (service *DrudgerService) recordOutcome(projectSlug string, tracked *task.T
 	return current, nil
 }
 
-// SessionRecorded reports the status a finished Session left its task in.
-type SessionRecorded struct {
+// SessionRecordingStarted reports a finished Session about to be recorded on
+// its task, before close-out looks at its workspace.
+type SessionRecordingStarted struct {
 	Task *task.Task
+}
+
+// SessionRecorded reports how a finished Session went and the status it left
+// its task in.
+type SessionRecorded struct {
+	Task   *task.Task
+	Status SessionStatus
 }
 
 // SessionLeftUnrecorded reports a check that wrote nothing, because another
@@ -173,6 +181,7 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		if !onDisk.FinishedAt.IsZero() || !sameRun(onDisk, tracked) {
 			return task.ErrTaskUnchanged
 		}
+		service.progress.Report(SessionRecordingStarted{Task: onDisk})
 		recordSessionEnd(onDisk, report)
 		// The status of a clean run depends on the landings close-out leaves.
 		service.finishRun(projectSlug, onDisk)
@@ -187,7 +196,7 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		return service.reportWithoutRecording(tracked), false, nil
 	}
 	if isRecorded {
-		service.progress.Report(SessionRecorded{Task: current})
+		service.progress.Report(SessionRecorded{Task: current, Status: report.Status})
 		if current.Status == task.StatusDone {
 			service.reportUnblocked(projectSlug, current)
 		}

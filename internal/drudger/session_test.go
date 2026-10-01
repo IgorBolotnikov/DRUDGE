@@ -481,6 +481,33 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcomeOnce(t *testing.T) {
 	}
 }
 
+func TestDrudgerService_SessionStatus_ReportsTheRecordingStartFirst(t *testing.T) {
+	setupProjectDir(t)
+	tracked := runningTask()
+
+	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	events := service.progress.events
+	if len(events) == 0 {
+		t.Fatal("expected the check to report events, got none")
+	}
+	started, ok := events[0].(SessionRecordingStarted)
+	if !ok {
+		t.Fatalf("expected SessionRecordingStarted first, got %+v", events)
+	}
+	if started.Task.ID != tracked.ID {
+		t.Errorf("expected the recording of task %s, got %s", tracked.ID, started.Task.ID)
+	}
+	if recorded := singleEvent[SessionRecorded](t, service.progress); recorded.Status != StatusGotShitDone {
+		t.Errorf("expected the Session recorded as %q, got %q", StatusGotShitDone, recorded.Status)
+	}
+}
+
 func TestDrudgerService_SessionStatus_ReportsAgentHealthItCouldNotRecord(t *testing.T) {
 	setupProjectDir(t)
 	tracked := runningTask()
