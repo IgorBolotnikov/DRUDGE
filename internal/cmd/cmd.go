@@ -38,6 +38,8 @@ const (
 	flagTerminator = "--"
 	// pathSeparator joins the names of a command path, as in "drg task rm".
 	pathSeparator = " "
+	// listFlagMarker in the usage of a flag marks a flag that takes a list.
+	listFlagMarker = "comma-separated"
 )
 
 // NewRoot builds the drg command tree for a drg binary of version.
@@ -100,16 +102,17 @@ func (c *Cmd) execute(path string, args []string) error {
 	if c.Setup != nil {
 		run = c.Setup(fs)
 	}
+	repeats := refuseRepeats(fs)
 
 	if len(c.Subcommands) > 0 {
-		return c.executeGroup(path, fs, run, args)
+		return c.executeGroup(path, fs, repeats, run, args)
 	}
-	return c.executeLeaf(path, fs, run, args)
+	return c.executeLeaf(path, fs, repeats, run, args)
 }
 
-func (c *Cmd) executeGroup(path string, fs *flag.FlagSet, run func(args []string) error, args []string) error {
+func (c *Cmd) executeGroup(path string, fs *flag.FlagSet, repeats *flagRepeats, run func(args []string) error, args []string) error {
 	if err := fs.Parse(args); err != nil {
-		return c.handleParseError(path, fs, err)
+		return c.handleParseError(path, fs, repeats, err)
 	}
 	rest := fs.Args()
 	if len(rest) == 0 {
@@ -123,11 +126,11 @@ func (c *Cmd) executeGroup(path string, fs *flag.FlagSet, run func(args []string
 	return fmt.Errorf("unknown subcommand %q, %s", rest[0], c.usage(path, fs))
 }
 
-func (c *Cmd) executeLeaf(path string, fs *flag.FlagSet, run func(args []string) error, args []string) error {
+func (c *Cmd) executeLeaf(path string, fs *flag.FlagSet, repeats *flagRepeats, run func(args []string) error, args []string) error {
 	var positionals []string
 	for {
 		if err := fs.Parse(args); err != nil {
-			return c.handleParseError(path, fs, err)
+			return c.handleParseError(path, fs, repeats, err)
 		}
 		rest := fs.Args()
 		consumed := len(args) - len(rest)
@@ -151,7 +154,10 @@ func (c *Cmd) executeLeaf(path string, fs *flag.FlagSet, run func(args []string)
 	return c.runOrPrintHelp(path, fs, run, positionals)
 }
 
-func (c *Cmd) handleParseError(path string, fs *flag.FlagSet, err error) error {
+func (c *Cmd) handleParseError(path string, fs *flag.FlagSet, repeats *flagRepeats, err error) error {
+	if repeats.err != nil {
+		return repeats.err
+	}
 	if errors.Is(err, flag.ErrHelp) {
 		c.printHelp(path, fs)
 		return nil
@@ -251,19 +257,21 @@ type optionLine struct {
 func optionLines(fs *flag.FlagSet) []*optionLine {
 	var lines []*optionLine
 	fs.VisitAll(func(current *flag.Flag) {
+		value := unwrapOnce(current.Value)
 		for _, line := range lines {
-			if isSameValue(line.value, current.Value) {
+			if isSameValue(line.value, value) {
 				line.names = append(line.names, current.Name)
 				return
 			}
 		}
-		lines = append(lines, &optionLine{value: current.Value, names: []string{current.Name}})
+		lines = append(lines, &optionLine{value: value, names: []string{current.Name}})
 	})
 
 	for _, line := range lines {
 		// A short alias sorts first, as in "-f, --force".
 		slices.SortStableFunc(line.names, func(left, right string) int { return len(left) - len(right) })
-		placeholder, usage := flag.UnquoteUsage(fs.Lookup(line.names[len(line.names)-1]))
+		// The placeholder comes from the type of the value, which a wrapper hides.
+		placeholder, usage := flag.UnquoteUsage(&flag.Flag{Usage: fs.Lookup(line.names[len(line.names)-1]).Usage, Value: line.value})
 		labels := make([]string, len(line.names))
 		for index, name := range line.names {
 			labels[index] = flagLabel(name)
@@ -302,6 +310,91 @@ func alias(fs *flag.FlagSet, short, long string) {
 		panic(fmt.Sprintf("alias %q names undefined flag %q", short, long))
 	}
 	fs.Var(longFlag.Value, short, longFlag.Usage)
+}
+
+// flagRepeats holds the error of the first flag given more than once in the
+// args of one command.
+type flagRepeats struct {
+	err error
+}
+
+// onceValue wraps the flag.Value of one flag name and refuses a second Set.
+// The names of one value share one state, so a flag and its alias count as
+// one flag.
+type onceValue struct {
+	flag.Value
+	name    string
+	state   *onceState
+	repeats *flagRepeats
+}
+
+// onceState records the names one flag.Value was given under.
+type onceState struct {
+	value flag.Value
+	names []string
+	usage string
+}
+
+// refuseRepeats makes every flag of fs refuse a second value and returns the
+// record of the refused flag.
+func refuseRepeats(fs *flag.FlagSet) *flagRepeats {
+	repeats := &flagRepeats{}
+	var states []*onceState
+	fs.VisitAll(func(current *flag.Flag) {
+		var state *onceState
+		for _, candidate := range states {
+			if isSameValue(candidate.value, current.Value) {
+				state = candidate
+				break
+			}
+		}
+		if state == nil {
+			state = &onceState{value: current.Value, usage: current.Usage}
+			states = append(states, state)
+		}
+		current.Value = &onceValue{Value: current.Value, name: current.Name, state: state, repeats: repeats}
+	})
+	return repeats
+}
+
+func (o *onceValue) Set(value string) error {
+	isRepeat := len(o.state.names) > 0
+	if !slices.Contains(o.state.names, o.name) {
+		o.state.names = append(o.state.names, o.name)
+	}
+	if isRepeat {
+		o.repeats.err = o.state.repeatError()
+		return o.repeats.err
+	}
+	return o.Value.Set(value)
+}
+
+// IsBoolFlag lets a wrapped bool flag go without a value.
+func (o *onceValue) IsBoolFlag() bool {
+	boolValue, ok := o.Value.(interface{ IsBoolFlag() bool })
+	return ok && boolValue.IsBoolFlag()
+}
+
+func (s *onceState) repeatError() error {
+	labels := make([]string, len(s.names))
+	for index, name := range s.names {
+		labels[index] = flagLabel(name)
+	}
+	message := labels[0] + " is given more than once"
+	if len(labels) > 1 {
+		message = strings.Join(labels, " and ") + " are one flag, given more than once"
+	}
+	if strings.Contains(strings.ToLower(s.usage), listFlagMarker) {
+		message += ", give its comma-separated values in one flag"
+	}
+	return errors.New(message)
+}
+
+func unwrapOnce(value flag.Value) flag.Value {
+	if once, ok := value.(*onceValue); ok {
+		return once.Value
+	}
+	return value
 }
 
 // optionalString is a string flag.Value that stays nil until the flag is set.

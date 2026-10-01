@@ -16,6 +16,7 @@ type invocation struct {
 	isForce bool
 	title   string
 	ticket  *string
+	labels  string
 }
 
 // newFakeTree builds a tree of a root with a --verbose flag, a task group
@@ -45,8 +46,9 @@ func newFakeTree(calls *[]invocation) *Cmd {
 							title := fs.String("title", "", "Delete only when the task has this `title`")
 							ticket := &optionalString{}
 							fs.Var(ticket, "ticket", "Delete only when the task has this `ticket`, or none when empty")
+							labels := fs.String("labels", "", "Comma-separated `labels` the task must have")
 							return func(args []string) error {
-								*calls = append(*calls, invocation{command: "rm", args: args, isForce: *isForce, title: *title, ticket: ticket.value})
+								*calls = append(*calls, invocation{command: "rm", args: args, isForce: *isForce, title: *title, ticket: ticket.value, labels: *labels})
 								return nil
 							}
 						},
@@ -122,6 +124,11 @@ func TestExecute_Dispatches(t *testing.T) {
 			args: []string{"task", "rm", "42", "--ticket", "R-7"},
 			want: invocation{command: "rm", args: []string{"42"}, ticket: stringPointer("R-7")},
 		},
+		{
+			name: "each flag given once",
+			args: []string{"task", "rm", "--title", "x", "42", "-f", "--labels", "a,b"},
+			want: invocation{command: "rm", args: []string{"42"}, isForce: true, title: "x", labels: "a,b"},
+		},
 	}
 
 	for _, testCase := range cases {
@@ -139,7 +146,7 @@ func TestExecute_Dispatches(t *testing.T) {
 			}
 			got := calls[0]
 			if got.command != testCase.want.command || !slices.Equal(got.args, testCase.want.args) ||
-				got.isForce != testCase.want.isForce || got.title != testCase.want.title {
+				got.isForce != testCase.want.isForce || got.title != testCase.want.title || got.labels != testCase.want.labels {
 				t.Errorf("expected %+v, got %+v", testCase.want, got)
 			}
 			if (got.ticket == nil) != (testCase.want.ticket == nil) ||
@@ -225,6 +232,7 @@ func TestExecute_RendersHelp(t *testing.T) {
 				"\n" +
 				"Options:\n" +
 				"  -f, --force        Skip the confirmation\n" +
+				"  --labels <labels>  Comma-separated labels the task must have\n" +
 				"  --ticket <ticket>  Delete only when the task has this ticket, or none when empty\n" +
 				"  --title <title>    Delete only when the task has this title\n",
 		},
@@ -286,6 +294,36 @@ func TestExecute_RefusesBadArgs(t *testing.T) {
 			name:    "an unknown flag of the root",
 			args:    []string{"--quiet", "task"},
 			wantErr: "flag provided but not defined: -quiet, usage: app <subcommand>",
+		},
+		{
+			name:    "a string flag given twice",
+			args:    []string{"task", "rm", "42", "--title", "x", "--title", "y"},
+			wantErr: "--title is given more than once",
+		},
+		{
+			name:    "a list flag given twice",
+			args:    []string{"task", "rm", "42", "--labels", "a", "--labels", "b"},
+			wantErr: "--labels is given more than once, give its comma-separated values in one flag",
+		},
+		{
+			name:    "a bool flag given twice",
+			args:    []string{"task", "rm", "42", "--force", "--force"},
+			wantErr: "--force is given more than once",
+		},
+		{
+			name:    "a flag given with its alias",
+			args:    []string{"task", "rm", "42", "--force", "-f"},
+			wantErr: "--force and -f are one flag, given more than once",
+		},
+		{
+			name:    "a flag given before and after the positional",
+			args:    []string{"task", "rm", "--title", "x", "42", "--title", "y"},
+			wantErr: "--title is given more than once",
+		},
+		{
+			name:    "a root flag given twice",
+			args:    []string{"--verbose", "--verbose", "task"},
+			wantErr: "--verbose is given more than once",
 		},
 		{
 			name:    "an unknown subcommand",
