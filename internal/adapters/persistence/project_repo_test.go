@@ -48,13 +48,15 @@ func TestFileProjectRepository_DeleteProject(t *testing.T) {
 		slug     string
 		// wantSlugs are the project directories left once the delete is done,
 		// in name order.
-		wantSlugs []string
+		wantSlugs     []string
+		wantIsRemoved bool
 	}{
 		{
-			name:      "a project",
-			projects:  []testProject{{name: "Shop", slug: "shop"}, {name: "Blog", slug: "blog"}},
-			slug:      "shop",
-			wantSlugs: []string{"blog"},
+			name:          "a project",
+			projects:      []testProject{{name: "Shop", slug: "shop"}, {name: "Blog", slug: "blog"}},
+			slug:          "shop",
+			wantSlugs:     []string{"blog"},
+			wantIsRemoved: true,
 		},
 		{
 			name:      "a project that does not exist",
@@ -68,8 +70,12 @@ func TestFileProjectRepository_DeleteProject(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo, projectsDir := newTestRepo(t, testCase.projects...)
 
-			if err := repo.DeleteProject(testCase.slug); err != nil {
+			isRemoved, err := repo.DeleteProject(testCase.slug)
+			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if isRemoved != testCase.wantIsRemoved {
+				t.Errorf("isRemoved = %v, want %v", isRemoved, testCase.wantIsRemoved)
 			}
 
 			entries, err := os.ReadDir(projectsDir)

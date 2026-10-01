@@ -14,15 +14,16 @@ func taskRemove(taskID task.TaskID, isForced bool) error {
 		return err
 	}
 
-	return deps.tasks.RemoveTask(deps.localCfg.ProjectSlug, taskID, isForced, deps.drudger, confirmTaskRemoval)
+	confirm := func(removal task.Removal) (bool, error) { return confirmTaskRemoval(deps.out, removal) }
+	return deps.tasks.RemoveTask(deps.localCfg.ProjectSlug, taskID, isForced, deps.drudger, confirm)
 }
 
 // removalLinkLine lays out one task a removal unblocks or ungroups.
 const removalLinkLine = "  %s  %s"
 
 // confirmTaskRemoval asks the user whether a task should go.
-func confirmTaskRemoval(removal task.Removal) (bool, error) {
-	return ConfirmDeletion(describeRemoval(removal))
+func confirmTaskRemoval(out *printer, removal task.Removal) (bool, error) {
+	return ConfirmDeletion(out, describeRemoval(removal))
 }
 
 // describeRemoval names the task a removal deletes and the tasks it unblocks

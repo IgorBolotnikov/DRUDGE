@@ -30,7 +30,7 @@ func cleanup(isForced bool) error {
 			printNothingToCleanUp(service.DrudgeDir())
 			return nil
 		}
-		isConfirmed, err := ConfirmDeletion(service.DrudgeDir())
+		isConfirmed, err := ConfirmDeletion(newCommandPrinter(), service.DrudgeDir())
 		if err != nil {
 			return err
 		}

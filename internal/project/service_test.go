@@ -9,7 +9,8 @@ import (
 
 // fakeProjectRepo holds projects in memory.
 type fakeProjectRepo struct {
-	projects []*Project
+	projects  []*Project
+	deleteErr error
 }
 
 func (repo *fakeProjectRepo) CreateProject(dto CreateProjectDto) (*Project, error) {
@@ -32,16 +33,17 @@ func (repo *fakeProjectRepo) RenameProject(slug string, newName string) error {
 	return errors.New("project not found")
 }
 
-var errFakeProjectNotFound = errors.New("project not found")
-
-func (repo *fakeProjectRepo) DeleteProject(slug string) error {
+func (repo *fakeProjectRepo) DeleteProject(slug string) (isRemoved bool, err error) {
+	if repo.deleteErr != nil {
+		return false, repo.deleteErr
+	}
 	for index, candidate := range repo.projects {
 		if candidate.Slug == slug {
 			repo.projects = append(repo.projects[:index], repo.projects[index+1:]...)
-			return nil
+			return true, nil
 		}
 	}
-	return errFakeProjectNotFound
+	return false, nil
 }
 
 // fakeProgress records the events a service reports.
@@ -325,33 +327,68 @@ func TestProjectService_RenameProject(t *testing.T) {
 }
 
 func TestProjectService_DeleteProject(t *testing.T) {
-	repo := &fakeProjectRepo{projects: renamedProjects()}
-	service := NewProjectService(repo, nil, nil, &fakeProgress{})
+	errDisk := errors.New("disk is full")
 
-	if err := service.DeleteProject("demo"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	cases := []struct {
+		name      string
+		project   *Project
+		deleteErr error
+		wantEvent any
+		wantErr   error
+		wantSlugs []string
+	}{
+		{
+			name:      "a project",
+			project:   &Project{Name: "Shop", Slug: "demo"},
+			wantEvent: ProjectRemoved{Slug: "demo", Name: "Shop"},
+			wantSlugs: []string{"blog"},
+		},
+		{
+			name:      "a project that is already gone",
+			project:   &Project{Name: "Wiki", Slug: "wiki"},
+			wantEvent: ProjectAlreadyGone{Slug: "wiki"},
+			wantSlugs: []string{"demo", "blog"},
+		},
+		{
+			name:      "a repository that fails",
+			project:   &Project{Name: "Shop", Slug: "demo"},
+			deleteErr: errDisk,
+			wantErr:   errDisk,
+			wantSlugs: []string{"demo", "blog"},
+		},
 	}
 
-	remaining, err := repo.ListProjects()
-	if err != nil {
-		t.Fatalf("could not list projects: %v", err)
-	}
-	for _, candidate := range remaining {
-		if candidate.Slug == "demo" {
-			t.Errorf("expected project demo to be gone, got %+v", remaining)
-		}
-	}
-	if len(remaining) != 1 {
-		t.Errorf("expected the other project to stay, got %+v", remaining)
-	}
-}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := &fakeProjectRepo{projects: renamedProjects(), deleteErr: testCase.deleteErr}
+			progress := &fakeProgress{}
+			service := NewProjectService(repo, nil, nil, progress)
 
-func TestProjectService_DeleteProject_ReturnsTheErrorOfTheRepository(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, &fakeProgress{})
+			err := service.DeleteProject(testCase.project)
 
-	err := service.DeleteProject("wiki")
-	if !errors.Is(err, errFakeProjectNotFound) {
-		t.Fatalf("expected the error of the repository, got %v", err)
+			var wantEvents []any
+			if testCase.wantErr != nil {
+				if !errors.Is(err, testCase.wantErr) {
+					t.Fatalf("expected the error %v, got %v", testCase.wantErr, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				wantEvents = []any{testCase.wantEvent}
+			}
+			if !reflect.DeepEqual(progress.events, wantEvents) {
+				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
+			}
+
+			var gotSlugs []string
+			for _, stored := range repo.projects {
+				gotSlugs = append(gotSlugs, stored.Slug)
+			}
+			if !reflect.DeepEqual(gotSlugs, testCase.wantSlugs) {
+				t.Errorf("expected the projects %v, got %v", testCase.wantSlugs, gotSlugs)
+			}
+		})
 	}
 }
 

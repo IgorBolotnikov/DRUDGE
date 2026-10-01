@@ -60,6 +60,10 @@ func (p *cliProgress) Report(event any) {
 		// about its repositories.
 	case project.ProjectRenamed:
 		p.out.done("Renamed project %s from %q to %q", event.Slug, event.OldName, event.NewName)
+	case project.ProjectRemoved:
+		p.out.done("Removed project %s", event.Name)
+	case project.ProjectAlreadyGone:
+		p.out.skip("Project %s was already gone", event.Slug)
 	case release.DownloadStarted:
 		p.log.Info("Downloading %s (%s)", event.ArchiveName, event.Version)
 	default:

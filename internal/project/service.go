@@ -28,6 +28,17 @@ type ProjectRenamed struct {
 	NewName string
 }
 
+// ProjectRemoved reports a project DeleteProject removed.
+type ProjectRemoved struct {
+	Slug string
+	Name string
+}
+
+// ProjectAlreadyGone reports a project DeleteProject found nothing of.
+type ProjectAlreadyGone struct {
+	Slug string
+}
+
 func NewProjectService(repo ProjectRepository, linker DirectoryLinker, gitOps git.Operations, progress common.Progress) *ProjectService {
 	return &ProjectService{repo: repo, linker: linker, gitOps: gitOps, progress: progress}
 }
@@ -142,10 +153,19 @@ func (p *ProjectService) RenameProject(slugOrName string, newName string) error 
 	return nil
 }
 
-// DeleteProject removes the project with the slug slug. It does no lookup by
-// name, so a caller holding a name resolves it with LookupProject first.
-func (p *ProjectService) DeleteProject(slug string) error {
-	return p.repo.DeleteProject(slug)
+// DeleteProject removes a project the caller found with LookupProject. It
+// reports ProjectAlreadyGone when the project was removed in between.
+func (p *ProjectService) DeleteProject(proj *Project) error {
+	isRemoved, err := p.repo.DeleteProject(proj.Slug)
+	if err != nil {
+		return err
+	}
+	if !isRemoved {
+		p.progress.Report(ProjectAlreadyGone{Slug: proj.Slug})
+		return nil
+	}
+	p.progress.Report(ProjectRemoved{Slug: proj.Slug, Name: proj.Name})
+	return nil
 }
 
 func findProject(projects []*Project, slugOrName string) (*Project, error) {

@@ -107,6 +107,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  `✓ Renamed project demo from "Shop" to "Store"` + "\n",
 		},
 		{
+			name:  "a project removed",
+			event: project.ProjectRemoved{Slug: "demo", Name: "Shop"},
+			want:  "✓ Removed project Shop\n",
+		},
+		{
+			name:  "a project already gone",
+			event: project.ProjectAlreadyGone{Slug: "demo"},
+			want:  "· Project demo was already gone\n",
+		},
+		{
 			name:  "a download started",
 			event: release.DownloadStarted{ArchiveName: "drg_linux_amd64.tar.gz", Version: "v0.2.0"},
 			want:  "Downloading drg_linux_amd64.tar.gz (v0.2.0)\n",

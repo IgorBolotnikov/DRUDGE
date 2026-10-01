@@ -49,26 +49,27 @@ func (r *FileProjectRepository) CreateProject(dto project.CreateProjectDto) (*pr
 	return proj, nil
 }
 
-func (r *FileProjectRepository) DeleteProject(slug string) error {
+// DeleteProject removes the directory of a project and reports whether there
+// was one to remove.
+func (r *FileProjectRepository) DeleteProject(slug string) (isRemoved bool, err error) {
 	projectDir, err := r.resolveProjectDir(slug)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	isPresent, err := common.Exists(projectDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !isPresent {
-		fmt.Printf("Nothing to delete, %q does not exist\n", slug)
-		return nil
+		return false, nil
 	}
 
 	if err := common.RemoveAll(projectDir); err != nil {
-		return fmt.Errorf("could not remove project %q: %w", slug, err)
+		return false, fmt.Errorf("could not remove project %q: %w", slug, err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // RenameProject writes a new name into the project file of a project. The

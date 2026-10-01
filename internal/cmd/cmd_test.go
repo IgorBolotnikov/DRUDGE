@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -398,6 +400,59 @@ func TestNewRoot_PrintsHelp(t *testing.T) {
 					t.Errorf("expected the commands in declaration order, got:\n%s", output)
 				}
 				lastAt = at
+			}
+		})
+	}
+}
+
+func TestConfirmDeletion(t *testing.T) {
+	cases := []struct {
+		name            string
+		answer          string
+		wantIsConfirmed bool
+	}{
+		{name: "a yes", answer: "y\n", wantIsConfirmed: true},
+		{name: "a capital yes", answer: "Y\n", wantIsConfirmed: true},
+		{name: "a no", answer: "n\n", wantIsConfirmed: false},
+		{name: "an empty answer", answer: "\n", wantIsConfirmed: false},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			answerPath := filepath.Join(t.TempDir(), "answer")
+			if err := os.WriteFile(answerPath, []byte(testCase.answer), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			answer, err := os.Open(answerPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer answer.Close()
+			originalStdin := os.Stdin
+			os.Stdin = answer
+			defer func() { os.Stdin = originalStdin }()
+
+			var isConfirmed bool
+			var stdout string
+			stderr := captureStderr(func() {
+				stdout = captureOutput(func() {
+					isConfirmed, err = ConfirmDeletion(newCommandPrinter(), "project Shop")
+				})
+			})
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if isConfirmed != testCase.wantIsConfirmed {
+				t.Errorf("isConfirmed = %v, want %v", isConfirmed, testCase.wantIsConfirmed)
+			}
+			if wantStderr := "! This will permanently delete project Shop\n"; stderr != wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, wantStderr)
+			}
+			if wantStdout := "Are you sure? [y/N]: "; stdout != wantStdout {
+				t.Errorf("stdout = %q, want %q", stdout, wantStdout)
 			}
 		})
 	}

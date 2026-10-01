@@ -348,10 +348,14 @@ func (o *optionalInt) Set(text string) error {
 	return nil
 }
 
-// ConfirmDeletion asks the user to confirm deleting a resource and reports
-// what they answered. Anything but y or Y calls the deletion off.
-func ConfirmDeletion(resource string) (isConfirmed bool, err error) {
-	fmt.Printf("This will permanently delete %s\nAre you sure? [y/N]: ", resource)
+const deletionQuestion = "Are you sure? [y/N]: "
+
+// ConfirmDeletion warns that a resource is about to be deleted, asks the user
+// to confirm and reports what they answered. Anything but y or
+// Y calls the deletion off.
+func ConfirmDeletion(out *printer, resource string) (isConfirmed bool, err error) {
+	out.warn("This will permanently delete %s", resource)
+	out.ask(deletionQuestion)
 	var response string
 	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
 		return false, fmt.Errorf("could not read confirmation: %w", err)

@@ -154,6 +154,14 @@ func (p *printer) warn(format string, args ...any) {
 	p.hasPrinted = true
 }
 
+// ask prints a question at column 0 to stdout and leaves the cursor at the
+// end of it for the answer.
+func (p *printer) ask(question string) {
+	p.closeGroup()
+	fmt.Print(question)
+	p.hasPrinted = true
+}
+
 // result closes the group and prints the outcome at column 0.
 func (p *printer) result(format string, args ...any) {
 	p.closeGroup()

@@ -113,7 +113,8 @@ func repositoryLines(resolved []project.ResolvedRepository) []string {
 }
 
 func projectDelete(lookup string, isForced bool) error {
-	svc, err := newProjectService(newCommandPrinter())
+	out := newCommandPrinter()
+	svc, err := newProjectService(out)
 	if err != nil {
 		return err
 	}
@@ -126,21 +127,19 @@ func projectDelete(lookup string, isForced bool) error {
 	name := proj.Name
 
 	if !isForced {
-		isConfirmed, err := ConfirmDeletion(fmt.Sprintf("project %q", name))
+		isConfirmed, err := ConfirmDeletion(out, fmt.Sprintf("project %s", name))
 		if err != nil {
 			return err
 		}
 		if !isConfirmed {
-			fmt.Println("Aborted")
+			out.skip("Left project %s alone", name)
 			return nil
 		}
 	}
 
-	if err := svc.DeleteProject(proj.Slug); err != nil {
+	if err := svc.DeleteProject(proj); err != nil {
 		return fmt.Errorf("could not delete project %q: %w", name, err)
 	}
-
-	fmt.Printf("Removed project %q\n", name)
 	return nil
 }
 

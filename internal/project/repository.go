@@ -13,7 +13,7 @@ type ProjectRepository interface {
 	CreateProject(dto CreateProjectDto) (*Project, error)
 	ListProjects() ([]*Project, error)
 	RenameProject(slug string, newName string) error
-	DeleteProject(slug string) error
+	DeleteProject(slug string) (isRemoved bool, err error)
 }
 
 // DirectoryLinker links the current directory to the project with the slug
