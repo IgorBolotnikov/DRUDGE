@@ -31,7 +31,6 @@ func FormatTaskCount(count int) string {
 
 type TaskService struct {
 	repo          TaskRepository
-	log           *common.Logger
 	progress      common.Progress
 	defaultStatus TaskStatus
 }
@@ -43,8 +42,8 @@ type TaskCreated struct {
 
 // NewTaskService builds a task service. defaultStatus is the status CreateTask
 // gives a task that names none, and draft applies when it is empty too.
-func NewTaskService(repo TaskRepository, log *common.Logger, progress common.Progress, defaultStatus TaskStatus) *TaskService {
-	return &TaskService{repo: repo, log: log, progress: progress, defaultStatus: defaultStatus}
+func NewTaskService(repo TaskRepository, progress common.Progress, defaultStatus TaskStatus) *TaskService {
+	return &TaskService{repo: repo, progress: progress, defaultStatus: defaultStatus}
 }
 
 func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {

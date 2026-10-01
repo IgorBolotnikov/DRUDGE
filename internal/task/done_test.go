@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 func TestTaskService_MarkDone(t *testing.T) {
@@ -34,7 +32,7 @@ func TestTaskService_MarkDone(t *testing.T) {
 			stored.Status = testCase.status
 			repo := &fakeTaskRepo{tasks: []*Task{stored}, locked: map[TaskID]bool{stored.ID: testCase.isLocked}}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), progress, StatusDraft)
+			service := NewTaskService(repo, progress, StatusDraft)
 
 			marked, err := service.MarkDone(testProjectSlug, testCase.id)
 

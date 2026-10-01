@@ -71,6 +71,21 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "Ungrouped 2 tasks that belonged to it\n",
 		},
 		{
+			name:       "a branch cleanup after a removal failed",
+			event:      task.BranchesCleanupFailed{TaskID: "3f9a1c2e", Err: errors.New("git said no")},
+			wantStderr: "! Task 3f9a1c2e is removed, but the branches it left could not be cleaned up: git said no\n",
+		},
+		{
+			name:       "a linked task that could not be written",
+			event:      task.TaskUnlinkFailed{RemovedID: "3f9a1c2e", LinkedID: "4f2a1b3c", Err: errors.New("disk full")},
+			wantStderr: "! Task 3f9a1c2e is removed, but task 4f2a1b3c still names it: disk full\n",
+		},
+		{
+			name:       "a linked task another command holds",
+			event:      task.TaskUnlinkFailed{RemovedID: "3f9a1c2e", LinkedID: "4f2a1b3c", IsHeld: true},
+			wantStderr: "! Task 3f9a1c2e is removed, but another drudge command is working on task 4f2a1b3c, which still names it\n",
+		},
+		{
 			name:  "a task marked done",
 			event: task.TaskMarkedDone{Task: sampleTask},
 			want:  `Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login is "todo"` + "\n",

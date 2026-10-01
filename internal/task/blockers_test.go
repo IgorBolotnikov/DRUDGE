@@ -5,8 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Tasks of a backlog the blocker tests link together. editableTask is the one
@@ -142,7 +140,7 @@ func TestTaskService_EditTask_BlockedBy(t *testing.T) {
 			stored := editableTask()
 			stored.BlockedBy = testCase.storedBlockers
 			repo := &fakeTaskRepo{tasks: append([]*Task{stored}, testCase.others...)}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			changes := EditTaskDto{BlockedBy: &testCase.blockedBy}
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, changes, &fakeSessionGuard{})
@@ -220,7 +218,7 @@ func TestTaskService_CreateTask_BlockedBy(t *testing.T) {
 				backlogTask(endpointTaskID, "Add the endpoint", StatusTodo),
 				backlogTask(docsTaskID, "Write the docs", StatusTodo),
 			}}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			created, err := service.CreateTask(CreateTaskDto{
 				Title:       "Wire the service",
@@ -282,7 +280,7 @@ func TestTaskService_Blockers(t *testing.T) {
 			dependent := editableTask()
 			dependent.BlockedBy = testCase.blockedBy
 			repo := &fakeTaskRepo{tasks: []*Task{dependent, migration, docs}}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			blockers, err := service.Blockers(testProjectSlug, dependent)
 			if err != nil {
@@ -450,7 +448,7 @@ func TestTaskService_EditTask_BlockAndUnblock(t *testing.T) {
 				others = backlog()
 			}
 			repo := &fakeTaskRepo{tasks: append([]*Task{stored}, others...)}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, testCase.changes, &fakeSessionGuard{})
 
@@ -541,7 +539,7 @@ func TestTaskService_Unblocked(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			finished := backlogTask(migrationTaskID, "Add the migration", StatusDone)
 			repo := &fakeTaskRepo{tasks: append([]*Task{finished}, testCase.others...)}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			unblocked, err := service.Unblocked(testProjectSlug, finished)
 			if err != nil {

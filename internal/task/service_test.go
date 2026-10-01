@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 type mockRepo struct {
@@ -98,7 +96,7 @@ func TestTaskService_UpdateTask(t *testing.T) {
 				wasCalled = true
 				return testCase.repoErr
 			}}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			err := service.UpdateTask("test", testCase.id, func(taskToUpdate *Task) error {
 				return nil
@@ -122,7 +120,7 @@ func TestTaskService_TryUpdateTask_RefusesAnEmptyID(t *testing.T) {
 		t.Error("expected the repository to be left alone")
 		return nil
 	}}
-	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	isStored, err := service.TryUpdateTask("test", "", func(taskToUpdate *Task) error {
 		return nil
@@ -137,7 +135,7 @@ func TestTaskService_TryUpdateTask_RefusesAnEmptyID(t *testing.T) {
 
 func TestTaskService_CreateTask_MissingTitle(t *testing.T) {
 	repo := &mockRepo{}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	svc := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := svc.CreateTask(CreateTaskDto{
 		ProjectSlug: "test",
@@ -151,7 +149,7 @@ func TestTaskService_CreateTask_MissingTitle(t *testing.T) {
 
 func TestTaskService_CreateTask_MissingProjectSlug(t *testing.T) {
 	repo := &mockRepo{}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	svc := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := svc.CreateTask(CreateTaskDto{
 		Title:  "Fix bug",
@@ -186,7 +184,7 @@ func TestTaskService_CreateTask_PicksTheStatus(t *testing.T) {
 					return &Task{ID: "abc123", Title: dto.Title}, nil
 				},
 			}
-			svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, testCase.defaultStatus)
+			svc := NewTaskService(repo, &fakeProgress{}, testCase.defaultStatus)
 
 			_, err := svc.CreateTask(CreateTaskDto{
 				Title:       "Fix bug",
@@ -212,7 +210,7 @@ func TestTaskService_CreateTask_DefaultsCreatedAt(t *testing.T) {
 			return &Task{ID: "abc123", Title: dto.Title}, nil
 		},
 	}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	svc := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := svc.CreateTask(CreateTaskDto{
 		Title:       "Fix bug",
@@ -235,7 +233,7 @@ func TestTaskService_CreateTask_PreservesExplicitCreatedAt(t *testing.T) {
 			return &Task{ID: "abc123", Title: dto.Title}, nil
 		},
 	}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	svc := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := svc.CreateTask(CreateTaskDto{
 		Title:       "Fix bug",
@@ -256,7 +254,7 @@ func TestTaskService_CreateTask_ForwardsToRepo(t *testing.T) {
 		},
 	}
 	progress := &fakeProgress{}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), progress, StatusDraft)
+	svc := NewTaskService(repo, progress, StatusDraft)
 
 	result, err := svc.CreateTask(CreateTaskDto{
 		Title:       "Fix login",
@@ -283,7 +281,7 @@ func TestTaskService_CreateTask_WrapsRepoError(t *testing.T) {
 			return nil, repoErr
 		},
 	}
-	svc := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	svc := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := svc.CreateTask(CreateTaskDto{
 		Title:       "Fix bug",
@@ -319,7 +317,7 @@ func TestTaskService_GetTask_HandsTheIDToTheRepository(t *testing.T) {
 				asked = id
 				return found, nil
 			}}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			got, err := service.GetTask("demo", testCase.id)
 			if err != nil {
@@ -341,7 +339,7 @@ func TestTaskService_GetTask_RefusesAnEmptyID(t *testing.T) {
 		wasCalled = true
 		return nil, nil
 	}}
-	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 	_, err := service.GetTask("demo", "")
 	if !errors.Is(err, ErrNoTaskID) {
@@ -385,7 +383,7 @@ func TestTaskService_GetTask_SurfacesTheLookupFailure(t *testing.T) {
 			repo := &mockRepo{findTaskFn: func(string, string) (*Task, error) {
 				return nil, testCase.lookupErr
 			}}
-			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
 
 			_, err := service.GetTask("demo", "006684e3")
 			if err == nil {

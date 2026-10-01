@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 func TestTaskService_NextTask(t *testing.T) {
@@ -123,7 +121,7 @@ func TestTaskService_NextTask(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, &fakeProgress{}, StatusDraft)
 
 			pick, err := service.NextTask(testProjectSlug)
 			if err != nil {

@@ -44,6 +44,10 @@ func (p *cliProgress) Report(event any) {
 		p.log.Info("Took it off the blockers of %s", task.FormatTaskCount(event.Count))
 	case task.TasksUngrouped:
 		p.log.Info("Ungrouped %s that belonged to it", task.FormatTaskCount(event.Count))
+	case task.BranchesCleanupFailed:
+		p.log.Warn("Task %s is removed, but the branches it left could not be cleaned up: %v", event.TaskID, event.Err)
+	case task.TaskUnlinkFailed:
+		p.warnTaskUnlinkFailed(event)
 	case task.TaskMarkedDone:
 		p.log.Info("Task [%s] %s is %q", event.Task.ID, event.Task.Title, event.Task.Status)
 	case task.TaskEdited:
@@ -57,6 +61,14 @@ func (p *cliProgress) Report(event any) {
 	default:
 		p.reportDrudger(event)
 	}
+}
+
+func (p *cliProgress) warnTaskUnlinkFailed(event task.TaskUnlinkFailed) {
+	if event.IsHeld {
+		p.log.Warn("Task %s is removed, but another drudge command is working on task %s, which still names it", event.RemovedID, event.LinkedID)
+		return
+	}
+	p.log.Warn("Task %s is removed, but task %s still names it: %v", event.RemovedID, event.LinkedID, event.Err)
 }
 
 // reportDrudger renders the events the drudger service reports.

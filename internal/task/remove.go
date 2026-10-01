@@ -62,6 +62,22 @@ type TasksUngrouped struct {
 	Count int
 }
 
+// BranchesCleanupFailed reports a removed task whose branches could not be
+// cleaned up. The removal stands.
+type BranchesCleanupFailed struct {
+	TaskID TaskID
+	Err    error
+}
+
+// TaskUnlinkFailed reports a task that still names a removed task. IsHeld says
+// another drudge command holds the linked task, and Err is nil then.
+type TaskUnlinkFailed struct {
+	RemovedID TaskID
+	LinkedID  TaskID
+	IsHeld    bool
+	Err       error
+}
+
 // RemoveTask deletes one task and the run directory of its Sessions, then
 // takes the task off the blockers of its dependents and ungroups its children.
 // The id may be a prefix. A task whose agent is still working is refused and
@@ -113,7 +129,7 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 	// The task file is already gone. A cleanup that fails is reported and the
 	// removal stands.
 	if err := sessions.RemoveEmptyBranches(found); err != nil {
-		service.log.Error("Task %s is removed, but the branches it left could not be cleaned up: %v", found.ID, err)
+		service.progress.Report(BranchesCleanupFailed{TaskID: found.ID, Err: err})
 	}
 	service.unlink(projectSlug, found.ID, dependents, children)
 	return nil
@@ -165,11 +181,11 @@ func (service *TaskService) unlink(projectSlug string, removedID TaskID, depende
 			return nil
 		})
 		if err != nil {
-			service.log.Error("Task %s is removed, but task %s still names it: %v", removedID, linkedTask.ID, err)
+			service.progress.Report(TaskUnlinkFailed{RemovedID: removedID, LinkedID: linkedTask.ID, Err: err})
 			continue
 		}
 		if !isStored {
-			service.log.Error("Task %s is removed, but another drudge command is working on task %s, which still names it", removedID, linkedTask.ID)
+			service.progress.Report(TaskUnlinkFailed{RemovedID: removedID, LinkedID: linkedTask.ID, IsHeld: true})
 			continue
 		}
 		if wasUnblocked {

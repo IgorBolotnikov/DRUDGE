@@ -48,7 +48,6 @@ const initCommand = "drg project init"
 var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp, task.StatusUnmerged}
 
 type DrudgerService struct {
-	logger   *common.Logger
 	progress common.Progress
 	settings Settings
 	tasks    *task.TaskService
@@ -65,9 +64,8 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(logger *common.Logger, progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
+func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
 	return &DrudgerService{
-		logger:           logger,
 		progress:         progress,
 		settings:         settings,
 		tasks:            tasks,
