@@ -69,7 +69,7 @@ func projectInit(args []string) error {
 		return err
 	}
 
-	log := newLogger()
+	log := NewLogger()
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 }
 
 func projectDelete(lookup string, isForced bool) error {
-	log := newLogger()
+	log := NewLogger()
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err
@@ -148,7 +148,7 @@ func projectDelete(lookup string, isForced bool) error {
 func projectRename(args []string) error {
 	oldName, newName := args[0], args[1]
 
-	log := newLogger()
+	log := NewLogger()
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func projectList(flags pageFlags) error {
 		return err
 	}
 
-	log := newLogger()
+	log := NewLogger()
 	svc, err := newProjectService(log)
 	if err != nil {
 		return err

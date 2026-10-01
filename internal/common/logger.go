@@ -39,7 +39,8 @@ func (l *Logger) Info(format string, args ...any) {
 	fmt.Printf("%s\n", msg)
 }
 
-// Error prints an error-level message to stderr.
+// Error prints an error-level message to stderr. The top of the program calls
+// it with the error a command returned, and the process exits after it.
 func (l *Logger) Error(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if l.prefix != "" {

@@ -21,9 +21,9 @@ type commandDeps struct {
 	drudger   *drudger.DrudgerService
 }
 
-// newLogger builds the logger of a command. Its errors carry the error label
+// NewLogger builds the logger of a command. Its errors carry the error label
 // of the loaded theme.
-func newLogger() *common.Logger {
+func NewLogger() *common.Logger {
 	return common.NewLogger("", theme.LoadOrDefault().ErrorLabel())
 }
 
@@ -38,7 +38,7 @@ func newCommandDeps() (*commandDeps, error) {
 		return nil, err
 	}
 
-	log := newLogger()
+	log := NewLogger()
 	progress := newCLIProgress(log)
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	tasks := task.NewTaskService(repo, log, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
