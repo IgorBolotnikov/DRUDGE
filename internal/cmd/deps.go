@@ -34,10 +34,22 @@ func newThemedLogger(palette *theme.Theme) *common.Logger {
 	return common.NewLogger("", common.Labels{Error: palette.ErrorLabel(), Warn: palette.WarnLabel()})
 }
 
-// newCommandPrinter builds the printer of a command over the loaded theme.
+// newCommandPrinter builds the printer of a command over the loaded theme. A
+// theme that fails to load leaves the default theme. The printer warns about
+// that and about every override the theme skipped.
 func newCommandPrinter() *printer {
-	palette := theme.LoadOrDefault()
-	return newPrinter(newThemedLogger(palette), palette)
+	palette, err := theme.Load("")
+	if err != nil {
+		palette = theme.NewTheme(theme.DefaultTheme())
+	}
+	out := newPrinter(newThemedLogger(palette), palette)
+	if err != nil {
+		out.warn("cannot load the theme, using the default one: %v", err)
+	}
+	for _, skipped := range palette.SkippedOverrides() {
+		out.warn("theme.json: %q is not a color for role %s, using the theme's own", skipped.Value, skipped.Role)
+	}
+	return out
 }
 
 func newCommandDeps() (*commandDeps, error) {

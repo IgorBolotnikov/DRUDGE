@@ -105,11 +105,10 @@ var healthLabelRoles = map[string]string{
 	agentRefusedLabel:       theme.RoleError,
 }
 
-// loadHealthColor returns a function that colors a health cell in the loaded
-// theme. It colors each label in the cell on its own and leaves the separator
-// plain.
-func loadHealthColor(log *common.Logger) func(text string) string {
-	labelColor := loadRoleColor(log, "Drudger health", healthLabelRoles)
+// healthColor returns a function that colors a health cell in palette. It
+// colors each label in the cell on its own and leaves the separator plain.
+func healthColor(palette *theme.Theme) func(text string) string {
+	labelColor := roleColor(palette, healthLabelRoles)
 	return func(text string) string {
 		labels := strings.Split(text, healthPartSeparator)
 		for index, label := range labels {
@@ -134,13 +133,14 @@ func drudgerList(page pageFlags) error {
 		return err
 	}
 
-	printDrudgers(deps.log, deps.localCfg.ProjectSlug, listed, time.Now().UTC())
+	printDrudgers(deps.out, deps.localCfg.ProjectSlug, listed, time.Now().UTC())
 	return nil
 }
 
 // printDrudgers prints a page of the Drudgers of a project in the order given,
 // one row each, and its footer.
-func printDrudgers(log *common.Logger, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
+func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
+	log := out.log
 	if listed.TotalItems == 0 {
 		log.Info("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
 		return
@@ -150,7 +150,7 @@ func printDrudgers(log *common.Logger, projectSlug string, listed common.Page[*d
 		{Title: "SLOT", Width: 4},
 		{Title: "DRUDGER", Width: 40},
 		{Title: "TASK", Width: task.ShortIDLength},
-		{Title: "HEALTH", Width: healthColumnWidth, Color: loadHealthColor(log)},
+		{Title: "HEALTH", Width: healthColumnWidth, Color: healthColor(out.theme)},
 		{Title: "LAST CHECKED"},
 	}
 	rows := make([][]string, 0, len(listed.Items))
@@ -165,7 +165,7 @@ func printDrudgers(log *common.Logger, projectSlug string, listed common.Page[*d
 	}
 
 	printList(log, "Drudgers", listed.TotalItems, columns, rows)
-	printPageFooter(log, listed.Number, listed.TotalPages)
+	printPageFooter(out, listed.Number, listed.TotalPages)
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.

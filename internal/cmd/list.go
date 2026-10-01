@@ -36,15 +36,9 @@ type column struct {
 	Color func(text string) string
 }
 
-// loadRoleColor returns what wraps a text in the color of its role in roles,
-// taken from the loaded theme. A text with no role prints plain. A theme that
-// fails to load is logged with the subject and leaves every text plain.
-func loadRoleColor[Text ~string](log *common.Logger, subject string, roles map[Text]string) func(text string) string {
-	palette, err := theme.Load("")
-	if err != nil {
-		log.Warn("cannot color the %s: %v", subject, err)
-		return func(text string) string { return text }
-	}
+// roleColor returns what wraps a text in the color of its role in roles. A
+// text with no role prints plain.
+func roleColor[Text ~string](palette *theme.Theme, roles map[Text]string) func(text string) string {
 	return func(text string) string {
 		role, ok := roles[Text(text)]
 		if !ok {
@@ -174,7 +168,7 @@ func (flags *pageFlags) pageSize(fallback int) (int, error) {
 // printPageFooter prints which page of how many a listing shows, in the muted
 // color of the theme. Every page but the last names the flag that shows the
 // next one. A listing of one page prints nothing.
-func printPageFooter(log *common.Logger, number int, totalPages int) {
+func printPageFooter(out *printer, number int, totalPages int) {
 	if totalPages <= 1 {
 		return
 	}
@@ -182,14 +176,7 @@ func printPageFooter(log *common.Logger, number int, totalPages int) {
 	if number < totalPages {
 		footer += fmt.Sprintf(", see the next one with --%s %d", pageFlagName, number+1)
 	}
-
-	palette, err := theme.Load("")
-	if err != nil {
-		log.Warn("cannot color the page footer: %v", err)
-	} else {
-		footer = palette.Paint(theme.Stdout, theme.RoleMuted, footer)
-	}
-	log.Info("%s", footer)
+	out.log.Info("%s", out.theme.Paint(theme.Stdout, theme.RoleMuted, footer))
 }
 
 // fitColumn cuts a value short so it fits its column.

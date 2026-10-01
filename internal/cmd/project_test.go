@@ -306,3 +306,69 @@ func TestProjectList(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
+	cases := []struct {
+		name       string
+		themeFile  string
+		wantStderr string
+	}{
+		{
+			name:       "a valid theme warns nothing",
+			themeFile:  `{"theme": "nord", "overrides": {"error": "#ff0000"}}`,
+			wantStderr: "",
+		},
+		{
+			name:       "a bad override warns once",
+			themeFile:  `{"theme": "nord", "overrides": {"error": "#zzz"}}`,
+			wantStderr: "! theme.json: \"#zzz\" is not a color for role error, using the theme's own\n",
+		},
+		{
+			name:      "every bad override warns once",
+			themeFile: `{"theme": "nord", "overrides": {"warning": "yellow", "error": "#zzz"}}`,
+			wantStderr: "! theme.json: \"#zzz\" is not a color for role error, using the theme's own\n" +
+				"! theme.json: \"yellow\" is not a color for role warning, using the theme's own\n",
+		},
+		{
+			name:       "a theme that fails to load warns once",
+			themeFile:  `{"theme": "no-such-theme"}`,
+			wantStderr: "! cannot load the theme, using the default one: unknown theme \"no-such-theme\"\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("NO_COLOR", "1")
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
+				t.Fatal(err)
+			}
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, newTestCLIProgress())
+			captureOutput(func() {
+				for _, name := range []string{"alpha", "bravo"} {
+					if _, err := service.CreateProject(name); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+
+			var err error
+			stderr := captureStderr(func() {
+				captureOutput(func() {
+					err = NewRoot("v1.2.3").Execute([]string{ProjectCmd.Name, "list", "--page-size", "1"})
+				})
+			})
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr:\n%q\nwant:\n%q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}

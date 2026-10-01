@@ -3,8 +3,10 @@ package theme
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
+	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
@@ -26,8 +28,15 @@ const (
 // Theme holds the effective foreground color of each role after all merges.
 // It is immutable after creation.
 type Theme struct {
-	colors    map[string]color
-	isColorOn map[Stream]bool
+	colors           map[string]color
+	isColorOn        map[Stream]bool
+	skippedOverrides []SkippedOverride
+}
+
+// SkippedOverride is an override of the theme file that holds no valid color.
+type SkippedOverride struct {
+	Role  string
+	Value string
 }
 
 // Stream is an output stream the theme decides color for.
@@ -175,6 +184,12 @@ func (t *Theme) WarnLabel() string {
 	return t.Paint(Stderr, RoleWarning, warnLabel)
 }
 
+// SkippedOverrides returns the overrides Load skipped because their value is
+// not a color, sorted by role.
+func (t *Theme) SkippedOverrides() []SkippedOverride {
+	return slices.Clone(t.skippedOverrides)
+}
+
 // Hex returns the raw "#rrggbb" string for the given role, or an empty string
 // when the role is unknown or its color is not a hex color.
 func (t *Theme) Hex(role string) string {
@@ -224,6 +239,7 @@ func validHex(s string) bool {
 // Load constructs a Theme by loading the bundled palette, applying overrides
 // from the theme file, validating all color values, and returning the result.
 // If name is empty, falls back to the theme in the config file, then defaultTheme.
+// An override that is not a color is skipped and listed by SkippedOverrides.
 func Load(name string) (*Theme, error) {
 	home, err := common.HomeDir()
 	if err != nil {
@@ -261,16 +277,17 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
-	logger := common.NewLogger("theme", common.Labels{})
-	for role, color := range cfg.Overrides {
-		if !validHex(color) {
-			logger.Info("invalid hex color %q for role %q, falling back to palette default", color, role)
+	var skipped []SkippedOverride
+	for _, role := range slices.Sorted(maps.Keys(cfg.Overrides)) {
+		value := cfg.Overrides[role]
+		if !validHex(value) {
+			skipped = append(skipped, SkippedOverride{Role: role, Value: value})
 			continue
 		}
-		merged[role] = hexColor(color)
+		merged[role] = hexColor(value)
 	}
 
-	return &Theme{colors: merged, isColorOn: colorOnStreams()}, nil
+	return &Theme{colors: merged, isColorOn: colorOnStreams(), skippedOverrides: skipped}, nil
 }
 
 // LoadOrDefault is like Load with an empty name but returns the default theme

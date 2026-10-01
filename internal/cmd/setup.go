@@ -5,7 +5,6 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
-	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 var SetupCmd = &Cmd{
@@ -15,14 +14,13 @@ var SetupCmd = &Cmd{
 }
 
 func runSetup([]string) error {
-	palette := theme.LoadOrDefault()
-	printProjectName(palette)
+	out := newCommandPrinter()
+	printProjectName(out.theme)
 
 	service, err := newSetupService()
 	if err != nil {
 		return err
 	}
-	out := newPrinter(newThemedLogger(palette), palette)
 	out.header("Setting up DRUDGE at %s", service.DrudgeDir())
 	result, err := service.Setup()
 	if err != nil {

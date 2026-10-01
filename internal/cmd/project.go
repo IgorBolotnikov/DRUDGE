@@ -191,6 +191,6 @@ func projectList(flags pageFlags) error {
 	}
 
 	printList(log, "Projects", listed.TotalItems, columns, rows)
-	printPageFooter(log, listed.Number, listed.TotalPages)
+	printPageFooter(out, listed.Number, listed.TotalPages)
 	return nil
 }

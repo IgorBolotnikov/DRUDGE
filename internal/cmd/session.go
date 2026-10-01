@@ -30,7 +30,7 @@ var sessionStatusRoles = map[drudger.SessionStatus]string{
 // Session working on it.
 func printSessionStatus(out *printer, session *drudger.TaskSession) {
 	report := session.Report
-	statusColor := loadRoleColor(out.log, "Session status", sessionStatusRoles)
+	statusColor := roleColor(out.theme, sessionStatusRoles)
 
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", session.Task.ID, session.Task.Title),

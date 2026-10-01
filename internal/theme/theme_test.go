@@ -3,6 +3,7 @@ package theme
 import (
 	"maps"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -284,19 +285,6 @@ func TestLoad_UnknownTheme(t *testing.T) {
 	}
 }
 
-func TestLoad_InvalidHexFallback(t *testing.T) {
-	setupTempHome(t, `{"theme":"nord","overrides":{"error":"#GGGGGG"}}`)
-
-	th, err := Load("nord")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if th.Hex("error") != nordPalette["error"] {
-		t.Errorf("invalid hex should fall back to palette default, got %q", th.Hex("error"))
-	}
-}
-
 func TestLoad_AllBundledThemes(t *testing.T) {
 	names := []string{"nord", "monokai", "catppuccin-mocha", "dracula"}
 	palettes := map[string]map[string]string{
@@ -394,19 +382,60 @@ func TestLoad_MultipleOverrides(t *testing.T) {
 	}
 }
 
-func TestLoad_InvalidHexMixedWithValid(t *testing.T) {
-	setupTempHome(t, `{"theme":"nord","overrides":{"error":"#GGGGGG","success":"#00ff00"}}`)
-
-	th, err := Load("nord")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+func TestLoad_SkippedOverrides(t *testing.T) {
+	cases := []struct {
+		name        string
+		themeFile   string
+		wantSkipped []SkippedOverride
+		wantHexes   map[string]string
+	}{
+		{
+			name:        "no overrides skips nothing",
+			themeFile:   `{"theme":"nord"}`,
+			wantSkipped: nil,
+			wantHexes:   map[string]string{RoleError: nordPalette[RoleError]},
+		},
+		{
+			name:        "an invalid override is skipped and keeps the palette color",
+			themeFile:   `{"theme":"nord","overrides":{"error":"#GGGGGG"}}`,
+			wantSkipped: []SkippedOverride{{Role: RoleError, Value: "#GGGGGG"}},
+			wantHexes:   map[string]string{RoleError: nordPalette[RoleError]},
+		},
+		{
+			name:        "a valid override next to an invalid one is applied",
+			themeFile:   `{"theme":"nord","overrides":{"error":"#GGGGGG","success":"#00ff00"}}`,
+			wantSkipped: []SkippedOverride{{Role: RoleError, Value: "#GGGGGG"}},
+			wantHexes:   map[string]string{RoleError: nordPalette[RoleError], RoleSuccess: "#00ff00"},
+		},
+		{
+			name:      "every invalid override is listed by role",
+			themeFile: `{"theme":"nord","overrides":{"warning":"yellow","error":"#zzz","info":"#88c0d0"}}`,
+			wantSkipped: []SkippedOverride{
+				{Role: RoleError, Value: "#zzz"},
+				{Role: RoleWarning, Value: "yellow"},
+			},
+			wantHexes: map[string]string{RoleError: nordPalette[RoleError], RoleWarning: nordPalette[RoleWarning], RoleInfo: "#88c0d0"},
+		},
 	}
 
-	if th.Hex("error") != nordPalette["error"] {
-		t.Errorf("invalid hex error should fall back, got %q", th.Hex("error"))
-	}
-	if th.Hex("success") != "#00ff00" {
-		t.Errorf("valid hex success should be overridden, got %q", th.Hex("success"))
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupTempHome(t, testCase.themeFile)
+
+			th, err := Load("")
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+
+			if got := th.SkippedOverrides(); !slices.Equal(got, testCase.wantSkipped) {
+				t.Errorf("SkippedOverrides() = %v, want %v", got, testCase.wantSkipped)
+			}
+			for role, want := range testCase.wantHexes {
+				if got := th.Hex(role); got != want {
+					t.Errorf("Hex(%q) = %q, want %q", role, got, want)
+				}
+			}
+		})
 	}
 }
 

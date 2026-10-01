@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 // Cmd declares one command of the drg command tree. A command with
@@ -191,7 +189,7 @@ func (c *Cmd) usage(path string, fs *flag.FlagSet) string {
 
 func (c *Cmd) printHelp(path string, fs *flag.FlagSet) {
 	if path == c.Name {
-		printProjectName(theme.MustLoad())
+		printProjectName(newCommandPrinter().theme)
 	}
 	fmt.Println(c.usage(path, fs))
 

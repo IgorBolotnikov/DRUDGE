@@ -334,7 +334,7 @@ func taskShow(args []string) error {
 		return err
 	}
 
-	printTask(deps.log, found, blockers, family, time.Now().UTC())
+	printTask(deps.out, found, blockers, family, time.Now().UTC())
 	return nil
 }
 

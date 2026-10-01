@@ -34,9 +34,9 @@ var statusRoles = map[task.TaskStatus]string{
 	task.StatusDone:       theme.RoleSuccess,
 }
 
-// loadStatusColor returns what colors a task status in the loaded theme.
-func loadStatusColor(log *common.Logger) func(text string) string {
-	return loadRoleColor(log, "task statuses", statusRoles)
+// taskStatusColor returns what colors a task status in palette.
+func taskStatusColor(palette *theme.Theme) func(text string) string {
+	return roleColor(palette, statusRoles)
 }
 
 // taskListFlags holds the filters and the page of drg task list. A filter
@@ -84,7 +84,6 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 	}
 
 	out := newCommandPrinter()
-	log := out.log
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
 	svc := task.NewTaskService(repo, newCLIProgress(out), config.ResolveDefaultTaskStatus(cfg, globalCfg))
 
@@ -93,25 +92,20 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 		return err
 	}
 
-	printTaskList(log, listed)
+	printTaskList(out, listed)
 	return nil
 }
 
-// loadMutedColor returns what colors text in the muted role of the loaded
-// theme. A theme that fails to load is logged and leaves the text plain.
-func loadMutedColor(log *common.Logger) func(text string) string {
-	palette, err := theme.Load("")
-	if err != nil {
-		log.Warn("cannot color the context rows: %v", err)
-		return func(text string) string { return text }
-	}
+// mutedColor returns what colors text in the muted role of palette.
+func mutedColor(palette *theme.Theme) func(text string) string {
 	return func(text string) string { return palette.Paint(theme.Stdout, theme.RoleMuted, text) }
 }
 
 // printTaskList prints a page of a listing and its footer, indenting the tasks
 // listed under a parent and muting the context rows. The blockers column is as
 // wide as its widest value on the page.
-func printTaskList(log *common.Logger, listed common.Page[task.ListedTask]) {
+func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
+	log := out.log
 	if listed.TotalItems == 0 {
 		log.Info("No tasks found")
 		return
@@ -122,7 +116,7 @@ func printTaskList(log *common.Logger, listed common.Page[task.ListedTask]) {
 	rowColors := make([]func(text string) string, len(listed.Items))
 	for index, entry := range listed.Items {
 		if entry.IsContext {
-			rowColors[index] = loadMutedColor(log)
+			rowColors[index] = mutedColor(out.theme)
 		}
 		holding := make([]string, 0, len(entry.Holding))
 		for _, id := range entry.Holding {
@@ -145,12 +139,12 @@ func printTaskList(log *common.Logger, listed common.Page[task.ListedTask]) {
 	}
 
 	columns := []column{
-		{Title: "STATUS", Width: taskStatusWidth, Color: loadStatusColor(log)},
+		{Title: "STATUS", Width: taskStatusWidth, Color: taskStatusColor(out.theme)},
 		{Title: "ID", Width: task.ShortIDLength},
 		{Title: "TITLE", Width: taskTitleWidth},
 		{Title: blockedByTitle, Width: blockedByWidth},
 		{Title: "TICKET"},
 	}
 	printColoredList(log, "Tasks", listed.TotalItems, columns, rows, rowColors)
-	printPageFooter(log, listed.Number, listed.TotalPages)
+	printPageFooter(out, listed.Number, listed.TotalPages)
 }

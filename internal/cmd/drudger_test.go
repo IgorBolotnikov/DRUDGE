@@ -173,7 +173,9 @@ func TestPrintDrudgers(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			log := common.NewLogger("", common.Labels{})
-			output := captureOutput(func() { printDrudgers(log, testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC()) })
+			output := captureOutput(func() {
+				printDrudgers(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC())
+			})
 
 			rest := output
 			for _, want := range testCase.wantLines {
@@ -249,11 +251,9 @@ func TestPrintDrudgersColors(t *testing.T) {
 	}
 
 	cases := []struct {
-		name          string
-		env           map[string]string
-		themeFile     string
-		want          func(palette *theme.Theme) string
-		wantErrorText string
+		name string
+		env  map[string]string
+		want func(palette *theme.Theme) string
 	}{
 		{
 			name: "forced color paints each label in its role, leaving the separator plain",
@@ -265,46 +265,28 @@ func TestPrintDrudgersColors(t *testing.T) {
 			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
 			want: func(*theme.Theme) string { return header + plainRows() },
 		},
-		{
-			name:          "a theme that fails to load prints every label plain",
-			env:           map[string]string{"FORCE_COLOR": "1"},
-			themeFile:     `{"theme": "no-such-theme"}`,
-			want:          func(*theme.Theme) string { return header + plainRows() },
-			wantErrorText: "cannot color the Drudger health",
-		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("HOME", home)
 			t.Setenv("NO_COLOR", "")
 			for name, value := range testCase.env {
 				t.Setenv(name, value)
-			}
-			if testCase.themeFile != "" {
-				if err := os.MkdirAll(common.DrudgeDir(home), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
-					t.Fatal(err)
-				}
 			}
 			log := common.NewLogger("", common.Labels{})
 
 			var out string
 			errOut := captureStderr(func() {
-				out = captureOutput(func() { printDrudgers(log, testProjectSlug, drudgersOnOnePage(pool), time.Time{}) })
+				out = captureOutput(func() {
+					printDrudgers(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(pool), time.Time{})
+				})
 			})
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
 			}
-			if testCase.wantErrorText == "" && errOut != "" {
+			if errOut != "" {
 				t.Errorf("expected nothing on stderr, got %q", errOut)
-			}
-			if testCase.wantErrorText != "" && strings.Count(errOut, testCase.wantErrorText) != 1 {
-				t.Errorf("expected one error naming %q on stderr, got %q", testCase.wantErrorText, errOut)
 			}
 		})
 	}

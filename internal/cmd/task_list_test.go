@@ -149,7 +149,7 @@ func TestPrintTaskList(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			log := common.NewLogger("", common.Labels{})
 
-			out := captureOutput(func() { printTaskList(log, onePage(testCase.listed)) })
+			out := captureOutput(func() { printTaskList(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), onePage(testCase.listed)) })
 
 			if out != testCase.want {
 				t.Errorf("expected:\n%s\ngot:\n%s", testCase.want, out)
@@ -182,11 +182,10 @@ func TestPrintTaskListColors(t *testing.T) {
 		"  finished         5e6f7a8b  Edited by hand\n"
 
 	cases := []struct {
-		name          string
-		env           map[string]string
-		themeFile     string
-		want          func(palette *theme.Theme) string
-		wantErrorText string
+		name      string
+		env       map[string]string
+		themeFile string
+		want      func(palette *theme.Theme) string
 	}{
 		{
 			name: "forced color paints each status in its role",
@@ -224,13 +223,6 @@ func TestPrintTaskListColors(t *testing.T) {
 			env:  map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"},
 			want: func(*theme.Theme) string { return plain },
 		},
-		{
-			name:          "a theme that fails to load prints every status plain",
-			env:           map[string]string{"FORCE_COLOR": "1"},
-			themeFile:     `{"theme": "no-such-theme"}`,
-			want:          func(*theme.Theme) string { return plain },
-			wantErrorText: "no-such-theme",
-		},
 	}
 
 	for _, testCase := range cases {
@@ -249,19 +241,20 @@ func TestPrintTaskListColors(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			palette, err := theme.Load("")
+			if err != nil {
+				t.Fatalf("theme.Load: %v", err)
+			}
 			log := common.NewLogger("", common.Labels{})
 
 			var out string
-			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(log, onePage(listed)) }) })
+			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(newPrinter(log, palette), onePage(listed)) }) })
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
 			}
-			if testCase.wantErrorText == "" && errOut != "" {
+			if errOut != "" {
 				t.Errorf("expected nothing on stderr, got %q", errOut)
-			}
-			if testCase.wantErrorText != "" && strings.Count(errOut, testCase.wantErrorText) != 1 {
-				t.Errorf("expected one error naming %q on stderr, got %q", testCase.wantErrorText, errOut)
 			}
 		})
 	}
@@ -321,7 +314,7 @@ func TestPrintTaskListContextRow(t *testing.T) {
 			}
 			log := common.NewLogger("", common.Labels{})
 
-			out := captureOutput(func() { printTaskList(log, listed) })
+			out := captureOutput(func() { printTaskList(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), listed) })
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)

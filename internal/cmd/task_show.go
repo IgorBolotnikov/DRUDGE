@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -67,8 +66,8 @@ const (
 // printTask prints everything drudge knows about one task: what it asks for,
 // where it stands, what blocks it, what it belongs to, what belongs to it and
 // what its last run left behind. The description prints in full.
-func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
-	statusColor := loadStatusColor(log)
+func printTask(out *printer, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
+	statusColor := taskStatusColor(out.theme)
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, statusColor(string(taskToShow.Status))),
@@ -94,7 +93,7 @@ func printTask(log *common.Logger, taskToShow *task.Task, blockers []task.Blocke
 
 	for _, line := range lines {
 		// The line is already formatted and may hold a percent sign.
-		log.Info("%s", line)
+		out.log.Info("%s", line)
 	}
 }
 
