@@ -31,9 +31,9 @@ const (
 	// name cannot hold.
 	fileNameReplacement = "-"
 
-	// taskIDListSeparator splits a front matter value holding several task
-	// ids.
-	taskIDListSeparator = ","
+	// listSeparator splits a front matter value holding several task ids or
+	// several URLs.
+	listSeparator = ","
 )
 
 // Front matter keys of a task file.
@@ -46,6 +46,7 @@ const (
 	metaKeySessionID    = "session_id"
 	metaKeyBlockedBy    = "blocked_by"
 	metaKeyParentTaskID = "parent_task_id"
+	metaKeyPullRequests = "pull_requests"
 
 	// Keys of what the agent reported when its run ended.
 	metaKeySessionFailed   = "session_failed"
@@ -121,6 +122,7 @@ func (r *FileTaskRepository) CreateTask(dto task.CreateTaskDto) (*task.Task, err
 		TicketID:     dto.TicketID,
 		ProjectSlug:  r.Project,
 		BlockedBy:    dto.BlockedBy,
+		PullRequests: dto.PullRequests,
 		CreatedAt:    dto.CreatedAt,
 		ParentTaskID: dto.ParentTaskID,
 	}
@@ -149,7 +151,10 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 		metadata[metaKeySessionID] = taskToWrite.SessionID
 	}
 	if len(taskToWrite.BlockedBy) != 0 {
-		metadata[metaKeyBlockedBy] = joinTaskIDs(taskToWrite.BlockedBy)
+		metadata[metaKeyBlockedBy] = joinList(taskToWrite.BlockedBy)
+	}
+	if len(taskToWrite.PullRequests) != 0 {
+		metadata[metaKeyPullRequests] = joinList(taskToWrite.PullRequests)
 	}
 	if taskToWrite.ParentTaskID != "" {
 		metadata[metaKeyParentTaskID] = string(taskToWrite.ParentTaskID)
@@ -191,24 +196,24 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	return metadata
 }
 
-func joinTaskIDs(ids []task.TaskID) string {
-	texts := make([]string, 0, len(ids))
-	for _, id := range ids {
-		texts = append(texts, string(id))
+func joinList[Value ~string](values []Value) string {
+	texts := make([]string, 0, len(values))
+	for _, value := range values {
+		texts = append(texts, string(value))
 	}
-	return strings.Join(texts, taskIDListSeparator)
+	return strings.Join(texts, listSeparator)
 }
 
-// splitTaskIDs reads back a value joinTaskIDs wrote. An empty value reads as
-// no ids.
-func splitTaskIDs(value string) []task.TaskID {
-	var ids []task.TaskID
-	for _, text := range strings.Split(value, taskIDListSeparator) {
+// splitList reads back a value joinList wrote. An empty value reads as an
+// empty list.
+func splitList[Value ~string](joined string) []Value {
+	var values []Value
+	for _, text := range strings.Split(joined, listSeparator) {
 		if text = strings.TrimSpace(text); text != "" {
-			ids = append(ids, task.TaskID(text))
+			values = append(values, Value(text))
 		}
 	}
-	return ids
+	return values
 }
 
 // landingKeyPrefixes are the front matter key prefixes a landing is written
@@ -310,7 +315,10 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 		t.SessionID = sessionID
 	}
 	if blockedBy, ok := metadata[metaKeyBlockedBy]; ok {
-		t.BlockedBy = splitTaskIDs(blockedBy)
+		t.BlockedBy = splitList[task.TaskID](blockedBy)
+	}
+	if pullRequests, ok := metadata[metaKeyPullRequests]; ok {
+		t.PullRequests = splitList[string](pullRequests)
 	}
 	if parentTaskID, ok := metadata[metaKeyParentTaskID]; ok {
 		t.ParentTaskID = task.TaskID(parentTaskID)

@@ -55,6 +55,8 @@ EOF
 
 A new description replaces the old one completely. `--blocked-by` replaces the whole list of blockers. `--block` and `--unblock` add and remove single ones.
 
+`--pull-requests` replaces the list of pull request URLs a task carries, and an empty value clears it. `--add-pull-request` and `--remove-pull-request` add and remove single ones. `drg task new` takes `--pull-requests` too. Every URL must be an absolute http or https URL.
+
 ### List tasks
 
 ```sh

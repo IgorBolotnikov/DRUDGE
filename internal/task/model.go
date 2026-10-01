@@ -46,6 +46,10 @@ type Task struct {
 
 	BlockedBy []TaskID // Full ids of the tasks this task waits for
 
+	// PullRequests are the URLs of the pull requests opened for this task.
+	// They survive task reruns.
+	PullRequests []string
+
 	SessionID string // Resumable agent session of the run, empty until the agent reports it
 
 	// What the agent reported when its run ended. All of it stays zero until

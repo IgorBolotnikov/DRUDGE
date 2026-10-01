@@ -222,32 +222,41 @@ func TestTaskNewFlags(t *testing.T) {
 		{
 			name:    "a title and a description with no status",
 			args:    []string{"--title", "Fix logout", "--description", "SSO logs nobody out"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "an empty description",
 			args:    []string{"--title", "Fix logout", "--description", ""},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a known status",
 			args:    []string{"--title", "Fix logout", "--description", "", "--status", "todo"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusTodo, BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Status: task.StatusTodo, BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a ticket",
 			args:    []string{"--title", "Fix logout", "--description", "", "--ticket", "R-004-01"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", TicketID: "R-004-01", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", TicketID: "R-004-01", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a list of blockers",
 			args:    []string{"--title", "Fix logout", "--description", "", "--blocked-by", "9c8d7e6f, 1a2b3c4d"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{"9c8d7e6f", "1a2b3c4d"}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{"9c8d7e6f", "1a2b3c4d"}, PullRequests: []string{}},
 		},
 		{
 			name:    "a parent",
 			args:    []string{"--title", "Fix logout", "--description", "", "--parent", "9c8d7e6f"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{}, ParentTaskID: "9c8d7e6f"},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", BlockedBy: []task.TaskID{}, PullRequests: []string{}, ParentTaskID: "9c8d7e6f"},
+		},
+		{
+			name: "a list of pull requests",
+			args: []string{"--title", "Fix logout", "--description", "", "--pull-requests", "https://github.com/acme/api/pull/12, https://github.com/acme/ui/pull/7"},
+			wantDto: task.CreateTaskDto{
+				Title:        "Fix logout",
+				BlockedBy:    []task.TaskID{},
+				PullRequests: []string{"https://github.com/acme/api/pull/12", "https://github.com/acme/ui/pull/7"},
+			},
 		},
 		{
 			name:        "no title",
@@ -271,25 +280,25 @@ func TestTaskNewFlags(t *testing.T) {
 			name:    "a description file",
 			args:    []string{"--title", "Fix logout", "--description-file", "description.md"},
 			files:   map[string]string{"description.md": "SSO logs nobody out"},
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a description from stdin",
 			args:    []string{"--title", "Fix logout", "--description-file", "-"},
 			stdin:   "SSO logs nobody out",
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a description ending in a newline",
 			args:    []string{"--title", "Fix logout", "--description-file", "-"},
 			stdin:   "SSO logs nobody out\n\n",
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out\n", BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: "SSO logs nobody out\n", BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:    "a description with a code block and dollar signs",
 			args:    []string{"--title", "Fix logout", "--description-file", "-"},
 			stdin:   literalDescription + "\n",
-			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: literalDescription, BlockedBy: []task.TaskID{}},
+			wantDto: task.CreateTaskDto{Title: "Fix logout", Description: literalDescription, BlockedBy: []task.TaskID{}, PullRequests: []string{}},
 		},
 		{
 			name:        "a description and a description file",

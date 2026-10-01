@@ -8,7 +8,7 @@ import (
 )
 
 // ErrNoChanges reports an edit that names no field to change.
-var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status, the blockers and the parent")
+var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status, the blockers, the parent and the pull requests")
 
 // ManagedStatuses are the statuses that describe a Session. Drudge writes them
 // itself when a run starts and when it ends.
@@ -31,6 +31,13 @@ type EditTaskDto struct {
 	// ParentTaskID groups the task under another one. The id may be a prefix,
 	// and an empty id ungroups the task.
 	ParentTaskID *TaskID
+	// PullRequests replaces the whole list of pull request URLs, and an empty
+	// list clears it.
+	PullRequests *[]string
+	// AddPullRequests adds URLs to the list of pull requests.
+	AddPullRequests *[]string
+	// RemovePullRequests removes URLs from the list of pull requests.
+	RemovePullRequests *[]string
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
@@ -40,7 +47,8 @@ type EditTaskDto struct {
 // HasChanges reports whether the edit names a field to change.
 func (changes EditTaskDto) HasChanges() bool {
 	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil ||
-		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil || changes.ParentTaskID != nil
+		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil || changes.ParentTaskID != nil ||
+		changes.PullRequests != nil || changes.AddPullRequests != nil || changes.RemovePullRequests != nil
 }
 
 // TaskEdited reports a task EditTask changed.
@@ -106,6 +114,11 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 		if err := sessions.RefuseWhileWorking(projectSlug, taskToEdit); err != nil {
 			return err
 		}
+		if changes.RemovePullRequests != nil {
+			if err := refuseMissingPullRequests(taskToEdit, *changes.RemovePullRequests); err != nil {
+				return err
+			}
+		}
 		applyEdit(taskToEdit, changes)
 		edited = taskToEdit
 		return nil
@@ -132,6 +145,9 @@ func validateEdit(changes EditTaskDto) error {
 	}
 
 	if err := validateBlockerEdit(changes); err != nil {
+		return err
+	}
+	if err := validatePullRequestEdit(changes); err != nil {
 		return err
 	}
 
@@ -174,5 +190,14 @@ func applyEdit(taskToEdit *Task, changes EditTaskDto) {
 	}
 	if changes.ParentTaskID != nil {
 		taskToEdit.ParentTaskID = *changes.ParentTaskID
+	}
+	if changes.PullRequests != nil {
+		taskToEdit.PullRequests = addPullRequests(nil, *changes.PullRequests)
+	}
+	if changes.AddPullRequests != nil {
+		taskToEdit.PullRequests = addPullRequests(taskToEdit.PullRequests, *changes.AddPullRequests)
+	}
+	if changes.RemovePullRequests != nil {
+		taskToEdit.PullRequests = removePullRequests(taskToEdit.PullRequests, *changes.RemovePullRequests)
 	}
 }

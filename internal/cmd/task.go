@@ -164,6 +164,10 @@ const (
 	blockFlagName           = "block"
 	unblockFlagName         = "unblock"
 	parentFlagName          = "parent"
+
+	pullRequestsFlagName      = "pull-requests"
+	addPullRequestFlagName    = "add-pull-request"
+	removePullRequestFlagName = "remove-pull-request"
 )
 
 // stdinPath is the description file path that reads stdin.
@@ -171,8 +175,8 @@ const stdinPath = "-"
 
 var errTwoDescriptions = errors.New("--description and --description-file cannot be used together")
 
-// taskIDListSeparator splits a flag value holding several task ids.
-const taskIDListSeparator = ","
+// listSeparator splits a flag value holding several task ids or several URLs.
+const listSeparator = ","
 
 // taskRerunCommand is what a user types to start a task over. Other commands
 // name it when starting a task over is the next step.
@@ -188,26 +192,26 @@ func optionalOf[Value ~string](flagValue optionalString) *Value {
 	return &converted
 }
 
-// optionalTaskIDList reads the task ids of a flag that was given, and returns
-// nil for a flag that was not.
-func optionalTaskIDList(flagValue optionalString) *[]task.TaskID {
+// optionalList reads the list of a flag that was given, and returns nil for a
+// flag that was not.
+func optionalList[Value ~string](flagValue optionalString) *[]Value {
 	if flagValue.value == nil {
 		return nil
 	}
-	ids := parseTaskIDList(*flagValue.value)
-	return &ids
+	values := parseList[Value](*flagValue.value)
+	return &values
 }
 
-// parseTaskIDList reads the comma-separated task ids a flag was given. Blank
-// entries are dropped, so an empty value reads as an empty list.
-func parseTaskIDList(value string) []task.TaskID {
-	ids := []task.TaskID{}
-	for _, text := range strings.Split(value, taskIDListSeparator) {
+// parseList reads the comma-separated list a flag was given. Blank entries are
+// dropped, so an empty value reads as an empty list.
+func parseList[Value ~string](value string) []Value {
+	values := []Value{}
+	for _, text := range strings.Split(value, listSeparator) {
 		if text = strings.TrimSpace(text); text != "" {
-			ids = append(ids, task.TaskID(text))
+			values = append(values, Value(text))
 		}
 	}
-	return ids
+	return values
 }
 
 // readDescriptionFile reads a description from the file at path, or from stdin
@@ -248,6 +252,7 @@ type taskNewFlags struct {
 	status          optionalString
 	blockedBy       optionalString
 	parent          optionalString
+	pullRequests    optionalString
 }
 
 func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
@@ -259,6 +264,7 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 		config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusDraft)+" when that is unset")
 	fs.Var(&flags.blockedBy, blockedByFlagName, "Comma-separated `ids` of the tasks this task waits for")
 	fs.Var(&flags.parent, parentFlagName, "The `id` of the task this task belongs to")
+	fs.Var(&flags.pullRequests, pullRequestsFlagName, "Comma-separated `urls` of the pull requests opened for this task")
 }
 
 // dto returns the fields of a new task, reading a description file from disk
@@ -294,7 +300,8 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 		Description:  description,
 		Status:       status,
 		TicketID:     flags.ticket.get(),
-		BlockedBy:    parseTaskIDList(flags.blockedBy.get()),
+		BlockedBy:    parseList[task.TaskID](flags.blockedBy.get()),
+		PullRequests: parseList[string](flags.pullRequests.get()),
 		ParentTaskID: task.TaskID(flags.parent.get()),
 	}, nil
 }

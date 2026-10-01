@@ -1763,6 +1763,103 @@ func TestFileTaskRepository_CreateTask_StoresBlockers(t *testing.T) {
 	}
 }
 
+func TestTaskFrontMatter_PullRequestsRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	cases := []struct {
+		name         string
+		pullRequests []string
+		// wantLineInFile is the pull_requests line the file should carry. A
+		// task with no pull requests carries none.
+		wantLineInFile string
+	}{
+		{
+			name: "a task with no pull requests",
+		},
+		{
+			name:           "one pull request",
+			pullRequests:   []string{"https://github.com/acme/api/pull/12"},
+			wantLineInFile: metaKeyPullRequests + ": https://github.com/acme/api/pull/12",
+		},
+		{
+			name:           "several pull requests",
+			pullRequests:   []string{"https://github.com/acme/api/pull/12", "https://github.com/acme/ui/pull/7"},
+			wantLineInFile: metaKeyPullRequests + ": https://github.com/acme/api/pull/12,https://github.com/acme/ui/pull/7",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusUnmerged,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				PullRequests: testCase.pullRequests,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !slices.Equal(read.PullRequests, testCase.pullRequests) {
+				t.Errorf("expected the pull requests %v, got %v", testCase.pullRequests, read.PullRequests)
+			}
+			if testCase.pullRequests == nil && read.PullRequests != nil {
+				t.Errorf("expected a task with no pull requests, got %#v", read.PullRequests)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if testCase.wantLineInFile != "" && !strings.Contains(string(data), testCase.wantLineInFile+"\n") {
+				t.Errorf("expected %q in the file, got %s", testCase.wantLineInFile, data)
+			}
+			if testCase.wantLineInFile == "" && strings.Contains(string(data), metaKeyPullRequests) {
+				t.Errorf("expected no %s entry in the file, got %s", metaKeyPullRequests, data)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_CreateTask_StoresPullRequests(t *testing.T) {
+	setupTaskTestHome(t)
+
+	repo := NewFileTaskRepository("test-project")
+	pullRequests := []string{"https://github.com/acme/api/pull/12"}
+
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:        "Wire the repository",
+		Status:       task.StatusTodo,
+		ProjectSlug:  "test-project",
+		PullRequests: pullRequests,
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	read, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !slices.Equal(read.PullRequests, pullRequests) {
+		t.Errorf("expected the pull requests %v, got %v", pullRequests, read.PullRequests)
+	}
+}
+
 func TestTaskFrontMatter_ParentRoundTrip(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()

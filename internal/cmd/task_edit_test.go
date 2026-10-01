@@ -127,6 +127,43 @@ func TestTaskEditFlags(t *testing.T) {
 			wantErrText: "--blocked-by, --block and --unblock cannot be used together",
 		},
 		{
+			name:        "a list of pull requests",
+			args:        []string{"--pull-requests", "https://github.com/acme/api/pull/12, https://github.com/acme/ui/pull/7"},
+			wantChanges: task.EditTaskDto{PullRequests: &[]string{"https://github.com/acme/api/pull/12", "https://github.com/acme/ui/pull/7"}},
+		},
+		{
+			name:        "the pull requests cleared",
+			args:        []string{"--pull-requests", ""},
+			wantChanges: task.EditTaskDto{PullRequests: &[]string{}},
+		},
+		{
+			name:        "pull requests to add",
+			args:        []string{"--add-pull-request", "https://github.com/acme/api/pull/12"},
+			wantChanges: task.EditTaskDto{AddPullRequests: &[]string{"https://github.com/acme/api/pull/12"}},
+		},
+		{
+			name:        "pull requests to remove",
+			args:        []string{"--remove-pull-request", "https://github.com/acme/api/pull/12"},
+			wantChanges: task.EditTaskDto{RemovePullRequests: &[]string{"https://github.com/acme/api/pull/12"}},
+		},
+		{
+			name:        "the pull request list and pull requests to add",
+			args:        []string{"--pull-requests", "https://github.com/acme/api/pull/12", "--add-pull-request", "https://github.com/acme/ui/pull/7"},
+			wantErr:     true,
+			wantErrText: "--pull-requests and --add-pull-request cannot be used together",
+		},
+		{
+			name:        "pull requests to add and pull requests to remove",
+			args:        []string{"--add-pull-request", "https://github.com/acme/api/pull/12", "--remove-pull-request", "https://github.com/acme/ui/pull/7"},
+			wantErr:     true,
+			wantErrText: "--add-pull-request and --remove-pull-request cannot be used together",
+		},
+		{
+			name:        "blockers and pull requests in one edit",
+			args:        []string{"--block", "9c8d", "--add-pull-request", "https://github.com/acme/api/pull/12"},
+			wantChanges: task.EditTaskDto{Block: &[]task.TaskID{"9c8d"}, AddPullRequests: &[]string{"https://github.com/acme/api/pull/12"}},
+		},
+		{
 			name:        "a description file",
 			args:        []string{"--description-file", "description.md"},
 			files:       map[string]string{"description.md": "SSO logs nobody out"},
@@ -225,9 +262,12 @@ func showChanges(changes task.EditTaskDto) string {
 		showFlag(flagLabel(descriptionFlagName), changes.Description),
 		showFlag(flagLabel(ticketFlagName), changes.TicketID),
 		showFlag(flagLabel(statusFlagName), changes.Status),
-		showBlockers(flagLabel(blockedByFlagName), changes.BlockedBy),
-		showBlockers(flagLabel(blockFlagName), changes.Block),
-		showBlockers(flagLabel(unblockFlagName), changes.Unblock),
+		showList(flagLabel(blockedByFlagName), changes.BlockedBy),
+		showList(flagLabel(blockFlagName), changes.Block),
+		showList(flagLabel(unblockFlagName), changes.Unblock),
+		showList(flagLabel(pullRequestsFlagName), changes.PullRequests),
+		showList(flagLabel(addPullRequestFlagName), changes.AddPullRequests),
+		showList(flagLabel(removePullRequestFlagName), changes.RemovePullRequests),
 		fmt.Sprintf("%s %v", flagLabel(forceFlagName), changes.AllowsManagedStatus),
 	}
 	return strings.Join(fields, ", ")
@@ -241,9 +281,9 @@ func showFlag[Value ~string](flag string, value *Value) string {
 	return flag + " " + strconv.Quote(string(*value))
 }
 
-func showBlockers(flag string, ids *[]task.TaskID) string {
-	if ids == nil {
+func showList[Value ~string](flag string, values *[]Value) string {
+	if values == nil {
 		return flag + " unset"
 	}
-	return fmt.Sprintf("%s %q", flag, *ids)
+	return fmt.Sprintf("%s %q", flag, *values)
 }

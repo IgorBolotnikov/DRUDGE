@@ -72,6 +72,11 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 	dto.BlockedBy = blockedBy
 
+	if err := validatePullRequestURLs(dto.PullRequests); err != nil {
+		return nil, err
+	}
+	dto.PullRequests = addPullRequests(nil, dto.PullRequests)
+
 	parentID, err := service.resolveParent(dto.ProjectSlug, "", dto.ParentTaskID)
 	if err != nil {
 		return nil, err

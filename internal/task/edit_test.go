@@ -30,6 +30,7 @@ func (repo *fakeTaskRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
 		Status:       dto.Status,
 		ProjectSlug:  dto.ProjectSlug,
 		BlockedBy:    dto.BlockedBy,
+		PullRequests: dto.PullRequests,
 		CreatedAt:    dto.CreatedAt,
 		ParentTaskID: dto.ParentTaskID,
 	}

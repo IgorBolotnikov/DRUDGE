@@ -40,6 +40,8 @@ const (
 	blockedByLabel = "Blocked by"
 	parentLabel    = "Parent"
 	childrenLabel  = "Children"
+
+	pullRequestsLabel = "Pull requests"
 )
 
 // What a task report prints in place of a field with nothing in it.
@@ -65,8 +67,8 @@ const (
 )
 
 // printTask prints everything drudge knows about one task: what it asks for,
-// where it stands, what blocks it, what it belongs to, what belongs to it and
-// what its last run left behind. The description prints in full.
+// where it stands, what blocks it, what it belongs to, what belongs to it, the
+// pull requests opened for it and what its last run left behind. The description prints in full.
 func printTask(out *printer.Printer, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
 	statusColor := taskStatusColor(out.Theme())
 	lines := []string{
@@ -79,6 +81,7 @@ func printTask(out *printer.Printer, taskToShow *task.Task, blockers []task.Bloc
 	}
 	lines = append(lines, blockerLines(blockers, statusColor)...)
 	lines = append(lines, familyLines(family, statusColor)...)
+	lines = append(lines, pullRequestLines(taskToShow.PullRequests)...)
 	lines = append(lines,
 		"",
 		"Description:",
@@ -121,6 +124,20 @@ func familyLines(family task.Family, statusColor func(text string) string) []str
 		for _, child := range family.Children {
 			lines = append(lines, relatedLine(child.ID, child, statusColor))
 		}
+	}
+	return lines
+}
+
+// pullRequestLines lists the pull requests opened for a task, one URL per
+// line. A task with none gets no lines.
+func pullRequestLines(pullRequests []string) []string {
+	if len(pullRequests) == 0 {
+		return nil
+	}
+
+	lines := []string{"", pullRequestsLabel + ":"}
+	for _, pullRequest := range pullRequests {
+		lines = append(lines, listIndent+pullRequest)
 	}
 	return lines
 }

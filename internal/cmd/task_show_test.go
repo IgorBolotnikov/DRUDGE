@@ -35,7 +35,7 @@ func TestPrintTask(t *testing.T) {
 				CreatedAt:   now.Add(-2 * time.Hour),
 			},
 			want:       []string{"todo", "R-003-09", longDescription, neverRunLabel, neverLabel},
-			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel, parentLabel, childrenLabel},
+			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel, parentLabel, childrenLabel, pullRequestsLabel},
 		},
 		{
 			name: "a task an agent is working on",
@@ -224,6 +224,19 @@ func TestPrintTask(t *testing.T) {
 					"  7e6d5c4b  done         Refuse a cycle\n",
 			},
 			wantAbsent: []string{parentLabel},
+		},
+		{
+			name: "a task with pull requests",
+			task: task.Task{
+				Status:       task.StatusUnmerged,
+				CreatedAt:    now.Add(-2 * time.Hour),
+				PullRequests: []string{"https://github.com/acme/api/pull/12", "https://github.com/acme/ui/pull/7"},
+			},
+			want: []string{
+				"\n" + pullRequestsLabel + ":\n" +
+					"  https://github.com/acme/api/pull/12\n" +
+					"  https://github.com/acme/ui/pull/7\n",
+			},
 		},
 		{
 			name: "a task carrying no ticket and no description",

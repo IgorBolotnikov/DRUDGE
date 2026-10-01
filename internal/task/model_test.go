@@ -1,6 +1,7 @@
 package task
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -91,6 +92,7 @@ func TestTask_StartRun_ClearsTheLastRun(t *testing.T) {
 		SessionCostUSD:   0.42,
 		VendorError:      "OAuth session expired",
 		VendorErrorClass: VendorErrorAuth,
+		PullRequests:     []string{"https://github.com/acme/api/pull/12"},
 	}
 
 	startedAt := time.Date(2025, 3, 5, 11, 0, 0, 0, time.UTC)
@@ -113,5 +115,8 @@ func TestTask_StartRun_ClearsTheLastRun(t *testing.T) {
 	}
 	if taskToRun.SessionResult != "" || taskToRun.SessionTurns != 0 || taskToRun.SessionCostUSD != 0 {
 		t.Errorf("expected what the previous run reported to be cleared, got %+v", taskToRun)
+	}
+	if !slices.Equal(taskToRun.PullRequests, []string{"https://github.com/acme/api/pull/12"}) {
+		t.Errorf("expected the pull requests of the previous run to stay, got %v", taskToRun.PullRequests)
 	}
 }
