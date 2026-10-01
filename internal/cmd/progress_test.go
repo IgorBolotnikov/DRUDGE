@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -746,5 +747,5 @@ func TestCLIProgress_ReportRecordingGroup(t *testing.T) {
 
 func newTestCLIProgress() *cliProgress {
 	palette := theme.NewTheme(theme.DefaultTheme())
-	return newCLIProgress(newPrinter(newThemedLogger(palette), palette))
+	return newCLIProgress(printer.NewPrinter(newThemedLogger(palette), palette))
 }

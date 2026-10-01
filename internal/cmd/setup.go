@@ -15,31 +15,31 @@ var SetupCmd = &Cmd{
 
 func runSetup([]string) error {
 	out := newCommandPrinter()
-	printProjectName(out.theme)
+	printProjectName(out.Theme())
 
 	service, err := newSetupService()
 	if err != nil {
 		return err
 	}
-	out.header("Setting up DRUDGE at %s", service.DrudgeDir())
+	out.Header("Setting up DRUDGE at %s", service.DrudgeDir())
 	result, err := service.Setup()
 	if err != nil {
 		return err
 	}
 	for _, path := range result.SchemaPaths {
-		out.done("Created %s", path)
+		out.Done("Created %s", path)
 	}
 	if result.SkillPath != "" {
-		out.done("Created %s", result.SkillPath)
+		out.Done("Created %s", result.SkillPath)
 	}
 	for _, configFile := range []setup.ConfigFile{result.GlobalConfig, result.ThemeConfig} {
 		if configFile.HasExisted {
-			out.skip("%s already exists", configFile.Path)
+			out.Skip("%s already exists", configFile.Path)
 		} else {
-			out.done("Created %s", configFile.Path)
+			out.Done("Created %s", configFile.Path)
 		}
 	}
-	out.result("DRUDGE is set up, run drg project init <name> in a project directory")
+	out.Result("DRUDGE is set up, run drg project init <name> in a project directory")
 	return nil
 }
 

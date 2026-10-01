@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
@@ -71,13 +72,13 @@ func TestPrintRunLogs(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("NO_COLOR", "1")
 			palette := theme.NewTheme(theme.DefaultTheme())
-			out := newPrinter(newThemedLogger(palette), palette)
+			out := printer.NewPrinter(newThemedLogger(palette), palette)
 
 			var stdout string
 			stderr := captureStderr(func() {
 				stdout = captureOutput(func() {
 					if testCase.warning != "" {
-						out.warn("%s", testCase.warning)
+						out.Warn("%s", testCase.warning)
 					}
 					printRunLogs(out, &drudger.TaskRunLogs{Task: ranTask, Logs: testCase.logs})
 				})

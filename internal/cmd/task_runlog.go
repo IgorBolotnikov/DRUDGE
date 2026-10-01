@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -35,7 +36,7 @@ func taskRunlog(args []string) error {
 }
 
 // printRunLogs prints every log of a run under a heading naming its file.
-func printRunLogs(out *printer, runLogs *drudger.TaskRunLogs) {
+func printRunLogs(out *printer.Printer, runLogs *drudger.TaskRunLogs) {
 	lines := []string{fmt.Sprintf("Task [%s] %s", runLogs.Task.ID, runLogs.Task.Title)}
 
 	for _, runLog := range runLogs.Logs {
@@ -52,7 +53,7 @@ func printRunLogs(out *printer, runLogs *drudger.TaskRunLogs) {
 		}
 	}
 
-	out.view(lines)
+	out.View(lines)
 }
 
 // formatLogLine indents a line that is valid JSON and returns any other line

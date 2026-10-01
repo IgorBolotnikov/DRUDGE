@@ -1,6 +1,10 @@
 package cmd
 
-import "flag"
+import (
+	"flag"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
+)
 
 var CleanupCmd = &Cmd{
 	Name: "cleanup",
@@ -33,7 +37,7 @@ func cleanup(isForced bool) error {
 			return err
 		}
 		if !isConfirmed {
-			out.skip("Left %s alone", service.DrudgeDir())
+			out.Skip("Left %s alone", service.DrudgeDir())
 			return nil
 		}
 	}
@@ -46,10 +50,10 @@ func cleanup(isForced bool) error {
 		printNothingToCleanUp(out, result.DrudgeDir)
 		return nil
 	}
-	out.done("Removed %s", result.DrudgeDir)
+	out.Done("Removed %s", result.DrudgeDir)
 	return nil
 }
 
-func printNothingToCleanUp(out *printer, drudgeDir string) {
-	out.skip("Nothing to clean up, %s does not exist", drudgeDir)
+func printNothingToCleanUp(out *printer.Printer, drudgeDir string) {
+	out.Skip("Nothing to clean up, %s does not exist", drudgeDir)
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -66,8 +67,8 @@ const (
 // printTask prints everything drudge knows about one task: what it asks for,
 // where it stands, what blocks it, what it belongs to, what belongs to it and
 // what its last run left behind. The description prints in full.
-func printTask(out *printer, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
-	statusColor := taskStatusColor(out.theme)
+func printTask(out *printer.Printer, taskToShow *task.Task, blockers []task.Blocker, family task.Family, now time.Time) {
+	statusColor := taskStatusColor(out.Theme())
 	lines := []string{
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, statusColor(string(taskToShow.Status))),
@@ -91,7 +92,7 @@ func printTask(out *printer, taskToShow *task.Task, blockers []task.Blocker, fam
 		lines = append(lines, taskWorkLines(taskToShow)...)
 	}
 
-	out.view(lines)
+	out.View(lines)
 }
 
 // blockerLines lists the tasks a task waits for, one line per blocker. A task

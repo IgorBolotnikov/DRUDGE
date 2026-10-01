@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -74,7 +75,7 @@ func TestPrintSessionStatus(t *testing.T) {
 			}
 			log := common.NewLogger("", common.Labels{})
 
-			out := captureOutput(func() { printSessionStatus(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), session) })
+			out := captureOutput(func() { printSessionStatus(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), session) })
 
 			for _, want := range append(testCase.want, "abc123", "Fix login") {
 				if !strings.Contains(out, want) {
@@ -132,7 +133,7 @@ func TestPrintSessionStatusColors(t *testing.T) {
 
 				var out string
 				errOut := captureStderr(func() {
-					out = captureOutput(func() { printSessionStatus(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), session) })
+					out = captureOutput(func() { printSessionStatus(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), session) })
 				})
 
 				palette := theme.NewTheme(theme.DefaultTheme())

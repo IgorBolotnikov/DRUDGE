@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
@@ -174,7 +175,7 @@ func TestPrintDrudgers(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			log := common.NewLogger("", common.Labels{})
 			output := captureOutput(func() {
-				printDrudgers(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC())
+				printDrudgers(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC())
 			})
 
 			rest := output
@@ -278,7 +279,7 @@ func TestPrintDrudgersColors(t *testing.T) {
 			var out string
 			errOut := captureStderr(func() {
 				out = captureOutput(func() {
-					printDrudgers(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(pool), time.Time{})
+					printDrudgers(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), testProjectSlug, drudgersOnOnePage(pool), time.Time{})
 				})
 			})
 
@@ -323,7 +324,7 @@ func TestPrintReclaimed(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			palette := theme.NewTheme(theme.DefaultTheme())
 			output := captureOutput(func() {
-				printReclaimed(newPrinter(newThemedLogger(palette), palette), testProjectSlug, testCase.freed)
+				printReclaimed(printer.NewPrinter(newThemedLogger(palette), palette), testProjectSlug, testCase.freed)
 			})
 			if output != testCase.want {
 				t.Errorf("expected:\n%q\ngot:\n%q", testCase.want, output)

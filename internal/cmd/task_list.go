@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -104,9 +105,9 @@ func mutedColor(palette *theme.Theme) func(text string) string {
 // printTaskList prints a page of a listing and its footer, indenting the tasks
 // listed under a parent and muting the context rows. The blockers column is as
 // wide as its widest value on the page.
-func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
+func printTaskList(out *printer.Printer, listed common.Page[task.ListedTask]) {
 	if listed.TotalItems == 0 {
-		out.skip("No tasks found")
+		out.Skip("No tasks found")
 		return
 	}
 
@@ -115,7 +116,7 @@ func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
 	rowColors := make([]func(text string) string, len(listed.Items))
 	for index, entry := range listed.Items {
 		if entry.IsContext {
-			rowColors[index] = mutedColor(out.theme)
+			rowColors[index] = mutedColor(out.Theme())
 		}
 		holding := make([]string, 0, len(entry.Holding))
 		for _, id := range entry.Holding {
@@ -138,12 +139,12 @@ func printTaskList(out *printer, listed common.Page[task.ListedTask]) {
 	}
 
 	columns := []column{
-		{Title: "STATUS", Width: taskStatusWidth, Color: taskStatusColor(out.theme)},
+		{Title: "STATUS", Width: taskStatusWidth, Color: taskStatusColor(out.Theme())},
 		{Title: "ID", Width: task.ShortIDLength},
 		{Title: "TITLE", Width: taskTitleWidth},
 		{Title: blockedByTitle, Width: blockedByWidth},
 		{Title: "TICKET"},
 	}
 	lines := listLines("Tasks", listed.TotalItems, columns, rows, rowColors)
-	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
+	out.View(append(lines, pageFooterLines(out.Theme(), listed.Number, listed.TotalPages)...))
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
@@ -139,9 +140,9 @@ func drudgerList(page pageFlags) error {
 
 // printDrudgers prints a page of the Drudgers of a project in the order given,
 // one row each, and its footer.
-func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
+func printDrudgers(out *printer.Printer, projectSlug string, listed common.Page[*drudger.Drudger], now time.Time) {
 	if listed.TotalItems == 0 {
-		out.skip("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
+		out.Skip("Project %s has no Drudgers, the first one is built when you run a task", projectSlug)
 		return
 	}
 
@@ -149,7 +150,7 @@ func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger
 		{Title: "SLOT", Width: 4},
 		{Title: "DRUDGER", Width: 40},
 		{Title: "TASK", Width: task.ShortIDLength},
-		{Title: "HEALTH", Width: healthColumnWidth, Color: healthColor(out.theme)},
+		{Title: "HEALTH", Width: healthColumnWidth, Color: healthColor(out.Theme())},
 		{Title: "LAST CHECKED"},
 	}
 	rows := make([][]string, 0, len(listed.Items))
@@ -164,7 +165,7 @@ func printDrudgers(out *printer, projectSlug string, listed common.Page[*drudger
 	}
 
 	lines := listLines("Drudgers", listed.TotalItems, columns, rows, nil)
-	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
+	out.View(append(lines, pageFooterLines(out.Theme(), listed.Number, listed.TotalPages)...))
 }
 
 // drudgerReclaim frees the Drudger slots whose agent is gone.
@@ -185,16 +186,16 @@ func drudgerReclaim([]string) error {
 
 // printReclaimed prints one line per freed slot and how to start their tasks
 // over.
-func printReclaimed(out *printer, projectSlug string, freed []drudger.FreedSlot) {
+func printReclaimed(out *printer.Printer, projectSlug string, freed []drudger.FreedSlot) {
 	if len(freed) == 0 {
-		out.skip("Every Drudger of project %s is either idle or working, nothing to reclaim", projectSlug)
+		out.Skip("Every Drudger of project %s is either idle or working, nothing to reclaim", projectSlug)
 		return
 	}
 	for _, entry := range freed {
-		out.done("Freed Drudger %d (%s), it held task %s with no agent in it, %s", entry.Slot, entry.Sandbox, out.taskID(entry.TaskID), entry.Reason)
+		out.Done("Freed Drudger %d (%s), it held task %s with no agent in it, %s", entry.Slot, entry.Sandbox, out.TaskID(entry.TaskID), entry.Reason)
 	}
-	out.field("Next", "start a task over with "+taskRerunCommand+" <task-id>")
-	out.flush()
+	out.Field("Next", "start a task over with "+taskRerunCommand+" <task-id>")
+	out.Flush()
 }
 
 // drudgerNuke destroys one Drudger and fucks up the task worked on, if any.

@@ -75,7 +75,7 @@ func projectInit(args []string) error {
 		return err
 	}
 
-	out.header("Initializing project %s in %s", name, common.DotDrudgeDirName)
+	out.Header("Initializing project %s in %s", name, common.DotDrudgeDirName)
 	_, repositories, err := svc.InitProject(name, projectDir)
 	if err != nil {
 		return err
@@ -84,11 +84,11 @@ func projectInit(args []string) error {
 	resolved := svc.ResolveRepositories(projectDir, repositories)
 	for _, repository := range resolved {
 		if repository.Problem != nil {
-			out.warn("%s", repository.Problem)
+			out.Warn("%s", repository.Problem)
 		}
 	}
-	out.result("Initialized project %s", name)
-	out.view(repositoryLines(resolved))
+	out.Result("Initialized project %s", name)
+	out.View(repositoryLines(resolved))
 	return nil
 }
 
@@ -132,7 +132,7 @@ func projectDelete(lookup string, isForced bool) error {
 			return err
 		}
 		if !isConfirmed {
-			out.skip("Left project %s alone", name)
+			out.Skip("Left project %s alone", name)
 			return nil
 		}
 	}
@@ -176,7 +176,7 @@ func projectList(flags pageFlags) error {
 	}
 
 	if listed.TotalItems == 0 {
-		out.skip("No projects yet, run drg project init <name> in a project directory to create one")
+		out.Skip("No projects yet, run drg project init <name> in a project directory to create one")
 		return nil
 	}
 
@@ -190,6 +190,6 @@ func projectList(flags pageFlags) error {
 	}
 
 	lines := listLines("Projects", listed.TotalItems, columns, rows, nil)
-	out.view(append(lines, pageFooterLines(out.theme, listed.Number, listed.TotalPages)...))
+	out.View(append(lines, pageFooterLines(out.Theme(), listed.Number, listed.TotalPages)...))
 	return nil
 }

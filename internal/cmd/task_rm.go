@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -22,7 +23,7 @@ func taskRemove(taskID task.TaskID, isForced bool) error {
 const removalLinkLine = "  %s  %s"
 
 // confirmTaskRemoval asks the user whether a task should go.
-func confirmTaskRemoval(out *printer, removal task.Removal) (bool, error) {
+func confirmTaskRemoval(out *printer.Printer, removal task.Removal) (bool, error) {
 	return ConfirmDeletion(out, describeRemoval(removal))
 }
 

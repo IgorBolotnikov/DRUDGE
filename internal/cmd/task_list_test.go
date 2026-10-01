@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -149,7 +150,9 @@ func TestPrintTaskList(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			log := common.NewLogger("", common.Labels{})
 
-			out := captureOutput(func() { printTaskList(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), onePage(testCase.listed)) })
+			out := captureOutput(func() {
+				printTaskList(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), onePage(testCase.listed))
+			})
 
 			if out != testCase.want {
 				t.Errorf("expected:\n%s\ngot:\n%s", testCase.want, out)
@@ -248,7 +251,9 @@ func TestPrintTaskListColors(t *testing.T) {
 			log := common.NewLogger("", common.Labels{})
 
 			var out string
-			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(newPrinter(log, palette), onePage(listed)) }) })
+			errOut := captureStderr(func() {
+				out = captureOutput(func() { printTaskList(printer.NewPrinter(log, palette), onePage(listed)) })
+			})
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)
@@ -314,7 +319,7 @@ func TestPrintTaskListContextRow(t *testing.T) {
 			}
 			log := common.NewLogger("", common.Labels{})
 
-			out := captureOutput(func() { printTaskList(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), listed) })
+			out := captureOutput(func() { printTaskList(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), listed) })
 
 			if want := testCase.want(theme.NewTheme(theme.DefaultTheme())); out != want {
 				t.Errorf("expected:\n%q\ngot:\n%q", want, out)

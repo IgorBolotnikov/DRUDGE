@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
@@ -251,7 +252,7 @@ func TestPrintTask(t *testing.T) {
 			taskToShow.ID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
 			taskToShow.Title = "Fix login"
 			palette := theme.NewTheme(theme.DefaultTheme())
-			out := newPrinter(newThemedLogger(palette), palette)
+			out := printer.NewPrinter(newThemedLogger(palette), palette)
 			wantStart, wantStderr := "Task [", ""
 			if testCase.warning != "" {
 				wantStart, wantStderr = "\nTask [", "! "+testCase.warning+"\n"
@@ -261,7 +262,7 @@ func TestPrintTask(t *testing.T) {
 			stderr := captureStderr(func() {
 				stdout = captureOutput(func() {
 					if testCase.warning != "" {
-						out.warn("%s", testCase.warning)
+						out.Warn("%s", testCase.warning)
 					}
 					printTask(out, &taskToShow, testCase.blockers, testCase.family, now)
 				})
@@ -373,7 +374,7 @@ func TestPrintTaskColors(t *testing.T) {
 			var out string
 			errOut := captureStderr(func() {
 				out = captureOutput(func() {
-					printTask(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), taskToShow, blockers, family, now)
+					printTask(printer.NewPrinter(log, theme.NewTheme(theme.DefaultTheme())), taskToShow, blockers, family, now)
 				})
 			})
 

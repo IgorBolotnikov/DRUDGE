@@ -32,12 +32,12 @@ func update(version string) error {
 		return err
 	}
 	if result.IsUpToDate {
-		out.skip("drg %s is the latest release", result.Version)
+		out.Skip("drg %s is the latest release", result.Version)
 		return nil
 	}
-	out.result("Updated drg %s to %s", result.PreviousVersion, result.Version)
-	out.field("Binary", result.BinaryPath)
-	out.field("Next", "run drg setup to refresh the schema files and the skill")
-	out.flush()
+	out.Result("Updated drg %s to %s", result.PreviousVersion, result.Version)
+	out.Field("Binary", result.BinaryPath)
+	out.Field("Next", "run drg setup to refresh the schema files and the skill")
+	out.Flush()
 	return nil
 }

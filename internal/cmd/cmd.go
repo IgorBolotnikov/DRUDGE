@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 )
 
 // Cmd declares one command of the drg command tree. A command with
@@ -189,7 +191,7 @@ func (c *Cmd) usage(path string, fs *flag.FlagSet) string {
 
 func (c *Cmd) printHelp(path string, fs *flag.FlagSet) {
 	if path == c.Name {
-		printProjectName(newCommandPrinter().theme)
+		printProjectName(newCommandPrinter().Theme())
 	}
 	fmt.Println(c.usage(path, fs))
 
@@ -351,9 +353,9 @@ const deletionQuestion = "Are you sure? [y/N]: "
 // ConfirmDeletion warns that a resource is about to be deleted, asks the user
 // to confirm and reports what they answered. Anything but y or
 // Y calls the deletion off.
-func ConfirmDeletion(out *printer, resource string) (isConfirmed bool, err error) {
-	out.warn("This will permanently delete %s", resource)
-	out.ask(deletionQuestion)
+func ConfirmDeletion(out *printer.Printer, resource string) (isConfirmed bool, err error) {
+	out.Warn("This will permanently delete %s", resource)
+	out.Ask(deletionQuestion)
 	var response string
 	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
 		return false, fmt.Errorf("could not read confirmation: %w", err)
