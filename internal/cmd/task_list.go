@@ -101,7 +101,7 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 func loadMutedColor(log *common.Logger) func(text string) string {
 	palette, err := theme.Load("")
 	if err != nil {
-		log.Error("cannot color the context rows: %v", err)
+		log.Warn("cannot color the context rows: %v", err)
 		return func(text string) string { return text }
 	}
 	return func(text string) string { return palette.Paint(theme.Stdout, theme.RoleMuted, text) }

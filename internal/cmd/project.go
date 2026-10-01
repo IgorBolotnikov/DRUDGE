@@ -107,7 +107,7 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 
 	for _, repository := range resolved {
 		if repository.Problem != nil {
-			log.Error("%s", repository.Problem)
+			log.Warn("%s", repository.Problem)
 		}
 	}
 }

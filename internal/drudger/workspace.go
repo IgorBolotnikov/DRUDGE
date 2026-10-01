@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
@@ -178,18 +177,39 @@ type WorktreeCreationStarted struct {
 	Path       string
 }
 
+// BaseFetchFailed reports a fetch of the branch a repository cuts work from
+// that failed.
+type BaseFetchFailed struct {
+	Repository string
+	Branch     string
+	Err        error
+}
+
+// StaleBaseUsed reports the base a repository cuts work from after its fetch
+// failed. Commit is zero when git does not resolve the ref.
+type StaleBaseUsed struct {
+	Repository string
+	Ref        string
+	Commit     git.Commit
+}
+
 // fetchBase updates the tracking ref a repository cuts work from. A fetch that
-// fails only warns and names the commit the work is cut from, because that
+// fails is reported along with the commit the work is cut from, because that
 // base is still a correct one to branch from.
 func (service *DrudgerService) fetchBase(repository repositoryWorktree) {
-	if !service.tryFetchBase(repository.projectRepository) {
-		service.logger.Error("Work on repository %s is cut from %s", repository.Name, service.describeBase(repository))
+	if service.tryFetchBase(repository.projectRepository) {
+		return
 	}
+	base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
+	if err != nil {
+		base = git.Commit{}
+	}
+	service.progress.Report(StaleBaseUsed{Repository: repository.Name, Ref: repository.BaseRef(), Commit: base})
 }
 
 // tryFetchBase updates the tracking ref a repository cuts work from and
 // reports whether its base is fresh. A repository with no remote is left alone
-// and its base counts as fresh. A fetch that fails is logged.
+// and its base counts as fresh. A fetch that fails is reported.
 func (service *DrudgerService) tryFetchBase(repository projectRepository) bool {
 	if !repository.HasRemote {
 		return true
@@ -200,18 +220,8 @@ func (service *DrudgerService) tryFetchBase(repository projectRepository) bool {
 	if err == nil {
 		return true
 	}
-	service.logger.Error("Could not fetch %s of repository %s: %v", repository.DefaultBranch, repository.Name, err)
+	service.progress.Report(BaseFetchFailed{Repository: repository.Name, Branch: repository.DefaultBranch, Err: err})
 	return false
-}
-
-// describeBase names the commit a repository cuts work from and how old it is.
-// A ref git will not resolve is described by its name alone.
-func (service *DrudgerService) describeBase(repository repositoryWorktree) string {
-	base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
-	if err != nil {
-		return repository.BaseRef()
-	}
-	return fmt.Sprintf("%s at %s, committed %s", repository.BaseRef(), git.ShortSHA(base.SHA), formatAge(time.Since(base.CommittedAt)))
 }
 
 // stashWorktree puts whatever a worktree holds uncommitted aside under a
@@ -329,16 +339,4 @@ func refuseWorkspace(slot int, repository repositoryWorktree, health WorkspaceHe
 		saw = fmt.Sprintf("the worktree of repository %s is gone from %s", repository.Name, repository.Worktree)
 	}
 	return fmt.Errorf("%s, so Drudger %d cannot work, run %s %d to rebuild it", saw, slot, nukeCommand, slot)
-}
-
-// formatAge renders roughly how long ago a commit was made.
-func formatAge(elapsed time.Duration) string {
-	switch {
-	case elapsed < time.Hour:
-		return fmt.Sprintf("%d minutes ago", int(elapsed.Minutes()))
-	case elapsed < 24*time.Hour:
-		return fmt.Sprintf("%d hours ago", int(elapsed.Hours()))
-	default:
-		return fmt.Sprintf("%d days ago", int(elapsed.Hours()/24))
-	}
 }

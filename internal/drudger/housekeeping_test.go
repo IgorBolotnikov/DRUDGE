@@ -93,11 +93,7 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 			service.git.hasNoRemote = testCase.hasNoRemote
 			service.git.fetchErr = testCase.fetchErr
 
-			var err error
-			warnings := captureErrors(func() {
-				err = service.RunTask(testProjectSlug, taskToRun.ID, false)
-			})
-			if err != nil {
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
@@ -123,12 +119,19 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 			}
 
 			if !testCase.wantWarning {
+				if failed := reportedEvents[BaseFetchFailed](service.progress); len(failed) != 0 {
+					t.Errorf("expected no failed fetch, got %+v", failed)
+				}
 				return
 			}
-			for _, want := range []string{git.ShortSHA(testBaseSHA), testCase.wantStart} {
-				if !strings.Contains(warnings, want) {
-					t.Errorf("expected the warning to name %q, got %q", want, warnings)
-				}
+			repository := filepath.Base(projectDir)
+			failed := singleEvent[BaseFetchFailed](t, service.progress)
+			if failed.Repository != repository || failed.Branch != "main" || !errors.Is(failed.Err, testCase.fetchErr) {
+				t.Errorf("expected a failed fetch of main of repository %s with %v, got %+v", repository, testCase.fetchErr, failed)
+			}
+			wantStale := StaleBaseUsed{Repository: repository, Ref: testCase.wantStart, Commit: git.Commit{SHA: testBaseSHA, CommittedAt: testBaseCommittedAt}}
+			if stale := singleEvent[StaleBaseUsed](t, service.progress); stale != wantStale {
+				t.Errorf("expected %+v, got %+v", wantStale, stale)
 			}
 		})
 	}

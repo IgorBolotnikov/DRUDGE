@@ -72,7 +72,7 @@ func TestPrintSessionStatus(t *testing.T) {
 				Task:   &task.Task{ID: "abc123", Title: "Fix login"},
 				Report: testCase.report,
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			out := captureOutput(func() { printSessionStatus(log, session) })
 
@@ -147,7 +147,7 @@ func TestPrintSessionStatusColors(t *testing.T) {
 					Task:   &task.Task{ID: "abc123", Title: "Fix login"},
 					Report: drudger.SessionReport{Status: entry.status, RunDir: "/tmp/run", LastWrite: time.Now()},
 				}
-				log := common.NewLogger("", "")
+				log := common.NewLogger("", common.Labels{})
 
 				var out string
 				errOut := captureStderr(func() { out = captureOutput(func() { printSessionStatus(log, session) }) })

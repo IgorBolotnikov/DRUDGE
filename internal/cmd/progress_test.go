@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -23,9 +25,10 @@ func TestCLIProgress_Report(t *testing.T) {
 	}
 
 	cases := []struct {
-		name  string
-		event any
-		want  string
+		name       string
+		event      any
+		want       string
+		wantStderr string
 	}{
 		{
 			name:  "a task created",
@@ -248,6 +251,21 @@ func TestCLIProgress_Report(t *testing.T) {
 				"  7e6d5c4b  Reach 100% coverage\n",
 		},
 		{
+			name:       "a base fetch failed",
+			event:      drudger.BaseFetchFailed{Repository: "api", Branch: "main", Err: errors.New("exit status 128")},
+			wantStderr: "! Could not fetch main of repository api: exit status 128\n",
+		},
+		{
+			name:       "a stale base used",
+			event:      drudger.StaleBaseUsed{Repository: "api", Ref: "origin/main", Commit: git.Commit{SHA: "0123456789abcdef", CommittedAt: time.Now().Add(-73 * time.Hour)}},
+			wantStderr: "! Work on repository api is cut from origin/main at 0123456789ab, committed 3 days ago\n",
+		},
+		{
+			name:       "a stale base used that git does not resolve",
+			event:      drudger.StaleBaseUsed{Repository: "api", Ref: "origin/main"},
+			wantStderr: "! Work on repository api is cut from origin/main\n",
+		},
+		{
 			name:  "a Drudger nuked",
 			event: drudger.DrudgerNuked{Slot: 3, Sandbox: "drudge-claude-demo-3"},
 			want:  "Drudger 3 is gone, sandbox drudge-claude-demo-3 was deleted\n",
@@ -281,10 +299,16 @@ func TestCLIProgress_Report(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			progress := newCLIProgress(common.NewLogger("", ""))
-			output := captureOutput(func() { progress.Report(testCase.event) })
+			progress := newCLIProgress(common.NewLogger("", common.Labels{}))
+			var output string
+			stderr := captureStderr(func() {
+				output = captureOutput(func() { progress.Report(testCase.event) })
+			})
 			if output != testCase.want {
 				t.Errorf("output = %q, want %q", output, testCase.want)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.wantStderr)
 			}
 		})
 	}

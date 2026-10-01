@@ -30,7 +30,7 @@ func captureError(f func()) string {
 }
 
 func TestLogger_Info_NoPrefix(t *testing.T) {
-	l := NewLogger("", "")
+	l := NewLogger("", Labels{})
 	out := captureOutput(func() { l.Info("hello %s", "world") })
 	if !strings.Contains(out, "hello world") {
 		t.Errorf("expected 'hello world', got %q", out)
@@ -38,7 +38,7 @@ func TestLogger_Info_NoPrefix(t *testing.T) {
 }
 
 func TestLogger_Info_WithPrefix(t *testing.T) {
-	l := NewLogger("drudge", "")
+	l := NewLogger("drudge", Labels{})
 	out := captureOutput(func() { l.Info("booting up") })
 	if !strings.Contains(out, "[drudge] booting up") {
 		t.Errorf("expected '[drudge] booting up', got %q", out)
@@ -46,7 +46,7 @@ func TestLogger_Info_WithPrefix(t *testing.T) {
 }
 
 func TestLogger_Info_MultipleArgs(t *testing.T) {
-	l := NewLogger("", "")
+	l := NewLogger("", Labels{})
 	out := captureOutput(func() { l.Info("%d %s %d", 1, "two", 3) })
 	if !strings.Contains(out, "1 two 3") {
 		t.Errorf("expected '1 two 3', got %q", out)
@@ -64,7 +64,7 @@ func TestLogger_Error_Label(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			logger := NewLogger("", testCase.errorLabel)
+			logger := NewLogger("", Labels{Error: testCase.errorLabel})
 			got := captureError(func() { logger.Error("oops %s", "did something") })
 			if got != testCase.want {
 				t.Errorf("got %q, want %q", got, testCase.want)
@@ -73,8 +73,34 @@ func TestLogger_Error_Label(t *testing.T) {
 	}
 }
 
+func TestLogger_Warn_Label(t *testing.T) {
+	testCases := []struct {
+		name      string
+		warnLabel string
+		want      string
+	}{
+		{name: "prints the label it was given", warnLabel: "\x1b[33m!\x1b[0m", want: "\x1b[33m!\x1b[0m could not fetch main\n"},
+		{name: "prints a plain label when the label is empty", warnLabel: "", want: "! could not fetch main\n"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			logger := NewLogger("", Labels{Warn: testCase.warnLabel})
+			var stdout string
+			stderr := captureError(func() {
+				stdout = captureOutput(func() { logger.Warn("could not fetch %s", "main") })
+			})
+			if stderr != testCase.want {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.want)
+			}
+			if stdout != "" {
+				t.Errorf("expected nothing on stdout, got %q", stdout)
+			}
+		})
+	}
+}
+
 func TestLogger_Error_WithPrefix(t *testing.T) {
-	l := NewLogger("drudge", "")
+	l := NewLogger("drudge", Labels{})
 	out := captureError(func() { l.Error("something failed") })
 	if !strings.Contains(out, "[drudge] something failed") {
 		t.Errorf("expected '[drudge] something failed', got %q", out)
@@ -82,7 +108,7 @@ func TestLogger_Error_WithPrefix(t *testing.T) {
 }
 
 func TestLogger_InfoVsError_DifferentStreams(t *testing.T) {
-	l := NewLogger("", "")
+	l := NewLogger("", Labels{})
 	infoOut := captureOutput(func() { l.Info("info msg") })
 	errOut := captureError(func() { l.Error("err msg") })
 	if strings.Contains(infoOut, "Error:") {

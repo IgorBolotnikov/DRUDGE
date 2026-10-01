@@ -77,7 +77,7 @@ func TestPrintRepositories(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 			output := captureOutput(func() { printRepositories(log, testCase.resolved) })
 
 			rest := output
@@ -190,7 +190,7 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, newCLIProgress(log))
 			captureOutput(func() {
 				for _, name := range testCase.projects {

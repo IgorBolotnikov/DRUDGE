@@ -91,7 +91,7 @@ func TestTaskService_RemoveTask(t *testing.T) {
 			stored := editableTask()
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, common.NewLogger("", ""), progress, StatusDraft)
+			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), progress, StatusDraft)
 			keeper := &fakeSessionKeeper{hasRun: testCase.hasRun}
 			confirmation := &fakeConfirmation{isApproved: testCase.isApproved}
 
@@ -135,7 +135,7 @@ func TestTaskService_RemoveTask(t *testing.T) {
 
 func TestTaskService_RemoveTask_ResolvesAnIDPrefix(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 	keeper := &fakeSessionKeeper{}
 
 	if err := service.RemoveTask(testProjectSlug, "006684e3", true, keeper, nil); err != nil {
@@ -153,7 +153,7 @@ func TestTaskService_RemoveTask_RefusesATaskAnAgentIsWorkingOn(t *testing.T) {
 	stored := editableTask()
 	stored.Status = StatusInProgress
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 	keeper := &fakeSessionKeeper{}
 	keeper.refusal = errors.New("Drudger 1 (drudge-claude-demo-1) is still working on this task")
@@ -181,7 +181,7 @@ func TestTaskService_RemoveTask_TakesATaskWhoseSessionHasFinished(t *testing.T) 
 	stored := editableTask()
 	stored.Status = StatusFuckedUp
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 	keeper := &fakeSessionKeeper{hasRun: true}
 	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil); err != nil {
@@ -194,7 +194,7 @@ func TestTaskService_RemoveTask_TakesATaskWhoseSessionHasFinished(t *testing.T) 
 
 func TestTaskService_RemoveTask_RemovesATaskWhoseBranchesStayBehind(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 	keeper := &fakeSessionKeeper{branchFailure: errors.New("branch drudge/006684e3 is used by worktree at slot-1")}
 
 	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil); err != nil {
@@ -207,7 +207,7 @@ func TestTaskService_RemoveTask_RemovesATaskWhoseBranchesStayBehind(t *testing.T
 
 func TestTaskService_RemoveTask_RefusesAnEmptyID(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 	err := service.RemoveTask(testProjectSlug, "", true, &fakeSessionKeeper{}, nil)
 	if !errors.Is(err, ErrNoTaskID) {
@@ -232,7 +232,7 @@ func TestTaskService_RemoveTask_SurfacesTheLookupFailure(t *testing.T) {
 			other.Title = "Fix logout"
 
 			repo := &fakeTaskRepo{tasks: []*Task{editableTask(), other}}
-			service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 			err := service.RemoveTask(testProjectSlug, testCase.id, true, &fakeSessionKeeper{}, nil)
 			if err == nil {
@@ -253,7 +253,7 @@ func TestTaskService_RemoveTask_ReportsAnotherCommandHoldingTheTask(t *testing.T
 		tasks:  []*Task{editableTask()},
 		locked: map[TaskID]bool{editableTaskID: true},
 	}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 	err := service.RemoveTask(testProjectSlug, editableTaskID, true, &fakeSessionKeeper{}, nil)
 	if err == nil {
@@ -266,7 +266,7 @@ func TestTaskService_RemoveTask_ReportsAnotherCommandHoldingTheTask(t *testing.T
 
 func TestTaskService_RemoveTask_ReportsARunDirectoryLeftBehind(t *testing.T) {
 	repo := &fakeTaskRepo{tasks: []*Task{editableTask()}}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 	keeper := &fakeSessionKeeper{runFailure: errors.New("permission denied")}
 
 	err := service.RemoveTask(testProjectSlug, editableTaskID, true, keeper, nil)
@@ -420,7 +420,7 @@ func TestTaskService_RemoveTask_StripsItsLinks(t *testing.T) {
 			removed := linkedTask(removedID, 0, nil, "")
 			repo := &fakeTaskRepo{tasks: append([]*Task{removed}, testCase.others...)}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, common.NewLogger("", ""), progress, StatusDraft)
+			service := NewTaskService(repo, common.NewLogger("", common.Labels{}), progress, StatusDraft)
 			confirmation := &fakeConfirmation{isApproved: testCase.isApproved}
 
 			err := service.RemoveTask(testProjectSlug, removedID, testCase.isForced, &fakeSessionKeeper{}, confirmation.answer)
@@ -482,7 +482,7 @@ func TestTaskService_RemoveTask_StandsWhenALinkedTaskIsHeld(t *testing.T) {
 		tasks:  []*Task{editableTask(), held, free},
 		locked: map[TaskID]bool{heldID: true},
 	}
-	service := NewTaskService(repo, common.NewLogger("", ""), &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, common.NewLogger("", common.Labels{}), &fakeProgress{}, StatusDraft)
 
 	if err := service.RemoveTask(testProjectSlug, editableTaskID, true, &fakeSessionKeeper{}, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)

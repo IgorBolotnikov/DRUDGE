@@ -21,10 +21,11 @@ type commandDeps struct {
 	drudger   *drudger.DrudgerService
 }
 
-// NewLogger builds the logger of a command. Its errors carry the error label
-// of the loaded theme.
+// NewLogger builds the logger of a command. Its errors and warnings carry the
+// labels of the loaded theme.
 func NewLogger() *common.Logger {
-	return common.NewLogger("", theme.LoadOrDefault().ErrorLabel())
+	loaded := theme.LoadOrDefault()
+	return common.NewLogger("", common.Labels{Error: loaded.ErrorLabel(), Warn: loaded.WarnLabel()})
 }
 
 func newCommandDeps() (*commandDeps, error) {

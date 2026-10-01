@@ -50,7 +50,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 
 Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup` (`internal/setup`), and both config files carry a `$schema` pointer to that local file.
 
-**`internal/common`** holds the shared low-level helpers everything else depends on: path helpers for the `~/.drudge` layout, generic JSON read/write, the front-matter format, UUID generation, and a minimal `Logger` (`Info` → stdout, `Error` → stderr, optional bracketed prefix). Don't reintroduce these primitives in a domain package.
+**`internal/common`** holds the shared low-level helpers everything else depends on: path helpers for the `~/.drudge` layout, generic JSON read/write, the front-matter format, UUID generation, and a minimal `Logger` (`Info` → stdout, `Warn` and `Error` → stderr, optional bracketed prefix). Don't reintroduce these primitives in a domain package.
 
 ## Vocabulary
 

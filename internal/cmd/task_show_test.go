@@ -240,7 +240,7 @@ func TestPrintTask(t *testing.T) {
 			taskToShow := testCase.task
 			taskToShow.ID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
 			taskToShow.Title = "Fix login"
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			out := captureOutput(func() { printTask(log, &taskToShow, testCase.blockers, testCase.family, now) })
 
@@ -354,7 +354,7 @@ func TestPrintTaskColors(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			var out string
 			errOut := captureStderr(func() { out = captureOutput(func() { printTask(log, taskToShow, blockers, family, now) }) })

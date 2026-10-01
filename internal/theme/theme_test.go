@@ -122,6 +122,30 @@ func TestErrorLabel_FollowsColorEnv(t *testing.T) {
 	}
 }
 
+func TestWarnLabel_FollowsColorEnv(t *testing.T) {
+	cases := []struct {
+		name      string
+		env       map[string]string
+		themeName string
+		want      string
+	}{
+		{name: "FORCE_COLOR set", env: map[string]string{forceColorEnv: "1"}, themeName: "nord", want: "\x1b[38;2;235;203;139m!\x1b[0m"},
+		{name: "FORCE_COLOR set with the system theme", env: map[string]string{forceColorEnv: "1"}, themeName: systemTheme, want: "\x1b[33m!\x1b[0m"},
+		{name: "NO_COLOR set", env: map[string]string{noColorEnv: "1"}, themeName: "nord", want: "!"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, name := range []string{noColorEnv, forceColorEnv, cliColorForceEnv, cliColorEnv, termEnv} {
+				t.Setenv(name, testCase.env[name])
+			}
+			if got := NewTheme(testCase.themeName).WarnLabel(); got != testCase.want {
+				t.Errorf("WarnLabel() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestHex_ExactValue(t *testing.T) {
 	th := NewTheme("dracula")
 	tests := []struct {

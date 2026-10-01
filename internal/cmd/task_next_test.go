@@ -47,7 +47,7 @@ func TestPrintNext(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			out := captureOutput(func() { printNext(log, testCase.pick) })
 

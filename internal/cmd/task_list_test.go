@@ -147,7 +147,7 @@ func TestPrintTaskList(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("NO_COLOR", "1")
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			out := captureOutput(func() { printTaskList(log, onePage(testCase.listed)) })
 
@@ -249,7 +249,7 @@ func TestPrintTaskListColors(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			var out string
 			errOut := captureStderr(func() { out = captureOutput(func() { printTaskList(log, onePage(listed)) }) })
@@ -319,7 +319,7 @@ func TestPrintTaskListContextRow(t *testing.T) {
 			for name, value := range testCase.env {
 				t.Setenv(name, value)
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			out := captureOutput(func() { printTaskList(log, listed) })
 

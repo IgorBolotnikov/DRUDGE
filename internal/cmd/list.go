@@ -42,7 +42,7 @@ type column struct {
 func loadRoleColor[Text ~string](log *common.Logger, subject string, roles map[Text]string) func(text string) string {
 	palette, err := theme.Load("")
 	if err != nil {
-		log.Error("cannot color the %s: %v", subject, err)
+		log.Warn("cannot color the %s: %v", subject, err)
 		return func(text string) string { return text }
 	}
 	return func(text string) string {
@@ -185,7 +185,7 @@ func printPageFooter(log *common.Logger, number int, totalPages int) {
 
 	palette, err := theme.Load("")
 	if err != nil {
-		log.Error("cannot color the page footer: %v", err)
+		log.Warn("cannot color the page footer: %v", err)
 	} else {
 		footer = palette.Paint(theme.Stdout, theme.RoleMuted, footer)
 	}

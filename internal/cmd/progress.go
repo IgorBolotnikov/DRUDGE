@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
@@ -65,6 +66,10 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.log.Info("Task [%s] %s goes to Drudger %d (%s)", event.Task.ID, event.Task.Title, event.Slot, event.Sandbox)
 	case drudger.BaseFetchStarted:
 		p.log.Info("Fetching %s of repository %s from %s", event.Branch, event.Repository, event.Remote)
+	case drudger.BaseFetchFailed:
+		p.log.Warn("Could not fetch %s of repository %s: %v", event.Branch, event.Repository, event.Err)
+	case drudger.StaleBaseUsed:
+		p.log.Warn("Work on repository %s is cut from %s", event.Repository, describeBase(event.Ref, event.Commit))
 	case drudger.WorktreeCreationStarted:
 		p.log.Info("Creating the workspace of repository %s at %s", event.Repository, event.Path)
 	case drudger.WorktreeStashed:
@@ -142,6 +147,27 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.log.Info("Branch %s of repository %s holds commits, it stays", event.Branch, event.Repository)
 	case drudger.EmptyBranchRemoved:
 		p.log.Info("Branch %s of repository %s held nothing, it is deleted", event.Branch, event.Repository)
+	}
+}
+
+// describeBase names the commit a ref points at and how old it is. A ref with
+// no commit is described by its name alone.
+func describeBase(ref string, commit git.Commit) string {
+	if commit.SHA == "" {
+		return ref
+	}
+	return fmt.Sprintf("%s at %s, committed %s", ref, git.ShortSHA(commit.SHA), formatAge(time.Since(commit.CommittedAt)))
+}
+
+// formatAge renders roughly how long ago a commit was made.
+func formatAge(elapsed time.Duration) string {
+	switch {
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(elapsed.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(elapsed.Hours()/24))
 	}
 }
 

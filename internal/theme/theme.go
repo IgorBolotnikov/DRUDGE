@@ -158,12 +158,21 @@ func (t *Theme) Reset() string {
 	return ansiReset
 }
 
-const errorLabel = "Error:"
+const (
+	errorLabel = "Error:"
+	warnLabel  = "!"
+)
 
 // ErrorLabel returns the label of an error printed to stderr, in the color of
 // the error role.
 func (t *Theme) ErrorLabel() string {
 	return t.Paint(Stderr, RoleError, errorLabel)
+}
+
+// WarnLabel returns the label of a warning printed to stderr, in the color of
+// the warning role.
+func (t *Theme) WarnLabel() string {
+	return t.Paint(Stderr, RoleWarning, warnLabel)
 }
 
 // Hex returns the raw "#rrggbb" string for the given role, or an empty string
@@ -252,7 +261,7 @@ func Load(name string) (*Theme, error) {
 		return nil, fmt.Errorf("unknown theme %q", paletteName)
 	}
 
-	logger := common.NewLogger("theme", "")
+	logger := common.NewLogger("theme", common.Labels{})
 	for role, color := range cfg.Overrides {
 		if !validHex(color) {
 			logger.Info("invalid hex color %q for role %q, falling back to palette default", color, role)

@@ -172,7 +172,7 @@ func TestPrintDrudgers(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 			output := captureOutput(func() { printDrudgers(log, testProjectSlug, drudgersOnOnePage(testCase.pool), time.Now().UTC()) })
 
 			rest := output
@@ -290,7 +290,7 @@ func TestPrintDrudgersColors(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			log := common.NewLogger("", "")
+			log := common.NewLogger("", common.Labels{})
 
 			var out string
 			errOut := captureStderr(func() {
