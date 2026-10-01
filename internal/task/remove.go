@@ -45,11 +45,21 @@ type TaskRemovalDeclined struct {
 	Task *Task
 }
 
-// TaskRemoved reports a task RemoveTask deleted. HasRun says whether the task
-// had a run directory removed with it.
+// TaskRemovalStarted reports a task whose file RemoveTask deleted. Its run
+// directory, branches and links are cleaned up next.
+type TaskRemovalStarted struct {
+	Task *Task
+}
+
+// RunDirectoryRemoved reports the run directory of a removed task.
+type RunDirectoryRemoved struct {
+	TaskID TaskID
+}
+
+// TaskRemoved reports a task RemoveTask deleted and cleaned up after. It is
+// the last event of a removal.
 type TaskRemoved struct {
-	Task   *Task
-	HasRun bool
+	Task *Task
 }
 
 // TasksUnblocked reports how many tasks a removal took off their blockers.
@@ -118,13 +128,16 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 	if !isRemoved {
 		return fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
+	service.progress.Report(TaskRemovalStarted{Task: found})
 
 	hasRun, err := sessions.RemoveRun(found.ID)
 	if err != nil {
 		return fmt.Errorf("task %s was removed, but its run directory was not: %w", found.ID, err)
 	}
 
-	service.progress.Report(TaskRemoved{Task: found, HasRun: hasRun})
+	if hasRun {
+		service.progress.Report(RunDirectoryRemoved{TaskID: found.ID})
+	}
 
 	// The task file is already gone. A cleanup that fails is reported and the
 	// removal stands.
@@ -132,6 +145,7 @@ func (service *TaskService) RemoveTask(projectSlug string, id TaskID, isForced b
 		service.progress.Report(BranchesCleanupFailed{TaskID: found.ID, Err: err})
 	}
 	service.unlink(projectSlug, found.ID, dependents, children)
+	service.progress.Report(TaskRemoved{Task: found})
 	return nil
 }
 

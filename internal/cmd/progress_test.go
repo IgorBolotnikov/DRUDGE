@@ -39,37 +39,42 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a declined removal",
 			event: task.TaskRemovalDeclined{Task: sampleTask},
-			want:  "Left task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login alone\n",
+			want:  "· Left task 006684e3  Fix login alone\n",
 		},
 		{
-			name:  "a removal with no run directory",
+			name:  "a removal started",
+			event: task.TaskRemovalStarted{Task: sampleTask},
+			want:  "Removing task 006684e3  Fix login\n",
+		},
+		{
+			name:  "a run directory removed",
+			event: task.RunDirectoryRemoved{TaskID: sampleTask.ID},
+			want:  "✓ Removed its run directory\n",
+		},
+		{
+			name:  "a task removed",
 			event: task.TaskRemoved{Task: sampleTask},
-			want:  "Removed task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n",
-		},
-		{
-			name:  "a removal whose run directory went with it",
-			event: task.TaskRemoved{Task: sampleTask, HasRun: true},
-			want:  "Removed task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\nIts run directory went with it\n",
+			want:  "✓ Removed task 006684e3  Fix login\n",
 		},
 		{
 			name:  "one task unblocked",
 			event: task.TasksUnblocked{Count: 1},
-			want:  "Took it off the blockers of 1 task\n",
+			want:  "✓ Took it off the blockers of 1 task\n",
 		},
 		{
 			name:  "several tasks unblocked",
 			event: task.TasksUnblocked{Count: 2},
-			want:  "Took it off the blockers of 2 tasks\n",
+			want:  "✓ Took it off the blockers of 2 tasks\n",
 		},
 		{
 			name:  "one task ungrouped",
 			event: task.TasksUngrouped{Count: 1},
-			want:  "Ungrouped 1 task that belonged to it\n",
+			want:  "✓ Ungrouped 1 task that belonged to it\n",
 		},
 		{
 			name:  "several tasks ungrouped",
 			event: task.TasksUngrouped{Count: 2},
-			want:  "Ungrouped 2 tasks that belonged to it\n",
+			want:  "✓ Ungrouped 2 tasks that belonged to it\n",
 		},
 		{
 			name:       "a branch cleanup after a removal failed",
@@ -427,17 +432,17 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a branch of an unknown repository kept",
 			event: drudger.BranchOfUnknownRepositoryKept{ProjectSlug: "demo", Repository: "ui", Branch: "drudge/006684e3-fix-login"},
-			want:  "Branch drudge/006684e3-fix-login stays, project demo records no repository ui\n",
+			want:  "· Branch drudge/006684e3-fix-login stays, project demo records no repository ui\n",
 		},
 		{
 			name:  "a branch with commits kept",
 			event: drudger.BranchWithCommitsKept{Repository: "api", Branch: "drudge/006684e3-fix-login"},
-			want:  "Branch drudge/006684e3-fix-login of repository api holds commits, it stays\n",
+			want:  "· Branch drudge/006684e3-fix-login of repository api holds commits, it stays\n",
 		},
 		{
 			name:  "an empty branch removed",
 			event: drudger.EmptyBranchRemoved{Repository: "api", Branch: "drudge/006684e3-fix-login"},
-			want:  "Branch drudge/006684e3-fix-login of repository api held nothing, it is deleted\n",
+			want:  "✓ Branch drudge/006684e3-fix-login of repository api held nothing, it is deleted\n",
 		},
 	}
 

@@ -122,7 +122,11 @@ func TestTaskService_RemoveTask(t *testing.T) {
 
 			wantEvents := []any{TaskRemovalDeclined{Task: stored}}
 			if testCase.wantRemoved {
-				wantEvents = []any{TaskRemoved{Task: stored, HasRun: testCase.hasRun}}
+				wantEvents = []any{TaskRemovalStarted{Task: stored}}
+				if testCase.hasRun {
+					wantEvents = append(wantEvents, RunDirectoryRemoved{TaskID: editableTaskID})
+				}
+				wantEvents = append(wantEvents, TaskRemoved{Task: stored})
 			}
 			if !reflect.DeepEqual(progress.events, wantEvents) {
 				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
@@ -206,8 +210,9 @@ func TestTaskService_RemoveTask_RemovesATaskWhoseBranchesStayBehind(t *testing.T
 	}
 
 	wantEvents := []any{
-		TaskRemoved{Task: stored},
+		TaskRemovalStarted{Task: stored},
 		BranchesCleanupFailed{TaskID: editableTaskID, Err: branchErr},
+		TaskRemoved{Task: stored},
 	}
 	if !reflect.DeepEqual(progress.events, wantEvents) {
 		t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
@@ -465,13 +470,14 @@ func TestTaskService_RemoveTask_StripsItsLinks(t *testing.T) {
 
 			wantEvents := []any{TaskRemovalDeclined{Task: removed}}
 			if testCase.wantRemoved {
-				wantEvents = []any{TaskRemoved{Task: removed}}
+				wantEvents = []any{TaskRemovalStarted{Task: removed}}
 				if testCase.wantUnblocked > 0 {
 					wantEvents = append(wantEvents, TasksUnblocked{Count: testCase.wantUnblocked})
 				}
 				if testCase.wantUngrouped > 0 {
 					wantEvents = append(wantEvents, TasksUngrouped{Count: testCase.wantUngrouped})
 				}
+				wantEvents = append(wantEvents, TaskRemoved{Task: removed})
 			}
 			if !reflect.DeepEqual(progress.events, wantEvents) {
 				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)
@@ -533,9 +539,10 @@ func TestTaskService_RemoveTask_StandsWhenALinkedTaskCannotBeUnlinked(t *testing
 			}
 
 			wantEvents := []any{
-				TaskRemoved{Task: removed},
+				TaskRemovalStarted{Task: removed},
 				testCase.wantFailure,
 				TasksUngrouped{Count: 1},
+				TaskRemoved{Task: removed},
 			}
 			if !reflect.DeepEqual(progress.events, wantEvents) {
 				t.Errorf("events = %+v, want %+v", progress.events, wantEvents)

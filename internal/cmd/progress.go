@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -23,13 +22,12 @@ const (
 // cliProgress renders the events a domain service reports as the lines drg
 // prints.
 type cliProgress struct {
-	log *common.Logger
 	out *printer
 }
 
 // newCLIProgress builds a progress port that prints through out.
 func newCLIProgress(out *printer) *cliProgress {
-	return &cliProgress{log: out.log, out: out}
+	return &cliProgress{out: out}
 }
 
 func (p *cliProgress) Report(event any) {
@@ -37,16 +35,17 @@ func (p *cliProgress) Report(event any) {
 	case task.TaskCreated:
 		p.out.done("Created task %s", p.out.task(event.Task))
 	case task.TaskRemovalDeclined:
-		p.log.Info("Left task [%s] %s alone", event.Task.ID, event.Task.Title)
+		p.out.skip("Left task %s alone", p.out.task(event.Task))
+	case task.TaskRemovalStarted:
+		p.out.header("Removing task %s", p.out.task(event.Task))
+	case task.RunDirectoryRemoved:
+		p.out.done("Removed its run directory")
 	case task.TaskRemoved:
-		p.log.Info("Removed task [%s] %s", event.Task.ID, event.Task.Title)
-		if event.HasRun {
-			p.log.Info("Its run directory went with it")
-		}
+		p.out.result("Removed task %s", p.out.task(event.Task))
 	case task.TasksUnblocked:
-		p.log.Info("Took it off the blockers of %s", task.FormatTaskCount(event.Count))
+		p.out.done("Took it off the blockers of %s", task.FormatTaskCount(event.Count))
 	case task.TasksUngrouped:
-		p.log.Info("Ungrouped %s that belonged to it", task.FormatTaskCount(event.Count))
+		p.out.done("Ungrouped %s that belonged to it", task.FormatTaskCount(event.Count))
 	case task.BranchesCleanupFailed:
 		p.out.warn("Task %s is removed, but the branches it left could not be cleaned up: %v", event.TaskID, event.Err)
 	case task.TaskUnlinkFailed:
@@ -171,11 +170,11 @@ func (p *cliProgress) reportDrudger(event any) {
 	case drudger.TaskKilled:
 		p.out.failed("Task %s is %s, its agent was killed with the Drudger", p.out.task(event.Task), event.Task.Status)
 	case drudger.BranchOfUnknownRepositoryKept:
-		p.log.Info("Branch %s stays, project %s records no repository %s", event.Branch, event.ProjectSlug, event.Repository)
+		p.out.skip("Branch %s stays, project %s records no repository %s", event.Branch, event.ProjectSlug, event.Repository)
 	case drudger.BranchWithCommitsKept:
-		p.log.Info("Branch %s of repository %s holds commits, it stays", event.Branch, event.Repository)
+		p.out.skip("Branch %s of repository %s holds commits, it stays", event.Branch, event.Repository)
 	case drudger.EmptyBranchRemoved:
-		p.log.Info("Branch %s of repository %s held nothing, it is deleted", event.Branch, event.Repository)
+		p.out.done("Branch %s of repository %s held nothing, it is deleted", event.Branch, event.Repository)
 	case drudger.HealthRecordFailed:
 		p.warnHealthRecordFailed(event)
 	case drudger.IdleWorkspaceParkFailed:
