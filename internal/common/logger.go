@@ -23,6 +23,8 @@ type Labels struct {
 }
 
 const (
+	// TODO: remove this label duplication here and in the logger
+	// Only one place should define it
 	plainErrorLabel = "Error:"
 	plainWarnLabel  = "!"
 )
