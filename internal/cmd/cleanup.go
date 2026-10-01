@@ -1,9 +1,6 @@
 package cmd
 
-import (
-	"flag"
-	"fmt"
-)
+import "flag"
 
 var CleanupCmd = &Cmd{
 	Name: "cleanup",
@@ -20,6 +17,7 @@ func cleanup(isForced bool) error {
 	if err != nil {
 		return err
 	}
+	out := newCommandPrinter()
 
 	if !isForced {
 		isInstalled, err := service.IsInstalled()
@@ -27,15 +25,15 @@ func cleanup(isForced bool) error {
 			return err
 		}
 		if !isInstalled {
-			printNothingToCleanUp(service.DrudgeDir())
+			printNothingToCleanUp(out, service.DrudgeDir())
 			return nil
 		}
-		isConfirmed, err := ConfirmDeletion(newCommandPrinter(), service.DrudgeDir())
+		isConfirmed, err := ConfirmDeletion(out, service.DrudgeDir())
 		if err != nil {
 			return err
 		}
 		if !isConfirmed {
-			fmt.Println("Aborted")
+			out.skip("Left %s alone", service.DrudgeDir())
 			return nil
 		}
 	}
@@ -45,13 +43,13 @@ func cleanup(isForced bool) error {
 		return err
 	}
 	if !result.HasRemoved {
-		printNothingToCleanUp(result.DrudgeDir)
+		printNothingToCleanUp(out, result.DrudgeDir)
 		return nil
 	}
-	fmt.Printf("Removed %s\n", result.DrudgeDir)
+	out.done("Removed %s", result.DrudgeDir)
 	return nil
 }
 
-func printNothingToCleanUp(drudgeDir string) {
-	fmt.Printf("Nothing to clean up, %s does not exist\n", drudgeDir)
+func printNothingToCleanUp(out *printer, drudgeDir string) {
+	out.skip("Nothing to clean up, %s does not exist", drudgeDir)
 }

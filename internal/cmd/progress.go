@@ -65,7 +65,7 @@ func (p *cliProgress) Report(event any) {
 	case project.ProjectAlreadyGone:
 		p.out.skip("Project %s was already gone", event.Slug)
 	case release.DownloadStarted:
-		p.log.Info("Downloading %s (%s)", event.ArchiveName, event.Version)
+		p.out.step("Downloading %s (%s)", event.ArchiveName, event.Version)
 	default:
 		p.reportDrudger(event)
 	}

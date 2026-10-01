@@ -119,7 +119,7 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a download started",
 			event: release.DownloadStarted{ArchiveName: "drg_linux_amd64.tar.gz", Version: "v0.2.0"},
-			want:  "Downloading drg_linux_amd64.tar.gz (v0.2.0)\n",
+			want:  "› Downloading drg_linux_amd64.tar.gz (v0.2.0)…\n",
 		},
 		{
 			name:  "a Drudger claimed",

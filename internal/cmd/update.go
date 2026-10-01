@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/github"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
@@ -25,17 +24,20 @@ func update(version string) error {
 		return err
 	}
 	repo := github.New(github.RepositoryURL, github.RequestTimeout)
-	service := release.NewReleaseService(repo, newCLIProgress(newCommandPrinter()))
+	out := newCommandPrinter()
+	service := release.NewReleaseService(repo, newCLIProgress(out))
 
 	result, err := service.Update(version, binaryPath)
 	if err != nil {
 		return err
 	}
 	if result.IsUpToDate {
-		fmt.Printf("drg %s is the latest release\n", result.Version)
+		out.skip("drg %s is the latest release", result.Version)
 		return nil
 	}
-	fmt.Printf("Updated drg %s to %s at %s\n", result.PreviousVersion, result.Version, result.BinaryPath)
-	fmt.Println("Run drg setup to refresh the schema files and the skill")
+	out.result("Updated drg %s to %s", result.PreviousVersion, result.Version)
+	out.field("Binary", result.BinaryPath)
+	out.field("Next", "run drg setup to refresh the schema files and the skill")
+	out.flush()
 	return nil
 }
