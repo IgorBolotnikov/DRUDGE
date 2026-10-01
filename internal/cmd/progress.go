@@ -35,7 +35,7 @@ func newCLIProgress(out *printer) *cliProgress {
 func (p *cliProgress) Report(event any) {
 	switch event := event.(type) {
 	case task.TaskCreated:
-		p.log.Info("Created task [%s] %s", event.Task.ID, event.Task.Title)
+		p.out.done("Created task %s", p.out.task(event.Task))
 	case task.TaskRemovalDeclined:
 		p.log.Info("Left task [%s] %s alone", event.Task.ID, event.Task.Title)
 	case task.TaskRemoved:
@@ -52,14 +52,14 @@ func (p *cliProgress) Report(event any) {
 	case task.TaskUnlinkFailed:
 		p.warnTaskUnlinkFailed(event)
 	case task.TaskMarkedDone:
-		p.log.Info("Task [%s] %s is %q", event.Task.ID, event.Task.Title, event.Task.Status)
+		p.out.done("Task %s is %q", p.out.task(event.Task), event.Task.Status)
 	case task.TaskEdited:
-		p.log.Info("Updated task [%s] %s, it is now %q", event.Task.ID, event.Task.Title, event.Task.Status)
+		p.out.done("Updated task %s, it is now %q", p.out.task(event.Task), event.Task.Status)
 	case project.ProjectCreated:
 		// Project init prints the result line itself, after the warnings
 		// about its repositories.
 	case project.ProjectRenamed:
-		p.log.Info("Renamed project %s from %q to %q", event.Slug, event.OldName, event.NewName)
+		p.out.done("Renamed project %s from %q to %q", event.Slug, event.OldName, event.NewName)
 	case release.DownloadStarted:
 		p.log.Info("Downloading %s (%s)", event.ArchiveName, event.Version)
 	default:

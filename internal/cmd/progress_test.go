@@ -34,7 +34,7 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a task created",
 			event: task.TaskCreated{Task: sampleTask},
-			want:  "Created task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n",
+			want:  "✓ Created task 006684e3  Fix login\n",
 		},
 		{
 			name:  "a declined removal",
@@ -89,12 +89,12 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a task marked done",
 			event: task.TaskMarkedDone{Task: sampleTask},
-			want:  `Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login is "todo"` + "\n",
+			want:  `✓ Task 006684e3  Fix login is "todo"` + "\n",
 		},
 		{
 			name:  "a task edited",
 			event: task.TaskEdited{Task: sampleTask},
-			want:  `Updated task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login, it is now "todo"` + "\n",
+			want:  `✓ Updated task 006684e3  Fix login, it is now "todo"` + "\n",
 		},
 		{
 			name:  "a project created",
@@ -104,7 +104,7 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a project renamed",
 			event: project.ProjectRenamed{Slug: "demo", OldName: "Shop", NewName: "Store"},
-			want:  `Renamed project demo from "Shop" to "Store"` + "\n",
+			want:  `✓ Renamed project demo from "Shop" to "Store"` + "\n",
 		},
 		{
 			name:  "a download started",
@@ -618,6 +618,15 @@ func TestCLIProgress_ReportRecordingGroup(t *testing.T) {
 			want: header +
 				"✗ Task 3f9a1c2e  Add retry to uploader fucked up, it is done\n",
 			wantStderr: "  ! The Session of task 3f9a1c2e-0b1d-4c2e-9f3a-1c2e0b1d4c2e is over, but the workspace it ran in could not be read: disk full\n",
+		},
+		{
+			name: "a task marked done that unblocked tasks",
+			events: []any{
+				task.TaskMarkedDone{Task: retryTask},
+				drudger.DependentsUnblocked{Tasks: []*task.Task{{ID: "77b04d1e-0001", Title: "Wire retry into the CLI"}}},
+			},
+			want: `✓ Task 3f9a1c2e  Add retry to uploader is "done"` + "\n" +
+				"    Unblocked  77b04d1e  Wire retry into the CLI\n",
 		},
 		{
 			name:   "a refused run sits at column 0 with its advice under it",
