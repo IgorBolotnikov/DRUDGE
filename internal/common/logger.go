@@ -13,6 +13,7 @@ import (
 type Logger struct {
 	prefix string
 	labels Labels
+	indent string
 }
 
 // Labels are what a Logger prints before the message of an error and of a
@@ -41,20 +42,28 @@ func NewLogger(prefix string, labels Labels) *Logger {
 	return &Logger{prefix: prefix, labels: labels}
 }
 
+// Indented returns a copy of the logger that prints indent at the start of
+// every line, before the label.
+func (l *Logger) Indented(indent string) *Logger {
+	indented := *l
+	indented.indent = indent
+	return &indented
+}
+
 // Info prints an info-level message.
 func (l *Logger) Info(format string, args ...any) {
-	fmt.Printf("%s\n", l.format(format, args...))
+	fmt.Printf("%s%s\n", l.indent, l.format(format, args...))
 }
 
 // Warn prints a warn-level message to stderr.
 func (l *Logger) Warn(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", l.labels.Warn, l.format(format, args...))
+	fmt.Fprintf(os.Stderr, "%s%s %s\n", l.indent, l.labels.Warn, l.format(format, args...))
 }
 
 // Error prints an error-level message to stderr. The top of the program calls
 // it with the error a command returned, and the process exits after it.
 func (l *Logger) Error(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", l.labels.Error, l.format(format, args...))
+	fmt.Fprintf(os.Stderr, "%s%s %s\n", l.indent, l.labels.Error, l.format(format, args...))
 }
 
 func (l *Logger) format(format string, args ...any) string {

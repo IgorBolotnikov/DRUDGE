@@ -24,8 +24,13 @@ type commandDeps struct {
 // NewLogger builds the logger of a command. Its errors and warnings carry the
 // labels of the loaded theme.
 func NewLogger() *common.Logger {
-	loaded := theme.LoadOrDefault()
-	return common.NewLogger("", common.Labels{Error: loaded.ErrorLabel(), Warn: loaded.WarnLabel()})
+	return newThemedLogger(theme.LoadOrDefault())
+}
+
+// newThemedLogger builds the logger of a command whose labels come from
+// palette.
+func newThemedLogger(palette *theme.Theme) *common.Logger {
+	return common.NewLogger("", common.Labels{Error: palette.ErrorLabel(), Warn: palette.WarnLabel()})
 }
 
 func newCommandDeps() (*commandDeps, error) {

@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 var SetupCmd = &Cmd{
@@ -15,34 +15,33 @@ var SetupCmd = &Cmd{
 }
 
 func runSetup([]string) error {
-	printProjectName()
+	palette := theme.LoadOrDefault()
+	printProjectName(palette)
 
 	service, err := newSetupService()
 	if err != nil {
 		return err
 	}
+	out := newPrinter(newThemedLogger(palette), palette)
+	out.header("Setting up DRUDGE at %s", service.DrudgeDir())
 	result, err := service.Setup()
 	if err != nil {
 		return err
 	}
-
 	for _, path := range result.SchemaPaths {
-		fmt.Printf("Created %s\n", path)
+		out.done("Created %s", path)
 	}
 	if result.SkillPath != "" {
-		fmt.Printf("Created %s\n", result.SkillPath)
+		out.done("Created %s", result.SkillPath)
 	}
-	if result.GlobalConfig.HasExisted {
-		fmt.Printf("Config already exists at %s, skipping\n", result.GlobalConfig.Path)
-	} else {
-		fmt.Printf("Created %s\n", result.GlobalConfig.Path)
+	for _, configFile := range []setup.ConfigFile{result.GlobalConfig, result.ThemeConfig} {
+		if configFile.HasExisted {
+			out.skip("%s already exists", configFile.Path)
+		} else {
+			out.done("Created %s", configFile.Path)
+		}
 	}
-	if result.ThemeConfig.HasExisted {
-		fmt.Printf("Theme config already exists at %s, skipping\n", result.ThemeConfig.Path)
-	} else {
-		fmt.Printf("Created %s\n", result.ThemeConfig.Path)
-	}
-	fmt.Printf("Initialized DRUDGE at %s\n", result.DrudgeDir)
+	out.result("DRUDGE is set up, run drg project init <name> in a project directory")
 	return nil
 }
 

@@ -31,12 +31,12 @@ const (
 	logoOutlineShift    = -0.3
 )
 
-// printProjectName prints the logo when stdout is a terminal.
-func printProjectName() {
+// printProjectName prints the logo in the colors of th when stdout is a
+// terminal.
+func printProjectName(th *theme.Theme) {
 	if !common.IsTerminal(os.Stdout) {
 		return
 	}
-	th := theme.MustLoad()
 	outlineColor := th.Shade(theme.RoleError, logoOutlineShift)
 	fmt.Println("")
 	for rowIndex, line := range logoLines {

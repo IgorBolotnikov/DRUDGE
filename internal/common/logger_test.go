@@ -118,3 +118,31 @@ func TestLogger_InfoVsError_DifferentStreams(t *testing.T) {
 		t.Errorf("Error should write to stderr, got %q", errOut)
 	}
 }
+
+func TestLogger_Indented(t *testing.T) {
+	testCases := []struct {
+		name       string
+		print      func(logger *Logger)
+		wantStdout string
+		wantStderr string
+	}{
+		{name: "info", print: func(logger *Logger) { logger.Info("hello") }, wantStdout: "  hello\n"},
+		{name: "warn puts the indent before the label", print: func(logger *Logger) { logger.Warn("careful") }, wantStderr: "  ! careful\n"},
+		{name: "error puts the indent before the label", print: func(logger *Logger) { logger.Error("oops") }, wantStderr: "  Error: oops\n"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			logger := NewLogger("", Labels{}).Indented("  ")
+			var stdout string
+			stderr := captureError(func() {
+				stdout = captureOutput(func() { testCase.print(logger) })
+			})
+			if stdout != testCase.wantStdout {
+				t.Errorf("stdout = %q, want %q", stdout, testCase.wantStdout)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}
