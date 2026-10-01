@@ -332,6 +332,14 @@ type AgentLaunched struct {
 	RunDir  string
 }
 
+// DrudgerReleaseFailed reports a Drudger that stays claimed for a run that
+// never started.
+type DrudgerReleaseFailed struct {
+	ProjectSlug string
+	Slot        int
+	Err         error
+}
+
 // startAgent claims a Drudger, starts an agent on a task and marks the task as
 // in progress. The caller writes the task back.
 func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Task, layout projectLayout) error {
@@ -350,7 +358,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		if !isLaunched {
 			e := service.releaseDrudger(projectSlug, claimed.Slot, taskID)
 			if e != nil {
-				service.logger.Error("Drudger %d of project %s stays claimed for a run that never started: %v", claimed.Slot, projectSlug, e)
+				service.progress.Report(DrudgerReleaseFailed{ProjectSlug: projectSlug, Slot: claimed.Slot, Err: e})
 			}
 		}
 	}()
@@ -508,13 +516,20 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 	}
 }
 
+// SessionIDReadFailed reports a launched task whose session id could not be
+// read, so the task is recorded without one.
+type SessionIDReadFailed struct {
+	TaskID task.TaskID
+	Err    error
+}
+
 // launchedSessionID reads the session id the agent has written so far. The
 // line carrying the id can still be half written, so an empty id is a normal
 // answer.
 func (service *DrudgerService) launchedSessionID(taskID task.TaskID) string {
 	sessionID, err := readSessionID(service.runs, taskID)
 	if err != nil {
-		service.logger.Error("%v, the task is recorded without a session id", err)
+		service.progress.Report(SessionIDReadFailed{TaskID: taskID, Err: err})
 	}
 	return sessionID
 }

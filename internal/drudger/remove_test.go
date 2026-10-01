@@ -1,9 +1,9 @@
 package drudger
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -156,29 +156,75 @@ func TestDrudgerService_RemoveEmptyBranches_ReadsNoGitForATaskThatNeverRan(t *te
 	}
 }
 
-func TestDrudgerService_RemoveEmptyBranches_ReportsABranchItCouldNotDelete(t *testing.T) {
-	projectDir := setupProjectDir(t)
+func TestDrudgerService_RemoveEmptyBranches_ReportsABranchItCouldNotCleanUp(t *testing.T) {
+	gitErr := errors.New("git said no")
 
-	removed := landedTask(testRepositoryName)
-	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, removed)
-
-	dir := repositoryDirsOf(projectDir, []string{testRepositoryName})[testRepositoryName]
-	service.git.branchHolding(dir, testTaskBranch, 0)
-	// The fake git refuses to delete a branch a worktree has checked out.
-	service.git.rememberBranch(dir, testTaskBranch)
-
-	var err error
-	output := captureErrors(func() {
-		err = service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	cases := []struct {
+		name    string
+		failGit func(fake *fakeGit, dir string)
+		step    BranchCleanupStep
+		// wantErr is nil where the error is git's own and not one the test
+		// injected.
+		wantErr error
+	}{
+		{
+			name:    "a repository it cannot read",
+			failGit: func(fake *fakeGit, dir string) { fake.remoteErr = gitErr },
+			step:    RepositoryReadStep,
+			wantErr: gitErr,
+		},
+		{
+			name:    "a branch it cannot look up",
+			failGit: func(fake *fakeGit, dir string) { fake.branchLookupErr = gitErr },
+			step:    BranchReadStep,
+			wantErr: gitErr,
+		},
+		{
+			name: "a branch whose commits it cannot count",
+			failGit: func(fake *fakeGit, dir string) {
+				fake.branchHolding(dir, testTaskBranch, 0)
+				fake.commitCountErr = gitErr
+			},
+			step:    BranchInspectStep,
+			wantErr: gitErr,
+		},
+		{
+			name: "a branch it cannot delete",
+			failGit: func(fake *fakeGit, dir string) {
+				fake.branchHolding(dir, testTaskBranch, 0)
+				// The fake git refuses to delete a branch a worktree has
+				// checked out.
+				fake.rememberBranch(dir, testTaskBranch)
+			},
+			step: BranchDeleteStep,
+		},
 	}
-	if !strings.Contains(output, testTaskBranch) {
-		t.Errorf("expected the branch that stayed to be named, got %q", output)
-	}
-	if _, lookupErr := service.taskRepo.GetTask(testProjectSlug, removed.ID); lookupErr == nil {
-		t.Error("expected the task to be removed anyway")
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+
+			removed := landedTask(testRepositoryName)
+			service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, removed)
+			dir := repositoryDirsOf(projectDir, []string{testRepositoryName})[testRepositoryName]
+			testCase.failGit(service.git, dir)
+
+			err := service.tasks.RemoveTask(testProjectSlug, removed.ID, true, service.DrudgerService, nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			failed := singleEvent[BranchCleanupFailed](t, service.progress)
+			if failed.Repository != testRepositoryName || failed.Branch != testTaskBranch || failed.Step != testCase.step || failed.Err == nil {
+				t.Errorf("expected a failed %s of branch %s of repository %s, got %+v", testCase.step, testTaskBranch, testRepositoryName, failed)
+			}
+			if testCase.wantErr != nil && !errors.Is(failed.Err, testCase.wantErr) {
+				t.Errorf("expected the failure to carry %v, got %v", testCase.wantErr, failed.Err)
+			}
+			if _, lookupErr := service.taskRepo.GetTask(testProjectSlug, removed.ID); lookupErr == nil {
+				t.Error("expected the task to be removed anyway")
+			}
+		})
 	}
 }
 

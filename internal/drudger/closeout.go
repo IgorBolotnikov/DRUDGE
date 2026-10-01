@@ -33,6 +33,15 @@ type EmptyBranchDropped struct {
 	Branch     string
 }
 
+// RunCloseOutFailed reports a step of closing out a finished run that failed.
+// Repository is set for the close-out of one repository.
+type RunCloseOutFailed struct {
+	TaskID     task.TaskID
+	Step       WorkspaceStep
+	Repository string
+	Err        error
+}
+
 // finishRun records where the work of a finished run landed and parks the
 // workspace it ran in. The caller writes the task back.
 //
@@ -44,14 +53,14 @@ type EmptyBranchDropped struct {
 func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task) {
 	space, err := service.workspaceOfTask(projectSlug, finished.ID)
 	if err != nil {
-		service.logger.Error("The Session of task %s is over, but the workspace it ran in could not be read: %v", finished.ID, err)
+		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceReadStep, Err: err})
 		return
 	}
 
 	service.closeOutRun(space, finished)
 
 	if err := service.parkWorkspace(space, finished); err != nil {
-		service.logger.Error("The Session of task %s is over, but the workspace it ran in could not be parked: %v", finished.ID, err)
+		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceParkStep, Err: err})
 	}
 }
 
@@ -67,7 +76,7 @@ func (service *DrudgerService) closeOutRun(space slotWorkspace, finished *task.T
 			continue
 		}
 		if err := service.closeOutRepository(finished, repository, landing); err != nil {
-			service.logger.Error("The Session of task %s is over, but where its work in repository %s is could not be worked out: %v", finished.ID, repository.Name, err)
+			service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: RepositoryCloseOutStep, Repository: repository.Name, Err: err})
 		}
 	}
 }

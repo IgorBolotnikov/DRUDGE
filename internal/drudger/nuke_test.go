@@ -422,23 +422,44 @@ func TestDrudgerService_NukeDrudger_RunsNoGitWithoutAWorkspace(t *testing.T) {
 }
 
 func TestDrudgerService_NukeDrudger_ReportsAWorkspaceItCannotTakeApart(t *testing.T) {
-	projectDir := setupProjectDir(t)
-	commands := &fakeCommandRunner{projectDir: projectDir}
-	pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
-	service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
-	service.git.removalErr = errors.New("git said no")
-	makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
+	gitErr := errors.New("git said no")
 
-	var err error
-	reported := captureErrors(func() { err = service.NukeDrudger(testProjectSlug, 1, false) })
-	if err != nil {
-		t.Fatalf("expected the nuke to go through, got %v", err)
+	cases := []struct {
+		name    string
+		failGit func(fake *fakeGit)
+		want    WorkspaceNukeFailed
+	}{
+		{
+			name:    "a workspace it cannot read",
+			failGit: func(fake *fakeGit) { fake.remoteErr = gitErr },
+			want:    WorkspaceNukeFailed{ProjectSlug: testProjectSlug, Slot: 1, Step: WorkspaceReadStep, Err: gitErr},
+		},
+		{
+			name:    "a worktree it cannot remove",
+			failGit: func(fake *fakeGit) { fake.removalErr = gitErr },
+			want:    WorkspaceNukeFailed{ProjectSlug: testProjectSlug, Slot: 1, Step: WorktreeRemovalStep, Repository: testRepositoryName, Err: gitErr},
+		},
 	}
-	if !strings.Contains(reported, "git said no") {
-		t.Errorf("expected the failure to be reported, got %q", reported)
-	}
-	if service.drudgers.atSlot(1) != nil {
-		t.Error("expected the Drudger to leave the pool")
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			commands := &fakeCommandRunner{projectDir: projectDir}
+			pool := []*Drudger{idleDrudgerAt(projectDir, 1)}
+			service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, pool)
+			testCase.failGit(service.git)
+			makeWorktrees(t, worktreesOf(projectDir, []string{testRepositoryName}))
+
+			if err := service.NukeDrudger(testProjectSlug, 1, false); err != nil {
+				t.Fatalf("expected the nuke to go through, got %v", err)
+			}
+			if failed := singleEvent[WorkspaceNukeFailed](t, service.progress); failed != testCase.want {
+				t.Errorf("expected %+v, got %+v", testCase.want, failed)
+			}
+			if service.drudgers.atSlot(1) != nil {
+				t.Error("expected the Drudger to leave the pool")
+			}
+		})
 	}
 }
 

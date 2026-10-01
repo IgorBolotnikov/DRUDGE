@@ -38,6 +38,24 @@ type EmptyBranchRemoved struct {
 	Branch     string
 }
 
+// BranchCleanupStep names the step of cleaning up a branch that failed.
+type BranchCleanupStep string
+
+const (
+	RepositoryReadStep BranchCleanupStep = "read repository"
+	BranchReadStep     BranchCleanupStep = "read branch"
+	BranchInspectStep  BranchCleanupStep = "inspect branch"
+	BranchDeleteStep   BranchCleanupStep = "delete branch"
+)
+
+// BranchCleanupFailed reports a branch RemoveEmptyBranches could not clean up.
+type BranchCleanupFailed struct {
+	Repository string
+	Branch     string
+	Step       BranchCleanupStep
+	Err        error
+}
+
 // RemoveEmptyBranches deletes the branch a task left in every repository where
 // it holds no commits, and names the branches it keeps. A task that never ran
 // records no branch and reads no git.
@@ -64,7 +82,7 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 		}
 		repository, err := service.resolveRepository(layout, recorded)
 		if err != nil {
-			service.logger.Error("Could not read repository %s, branch %s stays: %v", name, landing.Branch, err)
+			service.progress.Report(BranchCleanupFailed{Repository: name, Branch: landing.Branch, Step: RepositoryReadStep, Err: err})
 			continue
 		}
 		service.removeEmptyBranch(name, repository.Dir, landing)
@@ -89,7 +107,7 @@ func (service *DrudgerService) recordedRepository(layout projectLayout, name str
 func (service *DrudgerService) removeEmptyBranch(name string, dir string, landing task.Landing) {
 	hasBranch, err := service.gitOps.BranchExists(dir, landing.Branch)
 	if err != nil {
-		service.logger.Error("Could not read branch %s of repository %s: %v", landing.Branch, name, err)
+		service.progress.Report(BranchCleanupFailed{Repository: name, Branch: landing.Branch, Step: BranchReadStep, Err: err})
 		return
 	}
 	if !hasBranch {
@@ -98,7 +116,7 @@ func (service *DrudgerService) removeEmptyBranch(name string, dir string, landin
 
 	hasCommits, err := git.BranchHasCommits(service.gitOps, dir, landing.Base, landing.Branch)
 	if err != nil {
-		service.logger.Error("Could not read what branch %s of repository %s holds: %v", landing.Branch, name, err)
+		service.progress.Report(BranchCleanupFailed{Repository: name, Branch: landing.Branch, Step: BranchInspectStep, Err: err})
 		return
 	}
 	if hasCommits {
@@ -107,7 +125,7 @@ func (service *DrudgerService) removeEmptyBranch(name string, dir string, landin
 	}
 
 	if err := service.gitOps.DeleteBranch(dir, landing.Branch); err != nil {
-		service.logger.Error("Could not delete branch %s of repository %s, it stays: %v", landing.Branch, name, err)
+		service.progress.Report(BranchCleanupFailed{Repository: name, Branch: landing.Branch, Step: BranchDeleteStep, Err: err})
 		return
 	}
 	service.progress.Report(EmptyBranchRemoved{Repository: name, Branch: landing.Branch})

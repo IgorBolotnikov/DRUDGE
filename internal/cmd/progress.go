@@ -147,6 +147,75 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.log.Info("Branch %s of repository %s holds commits, it stays", event.Branch, event.Repository)
 	case drudger.EmptyBranchRemoved:
 		p.log.Info("Branch %s of repository %s held nothing, it is deleted", event.Branch, event.Repository)
+	case drudger.HealthRecordFailed:
+		p.warnHealthRecordFailed(event)
+	case drudger.IdleWorkspaceParkFailed:
+		p.warnIdleWorkspaceParkFailed(event)
+	case drudger.RunCloseOutFailed:
+		p.warnRunCloseOutFailed(event)
+	case drudger.WorkspaceNukeFailed:
+		p.warnWorkspaceNukeFailed(event)
+	case drudger.BranchCleanupFailed:
+		p.warnBranchCleanupFailed(event)
+	case drudger.UnblockedLookupFailed:
+		p.log.Warn("Task %s is done, but the tasks it unblocked could not be worked out: %v", event.TaskID, event.Err)
+	case drudger.DrudgerReleaseFailed:
+		p.log.Warn("Drudger %d of project %s stays claimed for a run that never started: %v", event.Slot, event.ProjectSlug, event.Err)
+	case drudger.SessionIDReadFailed:
+		p.log.Warn("%v, the task is recorded without a session id", event.Err)
+	}
+}
+
+func (p *cliProgress) warnHealthRecordFailed(event drudger.HealthRecordFailed) {
+	switch event.Part {
+	case drudger.SandboxPart:
+		p.log.Warn("The sandbox of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
+	case drudger.WorkspacePart:
+		p.log.Warn("The workspace of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
+	case drudger.AgentPart:
+		p.log.Warn("The agent that ran task %s of project %s is %s, but that could not be recorded: %v", event.TaskID, event.ProjectSlug, event.Health, event.Err)
+	}
+}
+
+func (p *cliProgress) warnIdleWorkspaceParkFailed(event drudger.IdleWorkspaceParkFailed) {
+	switch event.Step {
+	case drudger.WorkspaceReadStep:
+		p.log.Warn("Drudger %d of project %s holds no task, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
+	case drudger.WorkspaceParkStep:
+		p.log.Warn("Drudger %d of project %s holds no task, but its workspace could not be parked: %v", event.Slot, event.ProjectSlug, event.Err)
+	}
+}
+
+func (p *cliProgress) warnRunCloseOutFailed(event drudger.RunCloseOutFailed) {
+	switch event.Step {
+	case drudger.WorkspaceReadStep:
+		p.log.Warn("The Session of task %s is over, but the workspace it ran in could not be read: %v", event.TaskID, event.Err)
+	case drudger.WorkspaceParkStep:
+		p.log.Warn("The Session of task %s is over, but the workspace it ran in could not be parked: %v", event.TaskID, event.Err)
+	case drudger.RepositoryCloseOutStep:
+		p.log.Warn("The Session of task %s is over, but where its work in repository %s is could not be worked out: %v", event.TaskID, event.Repository, event.Err)
+	}
+}
+
+func (p *cliProgress) warnWorkspaceNukeFailed(event drudger.WorkspaceNukeFailed) {
+	switch event.Step {
+	case drudger.WorkspaceReadStep:
+		p.log.Warn("Drudger %d of project %s is being nuked, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
+	case drudger.WorktreeRemovalStep:
+		p.log.Warn("Drudger %d of project %s is being nuked, but its worktree of repository %s could not be taken out: %v", event.Slot, event.ProjectSlug, event.Repository, event.Err)
+	}
+}
+
+func (p *cliProgress) warnBranchCleanupFailed(event drudger.BranchCleanupFailed) {
+	switch event.Step {
+	case drudger.RepositoryReadStep:
+		p.log.Warn("Could not read repository %s, branch %s stays: %v", event.Repository, event.Branch, event.Err)
+	case drudger.BranchReadStep:
+		p.log.Warn("Could not read branch %s of repository %s: %v", event.Branch, event.Repository, event.Err)
+	case drudger.BranchInspectStep:
+		p.log.Warn("Could not read what branch %s of repository %s holds: %v", event.Branch, event.Repository, event.Err)
+	case drudger.BranchDeleteStep:
+		p.log.Warn("Could not delete branch %s of repository %s, it stays: %v", event.Branch, event.Repository, event.Err)
 	}
 }
 

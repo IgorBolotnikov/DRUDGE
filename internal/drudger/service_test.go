@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -114,6 +113,7 @@ type fakeTaskRepo struct {
 	// beforeChange runs just before an update hands out the stored task. It
 	// stands for another command's write landing first.
 	beforeChange func()
+	listErr      error
 }
 
 func (repo *fakeTaskRepo) CreateTask(dto task.CreateTaskDto) (*task.Task, error) {
@@ -121,6 +121,9 @@ func (repo *fakeTaskRepo) CreateTask(dto task.CreateTaskDto) (*task.Task, error)
 }
 
 func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*task.Task, error) {
+	if repo.listErr != nil {
+		return nil, repo.listErr
+	}
 	return repo.tasks, nil
 }
 
@@ -360,11 +363,14 @@ func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
 // remembers what it was asked to do. Adding a worktree creates its directory,
 // the way git does, so a second run of the same slot finds it there.
 type fakeGit struct {
-	hasNoRemote bool
-	fetchErr    error
-	worktreeErr error
-	stashErr    error
-	branchErr   error
+	hasNoRemote     bool
+	remoteErr       error
+	fetchErr        error
+	worktreeErr     error
+	stashErr        error
+	branchErr       error
+	branchLookupErr error
+	commitCountErr  error
 	// dirtyWorktrees are the worktree paths holding uncommitted changes. A
 	// stash takes a path out of it.
 	dirtyWorktrees map[string]bool
@@ -446,6 +452,9 @@ func (fake *fakeGit) DefaultBranch(dir string) (string, error) {
 }
 
 func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
+	if fake.remoteErr != nil {
+		return false, fake.remoteErr
+	}
 	return !fake.hasNoRemote, nil
 }
 
@@ -498,11 +507,17 @@ func (fake *fakeGit) Stash(dir string, message string) (string, error) {
 }
 
 func (fake *fakeGit) BranchExists(dir string, branch string) (bool, error) {
+	if fake.branchLookupErr != nil {
+		return false, fake.branchLookupErr
+	}
 	_, isKnown := fake.branchCommits[branch]
 	return isKnown || fake.branchesPut[dir+" "+branch], nil
 }
 
 func (fake *fakeGit) CommitCount(dir string, base string, tip string) (int, error) {
+	if fake.commitCountErr != nil {
+		return 0, fake.commitCountErr
+	}
 	if count, isKnown := fake.repositoryCommits[dir+" "+tip]; isKnown {
 		return count, nil
 	}
@@ -642,8 +657,11 @@ type fakeDrudgerRepo struct {
 	// isLockHeld stands for another drudge command holding the lock, which is
 	// what a caller that would rather not wait runs into.
 	isLockHeld bool
-	// updates counts the writes the repo was asked to make.
+	// updates counts the writes the repo stored.
 	updates int
+	// updateErr fails every write once writesBeforeErr writes are stored.
+	updateErr       error
+	writesBeforeErr int
 }
 
 func (repo *fakeDrudgerRepo) ListDrudgers(projectSlug string) ([]*Drudger, error) {
@@ -651,6 +669,9 @@ func (repo *fakeDrudgerRepo) ListDrudgers(projectSlug string) ([]*Drudger, error
 }
 
 func (repo *fakeDrudgerRepo) UpdateDrudgers(projectSlug string, change func([]*Drudger) ([]*Drudger, error)) error {
+	if repo.updateErr != nil && repo.updates >= repo.writesBeforeErr {
+		return repo.updateErr
+	}
 	updated, err := change(copyDrudgers(repo.drudgers))
 	if err != nil {
 		return err
@@ -978,17 +999,6 @@ func sandboxEntry(name string, status string, mounts ...string) string {
 
 func sandboxListingOf(entries ...string) string {
 	return fmt.Sprintf(`{"sandboxes":[%s]}`, strings.Join(entries, ","))
-}
-
-func captureErrors(f func()) string {
-	orig := os.Stderr
-	reader, writer, _ := os.Pipe()
-	os.Stderr = writer
-	f()
-	writer.Close()
-	os.Stderr = orig
-	out, _ := io.ReadAll(reader)
-	return string(out)
 }
 
 func TestDrudgerService_RunTask_OnlyRunsTodoTasks(t *testing.T) {
@@ -2891,5 +2901,72 @@ func TestDrudgerService_RunTask_RunsATaskWhileAnotherTaskIsHeld(t *testing.T) {
 	}
 	if len(commands.started) != 1 {
 		t.Errorf("expected one agent to be started, got %v", commands.started)
+	}
+}
+
+func TestDrudgerService_RunTask_ReportsHealthItCouldNotRecord(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+	writeErr := errors.New("disk full")
+	service.drudgers.updateErr = writeErr
+	service.drudgers.writesBeforeErr = 1
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+		t.Fatalf("expected the run to go through, got %v", err)
+	}
+
+	want := []HealthRecordFailed{
+		{ProjectSlug: testProjectSlug, Part: WorkspacePart, Slot: 1, Health: string(WorkspaceUsable), Err: writeErr},
+		{ProjectSlug: testProjectSlug, Part: SandboxPart, Slot: 1, Health: string(SandboxUsable), Err: writeErr},
+	}
+	if got := reportedEvents[HealthRecordFailed](service.progress); !slices.Equal(got, want) {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+func TestDrudgerService_RunTask_ReportsADrudgerItCouldNotRelease(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+	service.git.worktreeErr = errors.New("fatal: invalid reference: origin/main")
+	writeErr := errors.New("disk full")
+	service.drudgers.updateErr = writeErr
+	service.drudgers.writesBeforeErr = 1
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
+		t.Fatal("expected a workspace that could not be created to stop the run")
+	}
+
+	want := DrudgerReleaseFailed{ProjectSlug: testProjectSlug, Slot: 1, Err: writeErr}
+	if failed := singleEvent[DrudgerReleaseFailed](t, service.progress); failed != want {
+		t.Errorf("expected %+v, got %+v", want, failed)
+	}
+}
+
+func TestDrudgerService_RunTask_ReportsASessionIDItCouldNotRead(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
+	commands.onStart = func(runs *fakeRunRepo) {
+		runs.writeStream(taskToRun.ID, strings.Repeat("x", streamLineMaxSize+1))
+	}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+		t.Fatalf("expected the run to go through, got %v", err)
+	}
+
+	failed := singleEvent[SessionIDReadFailed](t, service.progress)
+	if failed.TaskID != taskToRun.ID || failed.Err == nil {
+		t.Errorf("expected a failed session id read of task %s, got %+v", taskToRun.ID, failed)
+	}
+	if taskToRun.SessionID != "" {
+		t.Errorf("expected the task to be recorded without a session id, got %q", taskToRun.SessionID)
 	}
 }

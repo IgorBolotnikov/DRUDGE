@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -164,6 +165,57 @@ func TestDrudgerService_ReclaimDrudgers_ParksEveryIdleDrudger(t *testing.T) {
 	}
 	if got := stashedDirs(service.git.stashes); !slices.Equal(got, wantDetached) {
 		t.Errorf("expected the idle Drudger to be stashed, got %v", got)
+	}
+}
+
+func TestDrudgerService_ReclaimDrudgers_ReportsAWorkspaceItCouldNotPark(t *testing.T) {
+	gitErr := errors.New("git said no")
+
+	cases := []struct {
+		name    string
+		failGit func(fake *fakeGit, worktree string)
+		// want leaves out the error, which is checked to wrap the one git
+		// answered with.
+		want IdleWorkspaceParkFailed
+	}{
+		{
+			name:    "a workspace it cannot read",
+			failGit: func(fake *fakeGit, worktree string) { fake.remoteErr = gitErr },
+			want:    IdleWorkspaceParkFailed{ProjectSlug: testProjectSlug, Slot: 1, Step: WorkspaceReadStep},
+		},
+		{
+			name: "a worktree it cannot stash",
+			failGit: func(fake *fakeGit, worktree string) {
+				fake.leaveOn(worktree, testTaskBranch, testHeadSHA)
+				fake.leaveDirty(worktree)
+				fake.stashErr = gitErr
+			},
+			want: IdleWorkspaceParkFailed{ProjectSlug: testProjectSlug, Slot: 1, Step: WorkspaceParkStep},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWithPool(settingsWith(testRepositoryName), commands, []*Drudger{idleDrudgerAt(projectDir, 1)})
+			worktree := slotWorktree(projectDir, 1)
+			makeWorktrees(t, map[string]string{testRepositoryName: worktree})
+			testCase.failGit(service.git, worktree)
+
+			if _, err := service.ReclaimDrudgers(testProjectSlug); err != nil {
+				t.Fatalf("expected the reclaim to go through, got %v", err)
+			}
+
+			failed := singleEvent[IdleWorkspaceParkFailed](t, service.progress)
+			if !errors.Is(failed.Err, gitErr) {
+				t.Errorf("expected the failure to carry %v, got %v", gitErr, failed.Err)
+			}
+			failed.Err = nil
+			if failed != testCase.want {
+				t.Errorf("expected %+v, got %+v", testCase.want, failed)
+			}
+		})
 	}
 }
 

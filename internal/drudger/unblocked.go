@@ -10,6 +10,13 @@ type DependentsUnblocked struct {
 	Tasks []*task.Task
 }
 
+// UnblockedLookupFailed reports a task stored as done whose unblocked tasks
+// could not be worked out.
+type UnblockedLookupFailed struct {
+	TaskID task.TaskID
+	Err    error
+}
+
 // EditTask changes the fields a user owns on one task, the way
 // task.TaskService.EditTask does. An edit that sets the task to done also
 // reports the tasks it unblocked.
@@ -38,12 +45,12 @@ func (service *DrudgerService) MarkDone(projectSlug string, id task.TaskID) (*ta
 // reportUnblocked reports the tasks that became runnable once finished is
 // done. It reports nothing when no task became runnable.
 //
-// The task is stored as done by the time this runs, so a failure is logged
+// The task is stored as done by the time this runs, so a failure is reported
 // and the command still succeeds.
 func (service *DrudgerService) reportUnblocked(projectSlug string, finished *task.Task) {
 	unblocked, err := service.tasks.Unblocked(projectSlug, finished)
 	if err != nil {
-		service.logger.Error("Task %s is done, but the tasks it unblocked could not be worked out: %v", finished.ID, err)
+		service.progress.Report(UnblockedLookupFailed{TaskID: finished.ID, Err: err})
 		return
 	}
 	if len(unblocked) == 0 {

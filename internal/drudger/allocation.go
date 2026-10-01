@@ -55,6 +55,18 @@ func (service *DrudgerService) releaseDrudger(projectSlug string, slot int, task
 	})
 }
 
+// HealthRecordFailed reports what drudge saw of one part of a Drudger when
+// that could not be stored. The agent is named by the task it ran and the
+// other parts by the slot of their Drudger.
+type HealthRecordFailed struct {
+	ProjectSlug string
+	Part        HealthPart
+	Slot        int
+	TaskID      task.TaskID
+	Health      string
+	Err         error
+}
+
 // recordSandboxHealth stores what drudge just saw of a Drudger's sandbox and
 // records when it looked.
 func (service *DrudgerService) recordSandboxHealth(projectSlug string, slot int, health SandboxHealth) {
@@ -70,7 +82,7 @@ func (service *DrudgerService) recordSandboxHealth(projectSlug string, slot int,
 		return drudgers, nil
 	})
 	if err != nil {
-		service.logger.Error("The sandbox of Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+		service.progress.Report(HealthRecordFailed{ProjectSlug: projectSlug, Part: SandboxPart, Slot: slot, Health: string(health), Err: err})
 	}
 }
 
@@ -89,7 +101,7 @@ func (service *DrudgerService) recordWorkspaceHealth(projectSlug string, slot in
 		return drudgers, nil
 	})
 	if err != nil {
-		service.logger.Error("The workspace of Drudger %d of project %s is %s, but that could not be recorded: %v", slot, projectSlug, health, err)
+		service.progress.Report(HealthRecordFailed{ProjectSlug: projectSlug, Part: WorkspacePart, Slot: slot, Health: string(health), Err: err})
 	}
 }
 
@@ -112,7 +124,7 @@ func (service *DrudgerService) recordAgentHealth(projectSlug string, taskID task
 		return drudgers, nil
 	})
 	if err != nil {
-		service.logger.Error("The agent that ran task %s of project %s is %s, but that could not be recorded: %v", taskID, projectSlug, health, err)
+		service.progress.Report(HealthRecordFailed{ProjectSlug: projectSlug, Part: AgentPart, TaskID: taskID, Health: string(health), Err: err})
 	}
 }
 

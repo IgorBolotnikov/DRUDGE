@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -477,6 +478,26 @@ func TestDrudgerService_SessionStatus_RecordsTheOutcomeOnce(t *testing.T) {
 	}
 	if second.Status != recorded.Status {
 		t.Errorf("expected the status %q to stand, got %q", recorded.Status, second.Status)
+	}
+}
+
+func TestDrudgerService_SessionStatus_ReportsAgentHealthItCouldNotRecord(t *testing.T) {
+	setupProjectDir(t)
+	tracked := runningTask()
+
+	service := newTestService(tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
+	writeErr := errors.New("disk full")
+	service.drudgers.updateErr = writeErr
+
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("expected the check to go through, got %v", err)
+	}
+
+	want := HealthRecordFailed{ProjectSlug: testProjectSlug, Part: AgentPart, TaskID: tracked.ID, Health: string(AgentReady), Err: writeErr}
+	if failed := singleEvent[HealthRecordFailed](t, service.progress); failed != want {
+		t.Errorf("expected %+v, got %+v", want, failed)
 	}
 }
 

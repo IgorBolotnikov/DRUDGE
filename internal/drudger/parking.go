@@ -57,6 +57,25 @@ func (service *DrudgerService) parkRepository(slot int, repository repositoryWor
 	return nil
 }
 
+// WorkspaceStep names the step on a workspace that failed.
+type WorkspaceStep string
+
+const (
+	WorkspaceReadStep      WorkspaceStep = "read"
+	WorkspaceParkStep      WorkspaceStep = "park"
+	RepositoryCloseOutStep WorkspaceStep = "close out"
+	WorktreeRemovalStep    WorkspaceStep = "remove worktree"
+)
+
+// IdleWorkspaceParkFailed reports a Drudger holding no task whose workspace
+// could not be parked.
+type IdleWorkspaceParkFailed struct {
+	ProjectSlug string
+	Slot        int
+	Step        WorkspaceStep
+	Err         error
+}
+
 // parkIdleDrudgers parks every Drudger of a pool that holds no task. A Drudger
 // that could not be parked is reported and the sweep goes on to the next one.
 func (service *DrudgerService) parkIdleDrudgers(projectSlug string, layout projectLayout, drudgers []*Drudger) {
@@ -72,11 +91,11 @@ func (service *DrudgerService) parkIdleDrudgers(projectSlug string, layout proje
 
 		space, err := service.resolveWorkspace(layout, candidate)
 		if err != nil {
-			service.logger.Error("Drudger %d of project %s holds no task, but the workspace it works in could not be read: %v", candidate.Slot, projectSlug, err)
+			service.progress.Report(IdleWorkspaceParkFailed{ProjectSlug: projectSlug, Slot: candidate.Slot, Step: WorkspaceReadStep, Err: err})
 			continue
 		}
 		if err := service.parkWorkspace(space, nil); err != nil {
-			service.logger.Error("Drudger %d of project %s holds no task, but its workspace could not be parked: %v", candidate.Slot, projectSlug, err)
+			service.progress.Report(IdleWorkspaceParkFailed{ProjectSlug: projectSlug, Slot: candidate.Slot, Step: WorkspaceParkStep, Err: err})
 		}
 	}
 }

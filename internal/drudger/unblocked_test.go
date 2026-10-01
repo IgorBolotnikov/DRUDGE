@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -168,6 +169,29 @@ func TestDrudgerService_ReportsWhatAFinishedTaskUnblocked(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestDrudgerService_MarkDone_ReportsDependentsItCouldNotWorkOut(t *testing.T) {
+	setupProjectDir(t)
+	finished := todoTask()
+	finished.Status = task.StatusUnmerged
+
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, nil, finished)
+	listErr := errors.New("disk full")
+	service.taskRepo.listErr = listErr
+
+	marked, err := service.MarkDone(testProjectSlug, finished.ID)
+	if err != nil {
+		t.Fatalf("expected the task to be marked done, got %v", err)
+	}
+	if marked.Status != task.StatusDone {
+		t.Errorf("expected status %q, got %q", task.StatusDone, marked.Status)
+	}
+
+	failed := singleEvent[UnblockedLookupFailed](t, service.progress)
+	if failed.TaskID != finished.ID || !errors.Is(failed.Err, listErr) {
+		t.Errorf("expected a failed lookup of the dependents of task %s with %v, got %+v", finished.ID, listErr, failed)
 	}
 }
 

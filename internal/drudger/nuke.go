@@ -127,6 +127,17 @@ func (service *DrudgerService) isSandboxGone(sandboxName string) (bool, error) {
 	return existing == nil, nil
 }
 
+// WorkspaceNukeFailed reports a step of taking apart the workspace of a
+// Drudger being nuked that failed. Repository is set for the removal of one
+// worktree.
+type WorkspaceNukeFailed struct {
+	ProjectSlug string
+	Slot        int
+	Step        WorkspaceStep
+	Repository  string
+	Err         error
+}
+
 // nukeWorkspace takes a Drudger's workspace apart and returns the commit the
 // uncommitted changes of each repository were stashed at, keyed by repository
 // name. A repository it cannot take apart is reported and the rest are still
@@ -140,7 +151,7 @@ func (service *DrudgerService) nukeWorkspace(projectSlug string, layout projectL
 
 	space, err := service.resolveWorkspace(layout, doomed)
 	if err != nil {
-		service.logger.Error("Drudger %d of project %s is being nuked, but the workspace it works in could not be read: %v", doomed.Slot, projectSlug, err)
+		service.progress.Report(WorkspaceNukeFailed{ProjectSlug: projectSlug, Slot: doomed.Slot, Step: WorkspaceReadStep, Err: err})
 		return nil
 	}
 
@@ -151,7 +162,7 @@ func (service *DrudgerService) nukeWorkspace(projectSlug string, layout projectL
 			stashes[repository.Name] = stash
 		}
 		if err != nil {
-			service.logger.Error("Drudger %d of project %s is being nuked, but its worktree of repository %s could not be taken out: %v", doomed.Slot, projectSlug, repository.Name, err)
+			service.progress.Report(WorkspaceNukeFailed{ProjectSlug: projectSlug, Slot: doomed.Slot, Step: WorktreeRemovalStep, Repository: repository.Name, Err: err})
 		}
 	}
 	return stashes

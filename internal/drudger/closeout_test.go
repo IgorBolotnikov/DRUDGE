@@ -5,7 +5,6 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -36,6 +35,9 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 		wantDeletedIn []string
 		// wantCreated are the branches close-out made.
 		wantCreated []string
+		// wantFailedIn names the repositories whose close-out is reported as
+		// failed.
+		wantFailedIn []string
 	}{
 		{
 			name: "a run that committed",
@@ -126,7 +128,8 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 			wantLandings: map[string]task.Landing{
 				testRepositoryName: {Branch: testTaskBranch, Base: testBaseSHA},
 			},
-			wantStatus: task.StatusUnmerged,
+			wantStatus:   task.StatusUnmerged,
+			wantFailedIn: []string{testRepositoryName},
 		},
 	}
 
@@ -172,6 +175,17 @@ func TestDrudgerService_SessionStatus_RecordsWhereTheWorkLanded(t *testing.T) {
 			if got := branchesOf(service.git.createdBranches); !slices.Equal(got, testCase.wantCreated) {
 				t.Errorf("expected close-out to make the branches %v, got %v", testCase.wantCreated, got)
 			}
+
+			var failedIn []string
+			for _, failed := range reportedEvents[RunCloseOutFailed](service.progress) {
+				if failed.TaskID != tracked.ID || failed.Step != RepositoryCloseOutStep || failed.Err == nil {
+					t.Errorf("expected a failed close-out of a repository of task %s, got %+v", tracked.ID, failed)
+				}
+				failedIn = append(failedIn, failed.Repository)
+			}
+			if !slices.Equal(failedIn, testCase.wantFailedIn) {
+				t.Errorf("expected the close-out to fail in %v, got %v", testCase.wantFailedIn, failedIn)
+			}
 		})
 	}
 }
@@ -184,9 +198,7 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
 	service.runs.writeExit(tracked.ID, "0\n")
 
-	var session *TaskSession
-	var err error
-	output := captureErrors(func() { session, err = service.SessionStatus(testProjectSlug, tracked.ID) })
+	session, err := service.SessionStatus(testProjectSlug, tracked.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -198,8 +210,34 @@ func TestDrudgerService_SessionStatus_KeepsTheHandoverWhenNoDrudgerHoldsTheTask(
 	if !maps.Equal(session.Task.Landings, want) {
 		t.Errorf("expected the task to keep what the handover recorded, got %v", session.Task.Landings)
 	}
-	if !strings.Contains(output, string(tracked.ID)) {
-		t.Errorf("expected the task to be named in the warning, got %q", output)
+	if failed := singleEvent[RunCloseOutFailed](t, service.progress); failed.TaskID != tracked.ID || failed.Step != WorkspaceReadStep || failed.Err == nil {
+		t.Errorf("expected a failed read of the workspace of task %s, got %+v", tracked.ID, failed)
+	}
+}
+
+func TestDrudgerService_SessionStatus_ReportsAWorkspaceItCouldNotPark(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	tracked := handedOverTask(testRepositoryName)
+
+	pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
+	service := newTestServiceWithPool(settingsWith(testRepositoryName), &fakeCommandRunner{}, pool, tracked)
+	service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+	service.runs.writeExit(tracked.ID, "0\n")
+	worktree := filepath.Join(slotRoot(projectDir, 1), testRepositoryName)
+	makeWorktrees(t, map[string]string{testRepositoryName: worktree})
+	service.git.leaveOn(worktree, testTaskBranch, testHeadSHA)
+	service.git.commitsOn(testHeadSHA, 1)
+	service.git.leaveDirty(worktree)
+	stashErr := errors.New("git said no")
+	service.git.stashErr = stashErr
+
+	if _, err := service.SessionStatus(testProjectSlug, tracked.ID); err != nil {
+		t.Fatalf("expected the check to go through, got %v", err)
+	}
+
+	failed := singleEvent[RunCloseOutFailed](t, service.progress)
+	if failed.TaskID != tracked.ID || failed.Step != WorkspaceParkStep || !errors.Is(failed.Err, stashErr) {
+		t.Errorf("expected a failed park of the workspace of task %s with %v, got %+v", tracked.ID, stashErr, failed)
 	}
 }
 

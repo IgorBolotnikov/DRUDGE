@@ -266,6 +266,91 @@ func TestCLIProgress_Report(t *testing.T) {
 			wantStderr: "! Work on repository api is cut from origin/main\n",
 		},
 		{
+			name:       "a sandbox health record failed",
+			event:      drudger.HealthRecordFailed{ProjectSlug: "demo", Part: drudger.SandboxPart, Slot: 2, Health: "gone", Err: errors.New("disk full")},
+			wantStderr: "! The sandbox of Drudger 2 of project demo is gone, but that could not be recorded: disk full\n",
+		},
+		{
+			name:       "a workspace health record failed",
+			event:      drudger.HealthRecordFailed{ProjectSlug: "demo", Part: drudger.WorkspacePart, Slot: 2, Health: "misplaced", Err: errors.New("disk full")},
+			wantStderr: "! The workspace of Drudger 2 of project demo is misplaced, but that could not be recorded: disk full\n",
+		},
+		{
+			name:       "an agent health record failed",
+			event:      drudger.HealthRecordFailed{ProjectSlug: "demo", Part: drudger.AgentPart, TaskID: "3f9a1c2e", Health: "refused", Err: errors.New("disk full")},
+			wantStderr: "! The agent that ran task 3f9a1c2e of project demo is refused, but that could not be recorded: disk full\n",
+		},
+		{
+			name:       "an idle workspace read failed",
+			event:      drudger.IdleWorkspaceParkFailed{ProjectSlug: "demo", Slot: 2, Step: drudger.WorkspaceReadStep, Err: errors.New("no such file")},
+			wantStderr: "! Drudger 2 of project demo holds no task, but the workspace it works in could not be read: no such file\n",
+		},
+		{
+			name:       "an idle workspace park failed",
+			event:      drudger.IdleWorkspaceParkFailed{ProjectSlug: "demo", Slot: 2, Step: drudger.WorkspaceParkStep, Err: errors.New("git said no")},
+			wantStderr: "! Drudger 2 of project demo holds no task, but its workspace could not be parked: git said no\n",
+		},
+		{
+			name:       "a run close-out workspace read failed",
+			event:      drudger.RunCloseOutFailed{TaskID: "3f9a1c2e", Step: drudger.WorkspaceReadStep, Err: errors.New("no such file")},
+			wantStderr: "! The Session of task 3f9a1c2e is over, but the workspace it ran in could not be read: no such file\n",
+		},
+		{
+			name:       "a run close-out workspace park failed",
+			event:      drudger.RunCloseOutFailed{TaskID: "3f9a1c2e", Step: drudger.WorkspaceParkStep, Err: errors.New("git said no")},
+			wantStderr: "! The Session of task 3f9a1c2e is over, but the workspace it ran in could not be parked: git said no\n",
+		},
+		{
+			name:       "a run close-out of a repository failed",
+			event:      drudger.RunCloseOutFailed{TaskID: "3f9a1c2e", Step: drudger.RepositoryCloseOutStep, Repository: "api", Err: errors.New("git said no")},
+			wantStderr: "! The Session of task 3f9a1c2e is over, but where its work in repository api is could not be worked out: git said no\n",
+		},
+		{
+			name:       "a nuked workspace read failed",
+			event:      drudger.WorkspaceNukeFailed{ProjectSlug: "demo", Slot: 2, Step: drudger.WorkspaceReadStep, Err: errors.New("no such file")},
+			wantStderr: "! Drudger 2 of project demo is being nuked, but the workspace it works in could not be read: no such file\n",
+		},
+		{
+			name:       "a nuked worktree removal failed",
+			event:      drudger.WorkspaceNukeFailed{ProjectSlug: "demo", Slot: 2, Step: drudger.WorktreeRemovalStep, Repository: "api", Err: errors.New("git said no")},
+			wantStderr: "! Drudger 2 of project demo is being nuked, but its worktree of repository api could not be taken out: git said no\n",
+		},
+		{
+			name:       "a branch cleanup repository read failed",
+			event:      drudger.BranchCleanupFailed{Repository: "api", Branch: "drudge/3f9a-add-retry", Step: drudger.RepositoryReadStep, Err: errors.New("no such file")},
+			wantStderr: "! Could not read repository api, branch drudge/3f9a-add-retry stays: no such file\n",
+		},
+		{
+			name:       "a branch cleanup branch read failed",
+			event:      drudger.BranchCleanupFailed{Repository: "api", Branch: "drudge/3f9a-add-retry", Step: drudger.BranchReadStep, Err: errors.New("git said no")},
+			wantStderr: "! Could not read branch drudge/3f9a-add-retry of repository api: git said no\n",
+		},
+		{
+			name:       "a branch cleanup inspection failed",
+			event:      drudger.BranchCleanupFailed{Repository: "api", Branch: "drudge/3f9a-add-retry", Step: drudger.BranchInspectStep, Err: errors.New("git said no")},
+			wantStderr: "! Could not read what branch drudge/3f9a-add-retry of repository api holds: git said no\n",
+		},
+		{
+			name:       "a branch cleanup delete failed",
+			event:      drudger.BranchCleanupFailed{Repository: "api", Branch: "drudge/3f9a-add-retry", Step: drudger.BranchDeleteStep, Err: errors.New("git said no")},
+			wantStderr: "! Could not delete branch drudge/3f9a-add-retry of repository api, it stays: git said no\n",
+		},
+		{
+			name:       "an unblocked lookup failed",
+			event:      drudger.UnblockedLookupFailed{TaskID: "3f9a1c2e", Err: errors.New("disk full")},
+			wantStderr: "! Task 3f9a1c2e is done, but the tasks it unblocked could not be worked out: disk full\n",
+		},
+		{
+			name:       "a Drudger release failed",
+			event:      drudger.DrudgerReleaseFailed{ProjectSlug: "demo", Slot: 2, Err: errors.New("disk full")},
+			wantStderr: "! Drudger 2 of project demo stays claimed for a run that never started: disk full\n",
+		},
+		{
+			name:       "a session id read failed",
+			event:      drudger.SessionIDReadFailed{TaskID: "3f9a1c2e", Err: errors.New("could not read the event stream of task 3f9a1c2e")},
+			wantStderr: "! could not read the event stream of task 3f9a1c2e, the task is recorded without a session id\n",
+		},
+		{
 			name:  "a Drudger nuked",
 			event: drudger.DrudgerNuked{Slot: 3, Sandbox: "drudge-claude-demo-3"},
 			want:  "Drudger 3 is gone, sandbox drudge-claude-demo-3 was deleted\n",
