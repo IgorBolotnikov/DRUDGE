@@ -91,10 +91,7 @@ func printTask(out *printer, taskToShow *task.Task, blockers []task.Blocker, fam
 		lines = append(lines, taskWorkLines(taskToShow)...)
 	}
 
-	for _, line := range lines {
-		// The line is already formatted and may hold a percent sign.
-		out.log.Info("%s", line)
-	}
+	out.view(lines)
 }
 
 // blockerLines lists the tasks a task waits for, one line per blocker. A task

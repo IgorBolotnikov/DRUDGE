@@ -290,16 +290,23 @@ func (p *printer) skipResult(format string, args ...any) {
 }
 
 // view closes the group and prints lines at column 0 as they are. A blank
-// line goes before them when anything was printed before.
+// line goes before them when anything was printed before. Blank lines at the
+// start and the end of the lines are dropped, and a run of blank lines prints
+// as one.
 func (p *printer) view(lines []string) {
 	p.closeGroup()
 	if p.hasPrinted {
-		p.log.Info("")
+		p.isBlankPending = true
 	}
 	for _, line := range lines {
+		if line == "" {
+			p.isBlankPending = p.hasPrinted
+			continue
+		}
 		// The line is already formatted and may hold a percent sign.
 		p.info("%s", line)
 	}
+	p.isBlankPending = false
 }
 
 func (p *printer) closeGroup() {

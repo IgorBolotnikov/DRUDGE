@@ -244,6 +244,19 @@ func TestPrinter(t *testing.T) {
 			wantStdout: "Recording\n✓ Done\n    Unblocked  b\n\nTask a\n  Session:  100%\n",
 		},
 		{
+			name: "a view drops blank lines at its start and its end and prints a run of them as one",
+			print: func(out *printer) {
+				out.done("a")
+				out.view([]string{"", "Task a", "", "", "Description", ""})
+			},
+			wantStdout: "✓ a\n\nTask a\n\nDescription\n",
+		},
+		{
+			name:       "a view printed first has no blank line at its start",
+			print:      func(out *printer) { out.view([]string{"", "Task a"}) },
+			wantStdout: "Task a\n",
+		},
+		{
 			name:       "a view printed first has no blank line before it",
 			print:      func(out *printer) { out.view([]string{"Task a"}) },
 			wantStdout: "Task a\n",

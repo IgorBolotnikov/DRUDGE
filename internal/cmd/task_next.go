@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -30,13 +29,13 @@ func taskNext(args []string) error {
 		return err
 	}
 
-	printNext(deps.log, pick)
+	printNext(deps.out, pick)
 	return nil
 }
 
 // printNext prints the picked task. With no task picked, it prints the blocked
 // todo tasks, or that there are none.
-func printNext(log *common.Logger, pick task.Pick) {
+func printNext(out *printer, pick task.Pick) {
 	var lines []string
 	switch {
 	case pick.Task != nil:
@@ -47,10 +46,7 @@ func printNext(log *common.Logger, pick task.Pick) {
 		lines = append(lines, blockedTaskLines(pick.Blocked)...)
 	}
 
-	for _, line := range lines {
-		// A task title may hold a percent sign.
-		log.Info("%s", line)
-	}
+	out.view(lines)
 }
 
 func blockedTaskLines(blocked []task.BlockedTask) []string {

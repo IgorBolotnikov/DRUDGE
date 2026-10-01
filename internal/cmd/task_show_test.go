@@ -19,7 +19,9 @@ func TestPrintTask(t *testing.T) {
 		task     task.Task
 		blockers []task.Blocker
 		family   task.Family
-		want     []string
+		// warning prints before the report.
+		warning string
+		want    []string
 		// wantAbsent is what the report must leave out for this task.
 		wantAbsent []string
 	}{
@@ -230,6 +232,15 @@ func TestPrintTask(t *testing.T) {
 			},
 			want: []string{"draft", noneLabel},
 		},
+		{
+			name: "a warning printed before the report",
+			task: task.Task{
+				Status:    task.StatusTodo,
+				CreatedAt: now.Add(-2 * time.Hour),
+			},
+			warning: "theme.json is broken",
+			want:    []string{"todo"},
+		},
 	}
 
 	for _, testCase := range cases {
@@ -239,24 +250,45 @@ func TestPrintTask(t *testing.T) {
 			taskToShow := testCase.task
 			taskToShow.ID = "006684e3-dbe9-4316-8aba-8a67a8f01f8f"
 			taskToShow.Title = "Fix login"
-			log := common.NewLogger("", common.Labels{})
+			palette := theme.NewTheme(theme.DefaultTheme())
+			out := newPrinter(newThemedLogger(palette), palette)
+			wantStart, wantStderr := "Task [", ""
+			if testCase.warning != "" {
+				wantStart, wantStderr = "\nTask [", "! "+testCase.warning+"\n"
+			}
 
-			out := captureOutput(func() {
-				printTask(newPrinter(log, theme.NewTheme(theme.DefaultTheme())), &taskToShow, testCase.blockers, testCase.family, now)
+			var stdout string
+			stderr := captureStderr(func() {
+				stdout = captureOutput(func() {
+					if testCase.warning != "" {
+						out.warn("%s", testCase.warning)
+					}
+					printTask(out, &taskToShow, testCase.blockers, testCase.family, now)
+				})
 			})
 
+			if !strings.HasPrefix(stdout, wantStart) {
+				t.Errorf("expected the report to start with %q, got:\n%s", wantStart, stdout)
+			}
+			if strings.Contains(stdout, "\n\n\n") || strings.HasSuffix(stdout, "\n\n") {
+				t.Errorf("expected no two blank lines in a row and no blank line at the end, got:\n%s", stdout)
+			}
+			if stderr != wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, wantStderr)
+			}
+
 			for _, want := range append(testCase.want, string(taskToShow.ID), taskToShow.Title) {
-				if !strings.Contains(out, want) {
-					t.Errorf("expected the report to mention %q, got:\n%s", want, out)
+				if !strings.Contains(stdout, want) {
+					t.Errorf("expected the report to mention %q, got:\n%s", want, stdout)
 				}
 			}
 			for _, absent := range testCase.wantAbsent {
-				if strings.Contains(out, absent) {
-					t.Errorf("expected the report to leave out %q, got:\n%s", absent, out)
+				if strings.Contains(stdout, absent) {
+					t.Errorf("expected the report to leave out %q, got:\n%s", absent, stdout)
 				}
 			}
-			if !strings.Contains(out, "\n"+lastRunLabel+":") {
-				t.Errorf("expected %q to head its section without an indent, got:\n%s", lastRunLabel, out)
+			if !strings.Contains(stdout, "\n"+lastRunLabel+":") {
+				t.Errorf("expected %q to head its section without an indent, got:\n%s", lastRunLabel, stdout)
 			}
 		})
 	}

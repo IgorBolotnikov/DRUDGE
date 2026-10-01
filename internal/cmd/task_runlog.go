@@ -3,9 +3,9 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -30,30 +30,29 @@ func taskRunlog(args []string) error {
 		return err
 	}
 
-	printRunLogs(deps.log, runLogs)
+	printRunLogs(deps.out, runLogs)
 	return nil
 }
 
 // printRunLogs prints every log of a run under a heading naming its file.
-func printRunLogs(log *common.Logger, runLogs *drudger.TaskRunLogs) {
-	log.Info("Task [%s] %s", runLogs.Task.ID, runLogs.Task.Title)
+func printRunLogs(out *printer, runLogs *drudger.TaskRunLogs) {
+	lines := []string{fmt.Sprintf("Task [%s] %s", runLogs.Task.ID, runLogs.Task.Title)}
 
 	for _, runLog := range runLogs.Logs {
-		log.Info("")
-		log.Info("%s (%s):", runLog.Name, runLog.Path)
-		log.Info("")
+		lines = append(lines, "", fmt.Sprintf("%s (%s):", runLog.Name, runLog.Path), "")
 
 		switch {
 		case runLog.IsMissing:
-			log.Info(notWrittenYetLabel)
+			lines = append(lines, notWrittenYetLabel)
 		case len(runLog.Lines) == 0:
-			log.Info(emptyLogLabel)
+			lines = append(lines, emptyLogLabel)
 		}
 		for _, line := range runLog.Lines {
-			// A log line may hold a percent sign.
-			log.Info("%s", formatLogLine(line))
+			lines = append(lines, formatLogLine(line))
 		}
 	}
+
+	out.view(lines)
 }
 
 // formatLogLine indents a line that is valid JSON and returns any other line

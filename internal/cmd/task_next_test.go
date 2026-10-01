@@ -3,8 +3,8 @@ package cmd
 import (
 	"testing"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 func TestPrintNext(t *testing.T) {
@@ -15,8 +15,11 @@ func TestPrintNext(t *testing.T) {
 
 	cases := []struct {
 		name string
-		pick task.Pick
-		want string
+		// warning prints before the pick.
+		warning    string
+		pick       task.Pick
+		want       string
+		wantStderr string
 	}{
 		{
 			name: "a task whose blockers are done",
@@ -43,16 +46,37 @@ func TestPrintNext(t *testing.T) {
 				"  2b3c4d5e  Pick the next task  blocked by 4f2a1b3c\n" +
 				"  4f2a1b3c  Store the blockers  blocked by 9c8d7e6f, 7e6d5c4b\n",
 		},
+		{
+			name:       "a warning printed before the pick",
+			warning:    "theme.json is broken",
+			pick:       task.Pick{Task: next},
+			want:       "\n2b3c4d5e  Pick the next task\n",
+			wantStderr: "! theme.json is broken\n",
+		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			log := common.NewLogger("", common.Labels{})
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			palette := theme.NewTheme(theme.DefaultTheme())
+			out := newPrinter(newThemedLogger(palette), palette)
 
-			out := captureOutput(func() { printNext(log, testCase.pick) })
+			var stdout string
+			stderr := captureStderr(func() {
+				stdout = captureOutput(func() {
+					if testCase.warning != "" {
+						out.warn("%s", testCase.warning)
+					}
+					printNext(out, testCase.pick)
+				})
+			})
 
-			if out != testCase.want {
-				t.Errorf("expected:\n%s\ngot:\n%s", testCase.want, out)
+			if stdout != testCase.want {
+				t.Errorf("expected:\n%s\ngot:\n%s", testCase.want, stdout)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.wantStderr)
 			}
 		})
 	}
