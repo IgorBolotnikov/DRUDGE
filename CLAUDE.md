@@ -29,7 +29,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 
 - `model.go` — the entity struct
 - `repository.go` — a `CreateXDto` plus a `XRepository` interface (the port)
-- `service.go` — a `XService` holding a `XRepository` + `*common.Logger`, doing validation and orchestration
+- `service.go` — a `XService` holding a `XRepository` + `common.Progress`, doing validation and orchestration
 - optionally, if a service is large enough, it is split among multiple files named after a facet they implement, like `internal/drudger` does
 
 `internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectInit` in `internal/cmd`.

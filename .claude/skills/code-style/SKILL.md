@@ -36,6 +36,70 @@ This covers `docs/*.md`, `README.md`, `CLAUDE.md`, skills and any other markdown
 - Follow the "How to write one" rules for comments below. Plain, short sentences. No semicolons. No "X, not Y", "rather than Z" or "instead of Z".
 - Do not hard-wrap paragraphs. Write one line per paragraph and one line per bullet, however long. Renderers wrap the text themselves. Put line breaks only where they carry meaning: between paragraphs, between list items and inside code blocks.
 
+## Output
+
+These rules cover every command that prints a sequence of things. Where the current code differs, new code follows these rules.
+
+**Logger levels**
+
+- Error means the command stops. Only the top of the program calls it, with the error a command returned, and the process exits after it. Services and handlers return errors.
+- Warn means something went wrong and the command goes on. It goes to stderr with a yellow `!` label.
+- Info is everything else and goes to stdout.
+
+**Glyphs**
+
+Every line a command prints about its work starts with one glyph. The color backs the glyph up.
+
+- `✓` success: a thing got done.
+- `›` muted: a slow step started. The line ends with `…`.
+- `·` muted: nothing to do, skipped or already there.
+- `!` warning: something went wrong and the command goes on.
+- `✗` error: the work failed, like a Session that fucked up. `Error:` means DRUDGE itself failed.
+
+A `✓` only comes from an event that reports something already done. An event that says a step started renders as `›`. Do not add finished events just to earn a `✓`. The next step starting says the previous one worked.
+
+**Groups**
+
+- A header opens a group. It is bold and sits at column 0.
+- Lines inside a group are indented two spaces. Detail lines and labelled fields are indented four.
+- A result line at column 0 closes the group and carries the outcome. The most important line is the last one.
+- Lines printed with no open group sit at column 0.
+- One blank line goes before a header or a view when anything was printed before it. Never print two blank lines in a row, a blank line at the start or a blank line at the end.
+
+A task run prints this:
+
+```
+Task 3f9a1c2e  Add retry to uploader → Drudger 2 (drudge-demo-2)
+  › Fetching main of api from origin…
+  ! Could not fetch main of api: exit status 128
+  › Creating the workspace of api at .drudge/worktrees/slot-2/api…
+  › Starting the agent, waiting up to 30s for its first output…
+✓ Drudger drudge-demo-2 is working on task 3f9a1c2e  Add retry to uploader
+    Branch   drudge/3f9a-add-retry
+    Run dir  .drudge/runs/3f9a1c2e-…
+```
+
+**Weight before color**
+
+- Task short ids are bold. Titles are plain.
+- Paths, durations, SHAs, field labels and subprocess output are muted.
+- Only glyphs and statuses get color. Red is only for errors and failed work. The logo is the one exception.
+- A task in a progress line reads as the bold short id, two spaces and the title, with no brackets. The full id only shows where a whole record is shown.
+
+**Streams**
+
+- Steps and results go to stdout. Warnings and errors go to stderr.
+- Every styled string names the stream it goes to. Color is decided for that stream.
+- Piped output keeps the glyphs and loses the color. It stays readable with one event per line.
+
+**Who prints**
+
+- Domain services report through the progress port and never format text. Warnings in the domain are typed events too.
+- The CLI renderer owns every glyph and layout decision.
+- Adapters never print.
+- Command handlers print through the printer and never call `fmt.Printf` directly.
+- Subprocess text is stripped of its ANSI codes and shown dimmed as detail. A child process never styles DRUDGE output.
+
 ## Comments and documentation comments style guide
 
 A comment earns its place when it saves the reader work. Test every sentence you write: can a reader point at the code or the behaviour that makes it true? If the answer is no, delete the sentence.
