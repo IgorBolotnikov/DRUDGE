@@ -85,6 +85,11 @@ func (p *printer) step(format string, args ...any) {
 	p.glyphLine(theme.RoleMuted, stepGlyph, "%s%s", fmt.Sprintf(format, args...), stepEnding)
 }
 
+// failed prints a line about work that failed.
+func (p *printer) failed(format string, args ...any) {
+	p.glyphLine(theme.RoleError, failedGlyph, format, args...)
+}
+
 // detail prints a dimmed line one level deeper than the lines around it. The
 // ANSI escape codes of the text are stripped first.
 func (p *printer) detail(format string, args ...any) {
@@ -143,7 +148,13 @@ func (p *printer) flush() {
 // task names a task in a line printed to stdout: the bold short id, two
 // spaces and the title.
 func (p *printer) task(named *task.Task) string {
-	return p.theme.Bold(theme.Stdout, task.ShortID(named.ID)) + taskTitleGap + named.Title
+	return p.taskID(named.ID) + taskTitleGap + named.Title
+}
+
+// taskID names a task by its bold short id in a line printed to stdout, where
+// the title is not known.
+func (p *printer) taskID(id task.TaskID) string {
+	return p.theme.Bold(theme.Stdout, task.ShortID(id))
 }
 
 // warn prints a warning to stderr.
@@ -179,7 +190,7 @@ func (p *printer) resultWarn(format string, args ...any) {
 // that failed.
 func (p *printer) resultFailed(format string, args ...any) {
 	p.closeGroup()
-	p.glyphLine(theme.RoleError, failedGlyph, format, args...)
+	p.failed(format, args...)
 }
 
 // skipResult closes the group and prints at column 0 that there was nothing

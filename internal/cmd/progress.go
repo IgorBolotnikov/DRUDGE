@@ -162,12 +162,14 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.resultWarn("The vendor refused task %s (%s), it is back in %s", p.out.task(event.Task), event.Task.VendorErrorClass, event.Task.Status)
 		p.out.field(adviceLabel, vendorErrorAdvice(event.Task.VendorErrorClass))
 		p.out.flush()
+	case drudger.DrudgerNukeStarted:
+		p.out.header("Nuking Drudger %d (%s)", event.Slot, event.Sandbox)
 	case drudger.DrudgerNuked:
-		p.log.Info("Drudger %d is gone, sandbox %s was deleted", event.Slot, event.Sandbox)
+		p.out.result("Drudger %d is gone, sandbox %s was deleted", event.Slot, event.Sandbox)
 	case drudger.SandboxAlreadyGone:
-		p.log.Info("Sandbox %s was already gone", event.Sandbox)
+		p.out.skip("Sandbox %s was already gone", event.Sandbox)
 	case drudger.TaskKilled:
-		p.log.Info("Task [%s] %s is %s, its agent was killed with the Drudger", event.Task.ID, event.Task.Title, event.Task.Status)
+		p.out.failed("Task %s is %s, its agent was killed with the Drudger", p.out.task(event.Task), event.Task.Status)
 	case drudger.BranchOfUnknownRepositoryKept:
 		p.log.Info("Branch %s stays, project %s records no repository %s", event.Branch, event.ProjectSlug, event.Repository)
 	case drudger.BranchWithCommitsKept:

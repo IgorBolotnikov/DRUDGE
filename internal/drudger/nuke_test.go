@@ -233,6 +233,30 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 	}
 }
 
+func TestDrudgerService_NukeDrudger_ReportsTheNukeAroundItsSteps(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	commands := &fakeCommandRunner{projectDir: projectDir}
+	service := newTestServiceWithPool(testSettings(), commands, []*Drudger{busyDrudger(1)}, busyTask(1))
+
+	err := service.NukeDrudger(testProjectSlug, 1, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	started := DrudgerNukeStarted{Slot: 1, Sandbox: testSandboxOfSlot(1)}
+	if len(service.progress.events) == 0 || service.progress.events[0] != any(started) {
+		t.Errorf("expected the nuke to open with %+v, got %+v", started, service.progress.events)
+	}
+	killed := singleEvent[TaskKilled](t, service.progress)
+	if killed.Task.ID != busyTaskID(1) {
+		t.Errorf("expected task %s to be killed, got %s", busyTaskID(1), killed.Task.ID)
+	}
+	nuked := DrudgerNuked{Slot: 1, Sandbox: testSandboxOfSlot(1)}
+	if last := service.progress.events[len(service.progress.events)-1]; last != any(nuked) {
+		t.Errorf("expected the nuke to close with %+v, got %+v", nuked, service.progress.events)
+	}
+}
+
 func TestDrudgerService_NukeDrudger_UnsupportedEnvironment(t *testing.T) {
 	setupProjectDir(t)
 	commands := &fakeCommandRunner{}

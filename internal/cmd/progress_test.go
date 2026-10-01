@@ -405,19 +405,24 @@ func TestCLIProgress_Report(t *testing.T) {
 			wantStderr: "! could not read the event stream of task 3f9a1c2e, the task is recorded without a session id\n",
 		},
 		{
+			name:  "a Drudger nuke started",
+			event: drudger.DrudgerNukeStarted{Slot: 3, Sandbox: "drudge-claude-demo-3"},
+			want:  "Nuking Drudger 3 (drudge-claude-demo-3)\n",
+		},
+		{
 			name:  "a Drudger nuked",
 			event: drudger.DrudgerNuked{Slot: 3, Sandbox: "drudge-claude-demo-3"},
-			want:  "Drudger 3 is gone, sandbox drudge-claude-demo-3 was deleted\n",
+			want:  "✓ Drudger 3 is gone, sandbox drudge-claude-demo-3 was deleted\n",
 		},
 		{
 			name:  "a sandbox already gone",
 			event: drudger.SandboxAlreadyGone{Sandbox: "drudge-claude-demo-3"},
-			want:  "Sandbox drudge-claude-demo-3 was already gone\n",
+			want:  "· Sandbox drudge-claude-demo-3 was already gone\n",
 		},
 		{
 			name:  "a task killed",
 			event: drudger.TaskKilled{Task: fuckedUpTask},
-			want:  "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login is fucked-up, its agent was killed with the Drudger\n",
+			want:  "✗ Task 006684e3  Fix login is fucked-up, its agent was killed with the Drudger\n",
 		},
 		{
 			name:  "a branch of an unknown repository kept",
@@ -562,6 +567,72 @@ func TestCLIProgress_ReportRunGroup(t *testing.T) {
 			want: header +
 				"  › Creating sandbox drudge-demo-2, the first one pulls its image, up to 10m0s…\n",
 			wantStderr: "  ! Drudger 2 of project demo stays claimed for a run that never started: disk full\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			progress := newTestCLIProgress()
+			var output string
+			stderr := captureStderr(func() {
+				output = captureOutput(func() {
+					for _, event := range testCase.events {
+						progress.Report(event)
+					}
+				})
+			})
+			if output != testCase.want {
+				t.Errorf("output = %q, want %q", output, testCase.want)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}
+
+func TestCLIProgress_ReportNukeGroup(t *testing.T) {
+	killedTask := &task.Task{ID: "3f9a1c2e-0b1d-4c2e-9f3a-1c2e0b1d4c2e", Title: "Add retry to uploader", Status: task.StatusFuckedUp}
+	started := drudger.DrudgerNukeStarted{Slot: 2, Sandbox: "drudge-demo-2"}
+	nuked := drudger.DrudgerNuked{Slot: 2, Sandbox: "drudge-demo-2"}
+
+	const header = "Nuking Drudger 2 (drudge-demo-2)\n"
+	const result = "✓ Drudger 2 is gone, sandbox drudge-demo-2 was deleted\n"
+
+	cases := []struct {
+		name       string
+		events     []any
+		want       string
+		wantStderr string
+	}{
+		{
+			name:   "an idle Drudger",
+			events: []any{started, nuked},
+			want:   header + result,
+		},
+		{
+			name: "a forced Drudger whose sandbox was already gone",
+			events: []any{
+				started,
+				drudger.SandboxAlreadyGone{Sandbox: "drudge-demo-2"},
+				drudger.TaskKilled{Task: killedTask},
+				nuked,
+			},
+			want: header +
+				"  · Sandbox drudge-demo-2 was already gone\n" +
+				"  ✗ Task 3f9a1c2e  Add retry to uploader is fucked-up, its agent was killed with the Drudger\n" +
+				result,
+		},
+		{
+			name: "a Drudger whose worktree could not be taken out",
+			events: []any{
+				started,
+				drudger.WorkspaceNukeFailed{ProjectSlug: "demo", Slot: 2, Step: drudger.WorktreeRemovalStep, Repository: "api", Err: errors.New("git said no")},
+				nuked,
+			},
+			want:       header + result,
+			wantStderr: "  ! Drudger 2 of project demo is being nuked, but its worktree of repository api could not be taken out: git said no\n",
 		},
 	}
 

@@ -180,16 +180,22 @@ func drudgerReclaim([]string) error {
 		return err
 	}
 
-	if len(freed) == 0 {
-		deps.log.Info("Every Drudger of project %s is either idle or working, nothing to reclaim", deps.localCfg.ProjectSlug)
-		return nil
-	}
-
-	for _, entry := range freed {
-		deps.log.Info("Drudger %d (%s) was holding task %s with no agent in it, %s", entry.Slot, entry.Sandbox, task.ShortID(entry.TaskID), entry.Reason)
-	}
-	deps.log.Info("Those slots are free. Start a task over with %s <task-id>.", taskRerunCommand)
+	printReclaimed(deps.out, deps.localCfg.ProjectSlug, freed)
 	return nil
+}
+
+// printReclaimed prints one line per freed slot and how to start their tasks
+// over.
+func printReclaimed(out *printer, projectSlug string, freed []drudger.FreedSlot) {
+	if len(freed) == 0 {
+		out.skip("Every Drudger of project %s is either idle or working, nothing to reclaim", projectSlug)
+		return
+	}
+	for _, entry := range freed {
+		out.done("Freed Drudger %d (%s), it held task %s with no agent in it, %s", entry.Slot, entry.Sandbox, out.taskID(entry.TaskID), entry.Reason)
+	}
+	out.field("Next", "start a task over with "+taskRerunCommand+" <task-id>")
+	out.flush()
 }
 
 // drudgerNuke destroys one Drudger and fucks up the task worked on, if any.

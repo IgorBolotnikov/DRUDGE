@@ -296,6 +296,42 @@ func drudgersOnOnePage(pool []*drudger.Drudger) common.Page[*drudger.Drudger] {
 	return common.Page[*drudger.Drudger]{Items: pool, Number: 1, TotalPages: 1, TotalItems: len(pool)}
 }
 
+func TestPrintReclaimed(t *testing.T) {
+	cases := []struct {
+		name  string
+		freed []drudger.FreedSlot
+		want  string
+	}{
+		{
+			name: "freed slots",
+			freed: []drudger.FreedSlot{
+				{Slot: 1, Sandbox: testSandboxName(1), TaskID: occupiedTaskID, Reason: "its sandbox is not running"},
+				{Slot: 3, Sandbox: testSandboxName(3), TaskID: "3f9a1c2e-0b1d-4c2e-9f3a-1c2e0b1d4c2e", Reason: "its launch never made a run directory"},
+			},
+			want: "✓ Freed Drudger 1 (" + testSandboxName(1) + "), it held task a1b2c3d4 with no agent in it, its sandbox is not running\n" +
+				"✓ Freed Drudger 3 (" + testSandboxName(3) + "), it held task 3f9a1c2e with no agent in it, its launch never made a run directory\n" +
+				"    Next  start a task over with drg task rerun <task-id>\n",
+		},
+		{
+			name: "nothing to reclaim",
+			want: "· Every Drudger of project " + testProjectSlug + " is either idle or working, nothing to reclaim\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			palette := theme.NewTheme(theme.DefaultTheme())
+			output := captureOutput(func() {
+				printReclaimed(newPrinter(newThemedLogger(palette), palette), testProjectSlug, testCase.freed)
+			})
+			if output != testCase.want {
+				t.Errorf("expected:\n%q\ngot:\n%q", testCase.want, output)
+			}
+		})
+	}
+}
+
 func TestDrudgerList(t *testing.T) {
 	header := fmt.Sprintf("  SLOT  %-40s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", healthColumnWidth, "HEALTH") +
 		fmt.Sprintf("  ----  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", healthColumnWidth))

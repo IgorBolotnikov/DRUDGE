@@ -8,6 +8,12 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
+// DrudgerNukeStarted reports a Drudger NukeDrudger starts to destroy.
+type DrudgerNukeStarted struct {
+	Slot    int
+	Sandbox string
+}
+
 // DrudgerNuked reports a Drudger NukeDrudger destroyed and the sandbox it
 // deleted.
 type DrudgerNuked struct {
@@ -62,6 +68,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 		if err != nil {
 			return nil, err
 		}
+		service.progress.Report(DrudgerNukeStarted{Slot: doomed.Slot, Sandbox: doomed.Sandbox})
 
 		// The workspace is taken apart under the lock too, so nothing can
 		// hand a task to this Drudger while its worktrees are going.
@@ -83,12 +90,13 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 		return err
 	}
 
-	service.progress.Report(DrudgerNuked{Slot: slot, Sandbox: sandboxName})
-
-	if killedTaskID == "" {
-		return nil
+	if killedTaskID != "" {
+		if err := service.recordKilledTask(projectSlug, killedTaskID, stashes); err != nil {
+			return err
+		}
 	}
-	return service.recordKilledTask(projectSlug, killedTaskID, stashes)
+	service.progress.Report(DrudgerNuked{Slot: slot, Sandbox: sandboxName})
+	return nil
 }
 
 // removeSandbox deletes a Drudger's sandbox. A removal that fails on a sandbox
