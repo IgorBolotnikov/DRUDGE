@@ -50,7 +50,7 @@ func loadRoleColor[Text ~string](log *common.Logger, subject string, roles map[T
 		if !ok {
 			return text
 		}
-		return palette.Color(role) + text + palette.Reset()
+		return palette.Paint(theme.Stdout, role, text)
 	}
 }
 
@@ -187,7 +187,7 @@ func printPageFooter(log *common.Logger, number int, totalPages int) {
 	if err != nil {
 		log.Error("cannot color the page footer: %v", err)
 	} else {
-		footer = palette.Color(theme.RoleMuted) + footer + palette.Reset()
+		footer = palette.Paint(theme.Stdout, theme.RoleMuted, footer)
 	}
 	log.Info("%s", footer)
 }

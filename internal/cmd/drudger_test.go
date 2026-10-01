@@ -240,7 +240,7 @@ func TestPrintDrudgersColors(t *testing.T) {
 				if !ok {
 					continue
 				}
-				labels[labelIndex] = palette.Color(role) + label + palette.Reset()
+				labels[labelIndex] = palette.Paint(theme.Stdout, role, label)
 			}
 			padding := strings.Repeat(" ", healthColumnWidth-len(health))
 			lines.WriteString(rowLine(index+1, strings.Join(labels, healthPartSeparator)+padding))

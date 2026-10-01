@@ -309,7 +309,7 @@ func TestPrintTaskColors(t *testing.T) {
 			name: "forced color paints each status in its role",
 			env:  map[string]string{"FORCE_COLOR": "1"},
 			want: func(palette *theme.Theme) []string {
-				paint := func(role, text string) string { return palette.Color(role) + text + palette.Reset() }
+				paint := func(role, text string) string { return palette.Paint(theme.Stdout, role, text) }
 				return []string{
 					"  Status:      " + paint(theme.RoleError, "fucked-up") + "\n",
 					"\n" + blockedByLabel + ":\n" +

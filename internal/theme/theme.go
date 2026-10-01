@@ -93,6 +93,9 @@ func isForcedEnv(name string) bool {
 // ansiReset is the ANSI reset sequence.
 const ansiReset = "\x1b[0m"
 
+// ansiBold is the ANSI sequence that turns on bold.
+const ansiBold = "\x1b[1m"
+
 // ansiColorPrefix is the ANSI 24-bit true color prefix.
 const ansiColorPrefix = "\x1b[38;2;%d;%d;%dm"
 
@@ -126,17 +129,24 @@ func (t *Theme) IsColorOn(stream Stream) bool {
 	return t.isColorOn[stream]
 }
 
-// Color returns the ANSI escape sequence of the color of the given role. It
-// returns an empty string when color is off for stdout or the role is unknown.
-func (t *Theme) Color(role string) string {
-	if !t.IsColorOn(Stdout) {
-		return ""
-	}
+// Paint wraps text in the color of role and a reset. It returns text as it is
+// when color is off for stream or the role is unknown.
+func (t *Theme) Paint(stream Stream, role string, text string) string {
 	roleColor, ok := t.colors[role]
-	if !ok {
-		return ""
+	if !t.IsColorOn(stream) || !ok {
+		return text
 	}
-	return roleColor.escape()
+	return roleColor.escape() + text + ansiReset
+}
+
+// Bold wraps text in bold and a reset. It returns text as it is when color is
+// off for stream. Bold is the same in every theme and has no role, so the
+// theme file cannot override it.
+func (t *Theme) Bold(stream Stream, text string) string {
+	if !t.IsColorOn(stream) {
+		return text
+	}
+	return ansiBold + text + ansiReset
 }
 
 // Reset returns the ANSI reset sequence, or an empty string when color is
@@ -150,14 +160,10 @@ func (t *Theme) Reset() string {
 
 const errorLabel = "Error:"
 
-// ErrorLabel returns the label of an error printed to stderr. The label is in
-// the color of the error role when color is on for stderr.
+// ErrorLabel returns the label of an error printed to stderr, in the color of
+// the error role.
 func (t *Theme) ErrorLabel() string {
-	roleColor, ok := t.colors[RoleError]
-	if !t.IsColorOn(Stderr) || !ok {
-		return errorLabel
-	}
-	return roleColor.escape() + errorLabel + ansiReset
+	return t.Paint(Stderr, RoleError, errorLabel)
 }
 
 // Hex returns the raw "#rrggbb" string for the given role, or an empty string

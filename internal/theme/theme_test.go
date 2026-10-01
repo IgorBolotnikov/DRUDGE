@@ -21,7 +21,7 @@ func TestBundledThemesHaveAllRoles(t *testing.T) {
 	}
 }
 
-func TestColorShadeAndReset_FollowColorEnv(t *testing.T) {
+func TestPaintShadeAndReset_FollowColorEnv(t *testing.T) {
 	const wantColor = "\x1b[38;2;191;97;106m"
 	cases := []struct {
 		name      string
@@ -53,13 +53,13 @@ func TestColorShadeAndReset_FollowColorEnv(t *testing.T) {
 			setupTempHome(t, `{"theme": "nord"}`)
 			themes := map[string]*Theme{"NewTheme": NewTheme("nord"), "Load": MustLoad()}
 
-			want := map[string]string{"Color": "", "Shade": "", "Reset": ""}
+			want := map[string]string{"Paint": "text", "Shade": "", "Reset": ""}
 			if testCase.isColorOn {
-				want = map[string]string{"Color": wantColor, "Shade": wantColor, "Reset": ansiReset}
+				want = map[string]string{"Paint": wantColor + "text" + ansiReset, "Shade": wantColor, "Reset": ansiReset}
 			}
 			for constructor, theme := range themes {
 				got := map[string]string{
-					"Color": theme.Color(RoleError),
+					"Paint": theme.Paint(Stdout, RoleError, "text"),
 					"Shade": theme.Shade(RoleError, 0),
 					"Reset": theme.Reset(),
 				}
@@ -194,8 +194,8 @@ func TestLoad_DefaultSystem(t *testing.T) {
 
 			system := NewTheme(systemTheme)
 			for _, role := range allRoles() {
-				if got, want := theme.Color(role), system.Color(role); got != want {
-					t.Errorf("Color(%q) = %q, want %q", role, got, want)
+				if got, want := theme.Paint(Stdout, role, "text"), system.Paint(Stdout, role, "text"); got != want {
+					t.Errorf("Paint(Stdout, %q, \"text\") = %q, want %q", role, got, want)
 				}
 			}
 		})
@@ -494,8 +494,8 @@ func TestSystemTheme(t *testing.T) {
 				t.Fatalf("Load: %v", err)
 			}
 			for role, want := range testCase.wantColors {
-				if got := theme.Color(role); got != want {
-					t.Errorf("Color(%q) = %q, want %q", role, got, want)
+				if got, want := theme.Paint(Stdout, role, "text"), want+"text"+ansiReset; got != want {
+					t.Errorf("Paint(Stdout, %q, \"text\") = %q, want %q", role, got, want)
 				}
 				if got := theme.Hex(role); got != testCase.wantHexes[role] {
 					t.Errorf("Hex(%q) = %q, want %q", role, got, testCase.wantHexes[role])
@@ -512,8 +512,8 @@ func TestSystemTheme(t *testing.T) {
 		t.Setenv(forceColorEnv, "1")
 		theme := NewTheme(systemTheme)
 		for role, want := range wantColors {
-			if got := theme.Color(role); got != want {
-				t.Errorf("Color(%q) = %q, want %q", role, got, want)
+			if got, want := theme.Paint(Stdout, role, "text"), want+"text"+ansiReset; got != want {
+				t.Errorf("Paint(Stdout, %q, \"text\") = %q, want %q", role, got, want)
 			}
 		}
 	})
@@ -524,13 +524,14 @@ func TestSystemTheme_NoColor(t *testing.T) {
 	t.Setenv(forceColorEnv, "1")
 	theme := NewTheme(systemTheme)
 	got := map[string]string{
-		"Color": theme.Color(RoleError),
+		"Paint": theme.Paint(Stdout, RoleError, "text"),
 		"Shade": theme.Shade(RoleError, 0.1),
 		"Reset": theme.Reset(),
 	}
-	for method, value := range got {
-		if value != "" {
-			t.Errorf("%s() = %q, want empty", method, value)
+	want := map[string]string{"Paint": "text", "Shade": "", "Reset": ""}
+	for method, wantValue := range want {
+		if got[method] != wantValue {
+			t.Errorf("%s() = %q, want %q", method, got[method], wantValue)
 		}
 	}
 }

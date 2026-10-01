@@ -109,7 +109,7 @@ func TestPrintSessionStatusColors(t *testing.T) {
 			name: "forced color paints the status in its role",
 			env:  map[string]string{"FORCE_COLOR": "1"},
 			paint: func(palette *theme.Theme, role string, text string) string {
-				return palette.Color(role) + text + palette.Reset()
+				return palette.Paint(theme.Stdout, role, text)
 			},
 		},
 		{

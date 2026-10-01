@@ -104,7 +104,7 @@ func loadMutedColor(log *common.Logger) func(text string) string {
 		log.Error("cannot color the context rows: %v", err)
 		return func(text string) string { return text }
 	}
-	return func(text string) string { return palette.Color(theme.RoleMuted) + text + palette.Reset() }
+	return func(text string) string { return palette.Paint(theme.Stdout, theme.RoleMuted, text) }
 }
 
 // printTaskList prints a page of a listing and its footer, indenting the tasks

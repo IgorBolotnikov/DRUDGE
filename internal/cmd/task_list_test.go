@@ -192,7 +192,7 @@ func TestPrintTaskListColors(t *testing.T) {
 			name: "forced color paints each status in its role",
 			env:  map[string]string{"FORCE_COLOR": "1"},
 			want: func(palette *theme.Theme) string {
-				paint := func(role, text string) string { return palette.Color(role) + text + palette.Reset() }
+				paint := func(role, text string) string { return palette.Paint(theme.Stdout, role, text) }
 				return header +
 					"  " + paint(theme.RoleInfo, "in-progress") + "      9c8d7e6f  Dependency tracking\n" +
 					"    " + paint(theme.RoleSuccess, "done") + "           2b3c4d5e    Pick the next task\n" +
@@ -293,7 +293,7 @@ func TestPrintTaskListContextRow(t *testing.T) {
 			name: "forced color mutes the whole context row",
 			env:  map[string]string{"FORCE_COLOR": "1"},
 			want: func(palette *theme.Theme) string {
-				paint := func(role, text string) string { return palette.Color(role) + text + palette.Reset() }
+				paint := func(role, text string) string { return palette.Paint(theme.Stdout, role, text) }
 				return header +
 					"  " + paint(theme.RoleMuted, contextRow) + "\n" +
 					"    " + paint(theme.RoleSuccess, "done") + "           2b3c4d5e    Pick the next task\n" +
