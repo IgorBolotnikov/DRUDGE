@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 func TestCLIProgress_Report(t *testing.T) {
@@ -113,62 +113,67 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a Drudger claimed",
 			event: drudger.DrudgerClaimed{Task: sampleTask, Slot: 3, Sandbox: "drudge-claude-demo-3"},
-			want:  "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login goes to Drudger 3 (drudge-claude-demo-3)\n",
+			want:  "Task 006684e3  Fix login → Drudger 3 (drudge-claude-demo-3)\n",
 		},
 		{
 			name:  "a base fetch started",
 			event: drudger.BaseFetchStarted{Repository: "api", Branch: "main", Remote: "origin"},
-			want:  "Fetching main of repository api from origin\n",
+			want:  "› Fetching main of api from origin…\n",
 		},
 		{
 			name:  "a worktree creation started",
 			event: drudger.WorktreeCreationStarted{Repository: "api", Path: "/work/demo/.drudge/worktrees/slot-3/api"},
-			want:  "Creating the workspace of repository api at /work/demo/.drudge/worktrees/slot-3/api\n",
+			want:  "› Creating the workspace of api at /work/demo/.drudge/worktrees/slot-3/api…\n",
 		},
 		{
 			name:  "a worktree stashed",
 			event: drudger.WorktreeStashed{Repository: "api", Commit: "9f1c2b3a4d5e6f7089a1b2c3d4e5f60718293a4b"},
-			want:  "Repository api held uncommitted changes, they are stashed at 9f1c2b3a4d5e\n",
+			want:  "✓ The workspace of api held uncommitted changes, they are stashed at 9f1c2b3a4d5e\n",
 		},
 		{
 			name:  "a branch checkout started",
 			event: drudger.BranchCheckoutStarted{Branch: "drudge/006684e3-fix-login"},
-			want:  "Putting the workspace on branch drudge/006684e3-fix-login\n",
+			want:  "› Putting the workspace on branch drudge/006684e3-fix-login…\n",
 		},
 		{
 			name:  "a sandbox lookup started",
 			event: drudger.SandboxLookupStarted{Sandbox: "drudge-claude-demo-3"},
-			want:  "Looking for sandbox drudge-claude-demo-3\n",
+			want:  "› Looking for sandbox drudge-claude-demo-3…\n",
 		},
 		{
 			name:  "a sandbox creation started",
 			event: drudger.SandboxCreationStarted{Sandbox: "drudge-claude-demo-3", Timeout: 10 * time.Minute},
-			want:  "Sandbox drudge-claude-demo-3 does not exist yet, creating it. The first sandbox of a harness pulls its image, which takes minutes. DRUDGE waits up to 10m0s\n",
+			want:  "› Creating sandbox drudge-claude-demo-3, the first one pulls its image, up to 10m0s…\n",
 		},
 		{
 			name:  "a sandbox reused",
 			event: drudger.SandboxReused{Sandbox: "drudge-claude-demo-3"},
-			want:  "Sandbox drudge-claude-demo-3 exists, reusing it\n",
+			want:  "✓ Sandbox drudge-claude-demo-3 exists, reusing it\n",
 		},
 		{
 			name:  "a line of sbx output",
 			event: drudger.SbxOutput{Binary: "sbx", Line: "Pulling agent image 40%"},
-			want:  "sbx: Pulling agent image 40%\n",
+			want:  "    sbx: Pulling agent image 40%\n",
 		},
 		{
-			name:  "an sbx daemon retried",
-			event: drudger.SbxDaemonRetried{},
-			want:  "The sbx daemon did not come up, DRUDGE gives it one more try\n",
+			name:  "a line of sbx output with ANSI codes",
+			event: drudger.SbxOutput{Binary: "sbx", Line: "\x1b[2K\x1b[32mPulling\x1b[0m agent image 40%"},
+			want:  "    sbx: Pulling agent image 40%\n",
+		},
+		{
+			name:       "an sbx daemon retried",
+			event:      drudger.SbxDaemonRetried{},
+			wantStderr: "! The sbx daemon did not come up, DRUDGE gives it one more try\n",
 		},
 		{
 			name:  "an sbx daemon started",
 			event: drudger.SbxDaemonStarted{},
-			want:  "The sbx daemon was not running, sbx has just started it\n",
+			want:  "✓ The sbx daemon was not running, sbx started it\n",
 		},
 		{
 			name:  "an agent launch started",
 			event: drudger.AgentLaunchStarted{Sandbox: "drudge-claude-demo-3", GracePeriod: 10 * time.Second},
-			want:  "Starting the agent in sandbox drudge-claude-demo-3 and waiting up to 10s for its first output\n",
+			want:  "› Starting the agent, waiting up to 10s for its first output…\n",
 		},
 		{
 			name: "an agent launched",
@@ -178,14 +183,14 @@ func TestCLIProgress_Report(t *testing.T) {
 				Branch:  "drudge/006684e3-fix-login",
 				RunDir:  "/work/demo/.drudge/runs/006684e3-dbe9-4316-8aba-8a67a8f01f8f",
 			},
-			want: "Drudger drudge-claude-demo-3 is working on task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
-				"Branch: drudge/006684e3-fix-login\n" +
-				"Run directory: /work/demo/.drudge/runs/006684e3-dbe9-4316-8aba-8a67a8f01f8f\n",
+			want: "✓ Drudger drudge-claude-demo-3 is working on task 006684e3  Fix login\n" +
+				"    Branch   drudge/006684e3-fix-login\n" +
+				"    Run dir  /work/demo/.drudge/runs/006684e3-dbe9-4316-8aba-8a67a8f01f8f\n",
 		},
 		{
 			name:  "a task restarted",
 			event: drudger.TaskRestarted{Task: sampleTask, CameFrom: task.StatusFuckedUp},
-			want:  `Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login was "fucked-up", its previous run is cleared and it starts over` + "\n",
+			want:  `✓ Task 006684e3  Fix login was "fucked-up", it starts over` + "\n",
 		},
 		{
 			name: "a run described",
@@ -215,13 +220,13 @@ func TestCLIProgress_Report(t *testing.T) {
 				Limit:       2,
 				Drudgers:    []*drudger.Drudger{{Slot: 3, Sandbox: "drudge-claude-demo-3"}, {Slot: 4, Sandbox: "drudge-claude-demo-4"}},
 			},
-			want: "Project demo has Drudgers above the maxConcurrentDrudgers limit of 2: slot 3 (drudge-claude-demo-3), slot 4 (drudge-claude-demo-4)\n" +
-				"They are left alone and the task was not assigned to them. Raise maxConcurrentDrudgers to put them back to work, or nuke them if you are done with them.\n",
+			wantStderr: "! Project demo has Drudgers above the maxConcurrentDrudgers limit of 2, they get no tasks: slot 3 (drudge-claude-demo-3), slot 4 (drudge-claude-demo-4). " +
+				"Raise maxConcurrentDrudgers to put them back to work, or nuke them if you are done with them\n",
 		},
 		{
-			name:  "a Drudger list behind",
-			event: drudger.DrudgerListBehind{ProjectSlug: "demo"},
-			want:  "Another drudge command holds the Drudgers of project demo, so this list is what was last written and may be behind\n",
+			name:       "a Drudger list behind",
+			event:      drudger.DrudgerListBehind{ProjectSlug: "demo"},
+			wantStderr: "! Another drudge command holds the Drudgers of project demo, so this list is what was last written and may be behind\n",
 		},
 		{
 			name:  "a Session recorded",
@@ -268,17 +273,17 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:       "a base fetch failed",
 			event:      drudger.BaseFetchFailed{Repository: "api", Branch: "main", Err: errors.New("exit status 128")},
-			wantStderr: "! Could not fetch main of repository api: exit status 128\n",
+			wantStderr: "! Could not fetch main of api: exit status 128\n",
 		},
 		{
 			name:       "a stale base used",
 			event:      drudger.StaleBaseUsed{Repository: "api", Ref: "origin/main", Commit: git.Commit{SHA: "0123456789abcdef", CommittedAt: time.Now().Add(-73 * time.Hour)}},
-			wantStderr: "! Work on repository api is cut from origin/main at 0123456789ab, committed 3 days ago\n",
+			wantStderr: "! Work on api is cut from origin/main at 0123456789ab, committed 3 days ago\n",
 		},
 		{
 			name:       "a stale base used that git does not resolve",
 			event:      drudger.StaleBaseUsed{Repository: "api", Ref: "origin/main"},
-			wantStderr: "! Work on repository api is cut from origin/main\n",
+			wantStderr: "! Work on api is cut from origin/main\n",
 		},
 		{
 			name:       "a sandbox health record failed",
@@ -399,7 +404,8 @@ func TestCLIProgress_Report(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			progress := newCLIProgress(common.NewLogger("", common.Labels{}))
+			t.Setenv("NO_COLOR", "1")
+			progress := newTestCLIProgress()
 			var output string
 			stderr := captureStderr(func() {
 				output = captureOutput(func() { progress.Report(testCase.event) })
@@ -412,4 +418,142 @@ func TestCLIProgress_Report(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCLIProgress_ReportRunGroup(t *testing.T) {
+	retryTask := &task.Task{ID: "3f9a1c2e-0b1d-4c2e-9f3a-1c2e0b1d4c2e", Title: "Add retry to uploader", Status: task.StatusTodo}
+	claimed := drudger.DrudgerClaimed{Task: retryTask, Slot: 2, Sandbox: "drudge-demo-2"}
+	fetchStarted := drudger.BaseFetchStarted{Repository: "api", Branch: "main", Remote: "origin"}
+	worktreeStarted := drudger.WorktreeCreationStarted{Repository: "api", Path: ".drudge/worktrees/slot-2/api"}
+	sandboxStarted := drudger.SandboxCreationStarted{Sandbox: "drudge-demo-2", Timeout: 10 * time.Minute}
+	agentStarted := drudger.AgentLaunchStarted{Sandbox: "drudge-demo-2", GracePeriod: 30 * time.Second}
+	launched := drudger.AgentLaunched{Task: retryTask, Sandbox: "drudge-demo-2", Branch: "drudge/3f9a-add-retry", RunDir: ".drudge/runs/3f9a1c2e"}
+
+	const header = "Task 3f9a1c2e  Add retry to uploader → Drudger 2 (drudge-demo-2)\n"
+	const result = "✓ Drudger drudge-demo-2 is working on task 3f9a1c2e  Add retry to uploader\n" +
+		"    Branch   drudge/3f9a-add-retry\n" +
+		"    Run dir  .drudge/runs/3f9a1c2e\n"
+
+	cases := []struct {
+		name       string
+		events     []any
+		want       string
+		wantStderr string
+	}{
+		{
+			name: "a run that works",
+			events: []any{
+				claimed,
+				fetchStarted,
+				worktreeStarted,
+				sandboxStarted,
+				drudger.SbxOutput{Binary: "sbx", Line: "pulling image docker/sandbox-claude:latest"},
+				agentStarted,
+				launched,
+			},
+			want: header +
+				"  › Fetching main of api from origin…\n" +
+				"  › Creating the workspace of api at .drudge/worktrees/slot-2/api…\n" +
+				"  › Creating sandbox drudge-demo-2, the first one pulls its image, up to 10m0s…\n" +
+				"      sbx: pulling image docker/sandbox-claude:latest\n" +
+				"  › Starting the agent, waiting up to 30s for its first output…\n" +
+				result,
+		},
+		{
+			name: "a run whose fetch failed and whose sandbox did not come up",
+			events: []any{
+				claimed,
+				fetchStarted,
+				drudger.BaseFetchFailed{Repository: "api", Branch: "main", Err: errors.New("exit status 128")},
+				drudger.StaleBaseUsed{Repository: "api", Ref: "origin/main"},
+				worktreeStarted,
+				sandboxStarted,
+			},
+			want: header +
+				"  › Fetching main of api from origin…\n" +
+				"  › Creating the workspace of api at .drudge/worktrees/slot-2/api…\n" +
+				"  › Creating sandbox drudge-demo-2, the first one pulls its image, up to 10m0s…\n",
+			wantStderr: "  ! Could not fetch main of api: exit status 128\n" +
+				"  ! Work on api is cut from origin/main\n",
+		},
+		{
+			name: "a run that reuses its sandbox",
+			events: []any{
+				claimed,
+				drudger.WorktreeStashed{Repository: "api", Commit: "9f1c2b3a4d5e6f7089a1b2c3d4e5f60718293a4b"},
+				drudger.BranchCheckoutStarted{Branch: "drudge/3f9a-add-retry"},
+				drudger.SandboxLookupStarted{Sandbox: "drudge-demo-2"},
+				drudger.SbxDaemonRetried{},
+				drudger.SbxDaemonStarted{},
+				drudger.SandboxReused{Sandbox: "drudge-demo-2"},
+				agentStarted,
+				launched,
+			},
+			want: header +
+				"  ✓ The workspace of api held uncommitted changes, they are stashed at 9f1c2b3a4d5e\n" +
+				"  › Putting the workspace on branch drudge/3f9a-add-retry…\n" +
+				"  › Looking for sandbox drudge-demo-2…\n" +
+				"  ✓ The sbx daemon was not running, sbx started it\n" +
+				"  ✓ Sandbox drudge-demo-2 exists, reusing it\n" +
+				"  › Starting the agent, waiting up to 30s for its first output…\n" +
+				result,
+			wantStderr: "  ! The sbx daemon did not come up, DRUDGE gives it one more try\n",
+		},
+		{
+			name:   "a rerun prints the restart before the group",
+			events: []any{drudger.TaskRestarted{Task: retryTask, CameFrom: task.StatusFuckedUp}, claimed, agentStarted, launched},
+			want: `✓ Task 3f9a1c2e  Add retry to uploader was "fucked-up", it starts over` + "\n" +
+				"\n" +
+				header +
+				"  › Starting the agent, waiting up to 30s for its first output…\n" +
+				result,
+		},
+		{
+			name: "a warning before the claim sits at column 0",
+			events: []any{
+				drudger.DrudgersAboveLimit{ProjectSlug: "demo", Limit: 1, Drudgers: []*drudger.Drudger{{Slot: 2, Sandbox: "drudge-demo-2"}}},
+				claimed,
+			},
+			want: "\n" + header,
+			wantStderr: "! Project demo has Drudgers above the maxConcurrentDrudgers limit of 1, they get no tasks: slot 2 (drudge-demo-2). " +
+				"Raise maxConcurrentDrudgers to put them back to work, or nuke them if you are done with them\n",
+		},
+		{
+			name: "a failed release sits in the group",
+			events: []any{
+				claimed,
+				sandboxStarted,
+				drudger.DrudgerReleaseFailed{ProjectSlug: "demo", Slot: 2, Err: errors.New("disk full")},
+			},
+			want: header +
+				"  › Creating sandbox drudge-demo-2, the first one pulls its image, up to 10m0s…\n",
+			wantStderr: "  ! Drudger 2 of project demo stays claimed for a run that never started: disk full\n",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			progress := newTestCLIProgress()
+			var output string
+			stderr := captureStderr(func() {
+				output = captureOutput(func() {
+					for _, event := range testCase.events {
+						progress.Report(event)
+					}
+				})
+			})
+			if output != testCase.want {
+				t.Errorf("output = %q, want %q", output, testCase.want)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}
+
+func newTestCLIProgress() *cliProgress {
+	palette := theme.NewTheme(theme.DefaultTheme())
+	return newCLIProgress(newPrinter(newThemedLogger(palette), palette))
 }

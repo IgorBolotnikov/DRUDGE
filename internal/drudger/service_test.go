@@ -2067,6 +2067,11 @@ func TestDrudgerService_RerunTask_OnlyRerunsTasksAnAgentHasHad(t *testing.T) {
 			if restarted.Task.ID != taskToRerun.ID || restarted.CameFrom != testCase.status {
 				t.Errorf("expected task %s to restart from %q, got %+v", taskToRerun.ID, testCase.status, restarted)
 			}
+			restartedAt := slices.IndexFunc(service.progress.events, func(event any) bool { _, ok := event.(TaskRestarted); return ok })
+			claimedAt := slices.IndexFunc(service.progress.events, func(event any) bool { _, ok := event.(DrudgerClaimed); return ok })
+			if claimedAt < 0 || restartedAt > claimedAt {
+				t.Errorf("expected the restart to be reported before the Drudger is claimed, got %+v", service.progress.events)
+			}
 		})
 	}
 }

@@ -3,10 +3,13 @@ package cmd
 import (
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 func TestPrinter(t *testing.T) {
+	sampleTask := &task.Task{ID: "3f9a1c2e-0b1d-4c2e-9f3a-1c2e0b1d4c2e", Title: "Add retry to uploader"}
+
 	cases := []struct {
 		name       string
 		env        map[string]string
@@ -85,6 +88,86 @@ func TestPrinter(t *testing.T) {
 			},
 			wantStdout: "Fetching\n✓ Fetched\n",
 			wantStderr: "  ! Could not fetch main\n",
+		},
+		{
+			name: "a step ends with an ellipsis",
+			print: func(out *printer) {
+				out.step("Fetching %s", "main")
+				out.header("Running")
+				out.step("Starting the agent")
+			},
+			wantStdout: "› Fetching main…\n\nRunning\n  › Starting the agent…\n",
+		},
+		{
+			name: "a detail sits one level deeper than the lines around it",
+			print: func(out *printer) {
+				out.detail("sbx: %s", "pulling")
+				out.header("Running")
+				out.step("Creating sandbox")
+				out.detail("sbx: %s", "pulling")
+			},
+			wantStdout: "    sbx: pulling\n\nRunning\n  › Creating sandbox…\n      sbx: pulling\n",
+		},
+		{
+			name:       "a detail loses the ANSI codes of its text",
+			print:      func(out *printer) { out.detail("sbx: %s", "\x1b[2K\x1b[32mpulling\x1b[0m image") },
+			wantStdout: "    sbx: pulling image\n",
+		},
+		{
+			name: "the values of consecutive fields line up",
+			print: func(out *printer) {
+				out.header("Running")
+				out.result("Started")
+				out.field("Branch", "drudge/3f9a-add-retry")
+				out.field("Run dir", ".drudge/runs/3f9a1c2e")
+				out.flush()
+			},
+			wantStdout: "Running\n✓ Started\n    Branch   drudge/3f9a-add-retry\n    Run dir  .drudge/runs/3f9a1c2e\n",
+		},
+		{
+			name: "the next line ends a run of fields",
+			print: func(out *printer) {
+				out.field("A", "1")
+				out.field("Longer", "2")
+				out.done("Next")
+				out.field("Branch", "3")
+				out.warn("Broken")
+			},
+			wantStdout: "    A       1\n    Longer  2\n✓ Next\n    Branch  3\n",
+			wantStderr: "! Broken\n",
+		},
+		{
+			name: "fields in an open group sit at the detail indent of the group",
+			print: func(out *printer) {
+				out.header("Running")
+				out.field("Branch", "main")
+				out.result("Started")
+			},
+			wantStdout: "Running\n      Branch  main\n✓ Started\n",
+		},
+		{
+			name:       "a task reads as its short id, two spaces and its title",
+			print:      func(out *printer) { out.done("Picked %s", out.task(sampleTask)) },
+			wantStdout: "✓ Picked 3f9a1c2e  Add retry to uploader\n",
+		},
+		{
+			name:       "forced color makes the short id of a task bold",
+			env:        map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			print:      func(out *printer) { out.done("Picked %s", out.task(sampleTask)) },
+			wantStdout: "\x1b[32m✓\x1b[0m Picked \x1b[1m3f9a1c2e\x1b[0m  Add retry to uploader\n",
+		},
+		{
+			name: "forced color mutes the step glyph, the detail and the field label",
+			env:  map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			print: func(out *printer) {
+				out.step("Creating sandbox")
+				out.detail("sbx: \x1b[31mpulling\x1b[0m")
+				out.field("Branch", "main")
+				out.flush()
+			},
+			wantStdout: "\x1b[2m›\x1b[0m Creating sandbox…\n" +
+				"    \x1b[2msbx: pulling\x1b[0m\n" +
+				"    \x1b[2mBranch\x1b[0m  main\n",
 		},
 		{
 			name:       "forced color makes the header bold",

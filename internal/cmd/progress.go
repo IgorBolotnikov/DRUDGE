@@ -18,15 +18,15 @@ import (
 const unblockedTaskLine = "  %s  %s"
 
 // cliProgress renders the events a domain service reports as the lines drg
-// prints today. A later change can give these lines a different layout and
-// colors without touching a service.
+// prints.
 type cliProgress struct {
 	log *common.Logger
+	out *printer
 }
 
-// newCLIProgress builds a progress port that prints through log.
-func newCLIProgress(log *common.Logger) *cliProgress {
-	return &cliProgress{log: log}
+// newCLIProgress builds a progress port that prints through out.
+func newCLIProgress(out *printer) *cliProgress {
+	return &cliProgress{log: out.log, out: out}
 }
 
 func (p *cliProgress) Report(event any) {
@@ -45,7 +45,7 @@ func (p *cliProgress) Report(event any) {
 	case task.TasksUngrouped:
 		p.log.Info("Ungrouped %s that belonged to it", task.FormatTaskCount(event.Count))
 	case task.BranchesCleanupFailed:
-		p.log.Warn("Task %s is removed, but the branches it left could not be cleaned up: %v", event.TaskID, event.Err)
+		p.out.warn("Task %s is removed, but the branches it left could not be cleaned up: %v", event.TaskID, event.Err)
 	case task.TaskUnlinkFailed:
 		p.warnTaskUnlinkFailed(event)
 	case task.TaskMarkedDone:
@@ -65,52 +65,50 @@ func (p *cliProgress) Report(event any) {
 
 func (p *cliProgress) warnTaskUnlinkFailed(event task.TaskUnlinkFailed) {
 	if event.IsHeld {
-		p.log.Warn("Task %s is removed, but another drudge command is working on task %s, which still names it", event.RemovedID, event.LinkedID)
+		p.out.warn("Task %s is removed, but another drudge command is working on task %s, which still names it", event.RemovedID, event.LinkedID)
 		return
 	}
-	p.log.Warn("Task %s is removed, but task %s still names it: %v", event.RemovedID, event.LinkedID, event.Err)
+	p.out.warn("Task %s is removed, but task %s still names it: %v", event.RemovedID, event.LinkedID, event.Err)
 }
 
 // reportDrudger renders the events the drudger service reports.
 func (p *cliProgress) reportDrudger(event any) {
 	switch event := event.(type) {
 	case drudger.DrudgerClaimed:
-		p.log.Info("Task [%s] %s goes to Drudger %d (%s)", event.Task.ID, event.Task.Title, event.Slot, event.Sandbox)
+		p.out.header("Task %s → Drudger %d (%s)", p.out.task(event.Task), event.Slot, event.Sandbox)
 	case drudger.BaseFetchStarted:
-		p.log.Info("Fetching %s of repository %s from %s", event.Branch, event.Repository, event.Remote)
+		p.out.step("Fetching %s of %s from %s", event.Branch, event.Repository, event.Remote)
 	case drudger.BaseFetchFailed:
-		p.log.Warn("Could not fetch %s of repository %s: %v", event.Branch, event.Repository, event.Err)
+		p.out.warn("Could not fetch %s of %s: %v", event.Branch, event.Repository, event.Err)
 	case drudger.StaleBaseUsed:
-		p.log.Warn("Work on repository %s is cut from %s", event.Repository, describeBase(event.Ref, event.Commit))
+		p.out.warn("Work on %s is cut from %s", event.Repository, describeBase(event.Ref, event.Commit))
 	case drudger.WorktreeCreationStarted:
-		p.log.Info("Creating the workspace of repository %s at %s", event.Repository, event.Path)
+		p.out.step("Creating the workspace of %s at %s", event.Repository, event.Path)
 	case drudger.WorktreeStashed:
-		p.log.Info("Repository %s held uncommitted changes, they are stashed at %s", event.Repository, git.ShortSHA(event.Commit))
+		p.out.done("The workspace of %s held uncommitted changes, they are stashed at %s", event.Repository, git.ShortSHA(event.Commit))
 	case drudger.BranchCheckoutStarted:
-		p.log.Info("Putting the workspace on branch %s", event.Branch)
+		p.out.step("Putting the workspace on branch %s", event.Branch)
 	case drudger.SandboxLookupStarted:
-		p.log.Info("Looking for sandbox %s", event.Sandbox)
+		p.out.step("Looking for sandbox %s", event.Sandbox)
 	case drudger.SandboxCreationStarted:
-		p.log.Info(
-			"Sandbox %s does not exist yet, creating it. The first sandbox of a harness pulls its image, which takes minutes. DRUDGE waits up to %s",
-			event.Sandbox, event.Timeout,
-		)
+		p.out.step("Creating sandbox %s, the first one pulls its image, up to %s", event.Sandbox, event.Timeout)
 	case drudger.SandboxReused:
-		p.log.Info("Sandbox %s exists, reusing it", event.Sandbox)
+		p.out.done("Sandbox %s exists, reusing it", event.Sandbox)
 	case drudger.SbxOutput:
-		p.log.Info("%s: %s", event.Binary, event.Line)
+		p.out.detail("%s: %s", event.Binary, event.Line)
 	case drudger.SbxDaemonRetried:
-		p.log.Info("The sbx daemon did not come up, DRUDGE gives it one more try")
+		p.out.warn("The sbx daemon did not come up, DRUDGE gives it one more try")
 	case drudger.SbxDaemonStarted:
-		p.log.Info("The sbx daemon was not running, sbx has just started it")
+		p.out.done("The sbx daemon was not running, sbx started it")
 	case drudger.AgentLaunchStarted:
-		p.log.Info("Starting the agent in sandbox %s and waiting up to %s for its first output", event.Sandbox, event.GracePeriod)
+		p.out.step("Starting the agent, waiting up to %s for its first output", event.GracePeriod)
 	case drudger.AgentLaunched:
-		p.log.Info("Drudger %s is working on task [%s] %s", event.Sandbox, event.Task.ID, event.Task.Title)
-		p.log.Info("Branch: %s", event.Branch)
-		p.log.Info("Run directory: %s", event.RunDir)
+		p.out.result("Drudger %s is working on task %s", event.Sandbox, p.out.task(event.Task))
+		p.out.field("Branch", event.Branch)
+		p.out.field("Run dir", event.RunDir)
+		p.out.flush()
 	case drudger.TaskRestarted:
-		p.log.Info("Task [%s] %s was %q, its previous run is cleared and it starts over", event.Task.ID, event.Task.Title, event.CameFrom)
+		p.out.done("Task %s was %q, it starts over", p.out.task(event.Task), event.CameFrom)
 	case drudger.RunDescribed:
 		commands := make([]string, 0, len(event.Commands))
 		for _, argv := range event.Commands {
@@ -124,10 +122,12 @@ func (p *cliProgress) reportDrudger(event any) {
 		for _, above := range event.Drudgers {
 			names = append(names, fmt.Sprintf("slot %d (%s)", above.Slot, above.Sandbox))
 		}
-		p.log.Info("Project %s has Drudgers above the %s limit of %d: %s", event.ProjectSlug, drudger.MaxConcurrentDrudgersKey, event.Limit, strings.Join(names, ", "))
-		p.log.Info("They are left alone and the task was not assigned to them. Raise %s to put them back to work, or nuke them if you are done with them.", drudger.MaxConcurrentDrudgersKey)
+		p.out.warn(
+			"Project %s has Drudgers above the %s limit of %d, they get no tasks: %s. Raise %s to put them back to work, or nuke them if you are done with them",
+			event.ProjectSlug, drudger.MaxConcurrentDrudgersKey, event.Limit, strings.Join(names, ", "), drudger.MaxConcurrentDrudgersKey,
+		)
 	case drudger.DrudgerListBehind:
-		p.log.Info("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", event.ProjectSlug)
+		p.out.warn("Another drudge command holds the Drudgers of project %s, so this list is what was last written and may be behind", event.ProjectSlug)
 	case drudger.SessionRecorded:
 		p.log.Info("Task [%s] %s is %s, its Session is over", event.Task.ID, event.Task.Title, event.Task.Status)
 	case drudger.SessionLeftUnrecorded:
@@ -170,64 +170,64 @@ func (p *cliProgress) reportDrudger(event any) {
 	case drudger.BranchCleanupFailed:
 		p.warnBranchCleanupFailed(event)
 	case drudger.UnblockedLookupFailed:
-		p.log.Warn("Task %s is done, but the tasks it unblocked could not be worked out: %v", event.TaskID, event.Err)
+		p.out.warn("Task %s is done, but the tasks it unblocked could not be worked out: %v", event.TaskID, event.Err)
 	case drudger.DrudgerReleaseFailed:
-		p.log.Warn("Drudger %d of project %s stays claimed for a run that never started: %v", event.Slot, event.ProjectSlug, event.Err)
+		p.out.warn("Drudger %d of project %s stays claimed for a run that never started: %v", event.Slot, event.ProjectSlug, event.Err)
 	case drudger.SessionIDReadFailed:
-		p.log.Warn("%v, the task is recorded without a session id", event.Err)
+		p.out.warn("%v, the task is recorded without a session id", event.Err)
 	}
 }
 
 func (p *cliProgress) warnHealthRecordFailed(event drudger.HealthRecordFailed) {
 	switch event.Part {
 	case drudger.SandboxPart:
-		p.log.Warn("The sandbox of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
+		p.out.warn("The sandbox of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
 	case drudger.WorkspacePart:
-		p.log.Warn("The workspace of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
+		p.out.warn("The workspace of Drudger %d of project %s is %s, but that could not be recorded: %v", event.Slot, event.ProjectSlug, event.Health, event.Err)
 	case drudger.AgentPart:
-		p.log.Warn("The agent that ran task %s of project %s is %s, but that could not be recorded: %v", event.TaskID, event.ProjectSlug, event.Health, event.Err)
+		p.out.warn("The agent that ran task %s of project %s is %s, but that could not be recorded: %v", event.TaskID, event.ProjectSlug, event.Health, event.Err)
 	}
 }
 
 func (p *cliProgress) warnIdleWorkspaceParkFailed(event drudger.IdleWorkspaceParkFailed) {
 	switch event.Step {
 	case drudger.WorkspaceReadStep:
-		p.log.Warn("Drudger %d of project %s holds no task, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
+		p.out.warn("Drudger %d of project %s holds no task, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
 	case drudger.WorkspaceParkStep:
-		p.log.Warn("Drudger %d of project %s holds no task, but its workspace could not be parked: %v", event.Slot, event.ProjectSlug, event.Err)
+		p.out.warn("Drudger %d of project %s holds no task, but its workspace could not be parked: %v", event.Slot, event.ProjectSlug, event.Err)
 	}
 }
 
 func (p *cliProgress) warnRunCloseOutFailed(event drudger.RunCloseOutFailed) {
 	switch event.Step {
 	case drudger.WorkspaceReadStep:
-		p.log.Warn("The Session of task %s is over, but the workspace it ran in could not be read: %v", event.TaskID, event.Err)
+		p.out.warn("The Session of task %s is over, but the workspace it ran in could not be read: %v", event.TaskID, event.Err)
 	case drudger.WorkspaceParkStep:
-		p.log.Warn("The Session of task %s is over, but the workspace it ran in could not be parked: %v", event.TaskID, event.Err)
+		p.out.warn("The Session of task %s is over, but the workspace it ran in could not be parked: %v", event.TaskID, event.Err)
 	case drudger.RepositoryCloseOutStep:
-		p.log.Warn("The Session of task %s is over, but where its work in repository %s is could not be worked out: %v", event.TaskID, event.Repository, event.Err)
+		p.out.warn("The Session of task %s is over, but where its work in repository %s is could not be worked out: %v", event.TaskID, event.Repository, event.Err)
 	}
 }
 
 func (p *cliProgress) warnWorkspaceNukeFailed(event drudger.WorkspaceNukeFailed) {
 	switch event.Step {
 	case drudger.WorkspaceReadStep:
-		p.log.Warn("Drudger %d of project %s is being nuked, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
+		p.out.warn("Drudger %d of project %s is being nuked, but the workspace it works in could not be read: %v", event.Slot, event.ProjectSlug, event.Err)
 	case drudger.WorktreeRemovalStep:
-		p.log.Warn("Drudger %d of project %s is being nuked, but its worktree of repository %s could not be taken out: %v", event.Slot, event.ProjectSlug, event.Repository, event.Err)
+		p.out.warn("Drudger %d of project %s is being nuked, but its worktree of repository %s could not be taken out: %v", event.Slot, event.ProjectSlug, event.Repository, event.Err)
 	}
 }
 
 func (p *cliProgress) warnBranchCleanupFailed(event drudger.BranchCleanupFailed) {
 	switch event.Step {
 	case drudger.RepositoryReadStep:
-		p.log.Warn("Could not read repository %s, branch %s stays: %v", event.Repository, event.Branch, event.Err)
+		p.out.warn("Could not read repository %s, branch %s stays: %v", event.Repository, event.Branch, event.Err)
 	case drudger.BranchReadStep:
-		p.log.Warn("Could not read branch %s of repository %s: %v", event.Branch, event.Repository, event.Err)
+		p.out.warn("Could not read branch %s of repository %s: %v", event.Branch, event.Repository, event.Err)
 	case drudger.BranchInspectStep:
-		p.log.Warn("Could not read what branch %s of repository %s holds: %v", event.Branch, event.Repository, event.Err)
+		p.out.warn("Could not read what branch %s of repository %s holds: %v", event.Branch, event.Repository, event.Err)
 	case drudger.BranchDeleteStep:
-		p.log.Warn("Could not delete branch %s of repository %s, it stays: %v", event.Branch, event.Repository, event.Err)
+		p.out.warn("Could not delete branch %s of repository %s, it stays: %v", event.Branch, event.Repository, event.Err)
 	}
 }
 

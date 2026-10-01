@@ -33,6 +33,12 @@ func newThemedLogger(palette *theme.Theme) *common.Logger {
 	return common.NewLogger("", common.Labels{Error: palette.ErrorLabel(), Warn: palette.WarnLabel()})
 }
 
+// newCommandPrinter builds the printer of a command over the loaded theme.
+func newCommandPrinter() *printer {
+	palette := theme.LoadOrDefault()
+	return newPrinter(newThemedLogger(palette), palette)
+}
+
 func newCommandDeps() (*commandDeps, error) {
 	localCfg, err := config.LoadLocal()
 	if err != nil {
@@ -44,8 +50,8 @@ func newCommandDeps() (*commandDeps, error) {
 		return nil, err
 	}
 
-	log := NewLogger()
-	progress := newCLIProgress(log)
+	out := newCommandPrinter()
+	progress := newCLIProgress(out)
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
 	tasks := task.NewTaskService(repo, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
 	drudgers := persistence.NewFileDrudgerRepository("")
@@ -59,7 +65,7 @@ func newCommandDeps() (*commandDeps, error) {
 	return &commandDeps{
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
-		log:       log,
+		log:       out.log,
 		tasks:     tasks,
 		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
 	}, nil
@@ -89,7 +95,7 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 
 // newProjectService wires a project service over the project records, the
 // local config file and the git binary.
-func newProjectService(log *common.Logger) (*project.ProjectService, error) {
+func newProjectService(out *printer) (*project.ProjectService, error) {
 	globalCfg, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -99,7 +105,7 @@ func newProjectService(log *common.Logger) (*project.ProjectService, error) {
 		return nil, err
 	}
 	linker := config.NewLocalConfigLinker(home)
-	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), newCLIProgress(log)), nil
+	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), newCLIProgress(out)), nil
 }
 
 // newGitOperations wires the git adapter with the configured timeouts.

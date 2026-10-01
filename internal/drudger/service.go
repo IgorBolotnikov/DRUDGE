@@ -140,8 +140,8 @@ func (service *DrudgerService) acceptRunnable(projectSlug string, taskToRun *tas
 	return service.refuseBlocked(projectSlug, taskToRun)
 }
 
-// TaskRestarted reports a task RerunTask handed back to a Drudger. CameFrom is
-// the status the task had before the rerun.
+// TaskRestarted reports a task RerunTask accepted to start over, before it
+// claims a Drudger. CameFrom is the status the task had before the rerun.
 type TaskRestarted struct {
 	Task     *task.Task
 	CameFrom task.TaskStatus
@@ -159,25 +159,21 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 		return err
 	}
 
-	var cameFrom task.TaskStatus
-	accept := func(candidate *task.Task) error {
-		cameFrom = candidate.Status
-		return service.acceptRerunnable(projectSlug, layout, candidate)
-	}
-
 	if isDryRun {
-		if err := accept(taskToRerun); err != nil {
+		if err := service.acceptRerunnable(projectSlug, layout, taskToRerun); err != nil {
 			return err
 		}
 		return service.describeRun(projectSlug, taskToRerun, layout)
 	}
 
-	if err := service.launch(projectSlug, taskToRerun.ID, layout, accept); err != nil {
-		return err
+	accept := func(candidate *task.Task) error {
+		if err := service.acceptRerunnable(projectSlug, layout, candidate); err != nil {
+			return err
+		}
+		service.progress.Report(TaskRestarted{Task: candidate, CameFrom: candidate.Status})
+		return nil
 	}
-
-	service.progress.Report(TaskRestarted{Task: taskToRerun, CameFrom: cameFrom})
-	return nil
+	return service.launch(projectSlug, taskToRerun.ID, layout, accept)
 }
 
 // acceptRerunnable refuses a task no agent has had yet, one whose agent is
