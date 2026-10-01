@@ -34,8 +34,97 @@ const fieldGap = "  "
 // taskTitleGap separates the short id of a task from its title.
 const taskTitleGap = "  "
 
-// printer prints the lines of a command as groups. A header opens a group
-// and a result closes it.
+// printer prints every line a command shows about its work. It owns the
+// glyphs, the indents, the blank lines and the colors of that output. A
+// command handler and the progress renderer print through it and never write
+// to stdout or stderr themselves.
+//
+// # Lines
+//
+// Each line about the work starts with one glyph:
+//
+//	✓  printer.done    a thing got done
+//	›  printer.step    a slow step started, the line ends with …
+//	·  printer.skip    nothing to do, skipped or already there
+//	!  printer.warn    something went wrong and the command goes on
+//	✗  printer.failed  the work failed
+//
+// The format and the arguments work like in [fmt.Printf]. Only the glyph gets
+// a color. A step that finished prints nothing: the next line says it worked.
+//
+// # Groups
+//
+// A command that does several things for one subject prints them as a group.
+// [printer.header] prints a bold line at column 0 and opens the group. The
+// lines that follow are indented two spaces. One of the result methods closes
+// the group and prints the outcome at column 0:
+//
+//	printer.result        ✓ the work got done
+//	printer.resultWarn    ! the work went wrong and the command goes on
+//	printer.resultFailed  ✗ the work failed
+//	printer.skipResult    · there was nothing to do
+//
+// Lines printed with no open group sit at column 0. A command that does one
+// thing prints a single line and opens no group.
+//
+// # Details, fields and blocks
+//
+// [printer.detail] prints a dimmed line one level deeper than the lines around
+// it. It is for subprocess output and strips its ANSI codes.
+//
+// [printer.field] adds a labelled value. Fields wait until the next line that
+// is not a field, so the values of a run of fields line up. Fields at the end
+// of a command print only on [printer.flush].
+//
+// [printer.block] prints text as it is at the detail indent, with a blank line
+// before and after it. A prompt or a list of commands goes in a block.
+//
+// # Views and questions
+//
+// [printer.view] closes the group and prints lines that are already formatted,
+// like a table. [printer.ask] closes the group and prints a question with no
+// newline, for the answer to follow on the same line.
+//
+// # Blank lines
+//
+// The printer decides every blank line. One goes before a header, a block or a
+// view when anything was printed before it. It never prints two blank lines in
+// a row, a blank line first or a blank line last. A command never prints a
+// blank line itself.
+//
+// # Streams
+//
+// Info lines go to stdout and warnings go to stderr. The theme decides color
+// for each stream, so piped output keeps the glyphs and loses the color.
+// [printer.task] and [printer.taskID] name a task with its bold short id, for
+// a line that goes to stdout.
+//
+// # Example
+//
+// A task run prints through the printer like this:
+//
+//	out.header("Task %s → Drudger %d (%s)", out.task(picked), slot, sandbox)
+//	out.step("Fetching main of api from origin")
+//	out.warn("Could not fetch main of api: %v", err)
+//	out.step("Starting the agent, waiting up to %s for its first output", grace)
+//	out.result("Drudger %s is working on task %s", sandbox, out.task(picked))
+//	out.field("Branch", branch)
+//	out.field("Run dir", runDir)
+//	out.flush()
+//
+// and the user sees:
+//
+//	Task 3f9a1c2e  Add retry to uploader → Drudger 2 (drudge-demo-2)
+//	  › Fetching main of api from origin…
+//	  ! Could not fetch main of api: exit status 128
+//	  › Starting the agent, waiting up to 30s for its first output…
+//	✓ Drudger drudge-demo-2 is working on task 3f9a1c2e  Add retry to uploader
+//	    Branch   drudge/3f9a-add-retry
+//	    Run dir  .drudge/runs/3f9a1c2e-…
+//
+// A domain service never gets a printer. It reports typed events through the
+// progress port, and the progress renderer turns each event into one of the
+// calls above.
 type printer struct {
 	log         *common.Logger
 	theme       *theme.Theme
