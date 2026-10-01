@@ -1245,6 +1245,123 @@ func TestFileTaskRepository_UpdateTask_RenamesTheFileAfterATitleChange(t *testin
 	}
 }
 
+// awkwardTitles are titles a file name cannot carry as they are.
+var awkwardTitles = []struct {
+	name  string
+	title string
+}{
+	{name: "a slash", title: "Move the adapter into internal/adapters/remote"},
+	{name: "a leading slash", title: "/etc/passwd"},
+	{name: "only a dot", title: "."},
+	{name: "only two dots", title: ".."},
+	{name: "a parent directory after a slash", title: "a/.."},
+	{name: "a NUL byte", title: "Fix\x00login"},
+	{name: "longer than a file name", title: strings.Repeat("Ä", 200)},
+}
+
+func TestFileTaskRepository_StoresAnAwkwardTitle(t *testing.T) {
+	for _, testCase := range awkwardTitles {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupTaskTestHome(t)
+
+			repo := NewFileTaskRepository("test-project")
+			created := storeTask(t, repo, testCase.title)
+
+			found, err := repo.FindTask("test-project", string(created.ID)[:8])
+			if err != nil {
+				t.Fatalf("FindTask: %v", err)
+			}
+			if found.Title != testCase.title {
+				t.Errorf("expected FindTask to keep the title %q, got %q", testCase.title, found.Title)
+			}
+
+			listed, err := repo.ListTasks("test-project")
+			if err != nil {
+				t.Fatalf("ListTasks: %v", err)
+			}
+			if len(listed) != 1 || listed[0].Title != testCase.title {
+				t.Errorf("expected one listed task titled %q, got %v", testCase.title, listed)
+			}
+
+			err = repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+				taskToUpdate.Status = task.StatusInProgress
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("UpdateTask: %v", err)
+			}
+
+			reread, err := repo.GetTask("test-project", created.ID)
+			if err != nil {
+				t.Fatalf("GetTask: %v", err)
+			}
+			if reread.Title != testCase.title || reread.Status != task.StatusInProgress {
+				t.Errorf("expected the edited task titled %q, got %q with status %q", testCase.title, reread.Title, reread.Status)
+			}
+
+			entries, err := os.ReadDir(repo.taskDir())
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			for _, entry := range entries {
+				if len(entry.Name()) > maxFileNameBytes {
+					t.Errorf("expected a file name within %d bytes, got %d", maxFileNameBytes, len(entry.Name()))
+				}
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_UpdateTask_RenamesToAnAwkwardTitle(t *testing.T) {
+	for _, testCase := range awkwardTitles {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupTaskTestHome(t)
+
+			repo := NewFileTaskRepository("test-project")
+			created := storeTask(t, repo, "Fix login bug")
+
+			err := repo.UpdateTask("test-project", created.ID, func(taskToUpdate *task.Task) error {
+				taskToUpdate.Title = testCase.title
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("UpdateTask: %v", err)
+			}
+
+			newPath := filepath.Join(repo.taskDir(), taskFileName(created.ID, testCase.title))
+			if isPresent, _ := common.Exists(newPath); !isPresent {
+				entries, _ := os.ReadDir(repo.taskDir())
+				t.Fatalf("expected the task file to be named after the new title, got %v", entries)
+			}
+
+			reread, err := repo.GetTask("test-project", created.ID)
+			if err != nil {
+				t.Fatalf("GetTask: %v", err)
+			}
+			if reread.Title != testCase.title {
+				t.Errorf("expected the title %q, got %q", testCase.title, reread.Title)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_FindTask_AmbiguousIDNamesTheFileNameTitle(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	writeTaskFile(t, home, "006684e3-dbe9-4316-8aba-8a67a8f01f8f", "Move internal/adapters")
+	writeTaskFile(t, home, "00668f11-1111-4316-8aba-8a67a8f01f8f", "Fix logout")
+
+	repo := NewFileTaskRepository("test-project")
+	_, err := repo.FindTask("test-project", "00668")
+	if err == nil {
+		t.Fatal("expected an error for an ambiguous id")
+	}
+	if !strings.Contains(err.Error(), "Move internal-adapters") {
+		t.Errorf("expected the error to name the title as the file name carries it, got %q", err)
+	}
+}
+
 func TestFileTaskRepository_DeleteTask(t *testing.T) {
 	cases := []struct {
 		name string

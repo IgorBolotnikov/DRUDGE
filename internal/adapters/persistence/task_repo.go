@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -22,6 +23,13 @@ const (
 	// taskFileIDSeparator splits a task file name into the task id and the
 	// task title.
 	taskFileIDSeparator = " "
+
+	// maxFileNameBytes is the longest file name a unix filesystem takes.
+	maxFileNameBytes = 255
+
+	// fileNameReplacement stands in a task file name for every byte a file
+	// name cannot hold.
+	fileNameReplacement = "-"
 
 	// taskIDListSeparator splits a front matter value holding several task
 	// ids.
@@ -389,16 +397,32 @@ func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error)
 
 // taskFile is one task as its file name describes it. A task file is named
 // after the task it holds, so its id and title are readable straight off a
-// directory entry, without opening the file.
+// directory entry, without opening the file. The title is the file name form,
+// and the front matter holds the title as the user wrote it.
 type taskFile struct {
 	id    task.TaskID
 	title string
 	path  string
 }
 
-// taskFileName names the file a task is stored in.
+// fileNameUnsafe replaces the bytes a unix file name cannot hold.
+var fileNameUnsafe = strings.NewReplacer("/", fileNameReplacement, "\x00", fileNameReplacement)
+
+// taskFileName names the file a task is stored in. The title is cut at a rune
+// boundary to keep the name within the file name limit.
 func taskFileName(id task.TaskID, title string) string {
-	return string(id) + taskFileIDSeparator + title + taskFileExtension
+	prefix := string(id) + taskFileIDSeparator
+	safeTitle := fileNameUnsafe.Replace(title)
+
+	maxTitleBytes := max(maxFileNameBytes-len(prefix)-len(taskFileExtension), 0)
+	if len(safeTitle) > maxTitleBytes {
+		cut := maxTitleBytes
+		for cut > 0 && !utf8.RuneStart(safeTitle[cut]) {
+			cut--
+		}
+		safeTitle = safeTitle[:cut]
+	}
+	return prefix + safeTitle + taskFileExtension
 }
 
 // describeTaskFile reads back the id and title a task file name carries.
