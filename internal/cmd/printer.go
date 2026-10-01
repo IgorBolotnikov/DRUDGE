@@ -39,7 +39,11 @@ type printer struct {
 	theme       *theme.Theme
 	hasPrinted  bool
 	isGroupOpen bool
-	fields      []printerField
+	// isBlankPending is set after a block. The blank line prints before the
+	// next line of the group and is dropped when a header or a result comes
+	// next.
+	isBlankPending bool
+	fields         []printerField
 }
 
 type printerField struct {
@@ -55,6 +59,7 @@ func newPrinter(log *common.Logger, palette *theme.Theme) *printer {
 // before it when anything was printed before.
 func (p *printer) header(format string, args ...any) {
 	p.flush()
+	p.isBlankPending = false
 	if p.hasPrinted {
 		p.log.Info("")
 	}
@@ -85,9 +90,31 @@ func (p *printer) detail(format string, args ...any) {
 	p.info("%s%s", detailIndent, p.theme.Paint(theme.Stdout, theme.RoleMuted, text))
 }
 
+// block prints text at the detail indent, one line per line of the text,
+// with a blank line before and after it. The newlines that open and close the
+// text add no line, and an empty text prints nothing.
+func (p *printer) block(text string) {
+	text = strings.Trim(text, "\n")
+	if text == "" {
+		return
+	}
+	p.flush()
+	if p.hasPrinted {
+		p.isBlankPending = true
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" {
+			p.log.Info("")
+			continue
+		}
+		p.info("%s%s", detailIndent, line)
+	}
+	p.isBlankPending = true
+}
+
 // field adds a labelled value at the detail indent. It prints with the next
 // line that is not a field or on flush, so the values of consecutive fields
-// line up.
+// line up. A field with no value prints its label alone.
 func (p *printer) field(label string, value string) {
 	p.fields = append(p.fields, printerField{label: label, value: value})
 }
@@ -101,8 +128,12 @@ func (p *printer) flush() {
 		labelWidth = max(labelWidth, len([]rune(pending.label)))
 	}
 	for _, pending := range fields {
-		padding := strings.Repeat(" ", labelWidth-len([]rune(pending.label)))
 		label := p.theme.Paint(theme.Stdout, theme.RoleMuted, pending.label)
+		if pending.value == "" {
+			p.info("%s%s", detailIndent, label)
+			continue
+		}
+		padding := strings.Repeat(" ", labelWidth-len([]rune(pending.label)))
 		p.info("%s%s%s%s%s", detailIndent, label, padding, fieldGap, pending.value)
 	}
 }
@@ -116,15 +147,28 @@ func (p *printer) task(named *task.Task) string {
 // warn prints a warning to stderr.
 func (p *printer) warn(format string, args ...any) {
 	p.flush()
+	p.printPendingBlank()
 	p.indentedLog().Warn(format, args...)
 	p.hasPrinted = true
 }
 
 // result closes the group and prints the outcome at column 0.
 func (p *printer) result(format string, args ...any) {
-	p.flush()
-	p.isGroupOpen = false
+	p.closeGroup()
 	p.done(format, args...)
+}
+
+// skipResult closes the group and prints at column 0 that there was nothing
+// to do.
+func (p *printer) skipResult(format string, args ...any) {
+	p.closeGroup()
+	p.skip(format, args...)
+}
+
+func (p *printer) closeGroup() {
+	p.flush()
+	p.isBlankPending = false
+	p.isGroupOpen = false
 }
 
 func (p *printer) glyphLine(role string, glyph string, format string, args ...any) {
@@ -133,8 +177,16 @@ func (p *printer) glyphLine(role string, glyph string, format string, args ...an
 
 func (p *printer) info(format string, args ...any) {
 	p.flush()
+	p.printPendingBlank()
 	p.indentedLog().Info(format, args...)
 	p.hasPrinted = true
+}
+
+func (p *printer) printPendingBlank() {
+	if p.isBlankPending {
+		p.log.Info("")
+		p.isBlankPending = false
+	}
 }
 
 func (p *printer) indentedLog() *common.Logger {

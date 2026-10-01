@@ -146,6 +146,73 @@ func TestPrinter(t *testing.T) {
 			wantStdout: "Running\n      Branch  main\n✓ Started\n",
 		},
 		{
+			name:       "a field with no value prints its label alone",
+			print:      func(out *printer) { out.field("Commands", ""); out.flush() },
+			wantStdout: "    Commands\n",
+		},
+		{
+			name: "a block in a group sits at the field indent with a blank line around it",
+			print: func(out *printer) {
+				out.header("Dry run")
+				out.field("Prompt from", "built-in prompt")
+				out.block("Fix login\n\nSSO is broken\n")
+				out.field("Commands", "")
+				out.block(`"sbx" "ls"`)
+				out.skipResult("Nothing ran")
+			},
+			wantStdout: "Dry run\n" +
+				"      Prompt from  built-in prompt\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      SSO is broken\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls"` + "\n" +
+				"· Nothing ran\n",
+		},
+		{
+			name:       "a block printed first has no blank line before or after it",
+			print:      func(out *printer) { out.block("a\nb") },
+			wantStdout: "    a\n    b\n",
+		},
+		{
+			name: "two blocks in a row get one blank line between them",
+			print: func(out *printer) {
+				out.block("a")
+				out.block("b")
+			},
+			wantStdout: "    a\n\n    b\n",
+		},
+		{
+			name: "a header after a block gets one blank line before it",
+			print: func(out *printer) {
+				out.block("a")
+				out.header("Next")
+			},
+			wantStdout: "    a\n\nNext\n",
+		},
+		{
+			name: "a warning after a block gets the blank line before it",
+			print: func(out *printer) {
+				out.block("a")
+				out.warn("b is broken")
+				out.done("c")
+			},
+			wantStdout: "    a\n\n✓ c\n",
+			wantStderr: "! b is broken\n",
+		},
+		{
+			name: "an empty block prints nothing",
+			print: func(out *printer) {
+				out.done("a")
+				out.block("\n")
+				out.done("b")
+			},
+			wantStdout: "✓ a\n✓ b\n",
+		},
+		{
 			name:       "a task reads as its short id, two spaces and its title",
 			print:      func(out *printer) { out.done("Picked %s", out.task(sampleTask)) },
 			wantStdout: "✓ Picked 3f9a1c2e  Add retry to uploader\n",
@@ -168,6 +235,21 @@ func TestPrinter(t *testing.T) {
 			wantStdout: "\x1b[2m›\x1b[0m Creating sandbox…\n" +
 				"    \x1b[2msbx: pulling\x1b[0m\n" +
 				"    \x1b[2mBranch\x1b[0m  main\n",
+		},
+		{
+			name: "forced color leaves a block in the default color",
+			env:  map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			print: func(out *printer) {
+				out.field("Commands", "")
+				out.block(`"sbx" "ls"`)
+			},
+			wantStdout: "    \x1b[2mCommands\x1b[0m\n\n" + `    "sbx" "ls"` + "\n",
+		},
+		{
+			name:       "forced color mutes the glyph of a skipped result",
+			env:        map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
+			print:      func(out *printer) { out.skipResult("Nothing ran") },
+			wantStdout: "\x1b[2m·\x1b[0m Nothing ran\n",
 		},
 		{
 			name:       "forced color makes the header bold",

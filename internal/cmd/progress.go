@@ -114,9 +114,12 @@ func (p *cliProgress) reportDrudger(event any) {
 		for _, argv := range event.Commands {
 			commands = append(commands, formatArgv(argv))
 		}
-		p.log.Info("Drudger %d (%s) for task [%s] %s", event.Slot, event.Sandbox, event.Task.ID, event.Task.Title)
-		p.log.Info("Prompt (from %s):\n\n%s", event.PromptSource, event.Prompt)
-		p.log.Info("Commands:\n\n%s", strings.Join(commands, "\n"))
+		p.out.header("Dry run of task %s on Drudger %d (%s)", p.out.task(event.Task), event.Slot, event.Sandbox)
+		p.out.field("Prompt from", event.PromptSource)
+		p.out.block(event.Prompt)
+		p.out.field("Commands", "")
+		p.out.block(strings.Join(commands, "\n"))
+		p.out.skipResult("Nothing ran, it was a dry run")
 	case drudger.DrudgersAboveLimit:
 		names := make([]string, 0, len(event.Drudgers))
 		for _, above := range event.Drudgers {

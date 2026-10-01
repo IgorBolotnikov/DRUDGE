@@ -198,20 +198,25 @@ func TestCLIProgress_Report(t *testing.T) {
 				Task:         sampleTask,
 				Slot:         3,
 				Sandbox:      "drudge-claude-demo-3",
-				PromptSource: "built-in prompt",
-				Prompt:       "Fix login: SSO is broken",
+				PromptSource: "~/.drudge/prompt.md",
+				Prompt:       "Fix login\n\nSSO is broken since the last deploy.\n",
 				Commands: [][]string{
 					{"sbx", "ls", "--json"},
-					{"sbx", "create", "claude"},
 					{"sbx", "exec", "-d", "drudge-claude-demo-3"},
 				},
 			},
-			want: "Drudger 3 (drudge-claude-demo-3) for task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
-				"Prompt (from built-in prompt):\n\nFix login: SSO is broken\n" +
-				`Commands:` + "\n\n" +
-				`"sbx" "ls" "--json"` + "\n" +
-				`"sbx" "create" "claude"` + "\n" +
-				`"sbx" "exec" "-d" "drudge-claude-demo-3"` + "\n",
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      SSO is broken since the last deploy.\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				`      "sbx" "exec" "-d" "drudge-claude-demo-3"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
 		},
 		{
 			name: "Drudgers above the limit",
