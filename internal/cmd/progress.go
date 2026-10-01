@@ -56,7 +56,8 @@ func (p *cliProgress) Report(event any) {
 	case task.TaskEdited:
 		p.log.Info("Updated task [%s] %s, it is now %q", event.Task.ID, event.Task.Title, event.Task.Status)
 	case project.ProjectCreated:
-		p.log.Info("Created project %s", event.Project.Name)
+		// Project init prints the result line itself, after the warnings
+		// about its repositories.
 	case project.ProjectRenamed:
 		p.log.Info("Renamed project %s from %q to %q", event.Slug, event.OldName, event.NewName)
 	case release.DownloadStarted:

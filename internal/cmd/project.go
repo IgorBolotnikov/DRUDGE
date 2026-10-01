@@ -70,27 +70,32 @@ func projectInit(args []string) error {
 	}
 
 	out := newCommandPrinter()
-	log := out.log
 	svc, err := newProjectService(out)
 	if err != nil {
 		return err
 	}
 
+	out.header("Initializing project %s in %s", name, common.DotDrudgeDirName)
 	_, repositories, err := svc.InitProject(name, projectDir)
 	if err != nil {
 		return err
 	}
 
-	log.Info("Initialized project %s in %s", name, common.DotDrudgeDirName)
-	printRepositories(log, svc.ResolveRepositories(projectDir, repositories))
+	resolved := svc.ResolveRepositories(projectDir, repositories)
+	for _, repository := range resolved {
+		if repository.Problem != nil {
+			out.warn("%s", repository.Problem)
+		}
+	}
+	out.result("Initialized project %s", name)
+	out.view(repositoryLines(resolved))
 	return nil
 }
 
-// printRepositories lists the repositories of a project with the branch each
+// repositoryLines lists the repositories of a project with the branch each
 // one cuts work from. A repository whose default branch does not resolve is
-// listed as unresolved and the fix goes to stderr, leaving the recorded list
-// for the user to edit.
-func printRepositories(log *common.Logger, resolved []project.ResolvedRepository) {
+// listed as unresolved.
+func repositoryLines(resolved []project.ResolvedRepository) []string {
 	columns := []column{
 		{Title: "REPOSITORY", Width: 30},
 		{Title: "DEFAULT BRANCH"},
@@ -104,13 +109,7 @@ func printRepositories(log *common.Logger, resolved []project.ResolvedRepository
 		}
 		rows = append(rows, []string{repository.Repository.Path, branch})
 	}
-	printList(log, "Repositories", len(rows), columns, rows)
-
-	for _, repository := range resolved {
-		if repository.Problem != nil {
-			log.Warn("%s", repository.Problem)
-		}
-	}
+	return listLines("Repositories", len(rows), columns, rows, nil)
 }
 
 func projectDelete(lookup string, isForced bool) error {

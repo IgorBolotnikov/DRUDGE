@@ -3,6 +3,8 @@ package cmd
 import (
 	"errors"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -51,7 +53,94 @@ func TestRunProject_RefusesAnUnknownSubcommand(t *testing.T) {
 	}
 }
 
-func TestPrintRepositories(t *testing.T) {
+func TestProjectInit(t *testing.T) {
+	cases := []struct {
+		name string
+		// repositories are created in the project directory, each mapped to
+		// the branch origin/HEAD points at. An empty branch leaves origin/HEAD
+		// unset.
+		repositories map[string]string
+		wantStdout   string
+		wantStderr   string
+		wantErr      string
+	}{
+		{
+			name:         "a project with one resolved and one unresolved repository",
+			repositories: map[string]string{"a": "", "b": "main"},
+			wantStdout: "Initializing project demo in .drudge\n" +
+				"✓ Initialized project demo\n" +
+				"\n" +
+				"Repositories (2):\n" +
+				"  REPOSITORY                      DEFAULT BRANCH\n" +
+				"  ------------------------------  --------------\n" +
+				"  a                               unresolved\n" +
+				"  b                               main\n",
+			wantStderr: "  ! could not work out the default branch of a, run `git remote set-head origin -a` in it, " +
+				"or set \"defaultBranch\" for it in the local config\n",
+		},
+		{
+			name:       "a directory that holds no repository",
+			wantStdout: "Initializing project demo in .drudge\n",
+			wantErr:    "is not a git repository and holds none",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			projectDir := t.TempDir()
+			t.Chdir(projectDir)
+			for path, branch := range testCase.repositories {
+				dir := filepath.Join(projectDir, path)
+				runGit(t, projectDir, "init", "-q", dir)
+				if branch != "" {
+					runGit(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/"+branch)
+				}
+			}
+
+			var err error
+			var stdout string
+			stderr := captureStderr(func() {
+				stdout = captureOutput(func() { err = NewRoot("v1.2.3").Execute([]string{ProjectCmd.Name, "init", "demo"}) })
+			})
+
+			if testCase.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Fatalf("error = %v, want it to hold %q", err, testCase.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stdout != testCase.wantStdout {
+				t.Errorf("stdout:\n%q\nwant:\n%q", stdout, testCase.wantStdout)
+			}
+			if stderr != testCase.wantStderr {
+				t.Errorf("stderr:\n%q\nwant:\n%q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}
+
+// runGit runs git in dir with the git variables of the environment cleared,
+// so a git hook running the tests does not point it at another repository.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	command := exec.Command("git", args...)
+	command.Dir = dir
+	for _, variable := range os.Environ() {
+		if !strings.HasPrefix(variable, gitVariablePrefix) {
+			command.Env = append(command.Env, variable)
+		}
+	}
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v: %s", args, dir, err, output)
+	}
+}
+
+const gitVariablePrefix = "GIT_"
+
+func TestRepositoryLines(t *testing.T) {
 	cases := []struct {
 		name     string
 		resolved []project.ResolvedRepository
@@ -77,8 +166,7 @@ func TestPrintRepositories(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			log := common.NewLogger("", common.Labels{})
-			output := captureOutput(func() { printRepositories(log, testCase.resolved) })
+			output := strings.Join(repositoryLines(testCase.resolved), "\n")
 
 			rest := output
 			for _, want := range testCase.wantLines {

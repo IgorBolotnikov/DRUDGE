@@ -99,7 +99,7 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "a project created",
 			event: project.ProjectCreated{Project: &project.Project{Name: "Test Project"}},
-			want:  "Created project Test Project\n",
+			want:  "",
 		},
 		{
 			name:  "a project renamed",
