@@ -145,7 +145,7 @@ func TestProjectList(t *testing.T) {
 			args:     []string{"--page", "2", "--page-size", "1"},
 			env:      map[string]string{"NO_COLOR": "", "FORCE_COLOR": "1"},
 			want: "Projects (2):\n" + header + "  bravo                 bravo\n" +
-				"\x1b[90mPage 2 of 2\x1b[0m\n",
+				"\x1b[2mPage 2 of 2\x1b[0m\n",
 		},
 		{
 			name: "no projects",

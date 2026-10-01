@@ -454,9 +454,9 @@ func TestSystemTheme(t *testing.T) {
 		RoleError:     "\x1b[31m",
 		RoleWarning:   "\x1b[33m",
 		RoleInfo:      "\x1b[36m",
-		RoleMuted:     "\x1b[90m",
+		RoleMuted:     "\x1b[2m",
 		RoleSecondary: "\x1b[37m",
-		RoleBorder:    "\x1b[90m",
+		RoleBorder:    "\x1b[2m",
 		RolePath:      "\x1b[32m",
 	}
 	cases := []struct {

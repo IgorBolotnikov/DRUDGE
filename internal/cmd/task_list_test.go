@@ -212,7 +212,7 @@ func TestPrintTaskListColors(t *testing.T) {
 				return header +
 					"  " + paint("36", "in-progress") + "      9c8d7e6f  Dependency tracking\n" +
 					"    " + paint("32", "done") + "           2b3c4d5e    Pick the next task\n" +
-					"  " + paint("90", "draft") + "            0a1b2c3d  Write a draft\n" +
+					"  " + paint("2", "draft") + "            0a1b2c3d  Write a draft\n" +
 					"  todo             1a2b3c4d  Do the thing\n" +
 					"  " + paint("31", "fucked-up") + "        3c4d5e6f  Break the build\n" +
 					"  " + paint("33", "unmerged") + "         4d5e6f7a  Wait for a merge\n" +

@@ -64,9 +64,9 @@ var systemPalette = map[string]ansiColor{
 	"error":     ansiRed,
 	"warning":   ansiYellow,
 	"info":      ansiCyan,
-	"muted":     ansiBrightBlack,
+	"muted":     ansiDim,
 	"secondary": ansiWhite,
-	"border":    ansiBrightBlack,
+	"border":    ansiDim,
 	"path":      ansiGreen,
 }
 

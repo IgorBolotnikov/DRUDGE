@@ -25,19 +25,20 @@ func (hex hexColor) rgb() (red, green, blue int, ok bool) {
 	return red, green, blue, true
 }
 
-// ansiColor is one of the 16 basic ANSI colors, stored as its SGR code. The
-// terminal theme of the user decides how it looks, so it has no RGB.
+// ansiColor is a basic ANSI color or the dim attribute, stored as its SGR code.
+// The terminal theme of the user decides how it looks, so it has no RGB.
 type ansiColor int
 
-// SGR codes of the basic ANSI colors used by the system theme.
+// SGR codes used by the system theme. Dim is the foreground of the terminal at a
+// lower intensity, so it stays readable on light and dark backgrounds.
 const (
-	ansiRed         ansiColor = 31
-	ansiGreen       ansiColor = 32
-	ansiYellow      ansiColor = 33
-	ansiBlue        ansiColor = 34
-	ansiCyan        ansiColor = 36
-	ansiWhite       ansiColor = 37
-	ansiBrightBlack ansiColor = 90
+	ansiDim    ansiColor = 2
+	ansiRed    ansiColor = 31
+	ansiGreen  ansiColor = 32
+	ansiYellow ansiColor = 33
+	ansiBlue   ansiColor = 34
+	ansiCyan   ansiColor = 36
+	ansiWhite  ansiColor = 37
 )
 
 // ansiSGRFormat is the ANSI escape sequence that sets an SGR code.
