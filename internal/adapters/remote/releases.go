@@ -1,5 +1,5 @@
-// Package github reads drg releases from GitHub over HTTPS.
-package github
+// Package remote reads drg releases from GitHub over HTTPS.
+package remote
 
 import (
 	"errors"

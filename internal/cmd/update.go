@@ -3,7 +3,7 @@ package cmd
 import (
 	"flag"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/github"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 )
 
@@ -23,7 +23,7 @@ func update(version string) error {
 	if err != nil {
 		return err
 	}
-	repo := github.New(github.RepositoryURL, github.RequestTimeout)
+	repo := remote.New(remote.RepositoryURL, remote.RequestTimeout)
 	out := newCommandPrinter()
 	service := release.NewReleaseService(repo, newCLIProgress(out))
 

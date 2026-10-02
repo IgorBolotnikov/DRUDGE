@@ -1,4 +1,4 @@
-package github
+package remote
 
 import (
 	"net/http"
