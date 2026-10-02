@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -16,6 +17,7 @@ func TestRenderPrompt(t *testing.T) {
 		template        string
 		taskToRun       *task.Task
 		workspace       promptWorkspace
+		pullRequests    promptPullRequests
 		want            string
 		wantErrContains string
 	}{
@@ -64,6 +66,32 @@ func TestRenderPrompt(t *testing.T) {
 			want:      "Fix login: SSO is broken",
 		},
 		{
+			name:      "pull request steps expand to nothing with pull requests off",
+			template:  "{{taskTitle}} {{taskDescription}}{{pullRequestSteps}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			want:      "Fix login SSO is broken",
+		},
+		{
+			name:         "substitutes the pull request steps",
+			template:     "{{taskTitle}} {{taskDescription}}\n{{pullRequestSteps}}",
+			taskToRun:    &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			pullRequests: promptPullRequests{IsEnabled: true, Steps: "write a description"},
+			want:         "Fix login SSO is broken\nwrite a description",
+		},
+		{
+			name:      "pull request steps placeholder may be absent with pull requests off",
+			template:  "{{taskTitle}}: {{taskDescription}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			want:      "Fix login: SSO is broken",
+		},
+		{
+			name:            "missing pull request steps placeholder is an error with pull requests on",
+			template:        "{{taskTitle}}: {{taskDescription}}",
+			taskToRun:       &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			pullRequests:    promptPullRequests{IsEnabled: true, Steps: "write a description"},
+			wantErrContains: placeholderPullRequestSteps + " placeholder, which " + remote.PullRequestsEnabledKey + " needs",
+		},
+		{
 			name:            "missing title placeholder is an error",
 			template:        "desc: {{taskDescription}}",
 			taskToRun:       &task.Task{Title: "Fix login", Description: "SSO is broken"},
@@ -85,7 +113,7 @@ func TestRenderPrompt(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := renderPrompt(testCase.template, testCase.taskToRun, testCase.workspace)
+			got, err := renderPrompt(testCase.template, testCase.taskToRun, testCase.workspace, testCase.pullRequests)
 
 			if testCase.wantErrContains != "" {
 				if err == nil {
@@ -118,7 +146,7 @@ func TestDefaultPromptTemplate_HasRequiredPlaceholders(t *testing.T) {
 func TestDefaultPromptTemplate_RendersTaskDetails(t *testing.T) {
 	taskToRun := &task.Task{Title: "Fix login", Description: "SSO is broken", TicketID: "PROJ-123"}
 
-	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun, promptWorkspace{Branch: testTaskBranch, DefaultBranch: testDefaultBranch})
+	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun, promptWorkspace{Branch: testTaskBranch, DefaultBranch: testDefaultBranch}, promptPullRequests{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,6 +260,140 @@ func TestResolvePromptTemplate(t *testing.T) {
 			}
 			if !strings.HasSuffix(source, testCase.wantSource) {
 				t.Errorf("expected source ending in %q, got %q", testCase.wantSource, source)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_PromptPullRequestSteps(t *testing.T) {
+	const (
+		promptFileName   = "impl.md"
+		templateFileName = "template.md"
+		stepsFileName    = "steps.md"
+	)
+
+	cases := []struct {
+		name string
+		// isEnabled turns pull requests on.
+		isEnabled    bool
+		pullRequests PullRequestSettings
+		// files are written to the local prompts directory, keyed by name.
+		files map[string]string
+		// promptFile names the prompt file to use, empty for the built-in one.
+		promptFile      string
+		wantContains    []string
+		wantMissing     []string
+		wantErrContains []string
+	}{
+		{
+			name:        "pull requests off",
+			wantMissing: []string{pullRequestFilePath, testTemplatePath},
+		},
+		{
+			name:         "pull requests on",
+			isEnabled:    true,
+			pullRequests: PullRequestSettings{TitleFormat: "<a short summary of the change>"},
+			wantContains: []string{
+				pullRequestFilePath,
+				"written as <a short summary of the change>.",
+				templatePathPrefix + testTemplatePath + "\n",
+				"<<<\n" + defaultPullRequestTemplate + "\n>>>",
+			},
+		},
+		{
+			name:         "a custom title format",
+			isEnabled:    true,
+			pullRequests: PullRequestSettings{TitleFormat: "[{{ticketID}}] {{taskTitle}}: <summary>"},
+			wantContains: []string{"written as [PROJ-123] Fix login: <summary>."},
+		},
+		{
+			name:         "a custom template file",
+			isEnabled:    true,
+			pullRequests: PullRequestSettings{TemplatePath: filepath.Join(common.LocalPromptsDir(), templateFileName)},
+			files:        map[string]string{templateFileName: "## Summary\n\n<summary>\n"},
+			wantContains: []string{"<<<\n## Summary\n\n<summary>\n>>>"},
+			wantMissing:  []string{defaultPullRequestTemplate},
+		},
+		{
+			name:      "a custom steps file",
+			isEnabled: true,
+			pullRequests: PullRequestSettings{
+				TitleFormat: "<summary>",
+				StepsPath:   filepath.Join(common.LocalPromptsDir(), stepsFileName),
+			},
+			files:        map[string]string{stepsFileName: "Title {{titleFormat}}\nPaths\n{{templatePaths}}\nBody\n{{defaultTemplate}}\n"},
+			wantContains: []string{"Title <summary>\nPaths\n" + templatePathPrefix + testTemplatePath + "\nBody\n" + defaultPullRequestTemplate},
+			wantMissing:  []string{pullRequestFilePath},
+		},
+		{
+			name:            "a missing template file",
+			isEnabled:       true,
+			pullRequests:    PullRequestSettings{TemplatePath: filepath.Join(common.LocalPromptsDir(), templateFileName)},
+			wantErrContains: []string{templateFileName, "does not exist"},
+		},
+		{
+			name:         "a prompt file without the steps placeholder with pull requests off",
+			files:        map[string]string{promptFileName: "{{taskTitle}} {{taskDescription}}"},
+			promptFile:   promptFileName,
+			wantContains: []string{"Fix login SSO is broken"},
+		},
+		{
+			name:            "a prompt file without the steps placeholder with pull requests on",
+			isEnabled:       true,
+			files:           map[string]string{promptFileName: "{{taskTitle}} {{taskDescription}}"},
+			promptFile:      promptFileName,
+			wantErrContains: []string{promptFileName, placeholderPullRequestSteps, remote.PullRequestsEnabledKey},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			for name, content := range testCase.files {
+				writePromptFile(t, common.LocalPromptsDir(), name, content)
+			}
+			settings := testSettings()
+			settings.PullRequests = testCase.pullRequests
+			if testCase.promptFile != "" {
+				settings.PromptPath = filepath.Join(common.LocalPromptsDir(), testCase.promptFile)
+			}
+			taskToRun := todoTask()
+			taskToRun.TicketID = "PROJ-123"
+			service := newTestServiceWith(settings, &fakeCommandRunner{}, taskToRun)
+			if testCase.isEnabled {
+				service.remote = &fakeRemote{}
+			}
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, true)
+
+			if len(testCase.wantErrContains) > 0 {
+				if err == nil {
+					t.Fatal("expected the run to be refused")
+				}
+				for _, fragment := range testCase.wantErrContains {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			prompt := singleEvent[RunDescribed](t, service.progress).Prompt
+			for _, want := range testCase.wantContains {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("expected the prompt to contain %q, got %q", want, prompt)
+				}
+			}
+			for _, unwanted := range testCase.wantMissing {
+				if strings.Contains(prompt, unwanted) {
+					t.Errorf("expected the prompt not to contain %q, got %q", unwanted, prompt)
+				}
+			}
+			if strings.Contains(prompt, "{{") {
+				t.Errorf("expected no placeholders left in the prompt, got %q", prompt)
 			}
 		})
 	}

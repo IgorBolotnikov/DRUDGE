@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,7 +25,7 @@ func TestResolveRemote(t *testing.T) {
 	}{
 		{
 			name: "defaults",
-			want: RemoteSettings{Timeout: 60 * time.Second},
+			want: RemoteSettings{Timeout: 60 * time.Second, PullRequests: PullRequestSettings{TitleFormat: defaultTitleFormat}},
 		},
 		{
 			name: "global only",
@@ -36,7 +37,7 @@ func TestResolveRemote(t *testing.T) {
 			want: RemoteSettings{
 				Provider:     remote.ProviderGitHub,
 				Timeout:      30 * time.Second,
-				PullRequests: PullRequestSettings{IsEnabled: true, IsDraft: true},
+				PullRequests: PullRequestSettings{IsEnabled: true, IsDraft: true, TitleFormat: defaultTitleFormat},
 			},
 		},
 		{
@@ -46,20 +47,20 @@ func TestResolveRemote(t *testing.T) {
 			want: RemoteSettings{
 				Provider:     remote.ProviderGitHub,
 				Timeout:      60 * time.Second,
-				PullRequests: PullRequestSettings{IsEnabled: true},
+				PullRequests: PullRequestSettings{IsEnabled: true, TitleFormat: defaultTitleFormat},
 			},
 		},
 		{
 			name:   "local timeout",
 			local:  RemoteConfig{TimeoutSeconds: 90},
 			global: RemoteConfig{TimeoutSeconds: 30},
-			want:   RemoteSettings{Timeout: 90 * time.Second},
+			want:   RemoteSettings{Timeout: 90 * time.Second, PullRequests: PullRequestSettings{TitleFormat: defaultTitleFormat}},
 		},
 		{
 			name:   "local turns pull requests off",
 			local:  RemoteConfig{PullRequests: PullRequestsConfig{IsEnabled: new(false)}},
 			global: RemoteConfig{PullRequests: PullRequestsConfig{IsEnabled: new(true)}},
-			want:   RemoteSettings{Timeout: 60 * time.Second},
+			want:   RemoteSettings{Timeout: 60 * time.Second, PullRequests: PullRequestSettings{TitleFormat: defaultTitleFormat}},
 		},
 		{
 			name:   "local turns pull requests on",
@@ -68,14 +69,38 @@ func TestResolveRemote(t *testing.T) {
 			want: RemoteSettings{
 				Provider:     remote.ProviderGitHub,
 				Timeout:      60 * time.Second,
-				PullRequests: PullRequestSettings{IsEnabled: true},
+				PullRequests: PullRequestSettings{IsEnabled: true, TitleFormat: defaultTitleFormat},
 			},
 		},
 		{
 			name:   "local turns drafts off",
 			local:  RemoteConfig{PullRequests: PullRequestsConfig{IsDraft: new(false)}},
 			global: RemoteConfig{PullRequests: PullRequestsConfig{IsDraft: new(true)}},
-			want:   RemoteSettings{Timeout: 60 * time.Second},
+			want:   RemoteSettings{Timeout: 60 * time.Second, PullRequests: PullRequestSettings{TitleFormat: defaultTitleFormat}},
+		},
+		{
+			name:   "local title format",
+			local:  RemoteConfig{PullRequests: PullRequestsConfig{TitleFormat: "{{ticketID}}: <summary>"}},
+			global: RemoteConfig{PullRequests: PullRequestsConfig{TitleFormat: "<summary>"}},
+			want:   RemoteSettings{Timeout: 60 * time.Second, PullRequests: PullRequestSettings{TitleFormat: "{{ticketID}}: <summary>"}},
+		},
+		{
+			name:   "global title format",
+			global: RemoteConfig{PullRequests: PullRequestsConfig{TitleFormat: "<summary>"}},
+			want:   RemoteSettings{Timeout: 60 * time.Second, PullRequests: PullRequestSettings{TitleFormat: "<summary>"}},
+		},
+		{
+			name:   "template and steps files from either config",
+			local:  RemoteConfig{PullRequests: PullRequestsConfig{TemplateFile: "local-template.md"}},
+			global: RemoteConfig{PullRequests: PullRequestsConfig{TemplateFile: "global-template.md", StepsFile: "global-steps.md"}},
+			want: RemoteSettings{
+				Timeout: 60 * time.Second,
+				PullRequests: PullRequestSettings{
+					TitleFormat:  defaultTitleFormat,
+					TemplatePath: filepath.Join(".drudge", "prompts", "local-template.md"),
+					StepsPath:    filepath.Join("{home}", ".drudge", "prompts", "global-steps.md"),
+				},
+			},
 		},
 		{
 			name:        "pull requests on with no provider",
@@ -86,6 +111,9 @@ func TestResolveRemote(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			test.want.PullRequests.StepsPath = strings.Replace(test.want.PullRequests.StepsPath, "{home}", home, 1)
+
 			got, err := ResolveRemote(&LocalConfig{Remote: test.local}, &GlobalConfig{Remote: test.global})
 			if len(test.wantErrText) > 0 {
 				assertErrorNames(t, err, test.wantErrText)
@@ -120,6 +148,23 @@ var remoteLoadCases = []struct {
 			TimeoutSeconds: 30,
 			PullRequests:   PullRequestsConfig{IsEnabled: new(true), IsDraft: new(false)},
 		},
+	},
+	{
+		name:    "pull request prompt files",
+		section: `{"pullRequests": {"titleFormat": "<summary>", "templateFile": "template.md", "stepsFile": "steps.md"}}`,
+		want: RemoteConfig{
+			PullRequests: PullRequestsConfig{TitleFormat: "<summary>", TemplateFile: "template.md", StepsFile: "steps.md"},
+		},
+	},
+	{
+		name:        "a template file outside the prompts directory",
+		section:     `{"pullRequests": {"templateFile": "../template.md"}}`,
+		wantErrText: []string{templateFileKey, "../template.md", "bare file name"},
+	},
+	{
+		name:        "a steps file outside the prompts directory",
+		section:     `{"pullRequests": {"stepsFile": "sub/steps.md"}}`,
+		wantErrText: []string{stepsFileKey, "sub/steps.md", "bare file name"},
 	},
 	{
 		name:        "an unknown provider",

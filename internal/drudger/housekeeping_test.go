@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -344,5 +345,94 @@ func TestDrudgerService_RunTask_RecordsWhereTheWorkWillBe(t *testing.T) {
 	}
 	if !maps.Equal(taskToRun.Landings, want) {
 		t.Errorf("expected the handover to record %v, got %v", want, taskToRun.Landings)
+	}
+}
+
+func TestDrudgerService_RunTask_PreparesThePullRequestFile(t *testing.T) {
+	const (
+		existingExclude = "*.log"
+		otherFileName   = "notes.md"
+	)
+
+	cases := []struct {
+		name string
+		// isEnabled turns pull requests on.
+		isEnabled bool
+		// exclude is the exclude file before the runs, empty for none.
+		exclude          string
+		wantExclude      string
+		wantLeftoverKept bool
+	}{
+		{name: "pull requests off", exclude: existingExclude, wantExclude: existingExclude, wantLeftoverKept: true},
+		{name: "pull requests on", isEnabled: true, exclude: existingExclude, wantExclude: existingExclude + "\n" + excludeEntry + "\n"},
+		{name: "pull requests on with no exclude file", isEnabled: true, wantExclude: excludeEntry + "\n"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			excludePath := filepath.Join(projectDir, testRepoPath, gitDirName, excludeFilePath)
+			if testCase.exclude != "" {
+				writeTestFile(t, excludePath, testCase.exclude)
+			}
+			worktree := filepath.Join(slotRoot(projectDir, 1), testRepoPath)
+			drudgeDir := filepath.Join(worktree, common.DotDrudgeDirName)
+			leftoverPath := filepath.Join(worktree, pullRequestFilePath)
+
+			for run := range 2 {
+				taskToRun := todoTask()
+				commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+				service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
+				if testCase.isEnabled {
+					service.remote = &fakeRemote{}
+				}
+				if run > 0 {
+					service.git.registerWorktree(worktree)
+				}
+
+				if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+					t.Fatalf("run %d: unexpected error: %v", run+1, err)
+				}
+
+				if run == 0 {
+					writeTestFile(t, leftoverPath, "Old title\n\nOld body")
+					writeTestFile(t, filepath.Join(drudgeDir, otherFileName), "keep me")
+				}
+			}
+
+			exclude, err := common.ReadFile(excludePath)
+			if err != nil {
+				t.Fatalf("could not read the exclude file: %v", err)
+			}
+			if exclude != testCase.wantExclude {
+				t.Errorf("exclude file = %q, want %q", exclude, testCase.wantExclude)
+			}
+
+			isLeftoverKept, err := common.Exists(leftoverPath)
+			if err != nil {
+				t.Fatalf("could not check the description file: %v", err)
+			}
+			if isLeftoverKept != testCase.wantLeftoverKept {
+				t.Errorf("description file kept = %t, want %t", isLeftoverKept, testCase.wantLeftoverKept)
+			}
+
+			isOtherKept, err := common.Exists(filepath.Join(drudgeDir, otherFileName))
+			if err != nil {
+				t.Fatalf("could not check the other file: %v", err)
+			}
+			if !isOtherKept {
+				t.Errorf("expected %s to be left alone", otherFileName)
+			}
+		})
+	}
+}
+
+func writeTestFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+		t.Fatalf("could not create %s: %v", filepath.Dir(path), err)
+	}
+	if err := common.WriteFile(path, content); err != nil {
+		t.Fatalf("could not write %s: %v", path, err)
 	}
 }

@@ -43,6 +43,20 @@ type Settings struct {
 	// built-in prompt.
 	PromptPath      string
 	SandboxTimeouts SandboxTimeouts
+	PullRequests    PullRequestSettings
+}
+
+// PullRequestSettings is what the prompt tells an agent about pull requests.
+// They are read only when pull requests are on.
+type PullRequestSettings struct {
+	// TitleFormat is how the agent writes the title of a pull request.
+	TitleFormat string
+	// TemplatePath is the body template for a repository that has none. Empty
+	// means the built-in template.
+	TemplatePath string
+	// StepsPath is the wording of the pull request steps. Empty means the
+	// built-in steps.
+	StepsPath string
 }
 
 // SandboxTimeouts caps how long each sandbox command may run. A command that

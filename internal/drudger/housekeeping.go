@@ -2,9 +2,11 @@ package drudger
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -14,6 +16,13 @@ const branchPrefix = "drudge/"
 
 // branchSlugLength caps how much of a task title a branch name carries.
 const branchSlugLength = 40
+
+// excludeFilePath is the file of a repository's git dir that lists what every
+// worktree of the repository ignores.
+const excludeFilePath = "info/exclude"
+
+// excludeEntry makes git ignore the drudge dir at the root of a worktree.
+const excludeEntry = common.DotDrudgeDirName + "/"
 
 // branchAttempts is how many names one task may take. Every name past the
 // first belongs to a rerun that found the one before it holding commits.
@@ -40,14 +49,23 @@ type repositoryHandover struct {
 }
 
 // prepareWorkspace puts every repository of a workspace onto branch, which is
-// the state a handover needs. Whatever the last Session left uncommitted is
-// stashed first. It reports what it did.
+// the state a handover needs. With pull requests on, git is told to ignore the
+// drudge dir of every repository and the pull request description of the last
+// Session is deleted. Whatever the last Session left uncommitted is stashed
+// next. The ignore entry goes in before the stash, which would otherwise take
+// the drudge dir along as untracked files. It reports what it did.
 //
 // A step that fails stops the handover. An agent is never given a workspace
 // that is not in the state it was meant to be.
 func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *task.Task, branch string) (handover, error) {
 	prepared := handover{Branch: branch, Repositories: make([]repositoryHandover, 0, len(space.Repositories))}
 	for _, repository := range space.Repositories {
+		if service.remote != nil {
+			if err := preparePullRequestFile(repository); err != nil {
+				return handover{}, err
+			}
+		}
+
 		stash, err := service.stashWorktree(repository, handoverStashMessage(space.Slot, taskToRun))
 		if err != nil {
 			return handover{}, err
@@ -65,6 +83,50 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash, Base: base.SHA})
 	}
 	return prepared, nil
+}
+
+// preparePullRequestFile makes git ignore the drudge dir of a repository and
+// deletes the pull request description a worktree holds, so a description
+// found after the run was written by it. The ignore entry goes in the exclude
+// file every worktree of the repository shares.
+func preparePullRequestFile(repository repositoryWorktree) error {
+	if err := ensureExcluded(filepath.Join(repository.GitDir, excludeFilePath), excludeEntry); err != nil {
+		return fmt.Errorf("could not make repository %s ignore %s: %w", repository.Name, excludeEntry, err)
+	}
+	if err := common.RemoveAll(filepath.Join(repository.Worktree, pullRequestFilePath)); err != nil {
+		return fmt.Errorf("could not delete the pull request description the last run left in repository %s: %w", repository.Name, err)
+	}
+	return nil
+}
+
+// ensureExcluded adds entry as a line of an exclude file, creating the file
+// when it is not there. A file that already lists entry is left alone.
+func ensureExcluded(path string, entry string) error {
+	content := ""
+	isPresent, err := common.Exists(path)
+	if err != nil {
+		return err
+	}
+	if isPresent {
+		content, err = common.ReadFile(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	for line := range strings.SplitSeq(content, "\n") {
+		if strings.TrimSpace(line) == entry {
+			return nil
+		}
+	}
+
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	return common.WriteFile(path, content+entry+"\n")
 }
 
 // handoverStashMessage says which slot made a stash and which task it was made

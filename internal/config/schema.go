@@ -156,6 +156,19 @@ const schemaJSON = `{
               "description": "Open pull requests as drafts.",
               "type": "boolean",
               "default": false
+            },
+            "titleFormat": {
+              "description": "How the agent is told to write the title of a pull request, word for word. {{ticketID}} and {{taskTitle}} are filled in first.",
+              "type": "string",
+              "default": "<a short summary of the change>"
+            },
+            "templateFile": {
+              "description": "File name of the pull request body template used for a repository that has none, resolved under ~/.drudge/prompts/. Omit to use the built-in template.",
+              "type": "string"
+            },
+            "stepsFile": {
+              "description": "File name of the pull request steps the prompt is given in place of {{pullRequestSteps}}, resolved under ~/.drudge/prompts/. It may use the {{titleFormat}}, {{templatePaths}} and {{defaultTemplate}} placeholders. Omit to use the built-in steps.",
+              "type": "string"
             }
           },
           "additionalProperties": false
@@ -276,6 +289,19 @@ const localSchemaJSON = `{
               "description": "Open pull requests as drafts.",
               "type": "boolean",
               "default": false
+            },
+            "titleFormat": {
+              "description": "How the agent is told to write the title of a pull request, word for word. {{ticketID}} and {{taskTitle}} are filled in first.",
+              "type": "string",
+              "default": "<a short summary of the change>"
+            },
+            "templateFile": {
+              "description": "File name of the pull request body template used for a repository that has none, resolved under .drudge/prompts/ of the project directory. Omit to use the global template file.",
+              "type": "string"
+            },
+            "stepsFile": {
+              "description": "File name of the pull request steps the prompt is given in place of {{pullRequestSteps}}, resolved under .drudge/prompts/ of the project directory. It may use the {{titleFormat}}, {{templatePaths}} and {{defaultTemplate}} placeholders. Omit to use the global steps file.",
+              "type": "string"
             }
           },
           "additionalProperties": false

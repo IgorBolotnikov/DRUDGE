@@ -72,11 +72,15 @@ func newCommandDeps() (*commandDeps, error) {
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
-	settings, err := newDrudgerSettings(localCfg, globalCfg)
+	remoteSettings, err := config.ResolveRemote(localCfg, globalCfg)
 	if err != nil {
 		return nil, err
 	}
-	pullRequestRemote, err := newPullRequestRemote(localCfg, globalCfg, cmdRunner)
+	settings, err := newDrudgerSettings(localCfg, globalCfg, remoteSettings.PullRequests)
+	if err != nil {
+		return nil, err
+	}
+	pullRequestRemote, err := newPullRequestRemote(remoteSettings, cmdRunner)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +95,7 @@ func newCommandDeps() (*commandDeps, error) {
 }
 
 // newDrudgerSettings picks what the Drudger service reads out of the configs.
-func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig) (drudger.Settings, error) {
+func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, pullRequests config.PullRequestSettings) (drudger.Settings, error) {
 	promptPath, err := config.ResolvePromptPath(localCfg, globalCfg)
 	if err != nil {
 		return drudger.Settings{}, err
@@ -109,16 +113,17 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 			Create: timeouts.Create(),
 			Remove: timeouts.Remove(),
 		},
+		PullRequests: drudger.PullRequestSettings{
+			TitleFormat:  pullRequests.TitleFormat,
+			TemplatePath: pullRequests.TemplatePath,
+			StepsPath:    pullRequests.StepsPath,
+		},
 	}, nil
 }
 
 // newPullRequestRemote wires the remote of the configured provider, and
 // returns nil when pull requests are off.
-func newPullRequestRemote(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, runner *exec.CommandRunner) (remote.Remote, error) {
-	settings, err := config.ResolveRemote(localCfg, globalCfg)
-	if err != nil {
-		return nil, err
-	}
+func newPullRequestRemote(settings config.RemoteSettings, runner *exec.CommandRunner) (remote.Remote, error) {
 	if !settings.PullRequests.IsEnabled {
 		return nil, nil
 	}

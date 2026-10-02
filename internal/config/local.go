@@ -59,7 +59,7 @@ func LoadLocal() (*LocalConfig, error) {
 	if cfg.ProjectSlug == "" {
 		return nil, fmt.Errorf("%s is missing %q", path, projectSlugKey)
 	}
-	if err := validatePromptFile(cfg.PromptFile, path); err != nil {
+	if err := validatePromptFile(cfg.PromptFile, promptFileKey, path); err != nil {
 		return nil, err
 	}
 	if err := validateMaxConcurrentDrudgers(cfg.MaxConcurrentDrudgers, path); err != nil {
@@ -115,21 +115,28 @@ func escapesDir(value string) bool {
 	return cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator))
 }
 
-// ResolvePromptPath returns the path of the prompt file to hand an agent,
-// preferring the local config over the global one. A local prompt file lives
-// in the prompts directory of the local drudge dir, a global one in the
-// prompts directory of the drudge home directory. An empty path means neither
-// config names a prompt file and the built-in default applies.
+// ResolvePromptPath returns the path of the prompt file to hand an agent. An
+// empty path means neither config names a prompt file and the built-in default
+// applies.
 func ResolvePromptPath(local *LocalConfig, global *GlobalConfig) (string, error) {
-	if local.PromptFile != "" {
-		return filepath.Join(common.LocalPromptsDir(), local.PromptFile), nil
+	return resolvePromptsFile(local.PromptFile, global.Drudger.PromptFile)
+}
+
+// resolvePromptsFile returns the path of a file of the prompts directory,
+// preferring the file the local config names over the one the global config
+// names. A local file lives in the prompts directory of the local drudge dir, a
+// global one in the prompts directory of the drudge home directory. An empty
+// path means neither config names one.
+func resolvePromptsFile(localName string, globalName string) (string, error) {
+	if localName != "" {
+		return filepath.Join(common.LocalPromptsDir(), localName), nil
 	}
-	if global.Drudger.PromptFile != "" {
+	if globalName != "" {
 		home, err := common.HomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(common.PromptsDir(home), global.Drudger.PromptFile), nil
+		return filepath.Join(common.PromptsDir(home), globalName), nil
 	}
 	return "", nil
 }

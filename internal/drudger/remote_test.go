@@ -11,6 +11,9 @@ import (
 
 const testUnparsableURL = "/srv/git/api.git"
 
+// testTemplatePath is the one place fakeRemote keeps a pull request template.
+const testTemplatePath = ".github/pull_request_template.md"
+
 // fakeRemote accepts every remote URL but testUnparsableURL.
 type fakeRemote struct {
 	readyErr error
@@ -25,7 +28,7 @@ func (fake *fakeRemote) CheckReady() error {
 }
 
 func (fake *fakeRemote) TemplatePaths() []string {
-	return nil
+	return []string{testTemplatePath}
 }
 
 func (fake *fakeRemote) ParseRepository(url string) (remote.Repository, error) {

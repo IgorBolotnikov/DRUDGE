@@ -21,10 +21,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 	customGlobal.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
 
 	cases := []struct {
-		name   string
-		local  *config.LocalConfig
-		global *config.GlobalConfig
-		want   drudger.Settings
+		name         string
+		local        *config.LocalConfig
+		global       *config.GlobalConfig
+		pullRequests config.PullRequestSettings
+		want         drudger.Settings
 	}{
 		{
 			name:   "the default configs",
@@ -77,11 +78,39 @@ func TestNewDrudgerSettings(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:   "the pull request settings",
+			local:  &config.LocalConfig{ProjectSlug: projectSlug, Repositories: repositories},
+			global: config.DefaultConfig(),
+			pullRequests: config.PullRequestSettings{
+				IsEnabled:    true,
+				TitleFormat:  "{{ticketID}}: <summary>",
+				TemplatePath: "template.md",
+				StepsPath:    "steps.md",
+			},
+			want: drudger.Settings{
+				ProjectSlug:           projectSlug,
+				Repositories:          repositories,
+				Env:                   drudger.EnvDockerSbx,
+				Harness:               drudger.HarnessClaudeCode,
+				MaxConcurrentDrudgers: 3,
+				SandboxTimeouts: drudger.SandboxTimeouts{
+					List:   30 * time.Second,
+					Create: 10 * time.Minute,
+					Remove: 2 * time.Minute,
+				},
+				PullRequests: drudger.PullRequestSettings{
+					TitleFormat:  "{{ticketID}}: <summary>",
+					TemplatePath: "template.md",
+					StepsPath:    "steps.md",
+				},
+			},
+		},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := newDrudgerSettings(testCase.local, testCase.global)
+			got, err := newDrudgerSettings(testCase.local, testCase.global, testCase.pullRequests)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

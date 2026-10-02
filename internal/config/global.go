@@ -207,7 +207,7 @@ func Load() (*GlobalConfig, error) {
 	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, cfgPath); err != nil {
 		return nil, err
 	}
-	if err := validatePromptFile(cfg.Drudger.PromptFile, cfgPath); err != nil {
+	if err := validatePromptFile(cfg.Drudger.PromptFile, promptFileKey, cfgPath); err != nil {
 		return nil, err
 	}
 	if err := validateMaxConcurrentDrudgers(cfg.Drudger.MaxConcurrentDrudgers, cfgPath); err != nil {
@@ -298,14 +298,15 @@ func ResolveProjectPageSize(global *GlobalConfig) int {
 	return defaultProjectPageSize
 }
 
-// validatePromptFile rejects a prompt file that is anything but a bare file
-// name. An empty value passes, since that is what an absent key unmarshals to.
-func validatePromptFile(value string, path string) error {
+// validatePromptFile rejects a file of the prompts directory that is anything
+// but a bare file name. An empty value passes, since that is what an absent key
+// unmarshals to.
+func validatePromptFile(value string, key string, path string) error {
 	if value == "" {
 		return nil
 	}
 	if value == "." || value == ".." || value != filepath.Base(value) {
-		return fmt.Errorf("%s has %s = %q, it must be a bare file name, prompt files are read from the prompts directory next to the config file", path, promptFileKey, value)
+		return fmt.Errorf("%s has %s = %q, it must be a bare file name, prompt files are read from the prompts directory next to the config file", path, key, value)
 	}
 	return nil
 }

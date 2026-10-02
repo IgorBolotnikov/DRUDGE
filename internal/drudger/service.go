@@ -438,8 +438,13 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 		return "", "", err
 	}
 
+	pullRequests, err := service.pullRequestSteps(taskToRun)
+	if err != nil {
+		return "", "", err
+	}
+
 	workspace := promptWorkspace{Branch: branch, DefaultBranch: space.defaultBranch()}
-	prompt, err = renderPrompt(promptTemplate, taskToRun, workspace)
+	prompt, err = renderPrompt(promptTemplate, taskToRun, workspace, pullRequests)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", promptSource, err)
 	}
