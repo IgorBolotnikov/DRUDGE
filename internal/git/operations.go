@@ -34,6 +34,9 @@ type Operations interface {
 	DefaultBranch(dir string) (string, error)
 	// HasRemote reports whether a repository has the named remote.
 	HasRemote(dir string, remote string) (bool, error)
+	// RemoteURL returns the URL a repository fetches the named remote from. A
+	// repository that does not have the remote fails.
+	RemoteURL(dir string, remote string) (string, error)
 	// Fetch updates the tracking ref of one branch of a remote.
 	Fetch(dir string, remote string, branch string) error
 	// AddDetachedWorktree checks a repository out at ref in a new worktree at

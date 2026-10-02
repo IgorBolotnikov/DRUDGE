@@ -56,7 +56,7 @@ func TestLatestVersion(t *testing.T) {
 			}))
 			defer server.Close()
 
-			version, err := New(server.URL, testTimeout).LatestVersion()
+			version, err := NewReleases(server.URL, testTimeout).LatestVersion()
 
 			if gotPath != latestReleasePath {
 				t.Errorf("requested %q, want %q", gotPath, latestReleasePath)
@@ -99,7 +99,7 @@ func TestDownloadFile(t *testing.T) {
 			}))
 			defer server.Close()
 
-			contents, err := New(server.URL, testTimeout).DownloadFile("v0.1.1", "drg_linux_arm64.tar.gz")
+			contents, err := NewReleases(server.URL, testTimeout).DownloadFile("v0.1.1", "drg_linux_arm64.tar.gz")
 
 			if wantPath := "/releases/download/v0.1.1/drg_linux_arm64.tar.gz"; gotPath != wantPath {
 				t.Errorf("requested %q, want %q", gotPath, wantPath)

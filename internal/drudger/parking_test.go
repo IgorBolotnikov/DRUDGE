@@ -326,6 +326,10 @@ func (fake *refusingGit) HasRemote(dir string, remote string) (bool, error) {
 	return false, fake.refuse("HasRemote")
 }
 
+func (fake *refusingGit) RemoteURL(dir string, remote string) (string, error) {
+	return "", fake.refuse("RemoteURL")
+}
+
 func (fake *refusingGit) Fetch(dir string, remote string, branch string) error {
 	return fake.refuse("Fetch")
 }

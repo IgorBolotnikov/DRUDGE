@@ -31,6 +31,7 @@ const (
 	// testDefaultBranch is what git answers for it.
 	testRepoPath      = "."
 	testDefaultBranch = "main"
+	testRemoteURL     = "git@github.com:owner/api.git"
 
 	// testRepositoryName is the path a project's single repository sits at,
 	// and the name it is reported under.
@@ -363,8 +364,11 @@ func (runner *fakeCommandRunner) timeoutOf(subcommand string) time.Duration {
 // remembers what it was asked to do. Adding a worktree creates its directory,
 // the way git does, so a second run of the same slot finds it there.
 type fakeGit struct {
-	hasNoRemote     bool
-	remoteErr       error
+	hasNoRemote bool
+	remoteErr   error
+	// remoteURL is the URL of origin in every repository. Empty means the
+	// default test URL.
+	remoteURL       string
 	fetchErr        error
 	worktreeErr     error
 	stashErr        error
@@ -456,6 +460,16 @@ func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
 		return false, fake.remoteErr
 	}
 	return !fake.hasNoRemote, nil
+}
+
+func (fake *fakeGit) RemoteURL(dir string, remote string) (string, error) {
+	if fake.hasNoRemote {
+		return "", fmt.Errorf("error: No such remote '%s'", remote)
+	}
+	if fake.remoteURL == "" {
+		return testRemoteURL, nil
+	}
+	return fake.remoteURL, nil
 }
 
 func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
@@ -872,7 +886,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
 	progress := &fakeProgress{}
-	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps)
+	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps, nil)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0

@@ -110,6 +110,7 @@ type GlobalConfig struct {
 	Drudger DrudgerConfig `json:"drudger"`
 	Task    TaskConfig    `json:"task,omitzero"`
 	Project ProjectConfig `json:"project,omitzero"`
+	Remote  RemoteConfig  `json:"remote,omitzero"`
 }
 
 // ProjectConfig holds the settings for listing projects.
@@ -225,6 +226,9 @@ func Load() (*GlobalConfig, error) {
 		return nil, err
 	}
 	if err := validatePageSize(cfg.Drudger.PageSize, DrudgerPageSizeKey, "Drudger", cfgPath); err != nil {
+		return nil, err
+	}
+	if err := validateRemote(cfg.Remote, cfgPath); err != nil {
 		return nil, err
 	}
 

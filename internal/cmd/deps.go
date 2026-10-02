@@ -4,12 +4,14 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	remoteadapter "github.com/IgorBolotnikov/DRUDGE/internal/adapters/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -74,13 +76,17 @@ func newCommandDeps() (*commandDeps, error) {
 	if err != nil {
 		return nil, err
 	}
+	pullRequestRemote, err := newPullRequestRemote(localCfg, globalCfg, cmdRunner)
+	if err != nil {
+		return nil, err
+	}
 
 	return &commandDeps{
 		localCfg:  localCfg,
 		globalCfg: globalCfg,
 		out:       out,
 		tasks:     tasks,
-		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg)),
+		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote),
 	}, nil
 }
 
@@ -104,6 +110,19 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 			Remove: timeouts.Remove(),
 		},
 	}, nil
+}
+
+// newPullRequestRemote wires the remote of the configured provider, and
+// returns nil when pull requests are off.
+func newPullRequestRemote(localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, runner *exec.CommandRunner) (remote.Remote, error) {
+	settings, err := config.ResolveRemote(localCfg, globalCfg)
+	if err != nil {
+		return nil, err
+	}
+	if !settings.PullRequests.IsEnabled {
+		return nil, nil
+	}
+	return remoteadapter.New(settings.Provider, runner, settings.Timeout)
 }
 
 // newProjectService wires a project service over the project records, the

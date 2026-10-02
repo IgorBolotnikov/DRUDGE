@@ -1,4 +1,5 @@
-// Package remote reads drg releases from GitHub over HTTPS.
+// Package remote talks to the services repositories are hosted on. It reads
+// drg releases from GitHub over HTTPS and runs the CLI of a remote provider.
 package remote
 
 import (
@@ -30,8 +31,8 @@ type Releases struct {
 	repositoryURL string
 }
 
-// New returns Releases for the repository at repositoryURL.
-func New(repositoryURL string, timeout time.Duration) *Releases {
+// NewReleases returns Releases for the repository at repositoryURL.
+func NewReleases(repositoryURL string, timeout time.Duration) *Releases {
 	client := &http.Client{Timeout: timeout}
 	return &Releases{client: client, repositoryURL: repositoryURL}
 }

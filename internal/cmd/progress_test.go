@@ -10,6 +10,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/release"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -233,6 +234,28 @@ func TestCLIProgress_Report(t *testing.T) {
 				"\n" +
 				`      "sbx" "ls" "--json"` + "\n" +
 				`      "sbx" "exec" "-d" "drudge-claude-demo-3"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
+		},
+		{
+			name: "a run described with pull requests on",
+			event: drudger.RunDescribed{
+				Task:                sampleTask,
+				Slot:                3,
+				Sandbox:             "drudge-claude-demo-3",
+				PromptSource:        "~/.drudge/prompt.md",
+				Prompt:              "Fix login\n",
+				Commands:            [][]string{{"sbx", "ls", "--json"}},
+				PullRequestProvider: remote.ProviderGitHub,
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from    ~/.drudge/prompt.md\n" +
+				"      Pull requests  opened on github\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
 				"· Nothing ran, it was a dry run\n",
 		},
 		{

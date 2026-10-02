@@ -124,6 +124,9 @@ func (p *cliProgress) reportDrudger(event any) {
 		}
 		p.out.Header("Dry run of task %s on Drudger %d (%s)", p.out.Task(event.Task), event.Slot, event.Sandbox)
 		p.out.Field("Prompt from", event.PromptSource)
+		if event.PullRequestProvider != "" {
+			p.out.Field("Pull requests", fmt.Sprintf("opened on %s", event.PullRequestProvider))
+		}
 		p.out.Block(event.Prompt)
 		p.out.Field("Commands", "")
 		p.out.Block(strings.Join(commands, "\n"))

@@ -127,6 +127,41 @@ const schemaJSON = `{
         }
       },
       "additionalProperties": false
+    },
+    "remote": {
+      "description": "Settings for the provider the repositories of a project are hosted on. A project config may override each of them.",
+      "type": "object",
+      "properties": {
+        "provider": {
+          "description": "The provider the repositories are hosted on. Required when pull requests are on.",
+          "type": "string",
+          "enum": ["github"]
+        },
+        "timeoutSeconds": {
+          "description": "Seconds allowed for one call of the provider CLI.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 60
+        },
+        "pullRequests": {
+          "description": "Settings for the pull requests DRUDGE opens.",
+          "type": "object",
+          "properties": {
+            "isEnabled": {
+              "description": "Open a pull request for the work of a task. When it is off the work is merged locally. When it is on a run is refused unless the provider CLI is installed and logged in and every repository has an origin remote on the provider.",
+              "type": "boolean",
+              "default": false
+            },
+            "isDraft": {
+              "description": "Open pull requests as drafts.",
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
@@ -212,6 +247,41 @@ const localSchemaJSON = `{
         "required": ["path"],
         "additionalProperties": false
       }
+    },
+    "remote": {
+      "description": "Settings for the provider the repositories of a project are hosted on. Each one overrides the global config.",
+      "type": "object",
+      "properties": {
+        "provider": {
+          "description": "The provider the repositories are hosted on. Required when pull requests are on.",
+          "type": "string",
+          "enum": ["github"]
+        },
+        "timeoutSeconds": {
+          "description": "Seconds allowed for one call of the provider CLI.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 60
+        },
+        "pullRequests": {
+          "description": "Settings for the pull requests DRUDGE opens.",
+          "type": "object",
+          "properties": {
+            "isEnabled": {
+              "description": "Open a pull request for the work of a task. When it is off the work is merged locally. When it is on a run is refused unless the provider CLI is installed and logged in and every repository has an origin remote on the provider.",
+              "type": "boolean",
+              "default": false
+            },
+            "isDraft": {
+              "description": "Open pull requests as drafts.",
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["projectSlug"],

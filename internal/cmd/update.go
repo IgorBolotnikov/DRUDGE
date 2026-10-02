@@ -23,7 +23,7 @@ func update(version string) error {
 	if err != nil {
 		return err
 	}
-	repo := remote.New(remote.RepositoryURL, remote.RequestTimeout)
+	repo := remote.NewReleases(remote.RepositoryURL, remote.RequestTimeout)
 	out := newCommandPrinter()
 	service := release.NewReleaseService(repo, newCLIProgress(out))
 

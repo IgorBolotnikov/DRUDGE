@@ -19,6 +19,7 @@ type LocalConfig struct {
 	MaxConcurrentDrudgers int                `json:"maxConcurrentDrudgers,omitempty"`
 	Task                  TaskConfig         `json:"task,omitzero"`
 	Drudger               LocalDrudgerConfig `json:"drudger,omitzero"`
+	Remote                RemoteConfig       `json:"remote,omitzero"`
 	// Repositories is empty for a project initialized before drudge knew about repositories.
 	Repositories []project.Repository `json:"repositories,omitempty"`
 }
@@ -74,6 +75,9 @@ func LoadLocal() (*LocalConfig, error) {
 		return nil, err
 	}
 	if err := validatePageSize(cfg.Drudger.PageSize, DrudgerPageSizeKey, "Drudger", path); err != nil {
+		return nil, err
+	}
+	if err := validateRemote(cfg.Remote, path); err != nil {
 		return nil, err
 	}
 

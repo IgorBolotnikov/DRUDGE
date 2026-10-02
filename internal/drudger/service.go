@@ -11,6 +11,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -55,6 +56,9 @@ type DrudgerService struct {
 	runs     RunRepository
 	commands CommandRunner
 	gitOps   git.Operations
+	// remote is the provider pull requests are opened on. It is nil when pull
+	// requests are off.
+	remote remote.Remote
 	// daemonRetryDelay and launchGrace default to the constants above. A test
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
@@ -64,7 +68,7 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations) *DrudgerService {
+func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations, remoteOps remote.Remote) *DrudgerService {
 	return &DrudgerService{
 		progress:         progress,
 		settings:         settings,
@@ -73,6 +77,7 @@ func New(progress common.Progress, settings Settings, tasks *task.TaskService, d
 		runs:             runs,
 		commands:         commands,
 		gitOps:           gitOps,
+		remote:           remoteOps,
 		daemonRetryDelay: sbxDaemonRetryDelay,
 		launchGrace:      launchGracePeriod,
 	}
@@ -117,6 +122,10 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 		return err
 	}
 
+	if err := service.checkRemote(layout); err != nil {
+		return err
+	}
+
 	accept := func(candidate *task.Task) error {
 		return service.acceptRunnable(projectSlug, candidate)
 	}
@@ -156,6 +165,10 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 
 	layout, err := service.layout()
 	if err != nil {
+		return err
+	}
+
+	if err := service.checkRemote(layout); err != nil {
 		return err
 	}
 
@@ -435,13 +448,15 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 
 // RunDescribed reports what a dry run would use: the Drudger, the prompt and
 // where it came from, and the argv of every command in the order they run.
+// With pull requests on it also names the provider they would be opened on.
 type RunDescribed struct {
-	Task         *task.Task
-	Slot         int
-	Sandbox      string
-	PromptSource string
-	Prompt       string
-	Commands     [][]string
+	Task                *task.Task
+	Slot                int
+	Sandbox             string
+	PromptSource        string
+	Prompt              string
+	Commands            [][]string
+	PullRequestProvider remote.Provider
 }
 
 // describeRun reports the Drudger, the prompt and the commands a run would use,
@@ -474,14 +489,18 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	service.progress.Report(RunDescribed{
+	described := RunDescribed{
 		Task:         taskToRun,
 		Slot:         wouldUse.Slot,
 		Sandbox:      wouldUse.Sandbox,
 		PromptSource: promptSource,
 		Prompt:       prompt,
 		Commands:     [][]string{plan.inspect.argv, plan.create.argv, plan.start},
-	})
+	}
+	if service.remote != nil {
+		described.PullRequestProvider = service.remote.Provider()
+	}
+	service.progress.Report(described)
 	return nil
 }
 

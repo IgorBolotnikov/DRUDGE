@@ -36,6 +36,10 @@ func (fake *fakeGit) HasRemote(dir string, remote string) (bool, error) {
 	return false, fmt.Errorf("HasRemote should not be called")
 }
 
+func (fake *fakeGit) RemoteURL(dir string, remote string) (string, error) {
+	return "", fmt.Errorf("RemoteURL should not be called")
+}
+
 func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
 	return fmt.Errorf("Fetch should not be called")
 }

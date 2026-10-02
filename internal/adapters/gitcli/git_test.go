@@ -238,6 +238,51 @@ func TestHasRemote(t *testing.T) {
 	}
 }
 
+func TestRemoteURL(t *testing.T) {
+	const remoteURL = "git@github.com:owner/name.git"
+	tests := []struct {
+		name    string
+		build   func(t *testing.T, root string) string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "repository with origin",
+			build: func(t *testing.T, root string) string {
+				repo := initRepo(t, filepath.Join(root, "repo"), "main")
+				runGit(t, repo, "remote", "add", git.OriginRemote, remoteURL)
+				return repo
+			},
+			want: remoteURL,
+		},
+		{
+			name:    "repository with no remote",
+			build:   func(t *testing.T, root string) string { return initRepo(t, filepath.Join(root, "repo"), "main") },
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := test.build(t, t.TempDir())
+
+			got, err := newTestAdapter().RemoteURL(dir, git.OriginRemote)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("RemoteURL(%s) = %q, want an error", dir, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RemoteURL: %v", err)
+			}
+			if got != test.want {
+				t.Errorf("RemoteURL(%s) = %q, want %q", dir, got, test.want)
+			}
+		})
+	}
+}
+
 func TestFetch_MovesTheTrackingRef(t *testing.T) {
 	root := t.TempDir()
 	clone := cloneRepo(t, root, "main", "clone")

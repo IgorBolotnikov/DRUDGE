@@ -159,6 +159,16 @@ func (adapter *Git) HasRemote(dir string, remote string) (bool, error) {
 	return true, nil
 }
 
+// RemoteURL returns the URL a repository fetches the named remote from. A
+// repository that does not have the remote fails.
+func (adapter *Git) RemoteURL(dir string, remote string) (string, error) {
+	stdout, stderr, err := adapter.run(dir, adapter.timeouts.Command, remoteSubcommand, getURLSubcommand, remote)
+	if err != nil {
+		return "", fmt.Errorf("could not read the URL of remote %s in %s: %w: %s", remote, dir, err, strings.TrimSpace(stderr))
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
 // Fetch updates the tracking ref of one branch of a remote. A remote git
 // cannot reach fails.
 func (adapter *Git) Fetch(dir string, remote string, branch string) error {
