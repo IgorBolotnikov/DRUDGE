@@ -107,7 +107,7 @@ const schemaJSON = `{
           "default": "draft"
         },
         "branchFormat": {
-          "description": "Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, and {{taskSlug}}, the task title folded to lowercase words joined by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are.",
+          "description": "Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are.",
           "type": "string",
           "default": "drudge/{{taskShortID}}-{{taskSlug}}"
         },
@@ -226,7 +226,7 @@ const localSchemaJSON = `{
           "default": "draft"
         },
         "branchFormat": {
-          "description": "Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, and {{taskSlug}}, the task title folded to lowercase words joined by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are.",
+          "description": "Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are.",
           "type": "string",
           "default": "drudge/{{taskShortID}}-{{taskSlug}}"
         },

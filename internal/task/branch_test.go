@@ -32,10 +32,11 @@ func TestBranchName_DefaultFormat(t *testing.T) {
 
 func TestBranchName_ConfiguredFormat(t *testing.T) {
 	cases := []struct {
-		name   string
-		format string
-		title  string
-		want   string
+		name     string
+		format   string
+		title    string
+		ticketID string
+		want     string
 	}{
 		{name: "literal text and the slug", format: "feat/" + BranchPlaceholderSlug, title: "Fix login", want: "feat/fix-login"},
 		{name: "both placeholders in their own segments", format: "drg/" + BranchPlaceholderShortID + "/" + BranchPlaceholderSlug, title: "Fix login", want: "drg/task-1/fix-login"},
@@ -43,11 +44,16 @@ func TestBranchName_ConfiguredFormat(t *testing.T) {
 		{name: "an empty slug leaves no trailing separator", format: "drudge/" + BranchPlaceholderShortID + "_" + BranchPlaceholderSlug, title: "!?", want: "drudge/task-1"},
 		{name: "an empty slug leaves no leading separator", format: "drudge/" + BranchPlaceholderSlug + "." + BranchPlaceholderShortID, title: "!?", want: "drudge/task-1"},
 		{name: "an empty slug alone in the name leaves the literal text", format: "/feat//" + BranchPlaceholderSlug + "/", title: "!?", want: "feat"},
+		{name: "a ticket id keeps its case", format: "feature/" + BranchPlaceholderTicketID + "/drg-" + BranchPlaceholderSlug, title: "Fix login", ticketID: "ABC-123", want: "feature/ABC-123/drg-fix-login"},
+		{name: "a ticket id loses what git refuses", format: "feature/" + BranchPlaceholderTicketID + "/drg-" + BranchPlaceholderSlug, title: "Fix login", ticketID: "Proj 7/a~b:c..D", want: "feature/Proj-7-a-b-c-D/drg-fix-login"},
+		{name: "an empty ticket id in the middle", format: "feature/" + BranchPlaceholderTicketID + "/drg-" + BranchPlaceholderSlug, title: "Fix login", want: "feature/drg-fix-login"},
+		{name: "an empty ticket id at the start", format: BranchPlaceholderTicketID + "/" + BranchPlaceholderSlug, title: "Fix login", want: "fix-login"},
+		{name: "an empty ticket id at the end", format: BranchPlaceholderSlug + "-" + BranchPlaceholderTicketID, title: "Fix login", want: "fix-login"},
 	}
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := BranchName(testCase.format, &Task{ID: "task-1", Title: testCase.title})
+			got := BranchName(testCase.format, &Task{ID: "task-1", Title: testCase.title, TicketID: testCase.ticketID})
 			if got != testCase.want {
 				t.Errorf("expected %q, got %q", testCase.want, got)
 			}
@@ -65,6 +71,8 @@ func TestValidateBranchFormat(t *testing.T) {
 		{name: "the default format", format: DefaultBranchFormat},
 		{name: "literal text and both placeholders", format: "feat/drg-" + BranchPlaceholderShortID + "/" + BranchPlaceholderSlug},
 		{name: "the slug alone", format: BranchPlaceholderSlug},
+		{name: "the ticket id and the slug", format: "feature/" + BranchPlaceholderTicketID + "/drg-" + BranchPlaceholderSlug},
+		{name: "the ticket id alone", format: "feature/" + BranchPlaceholderTicketID, wantErrText: BranchPlaceholderShortID + " or " + BranchPlaceholderSlug},
 		{name: "no placeholder", format: "feat/fix", wantErrText: BranchPlaceholderShortID + " or " + BranchPlaceholderSlug},
 		{name: "an unknown placeholder", format: "feat/{{tikcetID}}-" + BranchPlaceholderSlug, wantErrText: "{{tikcetID}}"},
 		{name: "a name git refuses", format: "feat~" + BranchPlaceholderSlug, wantErrText: `"~"`},

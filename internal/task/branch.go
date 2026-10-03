@@ -11,12 +11,13 @@ import (
 
 // Placeholders a branch name format may carry.
 const (
-	BranchPlaceholderShortID = "{{taskShortID}}"
-	BranchPlaceholderSlug    = "{{taskSlug}}"
+	BranchPlaceholderShortID  = "{{taskShortID}}"
+	BranchPlaceholderSlug     = "{{taskSlug}}"
+	BranchPlaceholderTicketID = "{{ticketID}}"
 )
 
 // branchPlaceholders are the placeholders BranchName fills in.
-var branchPlaceholders = []string{BranchPlaceholderShortID, BranchPlaceholderSlug}
+var branchPlaceholders = []string{BranchPlaceholderShortID, BranchPlaceholderSlug, BranchPlaceholderTicketID}
 
 // branchPlaceholderPattern matches anything a format writes as a placeholder.
 var branchPlaceholderPattern = regexp.MustCompile(`\{\{[^{}]*\}\}`)
@@ -41,7 +42,7 @@ const branchSlugLength = 40
 
 // sampleBranchTask fills a format in when ValidateBranchFormat checks the name
 // it gives.
-var sampleBranchTask = &Task{ID: "3f9a1c2e-0000-4000-8000-000000000000", Title: "Add retry to uploader"}
+var sampleBranchTask = &Task{ID: "3f9a1c2e-0000-4000-8000-000000000000", Title: "Add retry to uploader", TicketID: "ABC-123"}
 
 // BranchName fills the placeholders of a branch name format in with a task.
 // It then collapses repeated separators, trims separators from both ends of
@@ -50,6 +51,7 @@ func BranchName(format string, task *Task) string {
 	filled := strings.NewReplacer(
 		BranchPlaceholderShortID, ShortID(task.ID),
 		BranchPlaceholderSlug, branchSlug(task.Title),
+		BranchPlaceholderTicketID, branchTicketID(task.TicketID),
 	).Replace(format)
 
 	segments := []string{}
@@ -121,6 +123,32 @@ func ValidateBranchName(name string) error {
 		}
 	}
 	return nil
+}
+
+// branchTicketIDReplacer turns everything git refuses in a ref into a
+// separator. It also replaces /, so a ticket id stays inside one segment.
+var branchTicketIDReplacer = newBranchTicketIDReplacer()
+
+func newBranchTicketIDReplacer() *strings.Replacer {
+	replacements := []string{branchSegmentSeparator, branchSlugSeparator}
+	for _, forbidden := range branchForbiddenText {
+		replacements = append(replacements, forbidden, branchSlugSeparator)
+	}
+	return strings.NewReplacer(replacements...)
+}
+
+// branchTicketID folds a ticket id into the part of a branch name that comes
+// from it. The ticket id keeps its case.
+func branchTicketID(ticketID string) string {
+	var withoutControl strings.Builder
+	for _, letter := range ticketID {
+		if unicode.IsControl(letter) {
+			withoutControl.WriteString(branchSlugSeparator)
+		} else {
+			withoutControl.WriteRune(letter)
+		}
+	}
+	return branchTicketIDReplacer.Replace(withoutControl.String())
 }
 
 // branchSlug folds a task title into the part of a branch name that comes from
