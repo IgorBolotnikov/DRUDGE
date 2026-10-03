@@ -335,6 +335,31 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "✓ Opened the pull request of api: https://github.com/acme/api/pull/12\n",
 		},
 		{
+			name:  "a pull request retry started",
+			event: drudger.PullRequestRetryStarted{Task: sampleTask},
+			want:  "Opening the pull requests of task 006684e3  Fix login\n",
+		},
+		{
+			name:  "no pull request left",
+			event: drudger.NoPullRequestLeft{Repository: "api", Branch: "drudge/006684e3-fix-login"},
+			want:  "· No pull request description of api is left, the pull request of branch drudge/006684e3-fix-login is open or the agent never wrote one\n",
+		},
+		{
+			name:  "pull requests retried",
+			event: drudger.PullRequestsRetried{Task: sampleTask, Tried: 2, Opened: 2},
+			want:  "✓ Opened 2 pull requests of task 006684e3  Fix login\n",
+		},
+		{
+			name:  "pull requests retried with a failure",
+			event: drudger.PullRequestsRetried{Task: sampleTask, Tried: 2, Opened: 1},
+			want:  "! Opened 1 of 2 pull requests of task 006684e3  Fix login\n",
+		},
+		{
+			name:  "pull requests retried with none left",
+			event: drudger.PullRequestsRetried{Task: sampleTask},
+			want:  "· Task 006684e3  Fix login has no pull requests left to open\n",
+		},
+		{
 			name: "dependents unblocked",
 			event: drudger.DependentsUnblocked{Tasks: []*task.Task{
 				{ID: "4f2a1b3c-0001", Title: "Wire the repository"},
@@ -407,6 +432,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			name:       "a pull request description move failed",
 			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.DescriptionMoveStep, Err: errors.New("disk full")},
 			wantStderr: "! Could not move the pull request description of api into the run directory of task 3f9a1c2e, no pull request is opened: disk full\n",
+		},
+		{
+			name:       "a pull request description read failed",
+			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.DescriptionReadStep, Err: errors.New("permission denied")},
+			wantStderr: "! Could not read the pull request description of api in the run directory of task 3f9a1c2e, no pull request is opened: permission denied\n",
+		},
+		{
+			name:       "a pull request description without a landing",
+			event:      drudger.PullRequestWithoutLanding{TaskID: "3f9a1c2e", Repository: "api"},
+			wantStderr: "! Task 3f9a1c2e has no work in api, its pull request description stays in the run directory\n",
 		},
 		{
 			name:       "a branch push failed",

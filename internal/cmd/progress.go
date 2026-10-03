@@ -156,6 +156,14 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Done("Opened the pull request of %s: %s", event.Repository, event.URL)
 	case drudger.PullRequestDescriptionMissing:
 		p.out.Warn("The agent committed in %s and wrote no pull request description, branch %s is not pushed", event.Repository, event.Branch)
+	case drudger.PullRequestRetryStarted:
+		p.out.Header("Opening the pull requests of task %s", p.out.Task(event.Task))
+	case drudger.NoPullRequestLeft:
+		p.out.Skip("No pull request description of %s is left, the pull request of branch %s is open or the agent never wrote one", event.Repository, event.Branch)
+	case drudger.PullRequestWithoutLanding:
+		p.out.Warn("Task %s has no work in %s, its pull request description stays in the run directory", event.TaskID, event.Repository)
+	case drudger.PullRequestsRetried:
+		p.pullRequestsResult(event)
 	case drudger.SessionRecorded:
 		p.sessionResult(event.Status)("Task %s %s, it is %s", p.out.Task(event.Task), event.Status, event.Task.Status)
 	case drudger.DependentsUnblocked:
@@ -219,6 +227,19 @@ func (p *cliProgress) sessionResult(status drudger.SessionStatus) func(format st
 	}
 }
 
+// pullRequestsResult closes a retry with how many of the pull requests it tried
+// are open now.
+func (p *cliProgress) pullRequestsResult(event drudger.PullRequestsRetried) {
+	switch {
+	case event.Tried == 0:
+		p.out.SkipResult("Task %s has no pull requests left to open", p.out.Task(event.Task))
+	case event.Opened == event.Tried:
+		p.out.Result("Opened %d pull requests of task %s", event.Opened, p.out.Task(event.Task))
+	default:
+		p.out.ResultWarn("Opened %d of %d pull requests of task %s", event.Opened, event.Tried, p.out.Task(event.Task))
+	}
+}
+
 func (p *cliProgress) warnHealthRecordFailed(event drudger.HealthRecordFailed) {
 	switch event.Part {
 	case drudger.SandboxPart:
@@ -254,6 +275,8 @@ func (p *cliProgress) warnPullRequestFailed(event drudger.PullRequestFailed) {
 	switch event.Step {
 	case drudger.DescriptionMoveStep:
 		p.out.Warn("Could not move the pull request description of %s into the run directory of task %s, no pull request is opened: %v", event.Repository, event.TaskID, event.Err)
+	case drudger.DescriptionReadStep:
+		p.out.Warn("Could not read the pull request description of %s in the run directory of task %s, no pull request is opened: %v", event.Repository, event.TaskID, event.Err)
 	case drudger.BranchPushStep:
 		p.out.Warn("Could not push the branch of %s, its pull request description stays in the run directory of task %s: %v", event.Repository, event.TaskID, event.Err)
 	case drudger.PullRequestOpenStep:

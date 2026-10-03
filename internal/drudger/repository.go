@@ -53,6 +53,9 @@ type RunRepository interface {
 	// ReadPullRequest returns the pull request description of one repository.
 	// isPresent is false when the run holds none.
 	ReadPullRequest(taskID task.TaskID, repository string) (description string, isPresent bool, err error)
+	// ListPullRequests names the repositories whose pull request description
+	// the run holds, sorted by name. A task with no run holds none.
+	ListPullRequests(taskID task.TaskID) ([]string, error)
 	// RemovePullRequest deletes the pull request description of one
 	// repository. One that is not there is not an error.
 	RemovePullRequest(taskID task.TaskID, repository string) error

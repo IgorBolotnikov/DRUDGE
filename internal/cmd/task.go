@@ -129,6 +129,17 @@ var TaskCmd = &Cmd{
 			},
 		},
 		{
+			Name: "pr",
+			Args: []string{taskIDArg},
+			Desc: "Open the pull requests close-out left behind for a task",
+			Help: "Open the pull requests whose descriptions are still in the run directory of a task.\n" +
+				"It retries the ones that failed at close-out, and opens them for a task that finished before pull requests were turned on.\n" +
+				"Each branch is pushed to origin from the repository in the project directory, whatever task the Drudger holds now.\n" +
+				"A task an agent is still working on is refused.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskPullRequests },
+		},
+		{
 			Name:  "status",
 			Args:  []string{taskIDArg},
 			Desc:  "Tell how the agent working on a task is doing",
@@ -375,6 +386,18 @@ func taskRerun(taskID task.TaskID, isDryRun bool) error {
 	}
 
 	return deps.drudger.RerunTask(deps.localCfg.ProjectSlug, taskID, isDryRun)
+}
+
+// taskPullRequests opens the pull requests close-out left behind for a task.
+func taskPullRequests(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
 }
 
 // taskSessionStatus reports how the last Session of a task is going.

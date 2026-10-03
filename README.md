@@ -75,7 +75,9 @@ With `remote.pullRequests.isEnabled` on, DRUDGE opens a pull request for every r
 4. For each description DRUDGE pushes the branch of the run to `origin` and opens a pull request from it into the default branch of the repository with `gh pr create`. The first line of the description is the title, with a leading `# ` cut. The rest is the body. A description with a blank first line takes the title of the task.
 5. The URL of every opened pull request goes on the task and its description is deleted from the run directory. `drg task show` lists the URLs.
 
-A repository with commits and no description is not pushed and gets no pull request. DRUDGE prints a warning for it. A push or a pull request that fails is printed with the reason, and its description stays in the run directory so you can open the pull request by hand. The other repositories still get their pull requests. A run that fucked up opens nothing.
+A repository with commits and no description is not pushed and gets no pull request. DRUDGE prints a warning for it. A push or a pull request that fails is printed with the reason, and its description stays in the run directory. The other repositories still get their pull requests. A run that fucked up opens nothing.
+
+`drg task pr <task-id>` opens the pull requests whose descriptions are still in the run directory. It retries the ones that failed and opens them for a task that finished before pull requests were turned on. It runs the same check as `drg task run` and refuses a task an agent is still working on. Each branch is pushed from the repository in the project directory, so it works whatever task the Drudger holds now. A repository the task has work in and no description left for is printed. Its pull request is open already or the agent never wrote a description.
 
 The task ends as `unmerged` either way. DRUDGE never reads the state of a pull request. Run `drg task done` once the work is merged. A rerun of the task deletes the run directory with the descriptions left in it, and leaves the pull requests of earlier runs open.
 

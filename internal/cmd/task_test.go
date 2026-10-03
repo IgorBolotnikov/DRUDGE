@@ -172,7 +172,7 @@ func TestRunTask_PrintsHelp(t *testing.T) {
 			if !strings.HasPrefix(output, "usage: drg task <subcommand>\n") {
 				t.Errorf("expected the help of the task command, got:\n%s", output)
 			}
-			for _, name := range []string{"new", "list", "next", "show", "edit", "rm", "run", "rerun", "status"} {
+			for _, name := range []string{"new", "list", "next", "show", "edit", "rm", "run", "rerun", "pr", "status"} {
 				if !strings.Contains(output, "  "+name+" ") {
 					t.Errorf("expected %q in the help, got:\n%s", name, output)
 				}

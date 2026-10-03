@@ -3,6 +3,7 @@ package persistence
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,11 @@ func setupRunRepo(t *testing.T, files runFiles) (*FileRunRepository, string) {
 		}
 	}
 	for name, content := range files {
-		if err := common.WriteFile(filepath.Join(runDir, name), content); err != nil {
+		path := filepath.Join(runDir, name)
+		if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+			t.Fatalf("could not create the directory of %s: %v", name, err)
+		}
+		if err := common.WriteFile(path, content); err != nil {
 			t.Fatalf("could not write %s: %v", name, err)
 		}
 	}
@@ -373,6 +378,47 @@ func TestFileRunRepository_PullRequests(t *testing.T) {
 				if onDisk != description {
 					t.Errorf("expected %q on disk, got %q", description, onDisk)
 				}
+			}
+		})
+	}
+}
+
+func TestFileRunRepository_ListPullRequests(t *testing.T) {
+	cases := []struct {
+		name  string
+		files runFiles
+		want  []string
+	}{
+		{name: "a task with no run"},
+		{name: "a run with no descriptions", files: runFiles{common.RunPromptName: "prompt"}},
+		{
+			name: "descriptions of two repositories",
+			files: runFiles{
+				filepath.Join(common.RunPullRequestsDirName, "ui.md"):  "Show retries",
+				filepath.Join(common.RunPullRequestsDirName, "api.md"): "Add retry",
+			},
+			want: []string{"api", "ui"},
+		},
+		{
+			name: "a file that is not a description",
+			files: runFiles{
+				filepath.Join(common.RunPullRequestsDirName, "api.md"):    "Add retry",
+				filepath.Join(common.RunPullRequestsDirName, "notes.txt"): "scratch",
+			},
+			want: []string{"api"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, _ := setupRunRepo(t, testCase.files)
+
+			got, err := repo.ListPullRequests(runTestTaskID)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("ListPullRequests() = %v, want %v", got, testCase.want)
 			}
 		})
 	}

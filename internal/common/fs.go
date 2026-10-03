@@ -52,7 +52,7 @@ const (
 // from the worktree the agent wrote it in.
 const (
 	RunPullRequestsDirName = "pull-requests"
-	runPullRequestExt      = ".md"
+	RunPullRequestExt      = ".md"
 )
 
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
@@ -372,10 +372,16 @@ func RunStderrPath(runDir string) string {
 	return filepath.Join(runDir, RunStderrName)
 }
 
+// RunPullRequestsDir returns the directory holding the pull request
+// descriptions of a run directory.
+func RunPullRequestsDir(runDir string) string {
+	return filepath.Join(runDir, RunPullRequestsDirName)
+}
+
 // RunPullRequestPath returns the path to the pull request description of one
 // repository in a run directory.
 func RunPullRequestPath(runDir string, repository string) string {
-	return filepath.Join(runDir, RunPullRequestsDirName, repository+runPullRequestExt)
+	return filepath.Join(RunPullRequestsDir(runDir), repository+RunPullRequestExt)
 }
 
 // RunExitPath returns the path to the exit code file of a run directory. It

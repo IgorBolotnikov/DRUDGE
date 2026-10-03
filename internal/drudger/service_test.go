@@ -815,6 +815,21 @@ func (repo *fakeRunRepo) ReadPullRequest(taskID task.TaskID, repository string) 
 	return content, isPresent, nil
 }
 
+func (repo *fakeRunRepo) ListPullRequests(taskID task.TaskID) ([]string, error) {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		return nil, nil
+	}
+	var repositories []string
+	for name := range run.files {
+		if filepath.Dir(name) == common.RunPullRequestsDirName {
+			repositories = append(repositories, filepath.Base(name))
+		}
+	}
+	slices.Sort(repositories)
+	return repositories, nil
+}
+
 func (repo *fakeRunRepo) RemovePullRequest(taskID task.TaskID, repository string) error {
 	if run, ok := repo.runs[taskID]; ok {
 		delete(run.files, pullRequestFileName(repository))

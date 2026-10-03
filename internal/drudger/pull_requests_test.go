@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -259,6 +260,287 @@ func TestDrudgerService_SessionStatus_OpensPullRequests(t *testing.T) {
 				if wantLeft := slices.Contains(testCase.wantLeftIn, repository); isLeft != wantLeft {
 					t.Errorf("description of %s left in the worktree = %t, want %t", repository, isLeft, wantLeft)
 				}
+			}
+		})
+	}
+}
+
+// finishedTask is a task whose clean Session left work in each repository.
+func finishedTask(repositories ...string) *task.Task {
+	finished := handedOverTask(repositories...)
+	finished.Status = task.StatusUnmerged
+	return finished
+}
+
+// newRetryService is a service with pull requests on whose slot holds another
+// task, over a Session of finished that is over.
+func newRetryService(repositories []string, finished *task.Task) *testService {
+	pool := []*Drudger{busyDrudger(1)}
+	service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, pool, finished)
+	service.remote = &fakeRemote{}
+	service.runs.writeStream(finished.ID, initEvent, resultEvent)
+	service.runs.writeExit(finished.ID, "0\n")
+	return service
+}
+
+func TestDrudgerService_RetryPullRequests(t *testing.T) {
+	pushErr := errors.New("remote rejected the push")
+	testRepository := remote.Repository{Host: "github.com", Owner: "owner", Name: "api"}
+	const openedBefore = "https://github.com/owner/ui/pull/7"
+
+	cases := []struct {
+		name string
+		// repositories are the repositories of the project.
+		repositories []string
+		// landings are the repositories the task has work in.
+		landings []string
+		// descriptions are the pull request descriptions left in the run
+		// directory, keyed by repository name.
+		descriptions map[string]string
+		// pushErrs fail the push from a repository, keyed by repository name.
+		pushErrs map[string]error
+
+		wantOpened       []remote.PullRequestDto
+		wantPullRequests []string
+		wantPushedIn     []string
+		wantNothingLeft  []string
+		wantWithout      []string
+		wantFailures     []pullRequestFailure
+		wantKeptIn       []string
+		wantResult       PullRequestsRetried
+	}{
+		{
+			name:             "a pull request that failed at close-out",
+			repositories:     []string{"api", "ui"},
+			landings:         []string{"api", "ui"},
+			descriptions:     map[string]string{"api": "Add retry\n\nRetries uploads."},
+			wantOpened:       []remote.PullRequestDto{{Repository: testRepository, Base: testDefaultBranch, Head: testTaskBranch, Title: "Add retry", Body: "Retries uploads."}},
+			wantPullRequests: []string{openedBefore, testPullRequestURL(1)},
+			wantPushedIn:     []string{"api"},
+			wantNothingLeft:  []string{"ui"},
+			wantResult:       PullRequestsRetried{Tried: 1, Opened: 1},
+		},
+		{
+			name:             "nothing left",
+			repositories:     []string{"api", "ui"},
+			landings:         []string{"api", "ui"},
+			wantPullRequests: []string{openedBefore},
+			wantNothingLeft:  []string{"api", "ui"},
+		},
+		{
+			name:             "a description of a repository the task has no work in",
+			repositories:     []string{"api", "ui"},
+			landings:         []string{"api"},
+			descriptions:     map[string]string{"ui": "Show retries"},
+			wantPullRequests: []string{openedBefore},
+			wantNothingLeft:  []string{"api"},
+			wantWithout:      []string{"ui"},
+			wantKeptIn:       []string{"ui"},
+		},
+		{
+			name:             "a push that fails",
+			repositories:     []string{"api", "ui"},
+			landings:         []string{"api", "ui"},
+			descriptions:     map[string]string{"api": "Add retry", "ui": "Show retries"},
+			pushErrs:         map[string]error{"api": pushErr},
+			wantOpened:       []remote.PullRequestDto{{Repository: testRepository, Base: testDefaultBranch, Head: testTaskBranch, Title: "Show retries"}},
+			wantPullRequests: []string{openedBefore, testPullRequestURL(1)},
+			wantPushedIn:     []string{"ui"},
+			wantFailures:     []pullRequestFailure{{repository: "api", step: BranchPushStep, err: pushErr}},
+			wantKeptIn:       []string{"api"},
+			wantResult:       PullRequestsRetried{Tried: 2, Opened: 1},
+		},
+		{
+			name:             "work in a repository the project no longer records",
+			repositories:     []string{"api"},
+			landings:         []string{"api", "ui"},
+			descriptions:     map[string]string{"ui": "Show retries"},
+			wantPullRequests: []string{openedBefore},
+			wantNothingLeft:  []string{"api"},
+			wantFailures:     []pullRequestFailure{{repository: "ui", step: BranchPushStep}},
+			wantKeptIn:       []string{"ui"},
+			wantResult:       PullRequestsRetried{Tried: 1},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			finished := finishedTask(testCase.landings...)
+			finished.PullRequests = []string{openedBefore}
+
+			service := newRetryService(testCase.repositories, finished)
+			pullRequestRemote := service.remote.(*fakeRemote)
+			for repository, description := range testCase.descriptions {
+				service.runs.write(finished.ID, pullRequestFileName(repository), description)
+			}
+			service.git.pushErrs = map[string]error{}
+			for repository, err := range testCase.pushErrs {
+				service.git.pushErrs[filepath.Join(projectDir, repository)] = err
+			}
+
+			if err := service.RetryPullRequests(testProjectSlug, "task"); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			stored := service.taskRepo.stored(finished.ID)
+			if !slices.EqualFunc(pullRequestRemote.opened, testCase.wantOpened, func(got, want remote.PullRequestDto) bool { return got == want }) {
+				t.Errorf("expected the pull requests %+v to be opened, got %+v", testCase.wantOpened, pullRequestRemote.opened)
+			}
+			if !slices.Equal(stored.PullRequests, testCase.wantPullRequests) {
+				t.Errorf("expected the task to carry %v, got %v", testCase.wantPullRequests, stored.PullRequests)
+			}
+
+			wantPushed := make([]branchRef, 0, len(testCase.wantPushedIn))
+			for _, repository := range testCase.wantPushedIn {
+				wantPushed = append(wantPushed, branchRef{dir: filepath.Join(projectDir, repository), branch: testTaskBranch})
+			}
+			if !slices.Equal(service.git.pushed, wantPushed) {
+				t.Errorf("expected the pushes %v, got %v", wantPushed, service.git.pushed)
+			}
+
+			var nothingLeftIn []string
+			for _, nothingLeft := range reportedEvents[NoPullRequestLeft](service.progress) {
+				nothingLeftIn = append(nothingLeftIn, nothingLeft.Repository)
+			}
+			if !slices.Equal(nothingLeftIn, testCase.wantNothingLeft) {
+				t.Errorf("expected nothing left in %v, got %v", testCase.wantNothingLeft, nothingLeftIn)
+			}
+
+			var withoutIn []string
+			for _, without := range reportedEvents[PullRequestWithoutLanding](service.progress) {
+				withoutIn = append(withoutIn, without.Repository)
+			}
+			if !slices.Equal(withoutIn, testCase.wantWithout) {
+				t.Errorf("expected a description without a landing in %v, got %v", testCase.wantWithout, withoutIn)
+			}
+
+			failures := reportedEvents[PullRequestFailed](service.progress)
+			if len(failures) != len(testCase.wantFailures) {
+				t.Fatalf("expected the failures %+v, got %+v", testCase.wantFailures, failures)
+			}
+			for index, want := range testCase.wantFailures {
+				got := failures[index]
+				if got.TaskID != finished.ID || got.Repository != want.repository || got.Step != want.step || got.Err == nil {
+					t.Errorf("expected a failure to %s in %s, got %+v", want.step, want.repository, got)
+				}
+				if want.err != nil && !errors.Is(got.Err, want.err) {
+					t.Errorf("expected the failure in %s to carry %v, got %v", want.repository, want.err, got.Err)
+				}
+			}
+
+			for _, repository := range append(testCase.repositories, testCase.landings...) {
+				_, isKept := service.runs.file(finished.ID, pullRequestFileName(repository))
+				if wantKept := slices.Contains(testCase.wantKeptIn, repository); isKept != wantKept {
+					t.Errorf("description of %s kept in the run directory = %t, want %t", repository, isKept, wantKept)
+				}
+			}
+
+			result := singleEvent[PullRequestsRetried](t, service.progress)
+			if result.Task == nil || result.Task.ID != finished.ID || result.Tried != testCase.wantResult.Tried || result.Opened != testCase.wantResult.Opened {
+				t.Errorf("expected the result %+v, got %+v", testCase.wantResult, result)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RetryPullRequests_SecondRetryFindsNothingLeft(t *testing.T) {
+	setupProjectDir(t)
+	repositories := []string{"api", "ui"}
+	finished := finishedTask(repositories...)
+
+	service := newRetryService(repositories, finished)
+	service.runs.write(finished.ID, pullRequestFileName("api"), "Add retry")
+	service.git.pushErrs = map[string]error{}
+
+	for retry := 1; retry <= 2; retry++ {
+		service.progress.events = nil
+		if err := service.RetryPullRequests(testProjectSlug, finished.ID); err != nil {
+			t.Fatalf("retry %d: unexpected error: %v", retry, err)
+		}
+	}
+
+	var nothingLeftIn []string
+	for _, nothingLeft := range reportedEvents[NoPullRequestLeft](service.progress) {
+		nothingLeftIn = append(nothingLeftIn, nothingLeft.Repository)
+	}
+	if !slices.Equal(nothingLeftIn, repositories) {
+		t.Errorf("expected the second retry to find nothing left in %v, got %v", repositories, nothingLeftIn)
+	}
+	if opened := service.remote.(*fakeRemote).opened; len(opened) != 1 {
+		t.Errorf("expected one pull request over both retries, got %+v", opened)
+	}
+	if stored := service.taskRepo.stored(finished.ID); !slices.Equal(stored.PullRequests, []string{testPullRequestURL(1)}) {
+		t.Errorf("expected the task to carry the one pull request, got %v", stored.PullRequests)
+	}
+	if result := singleEvent[PullRequestsRetried](t, service.progress); result.Tried != 0 {
+		t.Errorf("expected the second retry to try nothing, got %+v", result)
+	}
+}
+
+func TestDrudgerService_RetryPullRequests_Refuses(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(service *testService, finished *task.Task)
+		// wantErrText lists fragments the error must carry.
+		wantErrText []string
+	}{
+		{
+			name:        "pull requests off",
+			setup:       func(service *testService, finished *task.Task) { service.remote = nil },
+			wantErrText: []string{"pull requests are off", remote.PullRequestsEnabledKey},
+		},
+		{
+			name: "a provider that is not ready",
+			setup: func(service *testService, finished *task.Task) {
+				service.remote = &fakeRemote{readyErr: errors.New("gh is not logged in to GitHub, run gh auth login")}
+			},
+			wantErrText: []string{"gh auth login"},
+		},
+		{
+			name:        "a repository with no origin",
+			setup:       func(service *testService, finished *task.Task) { service.git.hasNoRemote = true },
+			wantErrText: []string{"no origin remote", remote.PullRequestsEnabledKey},
+		},
+		{
+			name: "a Session still working",
+			setup: func(service *testService, finished *task.Task) {
+				service.runs.writeStream(finished.ID, initEvent)
+				delete(service.runs.runs[finished.ID].files, common.RunExitName)
+				service.drudgers.drudgers = []*Drudger{{Slot: 1, Sandbox: testSandbox, TaskID: finished.ID}}
+			},
+			wantErrText: []string{"still working", testSandbox, nukeCommand},
+		},
+		{
+			name:        "a task another command holds",
+			setup:       func(service *testService, finished *task.Task) { service.taskRepo.lockedTasks[finished.ID] = true },
+			wantErrText: []string{"another drudge command"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			finished := finishedTask(testRepoPath)
+
+			service := newRetryService([]string{testRepoPath}, finished)
+			service.runs.write(finished.ID, pullRequestFileName(testRepoPath), "Add retry")
+			testCase.setup(service, finished)
+
+			err := service.RetryPullRequests(testProjectSlug, finished.ID)
+			if err == nil {
+				t.Fatal("expected the retry to be refused")
+			}
+			for _, want := range testCase.wantErrText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected the error to name %q, got %q", want, err)
+				}
+			}
+			if len(service.git.pushed) != 0 {
+				t.Errorf("expected nothing pushed, got %v", service.git.pushed)
+			}
+			if _, isKept := service.runs.file(finished.ID, pullRequestFileName(testRepoPath)); !isKept {
+				t.Error("expected the description to stay in the run directory")
 			}
 		})
 	}

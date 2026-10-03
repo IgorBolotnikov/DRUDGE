@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -126,6 +127,33 @@ func (repo *FileRunRepository) ReadPullRequest(taskID task.TaskID, repository st
 	}
 	content, isPresent, err := readRunFile(common.RunPullRequestPath(runDir, repository))
 	return string(content), isPresent, err
+}
+
+// ListPullRequests names the repositories whose pull request description is
+// in the run directory of a task, sorted by name.
+func (repo *FileRunRepository) ListPullRequests(taskID task.TaskID) ([]string, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	dir := common.RunPullRequestsDir(runDir)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("could not list the pull request descriptions in %s: %w", dir, err)
+	}
+
+	var repositories []string
+	for _, entry := range entries {
+		repository, isDescription := strings.CutSuffix(entry.Name(), common.RunPullRequestExt)
+		if entry.Type().IsRegular() && isDescription {
+			repositories = append(repositories, repository)
+		}
+	}
+	return repositories, nil
 }
 
 // RemovePullRequest deletes the pull request description of one repository

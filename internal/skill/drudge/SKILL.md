@@ -57,6 +57,14 @@ A new description replaces the old one completely. `--blocked-by` replaces the w
 
 `--pull-requests` replaces the list of pull request URLs a task carries, and an empty value clears it. `--add-pull-request` and `--remove-pull-request` add and remove single ones. `drg task new` takes `--pull-requests` too. Every URL must be an absolute http or https URL.
 
+### Open pull requests again
+
+```sh
+drg task pr 3f1c9a2e
+```
+
+It opens the pull requests a finished run could not open, and puts their URLs on the task. It needs pull requests on and refuses a task an agent is still working on.
+
 ### List tasks
 
 ```sh
