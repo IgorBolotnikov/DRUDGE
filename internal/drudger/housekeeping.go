@@ -4,18 +4,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
-
-// branchPrefix groups every branch drudge makes under one name.
-const branchPrefix = "drudge/"
-
-// branchSlugLength caps how much of a task title a branch name carries.
-const branchSlugLength = 40
 
 // excludeFilePath is the file of a repository's git dir that lists what every
 // worktree of the repository ignores.
@@ -141,7 +134,7 @@ func handoverStashMessage(slot int, taskToRun *task.Task) string {
 // repository, which leaves every attempt that committed something reachable by
 // its own branch.
 func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *task.Task) (string, error) {
-	wanted := branchFor(taskToRun)
+	wanted := task.BranchName(task.DefaultBranchFormat, taskToRun)
 
 	for attempt := 1; attempt <= branchAttempts; attempt++ {
 		candidate := attemptBranch(wanted, attempt)
@@ -198,18 +191,6 @@ func (service *DrudgerService) checkoutBranch(repository repositoryWorktree, bra
 	return nil
 }
 
-// branchFor names the branch the work on a task goes on. It takes the whole
-// task, because a branch name configurable per project is the next slice.
-func branchFor(taskToRun *task.Task) string {
-	// TODO: need to make it fully configurable and take the branch template
-	// from the local config
-	name := branchPrefix + task.ShortID(taskToRun.ID)
-	if slug := branchSlug(taskToRun.Title); slug != "" {
-		name += "-" + slug
-	}
-	return name
-}
-
 // attemptBranch names the nth branch of a task. The first attempt takes the
 // plain name.
 func attemptBranch(branch string, attempt int) string {
@@ -217,24 +198,4 @@ func attemptBranch(branch string, attempt int) string {
 		return branch
 	}
 	return fmt.Sprintf("%s-%d", branch, attempt)
-}
-
-// branchSlug folds a task title into the part of a branch name that comes from
-// it. Everything git does not accept in a ref becomes a separator, and a title
-// longer than branchSlugLength is cut at a word.
-func branchSlug(title string) string {
-	words := strings.FieldsFunc(strings.ToLower(title), func(letter rune) bool {
-		return !unicode.IsLetter(letter) && !unicode.IsDigit(letter)
-	})
-
-	slug := []rune(strings.Join(words, "-"))
-	if len(slug) <= branchSlugLength {
-		return string(slug)
-	}
-
-	cut := string(slug[:branchSlugLength])
-	if lastWord := strings.LastIndex(cut, "-"); lastWord > 0 {
-		return cut[:lastWord]
-	}
-	return cut
 }
