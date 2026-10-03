@@ -8,6 +8,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func TestNewDrudgerSettings(t *testing.T) {
@@ -37,6 +38,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 				Env:                   drudger.EnvDockerSbx,
 				Harness:               drudger.HarnessClaudeCode,
 				MaxConcurrentDrudgers: 3,
+				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
 					List:   30 * time.Second,
 					Create: 10 * time.Minute,
@@ -54,6 +56,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 				Env:                   drudger.Env("bare-metal"),
 				Harness:               drudger.HarnessOpencode,
 				MaxConcurrentDrudgers: 5,
+				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
 					List:   5 * time.Second,
 					Create: time.Minute,
@@ -71,10 +74,29 @@ func TestNewDrudgerSettings(t *testing.T) {
 				Env:                   drudger.Env("bare-metal"),
 				Harness:               drudger.HarnessOpencode,
 				MaxConcurrentDrudgers: 2,
+				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
 					List:   5 * time.Second,
 					Create: time.Minute,
 					Remove: 7 * time.Second,
+				},
+			},
+		},
+		{
+			name:   "the local branch format",
+			local:  &config.LocalConfig{ProjectSlug: projectSlug, Repositories: repositories, Task: config.TaskConfig{BranchFormat: "feat/{{taskSlug}}"}},
+			global: config.DefaultConfig(),
+			want: drudger.Settings{
+				ProjectSlug:           projectSlug,
+				Repositories:          repositories,
+				Env:                   drudger.EnvDockerSbx,
+				Harness:               drudger.HarnessClaudeCode,
+				MaxConcurrentDrudgers: 3,
+				BranchFormat:          "feat/{{taskSlug}}",
+				SandboxTimeouts: drudger.SandboxTimeouts{
+					List:   30 * time.Second,
+					Create: 10 * time.Minute,
+					Remove: 2 * time.Minute,
 				},
 			},
 		},
@@ -95,6 +117,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 				Env:                   drudger.EnvDockerSbx,
 				Harness:               drudger.HarnessClaudeCode,
 				MaxConcurrentDrudgers: 3,
+				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
 					List:   30 * time.Second,
 					Create: 10 * time.Minute,

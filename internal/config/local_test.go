@@ -643,3 +643,97 @@ func TestResolveDrudgerPageSize(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadLocal_BranchFormat(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		// wantErrText lists fragments the error must carry. A test with none expects no error.
+		wantErrText []string
+	}{
+		{name: "absent", raw: `{"projectSlug": "test-project"}`},
+		{
+			name: "literal text and both placeholders",
+			raw:  `{"projectSlug": "test-project", "task": {"branchFormat": "feat/{{taskShortID}}/{{taskSlug}}"}}`,
+			want: "feat/{{taskShortID}}/{{taskSlug}}",
+		},
+		{
+			name:        "no placeholder",
+			raw:         `{"projectSlug": "test-project", "task": {"branchFormat": "feat/fix"}}`,
+			wantErrText: []string{branchFormatKey, `"feat/fix"`, task.BranchPlaceholderShortID, task.BranchPlaceholderSlug},
+		},
+		{
+			name:        "an unknown placeholder",
+			raw:         `{"projectSlug": "test-project", "task": {"branchFormat": "{{tikcetID}}/{{taskSlug}}"}}`,
+			wantErrText: []string{branchFormatKey, "{{tikcetID}}"},
+		},
+		{
+			name:        "a name git refuses",
+			raw:         `{"projectSlug": "test-project", "task": {"branchFormat": "feat.lock/{{taskShortID}}"}}`,
+			wantErrText: []string{branchFormatKey, `"feat.lock/3f9a1c2e"`},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupLocalDir(t)
+			writeLocalConfig(t, test.raw)
+
+			cfg, err := LoadLocal()
+			if len(test.wantErrText) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, fragment := range append(test.wantErrText, common.LocalConfigPath()) {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadLocal: %v", err)
+			}
+			if cfg.Task.BranchFormat != test.want {
+				t.Errorf("Task.BranchFormat = %q, want %q", cfg.Task.BranchFormat, test.want)
+			}
+		})
+	}
+}
+
+func TestResolveBranchFormat(t *testing.T) {
+	tests := []struct {
+		name   string
+		local  *LocalConfig
+		global *GlobalConfig
+		want   string
+	}{
+		{
+			name:   "local wins over global",
+			local:  &LocalConfig{Task: TaskConfig{BranchFormat: "local/{{taskSlug}}"}},
+			global: &GlobalConfig{Task: TaskConfig{BranchFormat: "global/{{taskSlug}}"}},
+			want:   "local/{{taskSlug}}",
+		},
+		{
+			name:   "falls back to global",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{Task: TaskConfig{BranchFormat: "global/{{taskSlug}}"}},
+			want:   "global/{{taskSlug}}",
+		},
+		{
+			name:   "falls back to the default format",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{},
+			want:   task.DefaultBranchFormat,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ResolveBranchFormat(test.local, test.global); got != test.want {
+				t.Errorf("ResolveBranchFormat = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

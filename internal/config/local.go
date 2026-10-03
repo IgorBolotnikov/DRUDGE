@@ -71,6 +71,9 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, path); err != nil {
 		return nil, err
 	}
+	if err := validateBranchFormat(cfg.Task.BranchFormat, path); err != nil {
+		return nil, err
+	}
 	if err := validatePageSize(cfg.Task.PageSize, TaskPageSizeKey, "task", path); err != nil {
 		return nil, err
 	}
@@ -165,6 +168,19 @@ func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.Tas
 		return global.Task.DefaultStatus
 	}
 	return task.StatusDraft
+}
+
+// ResolveBranchFormat returns the format of the branch names of tasks,
+// preferring the local config over the global one and falling back to the
+// default format.
+func ResolveBranchFormat(local *LocalConfig, global *GlobalConfig) string {
+	if local.Task.BranchFormat != "" {
+		return local.Task.BranchFormat
+	}
+	if global.Task.BranchFormat != "" {
+		return global.Task.BranchFormat
+	}
+	return task.DefaultBranchFormat
 }
 
 // ResolveTaskPageSize returns how many tasks one page of a listing holds,

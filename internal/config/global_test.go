@@ -682,3 +682,66 @@ func TestLoad_DrudgerPageSize(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_BranchFormat(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		// wantErrText lists fragments the error must carry. A test with none expects no error.
+		wantErrText []string
+	}{
+		{name: "absent", raw: `{}`},
+		{
+			name: "literal text and both placeholders",
+			raw:  `{"task": {"branchFormat": "feat/drg-{{taskShortID}}-{{taskSlug}}"}}`,
+			want: "feat/drg-{{taskShortID}}-{{taskSlug}}",
+		},
+		{
+			name:        "no placeholder",
+			raw:         `{"task": {"branchFormat": "feat/fix"}}`,
+			wantErrText: []string{branchFormatKey, `"feat/fix"`, task.BranchPlaceholderShortID, task.BranchPlaceholderSlug},
+		},
+		{
+			name:        "an unknown placeholder",
+			raw:         `{"task": {"branchFormat": "feat/{{tikcetID}}-{{taskSlug}}"}}`,
+			wantErrText: []string{branchFormatKey, "{{tikcetID}}"},
+		},
+		{
+			name:        "a name git refuses",
+			raw:         `{"task": {"branchFormat": "feat:{{taskSlug}}"}}`,
+			wantErrText: []string{branchFormatKey, `"feat:add-retry-to-uploader"`},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := setupHome(t)
+			if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+				t.Fatalf("could not create drudge dir: %v", err)
+			}
+			if err := os.WriteFile(common.GlobalConfigPath(home), []byte(test.raw), common.DefaultFilePerm); err != nil {
+				t.Fatalf("could not write config: %v", err)
+			}
+
+			cfg, err := Load()
+			if len(test.wantErrText) > 0 {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, fragment := range append(test.wantErrText, common.GlobalConfigPath(home)) {
+					if !strings.Contains(err.Error(), fragment) {
+						t.Errorf("error = %q, want it to name %q", err, fragment)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Task.BranchFormat != test.want {
+				t.Errorf("Task.BranchFormat = %q, want %q", cfg.Task.BranchFormat, test.want)
+			}
+		})
+	}
+}

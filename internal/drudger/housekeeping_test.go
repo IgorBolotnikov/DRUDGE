@@ -140,12 +140,14 @@ func TestDrudgerService_RunTask_CutsTheTaskBranchFromTheDefault(t *testing.T) {
 
 func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 	cases := []struct {
-		name  string
-		id    task.TaskID
-		title string
-		want  string
+		name   string
+		format string
+		id     task.TaskID
+		title  string
+		want   string
 	}{
-		{name: "the short id and the title", id: "task-1", title: "Fix login", want: "drudge/task-1-fix-login"},
+		{name: "the short id and the title", format: task.DefaultBranchFormat, id: "task-1", title: "Fix login", want: "drudge/task-1-fix-login"},
+		{name: "a configured format", format: "feat/drg-" + task.BranchPlaceholderShortID + "/" + task.BranchPlaceholderSlug, id: "task-1", title: "Fix login", want: "feat/drg-task-1/fix-login"},
 	}
 
 	for _, testCase := range cases {
@@ -155,7 +157,9 @@ func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 			taskToRun.ID = testCase.id
 			taskToRun.Title = testCase.title
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
-			service := newTestServiceWith(settingsWith(testRepoPath), commands, taskToRun)
+			settings := settingsWith(testRepoPath)
+			settings.BranchFormat = testCase.format
+			service := newTestServiceWith(settings, commands, taskToRun)
 
 			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
 			if err != nil {
@@ -166,6 +170,27 @@ func TestDrudgerService_RunTask_NamesTheBranchAfterTheTask(t *testing.T) {
 				t.Errorf("expected branch %q, got %v", testCase.want, got)
 			}
 		})
+	}
+}
+
+func TestDrudgerService_RunTask_RefusesABranchNameGitRefuses(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	taskToRun.ID = "task-1"
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+	settings := settingsWith(testRepoPath)
+	settings.BranchFormat = "feat.lock/" + task.BranchPlaceholderShortID
+	service := newTestServiceWith(settings, commands, taskToRun)
+
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), `"feat.lock/task-1"`) {
+		t.Errorf("error = %q, want it to name the branch", err)
+	}
+	if len(service.git.createdBranches) > 0 {
+		t.Errorf("expected no branch, got %v", branchesOf(service.git.createdBranches))
 	}
 }
 

@@ -108,6 +108,7 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 		Harness:               globalCfg.Drudger.Harness,
 		MaxConcurrentDrudgers: config.ResolveMaxConcurrentDrudgers(localCfg, globalCfg),
 		PromptPath:            promptPath,
+		BranchFormat:          config.ResolveBranchFormat(localCfg, globalCfg),
 		SandboxTimeouts: drudger.SandboxTimeouts{
 			List:   timeouts.List(),
 			Create: timeouts.Create(),

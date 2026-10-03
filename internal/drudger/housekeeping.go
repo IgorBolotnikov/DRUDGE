@@ -134,7 +134,10 @@ func handoverStashMessage(slot int, taskToRun *task.Task) string {
 // repository, which leaves every attempt that committed something reachable by
 // its own branch.
 func (service *DrudgerService) pickTaskBranch(space slotWorkspace, taskToRun *task.Task) (string, error) {
-	wanted := task.BranchName(task.DefaultBranchFormat, taskToRun)
+	wanted := task.BranchName(service.settings.BranchFormat, taskToRun)
+	if err := task.ValidateBranchName(wanted); err != nil {
+		return "", fmt.Errorf("task %s would run on branch %q, which git refuses: %w", taskToRun.ID, wanted, err)
+	}
 
 	for attempt := 1; attempt <= branchAttempts; attempt++ {
 		candidate := attemptBranch(wanted, attempt)

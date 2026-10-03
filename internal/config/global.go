@@ -65,6 +65,7 @@ const (
 	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
 	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"
+	branchFormatKey          = "task.branchFormat"
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
 	DefaultTaskStatusKey = "task.defaultStatus"
 	// ProjectPageSizeKey is exported so the project commands can name it in their help.
@@ -123,6 +124,7 @@ type ProjectConfig struct {
 type TaskConfig struct {
 	DefaultStatus task.TaskStatus `json:"defaultStatus,omitempty"` // Status of a new task created without one, empty means unset
 	PageSize      *int            `json:"pageSize,omitempty"`      // Tasks on one page of a listing, nil means unset and zero means every task on one page
+	BranchFormat  string          `json:"branchFormat,omitempty"`  // Format of the branch names of tasks, empty means unset
 }
 
 type DrudgerConfig struct {
@@ -205,6 +207,9 @@ func Load() (*GlobalConfig, error) {
 	}
 
 	if err := validateDefaultTaskStatus(cfg.Task.DefaultStatus, cfgPath); err != nil {
+		return nil, err
+	}
+	if err := validateBranchFormat(cfg.Task.BranchFormat, cfgPath); err != nil {
 		return nil, err
 	}
 	if err := validatePromptFile(cfg.Drudger.PromptFile, promptFileKey, cfgPath); err != nil {
@@ -319,6 +324,18 @@ func validateDefaultTaskStatus(value task.TaskStatus, path string) error {
 		return nil
 	}
 	return fmt.Errorf("%s has %s = %q, it must be one of %s", path, DefaultTaskStatusKey, value, task.FormatStatuses(defaultTaskStatuses))
+}
+
+// validateBranchFormat rejects a branch name format the task package refuses.
+// An empty value passes, since that is what an absent key unmarshals to.
+func validateBranchFormat(value string, path string) error {
+	if value == "" {
+		return nil
+	}
+	if err := task.ValidateBranchFormat(value); err != nil {
+		return fmt.Errorf("%s has %s = %q, %w", path, branchFormatKey, value, err)
+	}
+	return nil
 }
 
 // validateMaxConcurrentDrudgers rejects a negative Drudger limit. Zero passes, since that is what an absent key unmarshals to.

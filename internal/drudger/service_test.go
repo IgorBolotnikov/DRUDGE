@@ -894,6 +894,7 @@ func testSettings() Settings {
 		Env:                   EnvDockerSbx,
 		Harness:               HarnessClaudeCode,
 		MaxConcurrentDrudgers: 3,
+		BranchFormat:          task.DefaultBranchFormat,
 		SandboxTimeouts: SandboxTimeouts{
 			List:   30 * time.Second,
 			Create: 10 * time.Minute,

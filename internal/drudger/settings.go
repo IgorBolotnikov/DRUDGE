@@ -41,7 +41,9 @@ type Settings struct {
 	MaxConcurrentDrudgers int
 	// PromptPath is the prompt file to hand an agent. Empty means the
 	// built-in prompt.
-	PromptPath      string
+	PromptPath string
+	// BranchFormat is the format the branch name of a task is built from.
+	BranchFormat    string
 	SandboxTimeouts SandboxTimeouts
 	PullRequests    PullRequestSettings
 }
