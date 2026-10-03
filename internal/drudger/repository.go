@@ -25,7 +25,9 @@ type DrudgerRepository interface {
 // RunRepository stores the latest run of each task. A run holds the prompt the
 // agent is given, and the event stream, the stderr log and the exit code the
 // agent leaves behind. The agent writes its files from inside its sandbox, so
-// the repository only reads them.
+// the repository only reads them. A run also holds the pull request
+// descriptions close-out has not opened a pull request from yet, keyed by
+// repository name.
 type RunRepository interface {
 	// PrepareRun deletes whatever an earlier run of a task left and stores the
 	// prompt of a fresh run.
@@ -45,6 +47,15 @@ type RunRepository interface {
 	// ReadStderr returns the stderr log of a run. isPresent is false while the
 	// agent has not created it.
 	ReadStderr(taskID task.TaskID) (content []byte, isPresent bool, err error)
+	// WritePullRequest stores the pull request description of one repository.
+	// It refuses a task with no run.
+	WritePullRequest(taskID task.TaskID, repository string, description string) error
+	// ReadPullRequest returns the pull request description of one repository.
+	// isPresent is false when the run holds none.
+	ReadPullRequest(taskID task.TaskID, repository string) (description string, isPresent bool, err error)
+	// RemovePullRequest deletes the pull request description of one
+	// repository. One that is not there is not an error.
+	RemovePullRequest(taskID task.TaskID, repository string) error
 	// RemoveRun deletes the run of a task and reports whether it had one.
 	RemoveRun(taskID task.TaskID) (isRemoved bool, err error)
 }

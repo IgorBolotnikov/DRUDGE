@@ -98,6 +98,31 @@ func TestCommandRunner_Run(t *testing.T) {
 	}
 }
 
+func TestCommandRunner_RunWithInput(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "hands the input to stdin", input: "first line\nsecond line\n", want: "first line\nsecond line\n"},
+		{name: "an empty input reads as no input", input: "", want: ""},
+	}
+
+	runner := NewCommandRunner()
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, _, err := runner.RunWithInput([]string{"cat"}, testCase.input, generousTimeout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != testCase.want {
+				t.Errorf("expected output %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestCommandRunner_RunEchoed(t *testing.T) {
 	cases := []struct {
 		name      string

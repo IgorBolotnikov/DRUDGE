@@ -184,7 +184,7 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		service.progress.Report(SessionRecordingStarted{Task: onDisk})
 		recordSessionEnd(onDisk, report)
 		// The status of a clean run depends on the landings close-out leaves.
-		service.finishRun(projectSlug, onDisk)
+		service.finishRun(projectSlug, onDisk, report.Status)
 		onDisk.Status = taskStatusOf(report.Status, onDisk)
 		isRecorded = true
 		return nil

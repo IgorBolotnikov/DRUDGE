@@ -3,6 +3,7 @@ package persistence
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,4 +285,95 @@ func setModTime(t *testing.T, path string, modTime time.Time) {
 
 func ptr(value string) *string {
 	return &value
+}
+
+func TestFileRunRepository_PullRequests(t *testing.T) {
+	const (
+		repository  = "api"
+		description = "Add retry\n\nRetries uploads."
+	)
+
+	cases := []struct {
+		name  string
+		files runFiles
+		// change runs against the repository before the description is read.
+		change          func(repo *FileRunRepository) error
+		want            string
+		wantPresent     bool
+		wantErrContains string
+	}{
+		{
+			name:  "a run with no description",
+			files: runFiles{},
+		},
+		{
+			name:  "a written description",
+			files: runFiles{},
+			change: func(repo *FileRunRepository) error {
+				return repo.WritePullRequest(runTestTaskID, repository, description)
+			},
+			want:        description,
+			wantPresent: true,
+		},
+		{
+			name:  "a removed description",
+			files: runFiles{},
+			change: func(repo *FileRunRepository) error {
+				if err := repo.WritePullRequest(runTestTaskID, repository, description); err != nil {
+					return err
+				}
+				return repo.RemovePullRequest(runTestTaskID, repository)
+			},
+		},
+		{
+			name:  "removing a description that is not there",
+			files: runFiles{},
+			change: func(repo *FileRunRepository) error {
+				return repo.RemovePullRequest(runTestTaskID, repository)
+			},
+		},
+		{
+			name: "writing to a task with no run",
+			change: func(repo *FileRunRepository) error {
+				return repo.WritePullRequest(runTestTaskID, repository, description)
+			},
+			wantErrContains: "has no run directory",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, runDir := setupRunRepo(t, testCase.files)
+
+			if testCase.change != nil {
+				err := testCase.change(repo)
+				if testCase.wantErrContains != "" {
+					if err == nil || !strings.Contains(err.Error(), testCase.wantErrContains) {
+						t.Fatalf("expected an error naming %q, got %v", testCase.wantErrContains, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+
+			got, isPresent, err := repo.ReadPullRequest(runTestTaskID, repository)
+			if err != nil {
+				t.Fatalf("ReadPullRequest: %v", err)
+			}
+			if isPresent != testCase.wantPresent || got != testCase.want {
+				t.Errorf("ReadPullRequest() = %q, %t, want %q, %t", got, isPresent, testCase.want, testCase.wantPresent)
+			}
+			if testCase.wantPresent {
+				onDisk, err := common.ReadFile(filepath.Join(runDir, common.RunPullRequestsDirName, repository+".md"))
+				if err != nil {
+					t.Fatalf("expected the description in the run directory: %v", err)
+				}
+				if onDisk != description {
+					t.Errorf("expected %q on disk, got %q", description, onDisk)
+				}
+			}
+		})
+	}
 }

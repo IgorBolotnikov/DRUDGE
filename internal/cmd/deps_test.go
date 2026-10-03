@@ -84,6 +84,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 			global: config.DefaultConfig(),
 			pullRequests: config.PullRequestSettings{
 				IsEnabled:    true,
+				IsDraft:      true,
 				TitleFormat:  "{{ticketID}}: <summary>",
 				TemplatePath: "template.md",
 				StepsPath:    "steps.md",
@@ -100,6 +101,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					Remove: 2 * time.Minute,
 				},
 				PullRequests: drudger.PullRequestSettings{
+					IsDraft:      true,
 					TitleFormat:  "{{ticketID}}: <summary>",
 					TemplatePath: "template.md",
 					StepsPath:    "steps.md",

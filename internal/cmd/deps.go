@@ -114,6 +114,7 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 			Remove: timeouts.Remove(),
 		},
 		PullRequests: drudger.PullRequestSettings{
+			IsDraft:      pullRequests.IsDraft,
 			TitleFormat:  pullRequests.TitleFormat,
 			TemplatePath: pullRequests.TemplatePath,
 			StepsPath:    pullRequests.StepsPath,

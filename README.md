@@ -67,12 +67,23 @@ It replaces the binary with the latest release and checks it against the release
 
 ## Pull requests
 
-With `remote.pullRequests.isEnabled` on, the prompt tells the agent to write a pull request description to `.drudge/pull-request.md` at the root of every repository it committed to. Before every run DRUDGE adds `.drudge/` to `.git/info/exclude` of each repository and deletes the description the last run left there.
+With `remote.pullRequests.isEnabled` on, DRUDGE opens a pull request for every repository a run committed to. It works like this:
+
+1. Before a run DRUDGE checks that `gh` is installed and logged in, and that every repository has an `origin` remote on GitHub. It refuses to start the run otherwise.
+2. The prompt tells the agent to write a pull request description to `.drudge/pull-request.md` at the root of every repository it committed to. Before every run DRUDGE adds `.drudge/` to `.git/info/exclude` of each repository and deletes the description the last run left there.
+3. When a run that got shit done is recorded, DRUDGE moves each description into the run directory as `.drudge/runs/<task-id>/pull-requests/<repository>.md`.
+4. For each description DRUDGE pushes the branch of the run to `origin` and opens a pull request from it into the default branch of the repository with `gh pr create`. The first line of the description is the title, with a leading `# ` cut. The rest is the body. A description with a blank first line takes the title of the task.
+5. The URL of every opened pull request goes on the task and its description is deleted from the run directory. `drg task show` lists the URLs.
+
+A repository with commits and no description is not pushed and gets no pull request. DRUDGE prints a warning for it. A push or a pull request that fails is printed with the reason, and its description stays in the run directory so you can open the pull request by hand. The other repositories still get their pull requests. A run that fucked up opens nothing.
+
+The task ends as `unmerged` either way. DRUDGE never reads the state of a pull request. Run `drg task done` once the work is merged. A rerun of the task deletes the run directory with the descriptions left in it, and leaves the pull requests of earlier runs open.
 
 A custom prompt file must use the `{{pullRequestSteps}}` placeholder when pull requests are on. DRUDGE refuses to start a run without it. With pull requests off the placeholder expands to nothing.
 
 These fields go under `remote.pullRequests` in the global or the local config. The local config overrides each field it sets.
 
+- `isDraft` opens every pull request as a draft.
 - `titleFormat` is how the agent writes the title, handed over word for word after `{{ticketID}}` and `{{taskTitle}}` are filled in. The default is `<a short summary of the change>`.
 - `templateFile` is a file name in the prompts directory. It replaces the built-in body template the agent uses for a repository that has no pull request template.
 - `stepsFile` is a file name in the prompts directory. It replaces the wording of the whole `{{pullRequestSteps}}` block and may use the `{{titleFormat}}`, `{{templatePaths}}` and `{{defaultTemplate}}` placeholders.

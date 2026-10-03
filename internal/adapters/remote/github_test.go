@@ -13,17 +13,28 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 )
 
-// fakeRunner answers every command with err and remembers what it ran.
+// fakeRunner answers every command with stdout and err, and remembers what it
+// ran and what it wrote to stdin.
 type fakeRunner struct {
+	stdout   string
 	err      error
 	calls    [][]string
+	inputs   []string
 	timeouts []time.Duration
 }
 
 func (runner *fakeRunner) Run(argv []string, timeout time.Duration) (string, string, error) {
+	return runner.RunWithInput(argv, "", timeout)
+}
+
+func (runner *fakeRunner) RunWithInput(argv []string, input string, timeout time.Duration) (string, string, error) {
 	runner.calls = append(runner.calls, argv)
+	runner.inputs = append(runner.inputs, input)
 	runner.timeouts = append(runner.timeouts, timeout)
-	return "", "", runner.err
+	if runner.err != nil {
+		return "", "", runner.err
+	}
+	return runner.stdout, "", nil
 }
 
 func TestGitHub_ParseRepository(t *testing.T) {
@@ -140,6 +151,114 @@ func TestGitHub_CheckReady(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("expected an error")
+			}
+			for _, fragment := range test.wantErrText {
+				if !strings.Contains(err.Error(), fragment) {
+					t.Errorf("error = %q, want it to name %q", err, fragment)
+				}
+			}
+		})
+	}
+}
+
+func TestGitHub_OpenPullRequest(t *testing.T) {
+	const (
+		timeout        = 7 * time.Second
+		pullRequestURL = "https://github.com/owner/name/pull/42"
+	)
+	dto := remote.PullRequestDto{
+		Repository: remote.Repository{Host: "github.com", Owner: "owner", Name: "name"},
+		Base:       "main",
+		Head:       "drudge/3f9a-add-retry",
+		Title:      "Add retry to uploader",
+		Body:       "## What\n\nRetries uploads.",
+	}
+	createArgv := []string{
+		"gh", "pr", "create",
+		"--repo", "github.com/owner/name",
+		"--base", "main",
+		"--head", "drudge/3f9a-add-retry",
+		"--title", "Add retry to uploader",
+		"--body-file", "-",
+	}
+
+	tests := []struct {
+		name     string
+		isDraft  bool
+		stdout   string
+		err      error
+		wantArgv []string
+		want     string
+		// wantErrText lists fragments the error must carry. A test with none
+		// expects no error.
+		wantErrText []string
+	}{
+		{
+			name:     "opened",
+			stdout:   pullRequestURL + "\n",
+			wantArgv: createArgv,
+			want:     pullRequestURL,
+		},
+		{
+			name:     "opened as a draft",
+			isDraft:  true,
+			stdout:   pullRequestURL + "\n",
+			wantArgv: append(slices.Clone(createArgv), "--draft"),
+			want:     pullRequestURL,
+		},
+		{
+			name:     "the URL is the last line gh prints",
+			stdout:   "Warning: 1 uncommitted change\n" + pullRequestURL + "\n",
+			wantArgv: createArgv,
+			want:     pullRequestURL,
+		},
+		{
+			name:        "gh refused",
+			err:         errors.New("command gh failed: exit status 1: a pull request already exists"),
+			wantArgv:    createArgv,
+			wantErrText: []string{"already exists", "drudge/3f9a-add-retry", "github.com/owner/name"},
+		},
+		{
+			name:        "gh hanging",
+			err:         fmt.Errorf("command gh pr create did not finish within 7s and was killed: %w", context.DeadlineExceeded),
+			wantArgv:    createArgv,
+			wantErrText: []string{remote.TimeoutKey},
+		},
+		{
+			name:        "gh printed no URL",
+			wantArgv:    createArgv,
+			wantErrText: []string{"no URL"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &fakeRunner{stdout: test.stdout, err: test.err}
+			request := dto
+			request.IsDraft = test.isDraft
+
+			got, err := NewGitHub(runner, timeout).OpenPullRequest(request)
+
+			if want := [][]string{test.wantArgv}; !slices.EqualFunc(runner.calls, want, slices.Equal) {
+				t.Errorf("ran %v, want %v", runner.calls, want)
+			}
+			if want := []string{dto.Body}; !slices.Equal(runner.inputs, want) {
+				t.Errorf("wrote %q to stdin, want %q", runner.inputs, want)
+			}
+			if want := []time.Duration{timeout}; !slices.Equal(runner.timeouts, want) {
+				t.Errorf("ran with timeouts %v, want %v", runner.timeouts, want)
+			}
+			if len(test.wantErrText) == 0 {
+				if err != nil {
+					t.Fatalf("OpenPullRequest: %v", err)
+				}
+				if got != test.want {
+					t.Errorf("OpenPullRequest() = %q, want %q", got, test.want)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected an error, got %q", got)
 			}
 			for _, fragment := range test.wantErrText {
 				if !strings.Contains(err.Error(), fragment) {

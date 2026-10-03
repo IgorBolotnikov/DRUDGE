@@ -42,15 +42,17 @@ type RunCloseOutFailed struct {
 	Err        error
 }
 
-// finishRun records where the work of a finished run landed and parks the
-// workspace it ran in. The caller writes the task back.
+// finishRun records where the work of a finished run landed, opens its pull
+// requests and parks the workspace it ran in. The caller writes the task back.
 //
 // Close-out runs first. It reads where the agent left each worktree, and
-// parking moves them.
+// parking moves them. Pull requests are opened only for a Session that got
+// shit done, with pull requests on.
 //
 // A workspace it cannot read is reported and the task keeps what the handover
-// recorded. Reading git never costs the outcome of the run.
-func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task) {
+// recorded. Reading git and opening pull requests never cost the outcome of
+// the run.
+func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task, status SessionStatus) {
 	space, err := service.workspaceOfTask(projectSlug, finished.ID)
 	if err != nil {
 		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceReadStep, Err: err})
@@ -58,6 +60,10 @@ func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task
 	}
 
 	service.closeOutRun(space, finished)
+
+	if status == StatusGotShitDone && service.remote != nil {
+		service.openPullRequests(space, finished)
+	}
 
 	if err := service.parkWorkspace(space, finished); err != nil {
 		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceParkStep, Err: err})

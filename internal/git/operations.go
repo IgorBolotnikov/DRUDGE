@@ -39,6 +39,9 @@ type Operations interface {
 	RemoteURL(dir string, remote string) (string, error)
 	// Fetch updates the tracking ref of one branch of a remote.
 	Fetch(dir string, remote string, branch string) error
+	// Push sends a branch to a remote under the same name and makes it the
+	// upstream of the branch.
+	Push(dir string, remote string, branch string) error
 	// AddDetachedWorktree checks a repository out at ref in a new worktree at
 	// path, with no branch on it. A path holding files fails.
 	AddDetachedWorktree(dir string, path string, ref string) error

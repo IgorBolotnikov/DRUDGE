@@ -41,7 +41,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 - `~/.drudge/projects/<slug>/drudgers.json` — the Drudgers a project has, written by `FileDrudgerRepository` under a lock file beside it. An entry records the slot, the sandbox name, the workspace the agent works in, the task occupying it, what drudge last saw of its sandbox, of its workspace and of its agent, and when drudge last looked. It is the authority on which slots are free, so a task record never carries one.
 - `./.drudge/config.json` (in the current working directory) — links a local directory to a project slug, written by `drg project init` and read by task commands to figure out "the project I'm in". It also records the git repositories of the project.
 - `./.drudge/worktrees/slot-<n>/<repo-path>` — the workspace of one Drudger, a git worktree per repository of the project. It is made with the Drudger, mounted into its sandbox, and outlives every Session that runs in it.
-- `./.drudge/runs/<task-id>` — the prompt, the event stream, the stderr log and the exit code of one run.
+- `./.drudge/runs/<task-id>` — the prompt, the event stream, the stderr log and the exit code of one run, and the pull request descriptions close-out has not opened a pull request from yet.
 
 **Config and theme** are separate concerns, both under `~/.drudge/`:
 

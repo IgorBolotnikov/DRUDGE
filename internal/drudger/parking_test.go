@@ -334,6 +334,10 @@ func (fake *refusingGit) Fetch(dir string, remote string, branch string) error {
 	return fake.refuse("Fetch")
 }
 
+func (fake *refusingGit) Push(dir string, remote string, branch string) error {
+	return fake.refuse("Push")
+}
+
 func (fake *refusingGit) AddDetachedWorktree(dir string, path string, ref string) error {
 	return fake.refuse("AddDetachedWorktree")
 }

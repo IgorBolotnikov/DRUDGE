@@ -150,6 +150,12 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Done("The agent left %s on no branch, its commits are on %s", event.Repository, event.Branch)
 	case drudger.EmptyBranchDropped:
 		p.out.Skip("The agent committed nothing in %s, branch %s is deleted", event.Repository, event.Branch)
+	case drudger.BranchPushStarted:
+		p.out.Step("Pushing %s of %s to %s", event.Branch, event.Repository, event.Remote)
+	case drudger.PullRequestOpened:
+		p.out.Done("Opened the pull request of %s: %s", event.Repository, event.URL)
+	case drudger.PullRequestDescriptionMissing:
+		p.out.Warn("The agent committed in %s and wrote no pull request description, branch %s is not pushed", event.Repository, event.Branch)
 	case drudger.SessionRecorded:
 		p.sessionResult(event.Status)("Task %s %s, it is %s", p.out.Task(event.Task), event.Status, event.Task.Status)
 	case drudger.DependentsUnblocked:
@@ -185,6 +191,8 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.warnIdleWorkspaceParkFailed(event)
 	case drudger.RunCloseOutFailed:
 		p.warnRunCloseOutFailed(event)
+	case drudger.PullRequestFailed:
+		p.warnPullRequestFailed(event)
 	case drudger.WorkspaceNukeFailed:
 		p.warnWorkspaceNukeFailed(event)
 	case drudger.BranchCleanupFailed:
@@ -239,6 +247,19 @@ func (p *cliProgress) warnRunCloseOutFailed(event drudger.RunCloseOutFailed) {
 		p.out.Warn("The Session of task %s is over, but the workspace it ran in could not be parked: %v", event.TaskID, event.Err)
 	case drudger.RepositoryCloseOutStep:
 		p.out.Warn("The Session of task %s is over, but where its work in repository %s is could not be worked out: %v", event.TaskID, event.Repository, event.Err)
+	}
+}
+
+func (p *cliProgress) warnPullRequestFailed(event drudger.PullRequestFailed) {
+	switch event.Step {
+	case drudger.DescriptionMoveStep:
+		p.out.Warn("Could not move the pull request description of %s into the run directory of task %s, no pull request is opened: %v", event.Repository, event.TaskID, event.Err)
+	case drudger.BranchPushStep:
+		p.out.Warn("Could not push the branch of %s, its pull request description stays in the run directory of task %s: %v", event.Repository, event.TaskID, event.Err)
+	case drudger.PullRequestOpenStep:
+		p.out.Warn("Could not open the pull request of %s, its description stays in the run directory of task %s: %v", event.Repository, event.TaskID, event.Err)
+	case drudger.DescriptionRemoveStep:
+		p.out.Warn("The pull request of %s is open, but its description could not be deleted from the run directory of task %s: %v", event.Repository, event.TaskID, event.Err)
 	}
 }
 

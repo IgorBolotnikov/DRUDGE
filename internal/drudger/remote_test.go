@@ -2,6 +2,7 @@ package drudger
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,9 +15,13 @@ const testUnparsableURL = "/srv/git/api.git"
 // testTemplatePath is the one place fakeRemote keeps a pull request template.
 const testTemplatePath = ".github/pull_request_template.md"
 
-// fakeRemote accepts every remote URL but testUnparsableURL.
+// fakeRemote accepts every remote URL but testUnparsableURL, and opens every
+// pull request it is asked to.
 type fakeRemote struct {
 	readyErr error
+	// openErrs fail opening a pull request, keyed by its title.
+	openErrs map[string]error
+	opened   []remote.PullRequestDto
 }
 
 func (fake *fakeRemote) Provider() remote.Provider {
@@ -39,7 +44,17 @@ func (fake *fakeRemote) ParseRepository(url string) (remote.Repository, error) {
 }
 
 func (fake *fakeRemote) OpenPullRequest(dto remote.PullRequestDto) (string, error) {
-	return "", errors.New("OpenPullRequest should not be called")
+	if err := fake.openErrs[dto.Title]; err != nil {
+		return "", err
+	}
+	fake.opened = append(fake.opened, dto)
+	return testPullRequestURL(len(fake.opened)), nil
+}
+
+// testPullRequestURL is the URL of the pull request a fake remote opens as the
+// one numbered number.
+func testPullRequestURL(number int) string {
+	return fmt.Sprintf("https://github.com/owner/api/pull/%d", number)
 }
 
 func TestDrudgerService_PreRunCheck(t *testing.T) {

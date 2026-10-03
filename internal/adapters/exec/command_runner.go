@@ -60,17 +60,22 @@ func (runner *CommandRunner) environment() []string {
 // needs to cancel a long create on a keypress, which means the port takes a
 // context and the caller owns the timeout.
 func (runner *CommandRunner) Run(argv []string, timeout time.Duration) (stdout string, stderr string, err error) {
-	return runner.run(argv, timeout, nil)
+	return runner.run(argv, timeout, "", nil)
+}
+
+// RunWithInput is Run that writes input to the stdin of the command.
+func (runner *CommandRunner) RunWithInput(argv []string, input string, timeout time.Duration) (stdout string, stderr string, err error) {
+	return runner.run(argv, timeout, input, nil)
 }
 
 // RunEchoed is Run that also hands echo every line the command writes to
 // stdout or to stderr, as soon as the line is complete. A line redrawn with
 // carriage returns is handed over as it last read.
 func (runner *CommandRunner) RunEchoed(argv []string, timeout time.Duration, echo func(line string)) (stdout string, stderr string, err error) {
-	return runner.run(argv, timeout, echo)
+	return runner.run(argv, timeout, "", echo)
 }
 
-func (runner *CommandRunner) run(argv []string, timeout time.Duration, echo func(line string)) (stdout string, stderr string, err error) {
+func (runner *CommandRunner) run(argv []string, timeout time.Duration, input string, echo func(line string)) (stdout string, stderr string, err error) {
 	if len(argv) == 0 {
 		return "", "", fmt.Errorf("cannot run an empty command")
 	}
@@ -84,6 +89,9 @@ func (runner *CommandRunner) run(argv []string, timeout time.Duration, echo func
 	command := osexec.CommandContext(ctx, argv[0], argv[1:]...)
 	command.WaitDelay = pipeGrace
 	command.Env = runner.environment()
+	if input != "" {
+		command.Stdin = strings.NewReader(input)
+	}
 
 	var stdoutBuffer, stderrBuffer strings.Builder
 	command.Stdout = &stdoutBuffer

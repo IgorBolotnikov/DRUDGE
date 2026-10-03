@@ -19,7 +19,17 @@ const (
 	authSubcommand   = "auth"
 	statusSubcommand = "status"
 	loginCommand     = "gh auth login"
-	ghInstallURL     = "https://cli.github.com"
+	prSubcommand     = "pr"
+	createSubcommand = "create"
+	repoFlag         = "--repo"
+	baseFlag         = "--base"
+	headFlag         = "--head"
+	titleFlag        = "--title"
+	bodyFileFlag     = "--body-file"
+	draftFlag        = "--draft"
+	// stdinFile makes gh read the body from stdin.
+	stdinFile    = "-"
+	ghInstallURL = "https://cli.github.com"
 )
 
 // Pieces of a git remote URL.
@@ -70,10 +80,14 @@ func (github *GitHub) CheckReady() error {
 			ghBinary, ghInstallURL, loginCommand, remote.PullRequestsEnabledKey,
 		)
 	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Errorf("%s did not answer within %s, raise %q if it needs longer: %w", ghBinary, github.timeout, remote.TimeoutKey, err)
+		return github.timeoutError(err)
 	default:
 		return fmt.Errorf("%s is not logged in to GitHub, run %s: %w", ghBinary, loginCommand, err)
 	}
+}
+
+func (github *GitHub) timeoutError(err error) error {
+	return fmt.Errorf("%s did not answer within %s, raise %q if it needs longer: %w", ghBinary, github.timeout, remote.TimeoutKey, err)
 }
 
 func (github *GitHub) TemplatePaths() []string {
@@ -126,7 +140,35 @@ func unparsableURLError(remoteURL string) error {
 	)
 }
 
-// OpenPullRequest is refused until drudge opens pull requests.
+// OpenPullRequest runs gh pr create with the body on stdin and returns the URL
+// gh prints on its last line of output. The head branch has to be on GitHub
+// already.
 func (github *GitHub) OpenPullRequest(dto remote.PullRequestDto) (string, error) {
-	return "", errors.New("opening a pull request on GitHub is not supported yet")
+	repository := strings.Join([]string{dto.Repository.Host, dto.Repository.Owner, dto.Repository.Name}, pathSeparator)
+	argv := []string{
+		ghBinary, prSubcommand, createSubcommand,
+		repoFlag, repository,
+		baseFlag, dto.Base,
+		headFlag, dto.Head,
+		titleFlag, dto.Title,
+		bodyFileFlag, stdinFile,
+	}
+	if dto.IsDraft {
+		argv = append(argv, draftFlag)
+	}
+
+	stdout, _, err := github.runner.RunWithInput(argv, dto.Body, github.timeout)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "", github.timeoutError(err)
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not open a pull request from %s into %s on %s: %w", dto.Head, dto.Base, repository, err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	pullRequestURL := strings.TrimSpace(lines[len(lines)-1])
+	if pullRequestURL == "" {
+		return "", fmt.Errorf("%s opened a pull request from %s into %s on %s and printed no URL", ghBinary, dto.Head, dto.Base, repository)
+	}
+	return pullRequestURL, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -102,6 +103,42 @@ func (repo *FileRunRepository) ReadStderr(taskID task.TaskID) ([]byte, bool, err
 	return readRunFile(common.RunStderrPath(runDir))
 }
 
+// WritePullRequest stores the pull request description of one repository in
+// the run directory of a task. A task with no run directory is refused.
+func (repo *FileRunRepository) WritePullRequest(taskID task.TaskID, repository string, description string) error {
+	runDir, err := repo.existingRunDir(taskID)
+	if err != nil {
+		return err
+	}
+	path := common.RunPullRequestPath(runDir, repository)
+	if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	return common.WriteFile(path, description)
+}
+
+// ReadPullRequest reads the pull request description of one repository from
+// the run directory of a task.
+func (repo *FileRunRepository) ReadPullRequest(taskID task.TaskID, repository string) (string, bool, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return "", false, err
+	}
+	content, isPresent, err := readRunFile(common.RunPullRequestPath(runDir, repository))
+	return string(content), isPresent, err
+}
+
+// RemovePullRequest deletes the pull request description of one repository
+// from the run directory of a task. A description that is not there is left
+// as it is.
+func (repo *FileRunRepository) RemovePullRequest(taskID task.TaskID, repository string) error {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return err
+	}
+	return common.RemoveAll(common.RunPullRequestPath(runDir, repository))
+}
+
 // RemoveRun deletes the run directory of a task.
 func (repo *FileRunRepository) RemoveRun(taskID task.TaskID) (bool, error) {
 	runDir, err := repo.runDir(taskID)
@@ -133,6 +170,23 @@ func (repo *FileRunRepository) runDir(taskID task.TaskID) (string, error) {
 		projectDir = workDir
 	}
 	return common.RunDir(projectDir, string(taskID)), nil
+}
+
+// existingRunDir returns the run directory of a task and refuses one that is
+// not there.
+func (repo *FileRunRepository) existingRunDir(taskID task.TaskID) (string, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return "", err
+	}
+	hasRun, err := common.Exists(runDir)
+	if err != nil {
+		return "", err
+	}
+	if !hasRun {
+		return "", fmt.Errorf("task %s has no run directory at %s", taskID, runDir)
+	}
+	return runDir, nil
 }
 
 // readRunFile reads one file of a run directory. isPresent is false when the

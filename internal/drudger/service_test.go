@@ -368,8 +368,10 @@ type fakeGit struct {
 	remoteErr   error
 	// remoteURL is the URL of origin in every repository. Empty means the
 	// default test URL.
-	remoteURL       string
-	fetchErr        error
+	remoteURL string
+	fetchErr  error
+	// pushErrs fail the push from a worktree, keyed by worktree path.
+	pushErrs        map[string]error
 	worktreeErr     error
 	stashErr        error
 	branchErr       error
@@ -407,6 +409,7 @@ type fakeGit struct {
 	// removalErr fails every attempt to remove a worktree.
 	removalErr         error
 	fetched            []string
+	pushed             []branchRef
 	addedWorktrees     []addedWorktree
 	removedWorktrees   []string
 	prunedRepositories []string
@@ -475,6 +478,14 @@ func (fake *fakeGit) RemoteURL(dir string, remote string) (string, error) {
 func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
 	fake.fetched = append(fake.fetched, dir)
 	return fake.fetchErr
+}
+
+func (fake *fakeGit) Push(dir string, remote string, branch string) error {
+	if err := fake.pushErrs[dir]; err != nil {
+		return err
+	}
+	fake.pushed = append(fake.pushed, branchRef{dir: dir, branch: branch})
+	return nil
 }
 
 func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) error {
@@ -788,6 +799,33 @@ func (repo *fakeRunRepo) RemoveRun(taskID task.TaskID) (bool, error) {
 	_, ok := repo.runs[taskID]
 	delete(repo.runs, taskID)
 	return ok, nil
+}
+
+func (repo *fakeRunRepo) WritePullRequest(taskID task.TaskID, repository string, description string) error {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		return fmt.Errorf("task %s has no run", taskID)
+	}
+	run.files[pullRequestFileName(repository)] = description
+	return nil
+}
+
+func (repo *fakeRunRepo) ReadPullRequest(taskID task.TaskID, repository string) (string, bool, error) {
+	content, isPresent := repo.file(taskID, pullRequestFileName(repository))
+	return content, isPresent, nil
+}
+
+func (repo *fakeRunRepo) RemovePullRequest(taskID task.TaskID, repository string) error {
+	if run, ok := repo.runs[taskID]; ok {
+		delete(run.files, pullRequestFileName(repository))
+	}
+	return nil
+}
+
+// pullRequestFileName is the name the pull request description of a
+// repository goes under in a fake run.
+func pullRequestFileName(repository string) string {
+	return filepath.Join(common.RunPullRequestsDirName, repository)
 }
 
 // file returns one file of a run and whether it is there.

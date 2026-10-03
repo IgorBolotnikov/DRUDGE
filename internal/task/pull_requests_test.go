@@ -242,3 +242,28 @@ func TestTaskService_CreateTask_PullRequests(t *testing.T) {
 		})
 	}
 }
+
+func TestTask_RecordPullRequest(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing []string
+		recorded string
+		want     []string
+	}{
+		{name: "a task with no pull requests", recorded: apiPullRequest, want: []string{apiPullRequest}},
+		{name: "a task with another pull request", existing: []string{apiPullRequest}, recorded: uiPullRequest, want: []string{apiPullRequest, uiPullRequest}},
+		{name: "a URL the task already carries", existing: []string{apiPullRequest}, recorded: apiPullRequest, want: []string{apiPullRequest}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			taskToRecord := &Task{PullRequests: slices.Clone(testCase.existing)}
+
+			taskToRecord.RecordPullRequest(testCase.recorded)
+
+			if !slices.Equal(taskToRecord.PullRequests, testCase.want) {
+				t.Errorf("expected the pull requests %v, got %v", testCase.want, taskToRecord.PullRequests)
+			}
+		})
+	}
+}

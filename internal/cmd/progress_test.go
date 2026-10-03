@@ -325,6 +325,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "· The agent committed nothing in api, branch drudge/006684e3-fix-login is deleted\n",
 		},
 		{
+			name:  "a branch push started",
+			event: drudger.BranchPushStarted{Repository: "api", Branch: "drudge/006684e3-fix-login", Remote: "origin"},
+			want:  "› Pushing drudge/006684e3-fix-login of api to origin…\n",
+		},
+		{
+			name:  "a pull request opened",
+			event: drudger.PullRequestOpened{Repository: "api", URL: "https://github.com/acme/api/pull/12"},
+			want:  "✓ Opened the pull request of api: https://github.com/acme/api/pull/12\n",
+		},
+		{
 			name: "dependents unblocked",
 			event: drudger.DependentsUnblocked{Tasks: []*task.Task{
 				{ID: "4f2a1b3c-0001", Title: "Wire the repository"},
@@ -387,6 +397,31 @@ func TestCLIProgress_Report(t *testing.T) {
 			name:       "a run close-out of a repository failed",
 			event:      drudger.RunCloseOutFailed{TaskID: "3f9a1c2e", Step: drudger.RepositoryCloseOutStep, Repository: "api", Err: errors.New("git said no")},
 			wantStderr: "! The Session of task 3f9a1c2e is over, but where its work in repository api is could not be worked out: git said no\n",
+		},
+		{
+			name:       "a pull request description missing",
+			event:      drudger.PullRequestDescriptionMissing{Repository: "api", Branch: "drudge/006684e3-fix-login"},
+			wantStderr: "! The agent committed in api and wrote no pull request description, branch drudge/006684e3-fix-login is not pushed\n",
+		},
+		{
+			name:       "a pull request description move failed",
+			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.DescriptionMoveStep, Err: errors.New("disk full")},
+			wantStderr: "! Could not move the pull request description of api into the run directory of task 3f9a1c2e, no pull request is opened: disk full\n",
+		},
+		{
+			name:       "a branch push failed",
+			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.BranchPushStep, Err: errors.New("remote rejected")},
+			wantStderr: "! Could not push the branch of api, its pull request description stays in the run directory of task 3f9a1c2e: remote rejected\n",
+		},
+		{
+			name:       "a pull request open failed",
+			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.PullRequestOpenStep, Err: errors.New("gh is not logged in to GitHub, run gh auth login")},
+			wantStderr: "! Could not open the pull request of api, its description stays in the run directory of task 3f9a1c2e: gh is not logged in to GitHub, run gh auth login\n",
+		},
+		{
+			name:       "a pull request description removal failed",
+			event:      drudger.PullRequestFailed{TaskID: "3f9a1c2e", Repository: "api", Step: drudger.DescriptionRemoveStep, Err: errors.New("permission denied")},
+			wantStderr: "! The pull request of api is open, but its description could not be deleted from the run directory of task 3f9a1c2e: permission denied\n",
 		},
 		{
 			name:       "a nuked workspace read failed",

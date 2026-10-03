@@ -308,6 +308,39 @@ func TestFetch_UnreachableRemote(t *testing.T) {
 	}
 }
 
+func TestPush_SendsTheBranchAndSetsItsUpstream(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+	source := filepath.Join(root, "source")
+	runGit(t, clone, "switch", "-q", "-c", "drudge/task-1")
+	commitFile(t, clone, "change.txt", "change")
+
+	if err := newTestAdapter().Push(clone, git.OriginRemote, "drudge/task-1"); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	if got, want := revisionOf(t, source, "refs/heads/drudge/task-1"), revisionOf(t, clone, "refs/heads/drudge/task-1"); got != want {
+		t.Errorf("the remote has drudge/task-1 at %s, want %s", got, want)
+	}
+	if upstream := upstreamOf(t, clone, "drudge/task-1"); upstream != "origin/drudge/task-1" {
+		t.Errorf("expected the branch to track origin/drudge/task-1, got %q", upstream)
+	}
+}
+
+func TestPush_UnreachableRemote(t *testing.T) {
+	root := t.TempDir()
+	clone := cloneRepo(t, root, "main", "clone")
+	runGit(t, clone, "remote", "set-url", "origin", filepath.Join(root, "gone"))
+
+	err := newTestAdapter().Push(clone, git.OriginRemote, "main")
+	if err == nil {
+		t.Fatal("expected a push to a remote that is not there to fail")
+	}
+	if !strings.Contains(err.Error(), "main") {
+		t.Errorf("error = %q, want it to name the branch", err)
+	}
+}
+
 func TestAddDetachedWorktree(t *testing.T) {
 	tests := []struct {
 		name string

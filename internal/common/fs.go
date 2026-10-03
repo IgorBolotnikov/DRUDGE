@@ -48,6 +48,13 @@ const (
 	RunExitName   = "exit"
 )
 
+// Pull request descriptions of a run directory. Close-out moves each one there
+// from the worktree the agent wrote it in.
+const (
+	RunPullRequestsDirName = "pull-requests"
+	runPullRequestExt      = ".md"
+)
+
 // EnsureDir creates dir (and any parents) if it doesn't already exist.
 func EnsureDir(path string) error {
 	if err := os.MkdirAll(path, 0o755); err != nil {
@@ -363,6 +370,12 @@ func RunStreamPath(runDir string) string {
 // RunStderrPath returns the path to the agent stderr log of a run directory.
 func RunStderrPath(runDir string) string {
 	return filepath.Join(runDir, RunStderrName)
+}
+
+// RunPullRequestPath returns the path to the pull request description of one
+// repository in a run directory.
+func RunPullRequestPath(runDir string, repository string) string {
+	return filepath.Join(runDir, RunPullRequestsDirName, repository+runPullRequestExt)
 }
 
 // RunExitPath returns the path to the exit code file of a run directory. It

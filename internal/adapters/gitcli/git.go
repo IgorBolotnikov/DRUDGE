@@ -39,6 +39,7 @@ const (
 	porcelainFlag         = "--porcelain"
 	stashSubcommand       = "stash"
 	pushSubcommand        = "push"
+	setUpstreamFlag       = "--set-upstream"
 	includeUntrackedFlag  = "--include-untracked"
 	messageFlag           = "-m"
 	stashRef              = "refs/stash"
@@ -175,6 +176,17 @@ func (adapter *Git) Fetch(dir string, remote string, branch string) error {
 	_, stderr, err := adapter.run(dir, adapter.timeouts.Fetch, fetchSubcommand, remote, branch)
 	if err != nil {
 		return fmt.Errorf("could not fetch %s %s in %s: %w: %s", remote, branch, dir, err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+// Push sends a branch to a remote and makes it the upstream of the branch. A
+// push the remote rejects fails. It runs under the fetch timeout, which is the
+// cap for talking to a remote.
+func (adapter *Git) Push(dir string, remote string, branch string) error {
+	_, stderr, err := adapter.run(dir, adapter.timeouts.Fetch, pushSubcommand, setUpstreamFlag, remote, branch)
+	if err != nil {
+		return fmt.Errorf("could not push %s to %s in %s: %w: %s", branch, remote, dir, err, strings.TrimSpace(stderr))
 	}
 	return nil
 }

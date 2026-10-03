@@ -11,6 +11,8 @@ import (
 // timeout is killed and the error wraps context.DeadlineExceeded.
 type CommandRunner interface {
 	Run(argv []string, timeout time.Duration) (stdout string, stderr string, err error)
+	// RunWithInput is Run that writes input to the stdin of the command.
+	RunWithInput(argv []string, input string, timeout time.Duration) (stdout string, stderr string, err error)
 }
 
 // New returns the remote of a provider, which runs every command of the

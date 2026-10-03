@@ -44,6 +44,10 @@ func (fake *fakeGit) Fetch(dir string, remote string, branch string) error {
 	return fmt.Errorf("Fetch should not be called")
 }
 
+func (fake *fakeGit) Push(dir string, remote string, branch string) error {
+	return fmt.Errorf("Push should not be called")
+}
+
 func (fake *fakeGit) AddDetachedWorktree(dir string, path string, ref string) error {
 	return fmt.Errorf("AddDetachedWorktree should not be called")
 }

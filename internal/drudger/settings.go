@@ -46,9 +46,11 @@ type Settings struct {
 	PullRequests    PullRequestSettings
 }
 
-// PullRequestSettings is what the prompt tells an agent about pull requests.
-// They are read only when pull requests are on.
+// PullRequestSettings is what the prompt tells an agent about pull requests,
+// and how close-out opens them. They are read only when pull requests are on.
 type PullRequestSettings struct {
+	// IsDraft opens every pull request as a draft.
+	IsDraft bool
 	// TitleFormat is how the agent writes the title of a pull request.
 	TitleFormat string
 	// TemplatePath is the body template for a repository that has none. Empty

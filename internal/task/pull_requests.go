@@ -84,6 +84,12 @@ func refuseMissingPullRequests(taskToEdit *Task, removed []string) error {
 	return nil
 }
 
+// RecordPullRequest adds the URL of a pull request opened for the task. A URL
+// the task already carries is not added again.
+func (taskToRun *Task) RecordPullRequest(rawURL string) {
+	taskToRun.PullRequests = addPullRequests(taskToRun.PullRequests, []string{rawURL})
+}
+
 // addPullRequests appends the URLs pullRequests does not hold yet.
 func addPullRequests(pullRequests []string, added []string) []string {
 	for _, rawURL := range added {
