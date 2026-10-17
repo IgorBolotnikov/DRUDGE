@@ -121,7 +121,7 @@ func TestTaskService_NextTask(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, &fakeProgress{}, StatusDraft)
+			service := NewTaskService(&fakeTaskRepo{tasks: testCase.tasks}, &fakeProgress{}, StatusDraft, nil)
 
 			pick, err := service.NextTask(testProjectSlug)
 			if err != nil {

@@ -940,7 +940,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
 	progress := &fakeProgress{}
-	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft), drudgers, runs, commands, gitOps, nil)
+	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil)
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0

@@ -38,7 +38,7 @@ type Task struct {
 	Status       TaskStatus
 	StartedAt    time.Time
 	FinishedAt   time.Time
-	Repositories []string // List of repositories this task is related to
+	Repositories []string // Paths of the repositories this task changes, empty for every repository of the project
 
 	TicketID     string // ID of the ticket this task is related to, if any
 	ParentTaskID TaskID // ID of the parent task, if any

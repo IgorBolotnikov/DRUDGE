@@ -24,6 +24,9 @@ type taskEditFlags struct {
 	pullRequests      optionalString
 	addPullRequest    optionalString
 	removePullRequest optionalString
+	repos             optionalString
+	addRepo           optionalString
+	removeRepo        optionalString
 	isForced          bool
 }
 
@@ -40,13 +43,16 @@ func (flags *taskEditFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.pullRequests, pullRequestsFlagName, "Comma-separated `urls` of the pull requests opened for this task, replacing the list, empty to clear it")
 	fs.Var(&flags.addPullRequest, addPullRequestFlagName, "Comma-separated `urls` of pull requests to add to the ones opened for this task")
 	fs.Var(&flags.removePullRequest, removePullRequestFlagName, "Comma-separated `urls` of pull requests to remove from the ones opened for this task")
+	fs.Var(&flags.repos, reposFlagName, "Comma-separated `paths` of the repositories this task changes, replacing the list, empty for all of them")
+	fs.Var(&flags.addRepo, addRepoFlagName, "Comma-separated `paths` of repositories to add to the ones this task changes")
+	fs.Var(&flags.removeRepo, removeRepoFlagName, "Comma-separated `paths` of repositories to remove from the ones this task changes")
 	fs.BoolVar(&flags.isForced, forceFlagName, false, "Set a status drudge maintains itself ("+task.FormatStatuses(task.ManagedStatuses)+")")
 	alias(fs, forceFlagShortName, forceFlagName)
 }
 
 // changes returns the fields an edit changes, reading a description file from
-// disk or from stdin. It refuses more than one way to change the blockers or
-// the pull requests, and an edit that changes nothing.
+// disk or from stdin. It refuses more than one way to change the blockers,
+// the pull requests or the repositories, and an edit that changes nothing.
 func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
 	if err := refuseTogether("the blockers", []namedFlag{
 		{name: blockedByFlagName, value: flags.blockedBy},
@@ -59,6 +65,13 @@ func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
 		{name: pullRequestsFlagName, value: flags.pullRequests},
 		{name: addPullRequestFlagName, value: flags.addPullRequest},
 		{name: removePullRequestFlagName, value: flags.removePullRequest},
+	}); err != nil {
+		return task.EditTaskDto{}, err
+	}
+	if err := refuseTogether("the repositories", []namedFlag{
+		{name: reposFlagName, value: flags.repos},
+		{name: addRepoFlagName, value: flags.addRepo},
+		{name: removeRepoFlagName, value: flags.removeRepo},
 	}); err != nil {
 		return task.EditTaskDto{}, err
 	}
@@ -75,6 +88,9 @@ func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
 		PullRequests:        optionalList[string](flags.pullRequests),
 		AddPullRequests:     optionalList[string](flags.addPullRequest),
 		RemovePullRequests:  optionalList[string](flags.removePullRequest),
+		Repositories:        optionalList[string](flags.repos),
+		AddRepositories:     optionalList[string](flags.addRepo),
+		RemoveRepositories:  optionalList[string](flags.removeRepo),
 		AllowsManagedStatus: flags.isForced,
 	}
 	if flags.descriptionFile.value != nil {

@@ -86,7 +86,7 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 
 	out := newCommandPrinter()
 	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
-	svc := task.NewTaskService(repo, newCLIProgress(out), config.ResolveDefaultTaskStatus(cfg, globalCfg))
+	svc := task.NewTaskService(repo, newCLIProgress(out), config.ResolveDefaultTaskStatus(cfg, globalCfg), repositoryPaths(cfg))
 
 	listed, err := svc.ListTasks(cfg.ProjectSlug, filter, page.number, size)
 	if err != nil {

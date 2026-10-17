@@ -129,7 +129,7 @@ func TestTaskService_EditTask_PullRequests(t *testing.T) {
 			stored := editableTask()
 			stored.PullRequests = testCase.storedPullRequests
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
-			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft, nil)
 
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, testCase.changes, &fakeSessionGuard{})
 
@@ -168,7 +168,7 @@ func TestTaskService_EditTask_RefusesPullRequestsWhileASessionWorks(t *testing.T
 	refusal := errors.New("an agent is working on task 006684e3")
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
+	service := NewTaskService(repo, &fakeProgress{}, StatusDraft, nil)
 
 	_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{AddPullRequests: &[]string{apiPullRequest}}, &fakeSessionGuard{refusal: refusal})
 
@@ -212,7 +212,7 @@ func TestTaskService_CreateTask_PullRequests(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{}
-			service := NewTaskService(repo, &fakeProgress{}, StatusDraft)
+			service := NewTaskService(repo, &fakeProgress{}, StatusDraft, nil)
 
 			created, err := service.CreateTask(CreateTaskDto{
 				Title:        "Wire the service",

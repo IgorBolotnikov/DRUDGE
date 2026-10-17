@@ -1860,6 +1860,103 @@ func TestFileTaskRepository_CreateTask_StoresPullRequests(t *testing.T) {
 	}
 }
 
+func TestTaskFrontMatter_RepositoriesRoundTrip(t *testing.T) {
+	home, cleanup := setupTaskTestHome(t)
+	defer cleanup()
+
+	cases := []struct {
+		name         string
+		repositories []string
+		// wantLineInFile is the repositories line the file should carry. A
+		// task with no repositories carries none.
+		wantLineInFile string
+	}{
+		{
+			name: "a task with no repositories",
+		},
+		{
+			name:           "one repository",
+			repositories:   []string{"."},
+			wantLineInFile: metaKeyRepositories + ": .",
+		},
+		{
+			name:           "several repositories",
+			repositories:   []string{"api", "services/ui"},
+			wantLineInFile: metaKeyRepositories + ": api,services/ui",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := &task.Task{
+				ID:          "task-1",
+				Title:       "Round Trip",
+				Description: "Body stays put",
+				Status:      task.StatusUnmerged,
+				ProjectSlug: "test-project",
+				CreatedAt:   time.Now().UTC(),
+
+				Repositories: testCase.repositories,
+			}
+
+			path := filepath.Join(home, "task.md")
+			if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(written), written.Description); err != nil {
+				t.Fatalf("WriteFileWithFrontMatter: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			read, err := repo.parseTaskFromFile(path)
+			if err != nil {
+				t.Fatalf("parseTaskFromFile: %v", err)
+			}
+
+			if !slices.Equal(read.Repositories, testCase.repositories) {
+				t.Errorf("expected the repositories %v, got %v", testCase.repositories, read.Repositories)
+			}
+			if testCase.repositories == nil && read.Repositories != nil {
+				t.Errorf("expected a task with no repositories, got %#v", read.Repositories)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if testCase.wantLineInFile != "" && !strings.Contains(string(data), testCase.wantLineInFile+"\n") {
+				t.Errorf("expected %q in the file, got %s", testCase.wantLineInFile, data)
+			}
+			if testCase.wantLineInFile == "" && strings.Contains(string(data), metaKeyRepositories) {
+				t.Errorf("expected no %s entry in the file, got %s", metaKeyRepositories, data)
+			}
+		})
+	}
+}
+
+func TestFileTaskRepository_CreateTask_StoresRepositories(t *testing.T) {
+	setupTaskTestHome(t)
+
+	repo := NewFileTaskRepository("test-project")
+	repositories := []string{"api", "ui"}
+
+	created, err := repo.CreateTask(task.CreateTaskDto{
+		Title:        "Wire the repository",
+		Status:       task.StatusTodo,
+		ProjectSlug:  "test-project",
+		Repositories: repositories,
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	read, err := repo.GetTask("test-project", created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !slices.Equal(read.Repositories, repositories) {
+		t.Errorf("expected the repositories %v, got %v", repositories, read.Repositories)
+	}
+}
+
 func TestTaskFrontMatter_ParentRoundTrip(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()

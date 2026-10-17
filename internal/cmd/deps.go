@@ -68,7 +68,7 @@ func newCommandDeps() (*commandDeps, error) {
 	out := newCommandPrinter()
 	progress := newCLIProgress(out)
 	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	tasks := task.NewTaskService(repo, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg))
+	tasks := task.NewTaskService(repo, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
@@ -92,6 +92,16 @@ func newCommandDeps() (*commandDeps, error) {
 		tasks:     tasks,
 		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote),
 	}, nil
+}
+
+// repositoryPaths lists the paths of the repositories the local config
+// records.
+func repositoryPaths(localCfg *config.LocalConfig) []string {
+	paths := make([]string, 0, len(localCfg.Repositories))
+	for _, repository := range localCfg.Repositories {
+		paths = append(paths, repository.Path)
+	}
+	return paths
 }
 
 // newDrudgerSettings picks what the Drudger service reads out of the configs.

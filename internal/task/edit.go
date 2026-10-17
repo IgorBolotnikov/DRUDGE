@@ -8,7 +8,7 @@ import (
 )
 
 // ErrNoChanges reports an edit that names no field to change.
-var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status, the blockers, the parent and the pull requests")
+var ErrNoChanges = errors.New("nothing to change, name at least one of the title, the description, the ticket, the status, the blockers, the parent, the pull requests and the repositories")
 
 // ManagedStatuses are the statuses that describe a Session. Drudge writes them
 // itself when a run starts and when it ends.
@@ -38,6 +38,13 @@ type EditTaskDto struct {
 	AddPullRequests *[]string
 	// RemovePullRequests removes URLs from the list of pull requests.
 	RemovePullRequests *[]string
+	// Repositories replaces the whole list of repository paths, and an empty
+	// list clears it.
+	Repositories *[]string
+	// AddRepositories adds paths to the list of repositories.
+	AddRepositories *[]string
+	// RemoveRepositories removes paths from the list of repositories.
+	RemoveRepositories *[]string
 
 	// AllowsManagedStatus lets the edit set one of ManagedStatuses. The CLI
 	// reads it off the force flag.
@@ -48,7 +55,8 @@ type EditTaskDto struct {
 func (changes EditTaskDto) HasChanges() bool {
 	return changes.Title != nil || changes.Description != nil || changes.TicketID != nil || changes.Status != nil ||
 		changes.BlockedBy != nil || changes.Block != nil || changes.Unblock != nil || changes.ParentTaskID != nil ||
-		changes.PullRequests != nil || changes.AddPullRequests != nil || changes.RemovePullRequests != nil
+		changes.PullRequests != nil || changes.AddPullRequests != nil || changes.RemovePullRequests != nil ||
+		changes.Repositories != nil || changes.AddRepositories != nil || changes.RemoveRepositories != nil
 }
 
 // TaskEdited reports a task EditTask changed.
@@ -108,6 +116,20 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 		}
 		changes.ParentTaskID = &parentID
 	}
+	if changes.Repositories != nil {
+		repositories, err := service.resolveRepositories(*changes.Repositories)
+		if err != nil {
+			return nil, err
+		}
+		changes.Repositories = &repositories
+	}
+	if changes.AddRepositories != nil {
+		added, err := service.resolveRepositories(*changes.AddRepositories)
+		if err != nil {
+			return nil, err
+		}
+		changes.AddRepositories = &added
+	}
 
 	var edited *Task
 	isStored, err := service.repo.TryUpdateTask(projectSlug, found.ID, func(taskToEdit *Task) error {
@@ -116,6 +138,11 @@ func (service *TaskService) EditTask(projectSlug string, id TaskID, changes Edit
 		}
 		if changes.RemovePullRequests != nil {
 			if err := refuseMissingPullRequests(taskToEdit, *changes.RemovePullRequests); err != nil {
+				return err
+			}
+		}
+		if changes.RemoveRepositories != nil {
+			if err := refuseRepositoryRemoval(taskToEdit, *changes.RemoveRepositories); err != nil {
 				return err
 			}
 		}
@@ -148,6 +175,9 @@ func validateEdit(changes EditTaskDto) error {
 		return err
 	}
 	if err := validatePullRequestEdit(changes); err != nil {
+		return err
+	}
+	if err := validateRepositoryEdit(changes); err != nil {
 		return err
 	}
 
@@ -199,5 +229,14 @@ func applyEdit(taskToEdit *Task, changes EditTaskDto) {
 	}
 	if changes.RemovePullRequests != nil {
 		taskToEdit.PullRequests = removePullRequests(taskToEdit.PullRequests, *changes.RemovePullRequests)
+	}
+	if changes.Repositories != nil {
+		taskToEdit.Repositories = *changes.Repositories
+	}
+	if changes.AddRepositories != nil {
+		taskToEdit.Repositories = addRepositories(taskToEdit.Repositories, *changes.AddRepositories)
+	}
+	if changes.RemoveRepositories != nil {
+		taskToEdit.Repositories = removeRepositories(taskToEdit.Repositories, *changes.RemoveRepositories)
 	}
 }

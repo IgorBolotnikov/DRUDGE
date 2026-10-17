@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
@@ -25,6 +26,7 @@ const (
 const (
 	statusLabel    = "Status"
 	ticketLabel    = "Ticket"
+	reposLabel     = "Repositories"
 	createdLabel   = "Created"
 	startedLabel   = "Started"
 	finishedLabel  = "Finished"
@@ -47,6 +49,7 @@ const (
 // What a task report prints in place of a field with nothing in it.
 const (
 	noneLabel               = "none"
+	allReposLabel           = "all"
 	neverRunLabel           = "never handed to an agent"
 	nothingReportedYetLabel = "nothing reported yet"
 	endedUnreportedLabel    = "ended, the agent reported nothing"
@@ -75,6 +78,7 @@ func printTask(out *printer.Printer, taskToShow *task.Task, blockers []task.Bloc
 		fmt.Sprintf("Task [%s] %s", taskToShow.ID, taskToShow.Title),
 		taskLine(statusLabel, statusColor(string(taskToShow.Status))),
 		taskLine(ticketLabel, orNone(taskToShow.TicketID)),
+		taskLine(reposLabel, formatRepositories(taskToShow.Repositories)),
 		taskLine(createdLabel, formatMoment(taskToShow.CreatedAt, now)),
 		taskLine(startedLabel, formatMoment(taskToShow.StartedAt, now)),
 		taskLine(finishedLabel, formatMoment(taskToShow.FinishedAt, now)),
@@ -126,6 +130,15 @@ func familyLines(family task.Family, statusColor func(text string) string) []str
 		}
 	}
 	return lines
+}
+
+// formatRepositories joins the repositories a task lists. A task that lists
+// none works on every repository of the project.
+func formatRepositories(repositories []string) string {
+	if len(repositories) == 0 {
+		return allReposLabel
+	}
+	return strings.Join(repositories, ", ")
 }
 
 // pullRequestLines lists the pull requests opened for a task, one URL per

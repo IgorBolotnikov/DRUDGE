@@ -164,6 +164,38 @@ func TestTaskEditFlags(t *testing.T) {
 			wantChanges: task.EditTaskDto{Block: &[]task.TaskID{"9c8d"}, AddPullRequests: &[]string{"https://github.com/acme/api/pull/12"}},
 		},
 		{
+			name:        "a list of repositories",
+			args:        []string{"--repos", "api, services/ui"},
+			wantChanges: task.EditTaskDto{Repositories: &[]string{"api", "services/ui"}},
+		},
+		{
+			name:        "repositories cleared",
+			args:        []string{"--repos", ""},
+			wantChanges: task.EditTaskDto{Repositories: &[]string{}},
+		},
+		{
+			name:        "repositories to add",
+			args:        []string{"--add-repo", "api,ui"},
+			wantChanges: task.EditTaskDto{AddRepositories: &[]string{"api", "ui"}},
+		},
+		{
+			name:        "repositories to remove",
+			args:        []string{"--remove-repo", "api"},
+			wantChanges: task.EditTaskDto{RemoveRepositories: &[]string{"api"}},
+		},
+		{
+			name:        "a list of repositories and repositories to add",
+			args:        []string{"--repos", "api", "--add-repo", "ui"},
+			wantErr:     true,
+			wantErrText: "--repos and --add-repo cannot be used together",
+		},
+		{
+			name:        "repositories to add and to remove",
+			args:        []string{"--add-repo", "api", "--remove-repo", "ui"},
+			wantErr:     true,
+			wantErrText: "--add-repo and --remove-repo cannot be used together",
+		},
+		{
 			name:        "a description file",
 			args:        []string{"--description-file", "description.md"},
 			files:       map[string]string{"description.md": "SSO logs nobody out"},
@@ -268,6 +300,9 @@ func showChanges(changes task.EditTaskDto) string {
 		showList(flagLabel(pullRequestsFlagName), changes.PullRequests),
 		showList(flagLabel(addPullRequestFlagName), changes.AddPullRequests),
 		showList(flagLabel(removePullRequestFlagName), changes.RemovePullRequests),
+		showList(flagLabel(reposFlagName), changes.Repositories),
+		showList(flagLabel(addRepoFlagName), changes.AddRepositories),
+		showList(flagLabel(removeRepoFlagName), changes.RemoveRepositories),
 		fmt.Sprintf("%s %v", flagLabel(forceFlagName), changes.AllowsManagedStatus),
 	}
 	return strings.Join(fields, ", ")

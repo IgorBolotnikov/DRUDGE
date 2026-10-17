@@ -33,6 +33,7 @@ type TaskService struct {
 	repo          TaskRepository
 	progress      common.Progress
 	defaultStatus TaskStatus
+	repositories  []string
 }
 
 // TaskCreated reports a task CreateTask made.
@@ -42,8 +43,10 @@ type TaskCreated struct {
 
 // NewTaskService builds a task service. defaultStatus is the status CreateTask
 // gives a task that names none, and draft applies when it is empty too.
-func NewTaskService(repo TaskRepository, progress common.Progress, defaultStatus TaskStatus) *TaskService {
-	return &TaskService{repo: repo, progress: progress, defaultStatus: defaultStatus}
+// repositories are the paths of the repositories the project records, the
+// only paths a task may list.
+func NewTaskService(repo TaskRepository, progress common.Progress, defaultStatus TaskStatus, repositories []string) *TaskService {
+	return &TaskService{repo: repo, progress: progress, defaultStatus: defaultStatus, repositories: repositories}
 }
 
 func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -76,6 +79,12 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 		return nil, err
 	}
 	dto.PullRequests = addPullRequests(nil, dto.PullRequests)
+
+	repositories, err := service.resolveRepositories(dto.Repositories)
+	if err != nil {
+		return nil, err
+	}
+	dto.Repositories = repositories
 
 	parentID, err := service.resolveParent(dto.ProjectSlug, "", dto.ParentTaskID)
 	if err != nil {

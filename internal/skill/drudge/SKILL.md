@@ -22,15 +22,16 @@ This skill covers `drg task new`, `edit`, `list`, `show` and `rm`. Run `drg task
 4. Name a task by its short id, the first 8 characters of its full id. Every command and every flag that takes a task id accepts it, as long as it names a single task.
 5. Create tasks one at a time in dependency order. `drg task new` prints `✓ Created task <short-id>  <title>`. The short id is the fourth word of that line, so `cut -d' ' -f4` gets it. Pass it to `--blocked-by` on the later tasks that wait for it. Use `--parent` when a task belongs under another task.
 6. Put `--ticket <ticket-id>` on every task.
-7. Never pass `--status` to `drg task new`. The config picks the status of a new task. Never promote a task to another status unless the user asks.
-8. If a call fails halfway through, fix the cause and carry on from the task that failed. The tasks created before it already exist, so do not create them again.
+7. Put `--repos` on every task and name the repositories it changes. A task with no repositories is meant to change every repository of the project. The paths are the `path` entries under `repositories` in `.drudge/config.json`, the same paths `drg project init` prints. A project that is one repository records it as `.`.
+8. Never pass `--status` to `drg task new`. The config picks the status of a new task. Never promote a task to another status unless the user asks.
+9. If a call fails halfway through, fix the cause and carry on from the task that failed. The tasks created before it already exist, so do not create them again.
 
 ## Commands
 
 ### Create a task
 
 ```sh
-drg task new --title "Parse task new arguments in one function" --ticket R-006 --description-file - <<'EOF'
+drg task new --title "Parse task new arguments in one function" --ticket R-006 --repos api --description-file - <<'EOF'
 Move the flag parsing of `taskNew` into `parseTaskNewArgs`.
 
 Every error message stays word for word.
@@ -40,7 +41,7 @@ EOF
 It prints `✓ Created task 3f1c9a2e  Parse task new arguments in one function`. A later task that waits for it names its short id:
 
 ```sh
-drg task new --title "Read a description from stdin" --ticket R-006 --blocked-by 3f1c9a2e --description-file - <<'EOF'
+drg task new --title "Read a description from stdin" --ticket R-006 --repos api,web --blocked-by 3f1c9a2e --description-file - <<'EOF'
 ...
 EOF
 ```
@@ -56,6 +57,8 @@ EOF
 A new description replaces the old one completely. `--blocked-by` replaces the whole list of blockers. `--block` and `--unblock` add and remove single ones.
 
 `--pull-requests` replaces the list of pull request URLs a task carries, and an empty value clears it. `--add-pull-request` and `--remove-pull-request` add and remove single ones. `drg task new` takes `--pull-requests` too. Every URL must be an absolute http or https URL.
+
+`--repos` replaces the comma-separated list of repositories a task changes, and an empty value clears it back to every repository of the project. `--add-repo` and `--remove-repo` add and remove comma-separated paths. A path the project does not record is refused, and the error lists the paths it does record. A subtask does not take the repositories of its parent, so set them on the subtask too.
 
 ### Open pull requests again
 
@@ -79,7 +82,7 @@ The listing prints the short id of each task.
 drg task show 3f1c9a2e
 ```
 
-It prints the description and the status. Read it before you edit a task.
+It prints the description, the status and the repositories of the task, `all` when it lists none. Read it before you edit a task.
 
 ### Remove a task
 

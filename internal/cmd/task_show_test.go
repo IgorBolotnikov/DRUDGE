@@ -34,8 +34,18 @@ func TestPrintTask(t *testing.T) {
 				Description: longDescription,
 				CreatedAt:   now.Add(-2 * time.Hour),
 			},
-			want:       []string{"todo", "R-003-09", longDescription, neverRunLabel, neverLabel},
+			want:       []string{"todo", "R-003-09", longDescription, neverRunLabel, neverLabel, taskLine(reposLabel, allReposLabel)},
 			wantAbsent: []string{turnsLabel, costLabel, refusedLabel, blockedByLabel, parentLabel, childrenLabel, pullRequestsLabel},
+		},
+		{
+			name: "a task that lists repositories",
+			task: task.Task{
+				Status:       task.StatusTodo,
+				CreatedAt:    now.Add(-2 * time.Hour),
+				Repositories: []string{"api", "services/ui"},
+			},
+			want:       []string{taskLine(reposLabel, "api, services/ui")},
+			wantAbsent: []string{taskLine(reposLabel, allReposLabel)},
 		},
 		{
 			name: "a task an agent is working on",

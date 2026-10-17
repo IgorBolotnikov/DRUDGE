@@ -179,6 +179,10 @@ const (
 	pullRequestsFlagName      = "pull-requests"
 	addPullRequestFlagName    = "add-pull-request"
 	removePullRequestFlagName = "remove-pull-request"
+
+	reposFlagName      = "repos"
+	addRepoFlagName    = "add-repo"
+	removeRepoFlagName = "remove-repo"
 )
 
 // stdinPath is the description file path that reads stdin.
@@ -186,7 +190,8 @@ const stdinPath = "-"
 
 var errTwoDescriptions = errors.New("--description and --description-file cannot be used together")
 
-// listSeparator splits a flag value holding several task ids or several URLs.
+// listSeparator splits a flag value holding several task ids, URLs or
+// repository paths.
 const listSeparator = ","
 
 // taskRerunCommand is what a user types to start a task over. Other commands
@@ -264,6 +269,7 @@ type taskNewFlags struct {
 	blockedBy       optionalString
 	parent          optionalString
 	pullRequests    optionalString
+	repos           optionalString
 }
 
 func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
@@ -276,6 +282,7 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.blockedBy, blockedByFlagName, "Comma-separated `ids` of the tasks this task waits for")
 	fs.Var(&flags.parent, parentFlagName, "The `id` of the task this task belongs to")
 	fs.Var(&flags.pullRequests, pullRequestsFlagName, "Comma-separated `urls` of the pull requests opened for this task")
+	fs.Var(&flags.repos, reposFlagName, "Comma-separated `paths` of the repositories this task changes, as drg project init prints them, all of them when left out")
 }
 
 // dto returns the fields of a new task, reading a description file from disk
@@ -313,6 +320,7 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 		TicketID:     flags.ticket.get(),
 		BlockedBy:    parseList[task.TaskID](flags.blockedBy.get()),
 		PullRequests: parseList[string](flags.pullRequests.get()),
+		Repositories: parseList[string](flags.repos.get()),
 		ParentTaskID: task.TaskID(flags.parent.get()),
 	}, nil
 }

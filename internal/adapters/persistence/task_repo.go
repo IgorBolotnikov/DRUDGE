@@ -31,8 +31,8 @@ const (
 	// name cannot hold.
 	fileNameReplacement = "-"
 
-	// listSeparator splits a front matter value holding several task ids or
-	// several URLs.
+	// listSeparator splits a front matter value holding several task ids,
+	// URLs or repository paths.
 	listSeparator = ","
 )
 
@@ -47,6 +47,7 @@ const (
 	metaKeyBlockedBy    = "blocked_by"
 	metaKeyParentTaskID = "parent_task_id"
 	metaKeyPullRequests = "pull_requests"
+	metaKeyRepositories = "repositories"
 
 	// Keys of what the agent reported when its run ended.
 	metaKeySessionFailed   = "session_failed"
@@ -123,6 +124,7 @@ func (r *FileTaskRepository) CreateTask(dto task.CreateTaskDto) (*task.Task, err
 		ProjectSlug:  r.Project,
 		BlockedBy:    dto.BlockedBy,
 		PullRequests: dto.PullRequests,
+		Repositories: dto.Repositories,
 		CreatedAt:    dto.CreatedAt,
 		ParentTaskID: dto.ParentTaskID,
 	}
@@ -155,6 +157,9 @@ func taskFrontMatter(taskToWrite *task.Task) map[string]string {
 	}
 	if len(taskToWrite.PullRequests) != 0 {
 		metadata[metaKeyPullRequests] = joinList(taskToWrite.PullRequests)
+	}
+	if len(taskToWrite.Repositories) != 0 {
+		metadata[metaKeyRepositories] = joinList(taskToWrite.Repositories)
 	}
 	if taskToWrite.ParentTaskID != "" {
 		metadata[metaKeyParentTaskID] = string(taskToWrite.ParentTaskID)
@@ -319,6 +324,9 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	}
 	if pullRequests, ok := metadata[metaKeyPullRequests]; ok {
 		t.PullRequests = splitList[string](pullRequests)
+	}
+	if repositories, ok := metadata[metaKeyRepositories]; ok {
+		t.Repositories = splitList[string](repositories)
 	}
 	if parentTaskID, ok := metadata[metaKeyParentTaskID]; ok {
 		t.ParentTaskID = task.TaskID(parentTaskID)
