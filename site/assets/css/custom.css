@@ -10,3 +10,45 @@
   --primary-saturation: 50%;
   --primary-lightness: 60%;
 }
+
+/* The landing is one centered column. The gap alone spaces its items, so their own margins are dropped. */
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  align-self: stretch;
+  text-align: center;
+}
+
+.landing > *,
+.landing pre {
+  max-width: 100%;
+  margin: 0;
+}
+
+.landing img {
+  width: 560px;
+  height: auto;
+}
+
+.landing h1 {
+  max-width: 40ch;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: normal;
+}
+
+/* On desktop the column sits in the middle of the space between the navbar and the footer. A column taller than that space starts at the top. */
+@media (min-width: 768px) {
+  #content:has(.landing) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #content:has(.landing) > div {
+    flex-grow: 1;
+    justify-content: center;
+  }
+}
