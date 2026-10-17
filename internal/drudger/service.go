@@ -411,7 +411,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	if err := service.runs.PrepareRun(taskID, prompt); err != nil {
+	if err := service.runs.PrepareRun(taskID, prompt, service.settings.Harness); err != nil {
 		return err
 	}
 

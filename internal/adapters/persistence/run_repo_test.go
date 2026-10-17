@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -65,7 +66,7 @@ func TestFileRunRepository_PrepareRun(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo, runDir := setupRunRepo(t, testCase.files)
 
-			if err := repo.PrepareRun(runTestTaskID, "the new prompt"); err != nil {
+			if err := repo.PrepareRun(runTestTaskID, "the new prompt", drudger.HarnessClaudeCode); err != nil {
 				t.Fatalf("PrepareRun: %v", err)
 			}
 
@@ -73,8 +74,13 @@ func TestFileRunRepository_PrepareRun(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not list the run directory: %v", err)
 			}
-			if len(entries) != 1 || entries[0].Name() != common.RunPromptName {
-				t.Errorf("expected the run directory to hold only %s, got %v", common.RunPromptName, entries)
+			var names []string
+			for _, entry := range entries {
+				names = append(names, entry.Name())
+			}
+			wantNames := []string{common.RunHarnessName, common.RunPromptName}
+			if !slices.Equal(names, wantNames) {
+				t.Errorf("expected the run directory to hold only %v, got %v", wantNames, names)
 			}
 			prompt, err := common.ReadFile(common.RunPromptPath(runDir))
 			if err != nil {
@@ -82,6 +88,13 @@ func TestFileRunRepository_PrepareRun(t *testing.T) {
 			}
 			if prompt != "the new prompt" {
 				t.Errorf("expected the new prompt, got %q", prompt)
+			}
+			harness, isPresent, err := repo.ReadHarness(runTestTaskID)
+			if err != nil {
+				t.Fatalf("ReadHarness: %v", err)
+			}
+			if !isPresent || harness != drudger.HarnessClaudeCode {
+				t.Errorf("expected harness %q, got %q (present %v)", drudger.HarnessClaudeCode, harness, isPresent)
 			}
 		})
 	}
@@ -121,6 +134,14 @@ func TestFileRunRepository_ReadFiles(t *testing.T) {
 		fileName string
 		read     func(repo *FileRunRepository) (string, bool, error)
 	}{
+		{
+			name:     "ReadHarness",
+			fileName: common.RunHarnessName,
+			read: func(repo *FileRunRepository) (string, bool, error) {
+				harness, isPresent, err := repo.ReadHarness(runTestTaskID)
+				return string(harness), isPresent, err
+			},
+		},
 		{
 			name:     "ReadStream",
 			fileName: common.RunStreamName,

@@ -22,6 +22,10 @@ const (
 // the log holds something.
 const stderrHeading = "stderr:"
 
+// noDecoderNote heads a compact view of a run whose harness has no decoder.
+// It takes the harness name.
+const noDecoderNote = "harness %s has no decoder, showing its raw output"
+
 // depthIndent is how far a compact view indents a step for each level of
 // subagent nesting it ran at.
 const depthIndent = "  "
@@ -74,7 +78,8 @@ func taskRunlog(taskID task.TaskID, isRaw bool) error {
 }
 
 // printRunSteps prints a compact view of a run: the task heading, the run
-// directory, one line per step and the stderr log when it has content.
+// directory, a note when its harness has no decoder, one line per step and
+// the stderr log when it has content.
 func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
 	palette := out.Theme()
 	lines := []string{
@@ -82,6 +87,9 @@ func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
 		palette.Paint(theme.Stdout, theme.RoleMuted, runSteps.RunDir),
 	}
 
+	if !runSteps.IsDecoded {
+		lines = append(lines, palette.Paint(theme.Stdout, theme.RoleMuted, fmt.Sprintf(noDecoderNote, runSteps.Harness)))
+	}
 	if runSteps.IsStreamMissing {
 		lines = append(lines, notWrittenYetLabel)
 	}

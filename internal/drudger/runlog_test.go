@@ -117,10 +117,16 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 		// hasRun stands for a task whose run directory exists. stream and
 		// stderr are only written when it is set.
 		hasRun bool
-		stream []string
-		stderr string
+		// configured is the harness in the config, claude-code when empty.
+		// recorded is the harness the run holds, none when empty.
+		configured Harness
+		recorded   Harness
+		stream     []string
+		stderr     string
 
 		requestedID       task.TaskID
+		wantHarness       Harness
+		wantDecoded       bool
 		wantStreamMissing bool
 		wantStderrLines   []string
 		wantErr           bool
@@ -128,14 +134,50 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 		{
 			name:            "a run whose stream the decoder turns into steps",
 			hasRun:          true,
+			recorded:        HarnessClaudeCode,
 			stream:          []string{initEvent, resultEvent},
 			stderr:          "warning: 100% of nothing",
+			wantHarness:     HarnessClaudeCode,
+			wantDecoded:     true,
 			wantStderrLines: []string{"warning: 100% of nothing"},
 		},
 		{
 			name:              "a run whose agent has not written a stream yet",
 			hasRun:            true,
+			recorded:          HarnessClaudeCode,
+			wantHarness:       HarnessClaudeCode,
+			wantDecoded:       true,
 			wantStreamMissing: true,
+		},
+		{
+			name:        "a run decodes with the harness it recorded over the configured one",
+			hasRun:      true,
+			configured:  HarnessOpencode,
+			recorded:    HarnessClaudeCode,
+			stream:      []string{initEvent},
+			wantHarness: HarnessClaudeCode,
+			wantDecoded: true,
+		},
+		{
+			name:        "a run with no recorded harness decodes with the configured one",
+			hasRun:      true,
+			stream:      []string{initEvent},
+			wantHarness: HarnessClaudeCode,
+			wantDecoded: true,
+		},
+		{
+			name:        "a run whose recorded harness has no decoder gives raw steps",
+			hasRun:      true,
+			recorded:    HarnessOpencode,
+			stream:      []string{initEvent, resultEvent},
+			wantHarness: HarnessOpencode,
+		},
+		{
+			name:        "a run with no recorded harness and a configured harness with no decoder gives raw steps",
+			hasRun:      true,
+			configured:  HarnessOpencode,
+			stream:      []string{initEvent},
+			wantHarness: HarnessOpencode,
 		},
 		{
 			name:    "a task that was never run",
@@ -154,9 +196,16 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 			setupProjectDir(t)
 			tracked := todoTask()
 
-			service := newTestService(tracked)
+			settings := testSettings()
+			if testCase.configured != "" {
+				settings.Harness = testCase.configured
+			}
+			service := newTestServiceWith(settings, &fakeCommandRunner{}, tracked)
 			if testCase.hasRun {
-				service.runs.PrepareRun(tracked.ID, "prompt")
+				service.runs.write(tracked.ID, common.RunPromptName, "prompt")
+				if testCase.recorded != "" {
+					service.runs.write(tracked.ID, common.RunHarnessName, string(testCase.recorded))
+				}
 				if testCase.stream != nil {
 					service.runs.writeStream(tracked.ID, testCase.stream...)
 				}
@@ -183,13 +232,23 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 			if runSteps.Task.ID != tracked.ID {
 				t.Errorf("expected task %q, got %q", tracked.ID, runSteps.Task.ID)
 			}
+			if runSteps.Harness != testCase.wantHarness {
+				t.Errorf("expected harness %q, got %q", testCase.wantHarness, runSteps.Harness)
+			}
+			if runSteps.IsDecoded != testCase.wantDecoded {
+				t.Errorf("expected decoded %v, got %v", testCase.wantDecoded, runSteps.IsDecoded)
+			}
 			if runSteps.IsStreamMissing != testCase.wantStreamMissing {
 				t.Errorf("expected the stream missing %v, got %v", testCase.wantStreamMissing, runSteps.IsStreamMissing)
 			}
 
 			var wantSteps []Step
 			for _, line := range testCase.stream {
-				wantSteps = append(wantSteps, Step{Kind: StepUnrecognized, Raw: line})
+				if testCase.wantDecoded {
+					wantSteps = append(wantSteps, fakeStepDecoder{}.Decode(line)...)
+				} else {
+					wantSteps = append(wantSteps, Step{Kind: StepUnrecognized, Raw: line})
+				}
 			}
 			if !reflect.DeepEqual(runSteps.Steps, wantSteps) {
 				t.Errorf("expected steps %+v, got %+v", wantSteps, runSteps.Steps)
@@ -198,20 +257,5 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 				t.Errorf("expected stderr lines %q, got %q", testCase.wantStderrLines, runSteps.Stderr)
 			}
 		})
-	}
-}
-
-func TestDrudgerService_RunSteps_NoDecoderForHarness(t *testing.T) {
-	setupProjectDir(t)
-	tracked := todoTask()
-
-	settings := testSettings()
-	settings.Harness = HarnessOpencode
-	service := newTestServiceWith(settings, &fakeCommandRunner{}, tracked)
-	service.runs.PrepareRun(tracked.ID, "prompt")
-	service.runs.writeStream(tracked.ID, initEvent)
-
-	if _, err := service.RunSteps(testProjectSlug, tracked.ID); err == nil {
-		t.Fatal("expected an error for a harness with no registered decoder")
 	}
 }

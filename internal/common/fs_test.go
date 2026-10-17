@@ -347,6 +347,7 @@ func TestRunDirPaths(t *testing.T) {
 	}{
 		{name: "run directory", got: runDir, want: workspace + "/.drudge/runs/task-1"},
 		{name: "prompt", got: RunPromptPath(runDir), want: workspace + "/.drudge/runs/task-1/prompt.txt"},
+		{name: "harness", got: RunHarnessPath(runDir), want: workspace + "/.drudge/runs/task-1/harness"},
 		{name: "stream", got: RunStreamPath(runDir), want: workspace + "/.drudge/runs/task-1/stream.jsonl"},
 		{name: "stderr", got: RunStderrPath(runDir), want: workspace + "/.drudge/runs/task-1/stderr.log"},
 		{name: "exit", got: RunExitPath(runDir), want: workspace + "/.drudge/runs/task-1/exit"},

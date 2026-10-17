@@ -81,6 +81,10 @@ func logLines(content []byte) []string {
 type TaskRunSteps struct {
 	Task   *task.Task
 	RunDir string
+	// Harness is the harness the steps were read for. IsDecoded is false when
+	// DRUDGE has no decoder for it, and each Step then holds one raw line.
+	Harness   Harness
+	IsDecoded bool
 	// Steps is empty and IsStreamMissing is true while the agent has not
 	// written the event stream yet.
 	Steps           []Step
@@ -90,8 +94,10 @@ type TaskRunSteps struct {
 }
 
 // RunSteps decodes the event stream of the latest run of a task into the
-// harness-neutral Steps a compact view renders, using the decoder configured
-// for the project's harness. It refuses a task with no run directory.
+// harness-neutral Steps a compact view renders. It uses the decoder of the
+// harness the run recorded, or of the configured harness for a run that
+// recorded none. A harness with no decoder gives one unrecognized Step per
+// line. It refuses a task with no run directory.
 func (service *DrudgerService) RunSteps(projectSlug string, requestedID task.TaskID) (*TaskRunSteps, error) {
 	tracked, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
@@ -111,10 +117,14 @@ func (service *DrudgerService) RunSteps(projectSlug string, requestedID task.Tas
 		return nil, fmt.Errorf("task %s is %q and has no run to show the logs of, run it first", tracked.ID, tracked.Status)
 	}
 
-	decoder, ok := service.decoders[service.settings.Harness]
-	if !ok {
-		return nil, fmt.Errorf("DRUDGE does not know how to decode the run log of harness %q, print it with --raw instead", service.settings.Harness)
+	harness, isRecorded, err := service.runs.ReadHarness(tracked.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the harness of the run of task %s: %w", tracked.ID, err)
 	}
+	if !isRecorded {
+		harness = service.settings.Harness
+	}
+	decoder, isDecoded := service.decoders[harness]
 
 	runDir := layout.RunDir(tracked.ID)
 	stream, isStreamPresent, err := service.runs.ReadStream(tracked.ID)
@@ -128,12 +138,18 @@ func (service *DrudgerService) RunSteps(projectSlug string, requestedID task.Tas
 
 	var steps []Step
 	for _, line := range logLines(stream) {
+		if !isDecoded {
+			steps = append(steps, Step{Kind: StepUnrecognized, Raw: line})
+			continue
+		}
 		steps = append(steps, decoder.Decode(line)...)
 	}
 
 	return &TaskRunSteps{
 		Task:            tracked,
 		RunDir:          runDir,
+		Harness:         harness,
+		IsDecoded:       isDecoded,
 		Steps:           steps,
 		IsStreamMissing: !isStreamPresent,
 		Stderr:          logLines(stderr),

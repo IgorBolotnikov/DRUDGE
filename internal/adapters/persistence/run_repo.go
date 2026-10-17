@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -29,8 +30,8 @@ func NewFileRunRepository(projectDir string) *FileRunRepository {
 }
 
 // PrepareRun deletes the run directory of a task and creates it again holding
-// only the prompt.
-func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string) error {
+// only the prompt and the harness.
+func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string, harness drudger.Harness) error {
 	runDir, err := repo.runDir(taskID)
 	if err != nil {
 		return err
@@ -41,7 +42,10 @@ func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string) err
 	if err := common.EnsureDir(runDir); err != nil {
 		return err
 	}
-	return common.WriteFile(common.RunPromptPath(runDir), prompt)
+	if err := common.WriteFile(common.RunPromptPath(runDir), prompt); err != nil {
+		return err
+	}
+	return common.WriteFile(common.RunHarnessPath(runDir), string(harness))
 }
 
 // HasRun tells whether a task has a run directory.
@@ -51,6 +55,16 @@ func (repo *FileRunRepository) HasRun(taskID task.TaskID) (bool, error) {
 		return false, err
 	}
 	return common.Exists(runDir)
+}
+
+// ReadHarness reads the harness file of a run.
+func (repo *FileRunRepository) ReadHarness(taskID task.TaskID) (drudger.Harness, bool, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return "", false, err
+	}
+	content, isPresent, err := readRunFile(common.RunHarnessPath(runDir))
+	return drudger.Harness(content), isPresent, err
 }
 
 // ReadStream reads the event stream file of a run.

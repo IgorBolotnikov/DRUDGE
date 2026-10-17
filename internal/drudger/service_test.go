@@ -759,9 +759,15 @@ func newFakeRunRepo() *fakeRunRepo {
 	return &fakeRunRepo{runs: map[task.TaskID]*fakeRun{}}
 }
 
-func (repo *fakeRunRepo) PrepareRun(taskID task.TaskID, prompt string) error {
-	repo.runs[taskID] = &fakeRun{files: map[string]string{common.RunPromptName: prompt}, lastWrite: time.Now()}
+func (repo *fakeRunRepo) PrepareRun(taskID task.TaskID, prompt string, harness Harness) error {
+	files := map[string]string{common.RunPromptName: prompt, common.RunHarnessName: string(harness)}
+	repo.runs[taskID] = &fakeRun{files: files, lastWrite: time.Now()}
 	return nil
+}
+
+func (repo *fakeRunRepo) ReadHarness(taskID task.TaskID) (Harness, bool, error) {
+	content, isPresent := repo.file(taskID, common.RunHarnessName)
+	return Harness(content), isPresent, nil
 }
 
 func (repo *fakeRunRepo) HasRun(taskID task.TaskID) (bool, error) {
@@ -902,13 +908,13 @@ type testService struct {
 	progress *fakeProgress
 }
 
-// fakeStepDecoder decodes every line into one unrecognized Step holding the
-// line, so a test can tell which decoder a service picked without depending
-// on a real harness format.
+// fakeStepDecoder decodes every line into one agent text Step holding the
+// line, so a test can tell decoded steps from raw ones without depending on a
+// real harness format.
 type fakeStepDecoder struct{}
 
 func (fakeStepDecoder) Decode(line string) []Step {
-	return []Step{{Kind: StepUnrecognized, Raw: line}}
+	return []Step{{Kind: StepAgentText, Summary: line, Raw: line}}
 }
 
 // testDecoders are the decoders a test service picks from by harness.
@@ -1416,6 +1422,25 @@ func TestDrudgerService_RunTask_WritesThePromptForTheAgentToRead(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("expected the prompt file to contain %q, got %q", want, prompt)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_RecordsTheHarness(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	harness, isPresent, err := service.runs.ReadHarness(taskToRun.ID)
+	if err != nil {
+		t.Fatalf("ReadHarness: %v", err)
+	}
+	if !isPresent || harness != HarnessClaudeCode {
+		t.Errorf("expected the run to record harness %q, got %q (present %v)", HarnessClaudeCode, harness, isPresent)
 	}
 }
 

@@ -18,12 +18,13 @@ The agent writes a Session id on its first event. The agent harness resumes a Se
 Every run writes its files to `.drudge/runs/<task-id>/` in the project directory:
 
 - `prompt.txt`: the prompt the agent got
+- `harness`: the agent harness that launched the run. `drg task runlog` decodes the stream with it, so a change to the configured harness leaves old runs readable
 - `stream.jsonl`: the event stream of the agent, one JSON event per line
 - `stderr.log`: what the agent wrote to stderr
 - `exit`: the exit code of the agent, written once it exits
 - `pull-requests/`: the pull request descriptions [close-out]({{< relref "close-out" >}}) has not opened a pull request from yet
 
-The sandbox mounts the runs directory, so the agent writes its stream where DRUDGE reads it. A new run of the same Task deletes the directory and starts it again with only the new prompt. [`drg task rm`]({{< relref "/docs/cli/task/rm" >}}) deletes it with the Task.
+The sandbox mounts the runs directory, so the agent writes its stream where DRUDGE reads it. A new run of the same Task deletes the directory and starts it again with only the new prompt and harness. [`drg task rm`]({{< relref "/docs/cli/task/rm" >}}) deletes it with the Task.
 
 [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) prints the event stream and the stderr log. [`drg task show`]({{< relref "/docs/cli/task/show" >}}) prints what the last run left on the Task.
 

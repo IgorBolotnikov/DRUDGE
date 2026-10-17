@@ -104,8 +104,10 @@ func TestPrintRunSteps(t *testing.T) {
 		// isStreamMissing stands for a run whose agent has not written the
 		// event stream yet.
 		isStreamMissing bool
-		stderr          []string
-		want            string
+		// hasNoDecoder stands for a run whose harness DRUDGE cannot decode.
+		hasNoDecoder bool
+		stderr       []string
+		want         string
 	}{
 		{
 			name: "a compact view of a run",
@@ -176,6 +178,15 @@ func TestPrintRunSteps(t *testing.T) {
 				`{"type":"tool_progress"}` + "\n",
 		},
 		{
+			name:         "a harness with no decoder prints a note over its raw output",
+			hasNoDecoder: true,
+			steps:        []drudger.Step{{Kind: drudger.StepUnrecognized, Raw: `{"type":"step_start"}`}},
+			want: "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
+				runDir + "\n" +
+				"harness opencode has no decoder, showing its raw output\n" +
+				`{"type":"step_start"}` + "\n",
+		},
+		{
 			name:  "a fucked up final result",
 			steps: []drudger.Step{{Kind: drudger.StepFinalResult, Summary: "fucked up · 5 turns · 2m5s · $0.50"}},
 			want: "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
@@ -221,6 +232,8 @@ func TestPrintRunSteps(t *testing.T) {
 				printRunSteps(out, &drudger.TaskRunSteps{
 					Task:            ranTask,
 					RunDir:          runDir,
+					Harness:         drudger.HarnessOpencode,
+					IsDecoded:       !testCase.hasNoDecoder,
 					Steps:           testCase.steps,
 					IsStreamMissing: testCase.isStreamMissing,
 					Stderr:          testCase.stderr,
