@@ -25,6 +25,11 @@ const (
 	taskLine  = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Task","input":{"description":"Find runlog related files","subagent_type":"Explore"}}]}}`
 	agentLine = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"description":"Explore runlog and drudger code","subagent_type":"Explore"}}]}}`
 
+	codeStyleSkillLine       = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"code-style"}}]}}`
+	skillBodyLine            = `{"type":"user","message":{"content":[{"type":"text","text":"Base directory for this skill: /home/igorbolotnikov/Dev/drudge/.claude/skills/code-style\n\nThese rules apply to every Go file in this repo."}]},"isSynthetic":true}`
+	userTextLine             = `{"type":"user","message":{"content":[{"type":"text","text":"Base directory for this skill is the repo root."}]}}`
+	userTextNotSyntheticLine = `{"type":"user","message":{"content":[{"type":"text","text":"Keep going."}]},"isSynthetic":false}`
+
 	unknownToolLine = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"WebSearch","input":{"query":"golang json"}}]}}`
 
 	multiLineCommandLine = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go build ./...\ngo test ./..."}}]}}`
@@ -117,6 +122,21 @@ func TestClaudeCodeReader_Decode(t *testing.T) {
 			name: "a Skill call",
 			line: skillLine,
 			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Skill", Summary: "impl-ticket", Raw: skillLine}},
+		},
+		{
+			name: "a user text event",
+			line: userTextLine,
+			want: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "Base directory for this skill is the repo root.", Raw: userTextLine}},
+		},
+		{
+			name: "synthetic user text is hidden",
+			line: skillBodyLine,
+			want: nil,
+		},
+		{
+			name: "a user text event marked not synthetic",
+			line: userTextNotSyntheticLine,
+			want: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "Keep going.", Raw: userTextNotSyntheticLine}},
 		},
 		{
 			name: "a Task call",
@@ -227,6 +247,33 @@ func TestClaudeCodeReader_Decode(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := decoder.Decode(testCase.line)
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("expected %+v, got %+v", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestClaudeCodeReader_Decode_eventSequence(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []string
+		want  []drudger.Step
+	}{
+		{
+			name:  "a skill load shows the Skill call alone",
+			lines: []string{codeStyleSkillLine, successfulToolResultLine, skillBodyLine},
+			want:  []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Skill", Summary: "code-style", Raw: codeStyleSkillLine}},
+		},
+	}
+
+	decoder := NewClaudeCodeReader()
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var got []drudger.Step
+			for _, line := range testCase.lines {
+				got = append(got, decoder.Decode(line)...)
+			}
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Errorf("expected %+v, got %+v", testCase.want, got)
 			}

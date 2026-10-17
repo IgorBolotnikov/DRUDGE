@@ -86,7 +86,10 @@ type streamLine struct {
 	Type            string `json:"type"`
 	Subtype         string `json:"subtype"`
 	ParentToolUseID string `json:"parent_tool_use_id"`
-	Message         struct {
+	// IsSynthetic marks a user event whose text the harness injected, like
+	// the body of a skill the agent loaded.
+	IsSynthetic bool `json:"isSynthetic"`
+	Message     struct {
 		Content []contentBlock `json:"content"`
 	} `json:"message"`
 
@@ -142,7 +145,7 @@ func (*ClaudeCodeReader) Decode(line string) []drudger.Step {
 	case eventTypeSystem:
 		return systemSteps(parsed, line)
 	case eventTypeAssistant, eventTypeUser:
-		return contentSteps(parsed.Message.Content, eventDepth(parsed), line)
+		return contentSteps(parsed.Message.Content, eventDepth(parsed), parsed.IsSynthetic, line)
 	case eventTypeResult:
 		return []drudger.Step{resultStep(parsed, line)}
 	case eventTypeRateLimit, eventTypeToolProgress:
@@ -204,14 +207,17 @@ func eventDepth(parsed streamLine) int {
 }
 
 // contentSteps decodes the content blocks of an assistant or a user event
-// into Steps at the given depth. A thinking block and a successful tool
-// result decode to no Step.
-func contentSteps(blocks []contentBlock, depth int, line string) []drudger.Step {
+// into Steps at the given depth. A thinking block, a successful tool result
+// and the text of a synthetic event decode to no Step.
+func contentSteps(blocks []contentBlock, depth int, isSynthetic bool, line string) []drudger.Step {
 	var steps []drudger.Step
 	for _, block := range blocks {
 		var step drudger.Step
 		switch block.Type {
 		case contentTypeText:
+			if isSynthetic {
+				continue
+			}
 			step = drudger.Step{Kind: drudger.StepAgentText, Summary: block.Text, Raw: line}
 		case contentTypeToolUse:
 			step = toolCallStep(block, line)
