@@ -1,6 +1,6 @@
 ---
 title: Configuration
-weight: 2
+weight: 4
 ---
 
 DRUDGE reads three JSON files. Each page below lists every key of one file, generated from the JSON schema DRUDGE bundles.

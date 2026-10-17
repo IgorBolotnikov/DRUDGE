@@ -21,8 +21,8 @@ const (
 	// referenceURLPath is where the docs site serves the reference directory.
 	referenceURLPath = "/docs/cli"
 	referenceTitle   = "CLI reference"
-	// referenceWeight places the reference after Getting Started in the docs sidebar.
-	referenceWeight   = 2
+	// referenceWeight places the reference after Getting Started and Concepts in the docs sidebar.
+	referenceWeight   = 3
 	sectionIndexFile  = "_index.md"
 	pageExtension     = ".md"
 	regenerateCommand = "go test ./internal/cmd -run TestCLIReference -update"

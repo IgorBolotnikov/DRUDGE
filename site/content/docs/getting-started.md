@@ -3,7 +3,7 @@ title: Getting Started
 weight: 1
 ---
 
-This page takes you from nothing to a first Task handed to a Drudger.
+This page takes you from nothing to a first [Task]({{< relref "/docs/concepts/tasks" >}}) handed to a [Drudger]({{< relref "/docs/concepts/drudgers" >}}).
 
 ## Requirements
 
@@ -51,7 +51,7 @@ The schemas and the skill are rewritten on every run. The config files are writt
 
 ## First project
 
-Run [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in the directory you want the agents to work on:
+Run [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in the directory you want the agents to work on, to make it a [project]({{< relref "/docs/concepts/projects" >}}):
 
 ```sh
 cd ~/code/uploader
@@ -78,7 +78,7 @@ Hand it to a Drudger:
 drg task run 3f9a1c2e
 ```
 
-[`drg task run`]({{< relref "/docs/cli/task/run" >}}) takes the lowest free slot of the project. A slot with no Drudger yet gets one: a git worktree per repository under `.drudge/worktrees/slot-<n>/` and an sbx sandbox over them. An idle Drudger is reused. The Drudger checks out a branch for the Task, starts the agent in its sandbox and returns. `drudger.maxConcurrentDrudgers` in the global config caps how many Drudgers work on one project at once, and defaults to 3. `drg task run 3f9a1c2e --dry-run` prints the prompt the agent would get and starts nothing.
+[`drg task run`]({{< relref "/docs/cli/task/run" >}}) takes the lowest free slot of the project. A slot with no Drudger yet gets one: a git worktree per repository under `.drudge/worktrees/slot-<n>/` and an sbx sandbox over them. An idle Drudger is reused. The Drudger checks out a [branch]({{< relref "/docs/concepts/close-out" >}}) for the Task, starts the agent in its sandbox and returns. `drudger.maxConcurrentDrudgers` in the global config caps how many Drudgers work on one project at once, and defaults to 3. `drg task run 3f9a1c2e --dry-run` prints the prompt the agent would get and starts nothing.
 
 Watch it with [`drg task list`]({{< relref "/docs/cli/task/list" >}}), [`drg task show`]({{< relref "/docs/cli/task/show" >}}), [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) and [`drg task status`]({{< relref "/docs/cli/task/status" >}}):
 
@@ -89,7 +89,7 @@ drg task runlog 3f9a1c2e     # the event stream and the stderr log of the latest
 drg task status 3f9a1c2e     # whether the agent is working, stuck or finished
 ```
 
-Once the Session has ended, `drg task status` records the outcome on the Task. A Task that got shit done ends up `done`, or `unmerged` while its work is not on the default branch yet. A Task that fucked up ends up `fucked-up`. A Task the vendor turned away goes back to `todo`. Mark an `unmerged` Task done with [`drg task done`]({{< relref "/docs/cli/task/done" >}}) once its work is merged.
+Once the [Session]({{< relref "/docs/concepts/sessions" >}}) has ended, `drg task status` records the outcome on the Task. A Task that got shit done ends up `done`, or `unmerged` while its work is not on the default branch yet. A Task that fucked up ends up `fucked-up`. A Task the vendor turned away goes back to `todo`. Mark an `unmerged` Task done with [`drg task done`]({{< relref "/docs/cli/task/done" >}}) once its work is merged.
 
 [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) shows what each Drudger of the project is doing.
 
