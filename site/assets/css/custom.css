@@ -1,0 +1,12 @@
+/* The primary color is the rose-red of the logo. Light mode darkens it so links stay readable on white. */
+:root {
+  --primary-hue: 354deg;
+  --primary-saturation: 50%;
+  --primary-lightness: 45%;
+}
+
+.dark {
+  --primary-hue: 354deg;
+  --primary-saturation: 50%;
+  --primary-lightness: 60%;
+}

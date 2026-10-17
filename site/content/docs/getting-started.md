@@ -1,0 +1,108 @@
+---
+title: Getting Started
+weight: 1
+---
+
+This page takes you from nothing to a first Task handed to a Drudger.
+
+## Requirements
+
+- Linux or macOS. On Windows, run DRUDGE inside WSL.
+- git.
+- [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) with the `sbx` CLI. Every Drudger runs its agent in an `sbx` sandbox.
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with a login. sbx keeps its own copy of the token, and a host login does not refresh it. When the token inside sbx expires, log in again and re-seed the credentials inside sbx.
+
+## Install
+
+```sh
+curl -fsSL https://drgtools.dev/install.sh | sh
+```
+
+The script puts `drg` in `~/.local/bin`, or in `/usr/local/bin` when run as root. It checks the download against the checksums of the release.
+
+Set `DRG_VERSION` to install a specific release and `DRG_INSTALL_DIR` to pick another directory:
+
+```sh
+curl -fsSL https://drgtools.dev/install.sh | DRG_VERSION=v0.1.0 DRG_INSTALL_DIR="$HOME/bin" sh
+```
+
+With Go installed, you can build it from source:
+
+```sh
+go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
+```
+
+## Set up
+
+```sh
+drg setup
+```
+
+`drg setup` creates `~/.drudge/` and writes:
+
+- `~/.drudge/config.json`, the global config
+- `~/.drudge/theme.json`, the color theme
+- `~/.drudge/schema/`, the JSON schemas both config files and the project config point at
+- `~/.drudge/projects/`, where the projects and their Tasks live
+
+It also installs the DRUDGE skill for Claude Code at `~/.claude/skills/DRUDGE/SKILL.md`. The skill lets a planning agent write DRUDGE Tasks for you.
+
+The schemas and the skill are rewritten on every run. The config files are written only when they are missing, so running `drg setup` again keeps your settings.
+
+## First project
+
+Run `drg project init` in the directory you want the agents to work on:
+
+```sh
+cd ~/code/uploader
+drg project init uploader
+```
+
+A directory that is a git repository becomes the one repository of the project. Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.
+
+`drg project init` writes `.drudge/config.json` in that directory. Task commands run there work on that project. It prints each repository with the default branch that task branches are cut from. The default branch is read from `origin/HEAD`. When it shows as `unresolved`, run `git remote set-head origin -a` in the repository, or set `defaultBranch` for it in `.drudge/config.json`.
+
+## First task
+
+Add a Task. Its description is the prompt the agent gets:
+
+```sh
+drg task new --title "Add retry to uploader" --description "Retry a failed upload three times before giving up." --status todo
+```
+
+It prints the short id of the Task. A Task created without `--status` is a `draft`, which waits for you to review it. Only a `todo` Task can be run. `--description-file` reads a longer description from a file, or from stdin with `-`.
+
+Hand it to a Drudger:
+
+```sh
+drg task run 3f9a1c2e
+```
+
+`drg task run` takes the lowest free slot of the project. A slot with no Drudger yet gets one: a git worktree per repository under `.drudge/worktrees/slot-<n>/` and an sbx sandbox over them. An idle Drudger is reused. The Drudger checks out a branch for the Task, starts the agent in its sandbox and returns. `drudger.maxConcurrentDrudgers` in the global config caps how many Drudgers work on one project at once, and defaults to 3. `drg task run 3f9a1c2e --dry-run` prints the prompt the agent would get and starts nothing.
+
+Watch it:
+
+```sh
+drg task list                # every Task of the project and its status
+drg task show 3f9a1c2e       # one Task in full, with what its last run left behind
+drg task runlog 3f9a1c2e     # the event stream and the stderr log of the latest run
+drg task status 3f9a1c2e     # whether the agent is working, stuck or finished
+```
+
+Once the Session has ended, `drg task status` records the outcome on the Task. A Task that got shit done ends up `done`, or `unmerged` while its work is not on the default branch yet. A Task that fucked up ends up `fucked-up`. A Task the vendor turned away goes back to `todo`. Mark an `unmerged` Task done with `drg task done` once its work is merged.
+
+`drg drudger list` shows what each Drudger of the project is doing.
+
+## Update and uninstall
+
+```sh
+drg update
+```
+
+`drg update` replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
+
+```sh
+drg cleanup
+```
+
+`drg cleanup` asks before it removes `~/.drudge/` with every project and Task in it. `--force` skips the question. It leaves the `drg` binary, the skill under `~/.claude/skills/`, the `.drudge/` directories of your projects and the sbx sandboxes in place. Remove the sandboxes first with `drg drudger nuke <slot>` in each project, then delete the binary.

@@ -4,17 +4,6 @@
   </picture>
 </p>
 
-<!--toc:start-->
-
-- [Features](#features)
-- [Install](#install)
-  - [Single command](#single-command)
-  - [Go](#go)
-  - [Update](#update)
-- [Future improvements](#future-improvements)
-
-<!--toc:end-->
-
 DRUDGE runs your backlog through coding agents, each in its own sandbox, on your own machine.
 
 You make the decisions and review what comes back. The agents do the grunt work in between.
@@ -29,7 +18,7 @@ They're not coworkers. They're not digital employees. They're tools.
 - Tasks grouped by ticket (external ID) and by parent task
 - A pool of reusable drudgers, each with its own git worktree per repository
 - Several drudgers working in parallel, you configure how many
-- Claude Code as the agent (others TBD) vendor
+- Claude Code as the agent vendor (others TBD)
 - A full record of every run: the prompt, the event stream, the logs, the cost and the time it took to work on a task
 - Tasks go back to the queue when the vendor turns an agent away, whether by rate limit, outage or expired login
 - Commands to reclaim a stuck sandbox or nuke a broken one
@@ -38,34 +27,8 @@ They're not coworkers. They're not digital employees. They're tools.
 
 ## Install
 
-DRUDGE runs on Linux and macOS. On Windows, use WSL.
-
-### Single command
-
 ```sh
 curl -fsSL https://drgtools.dev/install.sh | sh
 ```
 
-The script puts `drg` in `~/.local/bin`, or in `/usr/local/bin` when run as root. Set `DRG_VERSION=v0.1.0` to install a specific release, or `DRG_INSTALL_DIR` to pick another directory.
-
-### Go
-
-```sh
-go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
-```
-
-Then run `drg setup`.
-
-### Update
-
-```sh
-drg update
-```
-
-It replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
-
-## Future improvements
-
-- TUI
-- Extensibility with plugins
-- More agent vendors
+Other install options, setup and your first task are in the docs at https://drgtools.dev/docs/.

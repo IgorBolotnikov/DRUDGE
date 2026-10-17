@@ -1,0 +1,6 @@
+{{- /* Hextra compiles its own highlight colors into its stylesheet. These load after it and win on equal specificity. */ -}}
+{{- $chroma := slice (resources.Get "css/chroma/light.css") (resources.Get "css/chroma/dark.css") | resources.Concat "css/chroma.css" -}}
+{{- if hugo.IsProduction -}}
+  {{- $chroma = $chroma | minify | fingerprint -}}
+{{- end -}}
+<link href="{{ $chroma.RelPermalink }}" rel="stylesheet"{{ with $chroma.Data.Integrity }} integrity="{{ . }}"{{ end }} />

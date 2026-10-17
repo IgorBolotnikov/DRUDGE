@@ -1,0 +1,78 @@
+baseURL: https://drgtools.dev/
+title: DRUDGE
+
+enableRobotsTXT: true
+enableGitInfo: true
+
+module:
+  hugoVersion:
+    extended: true
+    min: "0.168.0"
+  imports:
+    - path: github.com/imfing/hextra
+  # A mount replaces the default mount of its target, so static is mounted
+  # again next to the files from the repository root.
+  mounts:
+    - source: static
+      target: static
+    - source: ../install.sh
+      target: static/install.sh
+    - source: ../assets/logo.svg
+      target: static/images/logo.svg
+
+markup:
+  highlight:
+    noClasses: false
+  goldmark:
+    renderer:
+      unsafe: true
+
+menu:
+  main:
+    - name: Docs
+      pageRef: /docs
+      weight: 1
+    - name: Search
+      weight: 2
+      params:
+        type: search
+    - name: GitHub
+      weight: 3
+      url: https://github.com/IgorBolotnikov/DRUDGE
+      params:
+        icon: github
+    - name: Theme
+      weight: 4
+      params:
+        type: theme-toggle
+
+params:
+  description: DRUDGE runs your backlog through coding agents, each in its own sandbox, on your own machine.
+
+  navbar:
+    displayTitle: false
+    displayLogo: true
+    logo:
+      path: images/logo.svg
+      width: 83
+      height: 20
+
+  theme:
+    default: system
+    displayToggle: true
+
+  displayUpdatedDate: true
+  dateFormat: January 2, 2006
+
+  search:
+    enable: true
+    type: flexsearch
+
+  editURL:
+    enable: true
+    base: https://github.com/IgorBolotnikov/DRUDGE/edit/main/site/content
+
+  highlight:
+    copy:
+      enable: true
+      display: hover

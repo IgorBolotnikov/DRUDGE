@@ -1,4 +1,4 @@
-.PHONY: drg build test loc release review merge
+.PHONY: drg build test loc release review merge site
 
 build:
 	go build -o drg ./cmd/drg
@@ -7,9 +7,9 @@ test:
 	go test ./...
 
 loc:
-	@printf 'Go production  %7s\n' "$$(find . -name '*.go' -not -name '*_test.go' -not -path './.git/*' -exec cat {} + | wc -l)"
-	@printf 'Go tests       %7s\n' "$$(find . -name '*_test.go' -not -path './.git/*' -exec cat {} + | wc -l)"
-	@printf 'Markdown       %7s\n' "$$(find . -name '*.md' -not -path './.git/*' -exec cat {} + | wc -l)"
+	@printf 'Go production  %7s\n' "$$(find . -name '*.go' -not -name '*_test.go' -not -path './.git/*' -not -path './site/*' -exec cat {} + | wc -l)"
+	@printf 'Go tests       %7s\n' "$$(find . -name '*_test.go' -not -path './.git/*' -not -path './site/*' -exec cat {} + | wc -l)"
+	@printf 'Markdown       %7s\n' "$$(find . -name '*.md' -not -path './.git/*' -not -path './site/*' -exec cat {} + | wc -l)"
 	@echo
 	@echo 'Production by package:'
 	@for dir in $$(find internal -type d | sort); do \
@@ -25,6 +25,9 @@ review:
 
 merge:
 	@scripts/drudger.sh merge $(filter-out merge,$(MAKECMDGOALS))
+
+site:
+	@cd site && hugo server
 
 %:
 	@:
