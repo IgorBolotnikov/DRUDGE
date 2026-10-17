@@ -1,4 +1,4 @@
-// Package streams holds the stream decoders of the agent harnesses drudge
+// Package streams holds the stream readers of the agent harnesses drudge
 // supports.
 package streams
 
@@ -70,18 +70,18 @@ const subagentDepth = 1
 // init line shows.
 const sessionIDDisplayLength = 8
 
-// ClaudeCodeDecoder decodes the stream-json lines the Claude Code harness
-// writes into harness-neutral Steps.
-type ClaudeCodeDecoder struct{}
+// ClaudeCodeReader reads the stream-json event stream the Claude Code harness
+// writes.
+type ClaudeCodeReader struct{}
 
-// NewClaudeCodeDecoder builds a decoder for the stream-json format the Claude
+// NewClaudeCodeReader builds a reader for the stream-json format the Claude
 // Code harness writes.
-func NewClaudeCodeDecoder() *ClaudeCodeDecoder {
-	return &ClaudeCodeDecoder{}
+func NewClaudeCodeReader() *ClaudeCodeReader {
+	return &ClaudeCodeReader{}
 }
 
 // streamLine is one line of a Claude Code event stream. The harness writes
-// many more fields than these; only the ones a Step needs are decoded.
+// many more fields than these. Only the ones drudge reads are decoded.
 type streamLine struct {
 	Type            string `json:"type"`
 	Subtype         string `json:"subtype"`
@@ -100,6 +100,13 @@ type streamLine struct {
 	NumTurns     int     `json:"num_turns"`
 	DurationMS   int64   `json:"duration_ms"`
 	TotalCostUSD float64 `json:"total_cost_usd"`
+	Result       string  `json:"result"`
+	// TerminalReason says what ended the run. It is the only field that names
+	// a vendor-level failure.
+	TerminalReason string `json:"terminal_reason"`
+
+	// Error is the code of a failure the agent hit on a turn.
+	Error string `json:"error"`
 }
 
 // contentBlock is one block of an assistant or a user event's message.
@@ -125,7 +132,7 @@ type toolInput struct {
 // Decode turns one line of a Claude Code event stream into the Steps it
 // holds. A line that is not valid JSON, or whose event type is none of the
 // ones below, decodes to one unrecognized Step holding the line as it is.
-func (*ClaudeCodeDecoder) Decode(line string) []drudger.Step {
+func (*ClaudeCodeReader) Decode(line string) []drudger.Step {
 	var parsed streamLine
 	if err := json.Unmarshal([]byte(line), &parsed); err != nil {
 		return unrecognizedStep(line)

@@ -4,6 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // Sample events of a real run, one per line of the stream.
@@ -32,44 +35,40 @@ const (
 	uncodedRefusalResultEvent = `{"type":"result","subtype":"success","is_error":true,"num_turns":1,"duration_ms":700,"total_cost_usd":0,"session_id":"ebe60e03-991c-44f9-861c-f9e779298552","terminal_reason":"api_error","result":"` + vendorOutageText + `"}`
 )
 
-func TestSessionIDFromStream(t *testing.T) {
-	cases := []struct {
-		name  string
-		lines []string
-		want  string
-	}{
-		{name: "an init event", lines: []string{initEvent}, want: sampleSessionID},
-		{name: "a whole finished run", lines: []string{initEvent, assistantEvent, resultEvent}, want: sampleSessionID},
-		{name: "a result event alone", lines: []string{resultEvent}, want: sampleSessionID},
-		{name: "an empty stream"},
-		{name: "a first line that is not written yet", lines: []string{""}},
-		{name: "a half-written init event", lines: []string{`{"type":"system","subtype":"init","session`}},
-		{name: "a line that is not JSON at all", lines: []string{"Starting claude agent"}},
-		{name: "an init event after a broken line", lines: []string{"not json", initEvent}, want: sampleSessionID},
-		{name: "an event type drudge does not know", lines: []string{`{"type":"rate_limit_event","session_id":"other"}`}},
-		{name: "an init event without a session id", lines: []string{`{"type":"system","subtype":"init"}`}},
-		{name: "a system event that is not the init one", lines: []string{`{"type":"system","subtype":"compact","session_id":"other"}`}},
-	}
+// unreadableEvent is a line the fake stream reader fails on.
+const unreadableEvent = "a line the stream reader cannot read"
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			got, err := sessionIDFromStream(strings.NewReader(joinLines(testCase.lines)))
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != testCase.want {
-				t.Errorf("expected session id %q, got %q", testCase.want, got)
-			}
-		})
-	}
+// sampleEvent is what a stream reader reads off one sample event.
+type sampleEvent struct {
+	sessionID       string
+	result          *SessionResult
+	isVendorRefusal bool
+	errorCode       string
 }
 
-func TestSessionIDFromStream_LinePastTheSizeLimit(t *testing.T) {
-	oversized := strings.Repeat("x", streamLineMaxSize+1)
-
-	if _, err := sessionIDFromStream(strings.NewReader(oversized)); err == nil {
-		t.Fatal("expected an error for a line past the size limit")
-	}
+// sampleEvents holds what every sample event says, keyed by its line.
+var sampleEvents = map[string]sampleEvent{
+	initEvent: {sessionID: sampleSessionID},
+	resultEvent: {sessionID: sampleSessionID, result: &SessionResult{
+		Subtype: "success", HasSucceeded: true, NumTurns: 3, Duration: 8664 * time.Millisecond, CostUSD: 0.0695, Text: "Done",
+	}},
+	erroredResultEvent: {sessionID: sampleSessionID, result: &SessionResult{
+		IsError: true, Subtype: "success", HasSucceeded: true, NumTurns: 2, Duration: 4000 * time.Millisecond, CostUSD: 0.02, Text: "Could not build",
+	}},
+	cutOffResultEvent: {sessionID: sampleSessionID, result: &SessionResult{
+		Subtype: "error_max_turns", NumTurns: 50, Duration: 900000 * time.Millisecond, CostUSD: 1.5, Text: "Ran out of turns",
+	}},
+	authRefusedEvent: {errorCode: "authentication_failed"},
+	authRefusedResultEvent: {sessionID: sampleSessionID, isVendorRefusal: true, result: &SessionResult{
+		IsError: true, Subtype: "success", HasSucceeded: true, NumTurns: 1, Duration: 1200 * time.Millisecond, Text: authRefusedText,
+	}},
+	rateLimitedEvent: {errorCode: "rate_limit_error"},
+	rateLimitedResultEvent: {sessionID: sampleSessionID, isVendorRefusal: true, result: &SessionResult{
+		IsError: true, Subtype: "success", HasSucceeded: true, NumTurns: 1, Duration: 800 * time.Millisecond, Text: rateLimitedText,
+	}},
+	uncodedRefusalResultEvent: {sessionID: sampleSessionID, isVendorRefusal: true, result: &SessionResult{
+		IsError: true, Subtype: "success", HasSucceeded: true, NumTurns: 1, Duration: 700 * time.Millisecond, Text: vendorOutageText,
+	}},
 }
 
 func TestReadSessionID(t *testing.T) {
@@ -93,7 +92,7 @@ func TestReadSessionID(t *testing.T) {
 				runs.writeStream(taskID, testCase.lines...)
 			}
 
-			got, err := readSessionID(runs, taskID)
+			got, err := testRunReader(runs).sessionID(taskID)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -110,8 +109,42 @@ func TestReadSessionID_UnreadableStream(t *testing.T) {
 	runs := newFakeRunRepo()
 	runs.streamErr = errors.New("is a directory")
 
-	if _, err := readSessionID(runs, todoTask().ID); err == nil {
+	if _, err := testRunReader(runs).sessionID(todoTask().ID); err == nil {
 		t.Fatal("expected an error for a stream that cannot be read")
+	}
+}
+
+func TestRunReader_HarnessWithoutAStreamReader(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured Harness
+		// recorded is the harness the run recorded, empty for a run that
+		// recorded none.
+		recorded Harness
+	}{
+		{name: "a recorded harness", configured: HarnessClaudeCode, recorded: HarnessOpencode},
+		{name: "the configured harness of a run that recorded none", configured: HarnessOpencode},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			runs := newFakeRunRepo()
+			taskID := todoTask().ID
+			runs.writeStream(taskID, initEvent)
+			if testCase.recorded != "" {
+				runs.write(taskID, common.RunHarnessName, string(testCase.recorded))
+			}
+			reader := testRunReader(runs)
+			reader.configured = testCase.configured
+
+			_, err := reader.sessionID(taskID)
+			if err == nil {
+				t.Fatal("expected an error for a harness with no stream reader")
+			}
+			if !strings.Contains(err.Error(), string(HarnessOpencode)) {
+				t.Errorf("expected the error to name harness %s, got %q", HarnessOpencode, err)
+			}
+		})
 	}
 }
 

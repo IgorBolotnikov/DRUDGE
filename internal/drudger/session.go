@@ -60,11 +60,15 @@ type SessionReport struct {
 // SessionResult is what an agent reported on the terminal event of its run.
 type SessionResult struct {
 	IsError  bool          // whether the agent flagged the run as an error
-	Subtype  string        // how the run ended, "success" when the agent got through it
+	Subtype  string        // how the run ended, in the words of the harness
 	NumTurns int           // how many turns the agent took
 	Duration time.Duration // how long the agent worked
 	CostUSD  float64       // what the run cost
 	Text     string        // the last thing the agent said
+
+	// HasSucceeded is whether the harness says the agent got through the
+	// work it was given.
+	HasSucceeded bool
 
 	// VendorErrorClass is which kind of refusal the vendor made. It is empty
 	// when the vendor refused nothing, so it is also the answer to whether the
@@ -101,7 +105,7 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
-	report, err := readSessionReport(service.runs, layout, tracked.ID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), layout, tracked.ID, time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return nil, fmt.Errorf("task %s is %q and has no run to report on, run it first", tracked.ID, tracked.Status)
 	}
@@ -298,7 +302,7 @@ func taskStatusOf(status SessionStatus, finished *task.Task, outOfScope []string
 	return task.StatusDone
 }
 
-func readSessionReport(runs RunRepository, layout projectLayout, taskID task.TaskID, now time.Time) (SessionReport, error) {
+func readSessionReport(runs runReader, layout projectLayout, taskID task.TaskID, now time.Time) (SessionReport, error) {
 	runDir := layout.RunDir(taskID)
 
 	hasRun, err := runs.HasRun(taskID)
@@ -311,14 +315,14 @@ func readSessionReport(runs RunRepository, layout projectLayout, taskID task.Tas
 
 	report := SessionReport{RunDir: runDir}
 
-	if report.SessionID, err = readSessionID(runs, taskID); err != nil {
+	if report.SessionID, err = runs.sessionID(taskID); err != nil {
 		return SessionReport{}, err
 	}
 	if report.LastWrite, err = runs.LastWrite(taskID); err != nil {
 		return SessionReport{}, err
 	}
 
-	outcome, err := readOutcome(runs, taskID)
+	outcome, err := runs.outcome(taskID)
 	if err != nil {
 		return SessionReport{}, err
 	}
@@ -381,7 +385,7 @@ func statusOfFinished(exitCode int, result *SessionResult) SessionStatus {
 	if exitCode != 0 {
 		return StatusFuckedUp
 	}
-	if result == nil || result.IsError || result.Subtype != streamSubtypeSuccess {
+	if result == nil || result.IsError || !result.HasSucceeded {
 		return StatusFuckedUp
 	}
 	return StatusGotShitDone
@@ -402,26 +406,18 @@ func readExitCode(runs RunRepository, taskID task.TaskID, runDir string) (int, e
 	return exitCode, nil
 }
 
-// sessionResultOf keeps the parts of a terminal event drudge reports on. A nil
-// result means the agent has not written a terminal event yet.
-func sessionResultOf(outcome streamOutcome) *SessionResult {
-	terminal := outcome.terminal
-	if terminal == nil {
+// sessionResultOf adds the vendor error class to the result of a terminal
+// event. A nil result means the agent has not written a terminal event yet.
+func sessionResultOf(outcome StreamOutcome) *SessionResult {
+	if outcome.Result == nil {
 		return nil
 	}
 
-	result := &SessionResult{
-		IsError:  terminal.IsError,
-		Subtype:  terminal.Subtype,
-		NumTurns: terminal.NumTurns,
-		Duration: time.Duration(terminal.DurationMS) * time.Millisecond,
-		CostUSD:  terminal.TotalCostUSD,
-		Text:     terminal.Result,
+	result := *outcome.Result
+	if outcome.IsVendorRefusal {
+		result.VendorErrorClass = vendorErrorClassOf(outcome.ErrorCode)
 	}
-	if terminal.vendorRefused() {
-		result.VendorErrorClass = vendorErrorClassOf(outcome.errorCode)
-	}
-	return result
+	return &result
 }
 
 // vendorErrorClassOf reads which kind of refusal a vendor error code was. A

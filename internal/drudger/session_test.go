@@ -169,7 +169,7 @@ func TestReadSessionReport(t *testing.T) {
 				runs.writeExit(taskID, testCase.exit)
 			}
 
-			report, err := readSessionReport(runs, layout, taskID, time.Now().UTC().Add(testCase.since))
+			report, err := readSessionReport(testRunReader(runs), layout, taskID, time.Now().UTC().Add(testCase.since))
 
 			if testCase.wantErr {
 				if err == nil {
@@ -209,7 +209,7 @@ func TestReadSessionReport(t *testing.T) {
 func TestReadSessionReport_MissingRunDirectory(t *testing.T) {
 	layout := projectLayout{Dir: t.TempDir()}
 
-	if _, err := readSessionReport(newFakeRunRepo(), layout, "never-run", time.Now().UTC()); err == nil {
+	if _, err := readSessionReport(testRunReader(newFakeRunRepo()), layout, "never-run", time.Now().UTC()); err == nil {
 		t.Fatal("expected an error for a run directory that is not there")
 	}
 }
@@ -220,17 +220,18 @@ func TestReadSessionReport_KeepsTheFactsOfATerminalEvent(t *testing.T) {
 	runs.writeStream(taskID, initEvent, resultEvent)
 	runs.writeExit(taskID, "0\n")
 
-	report, err := readSessionReport(runs, projectLayout{Dir: t.TempDir()}, taskID, time.Now().UTC())
+	report, err := readSessionReport(testRunReader(runs), projectLayout{Dir: t.TempDir()}, taskID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	want := SessionResult{
-		Subtype:  "success",
-		NumTurns: 3,
-		Duration: 8664 * time.Millisecond,
-		CostUSD:  0.0695,
-		Text:     "Done",
+		Subtype:      "success",
+		NumTurns:     3,
+		Duration:     8664 * time.Millisecond,
+		CostUSD:      0.0695,
+		Text:         "Done",
+		HasSucceeded: true,
 	}
 	if report.Result == nil {
 		t.Fatal("expected the terminal event to be recorded")

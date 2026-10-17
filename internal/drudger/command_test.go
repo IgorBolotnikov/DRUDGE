@@ -89,6 +89,27 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 	}
 }
 
+func TestDrudgerService_RunTask_HarnessWithoutAStreamReader(t *testing.T) {
+	setupProjectDir(t)
+	commands := &fakeCommandRunner{}
+	service := newTestServiceWith(testSettings(), commands, todoTask())
+	service.streams = map[Harness]StreamReader{}
+
+	err := service.RunTask(testProjectSlug, "task-1", false)
+	if err == nil {
+		t.Fatal("expected an error for a harness with no stream reader")
+	}
+	if !strings.Contains(err.Error(), string(HarnessClaudeCode)) {
+		t.Errorf("expected the error to name harness %s, got %q", HarnessClaudeCode, err)
+	}
+	if commands.calls != nil {
+		t.Errorf("expected nothing to be run, got %v", commands.subcommands())
+	}
+	if len(service.drudgers.drudgers) != 0 {
+		t.Errorf("expected no Drudger to be claimed, got %+v", service.drudgers.drudgers)
+	}
+}
+
 func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))

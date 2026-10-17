@@ -245,7 +245,7 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 			var wantSteps []Step
 			for _, line := range testCase.stream {
 				if testCase.wantDecoded {
-					wantSteps = append(wantSteps, fakeStepDecoder{}.Decode(line)...)
+					wantSteps = append(wantSteps, fakeStreamReader{}.Decode(line)...)
 				} else {
 					wantSteps = append(wantSteps, Step{Kind: StepUnrecognized, Raw: line})
 				}

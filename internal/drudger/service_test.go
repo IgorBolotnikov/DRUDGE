@@ -908,18 +908,64 @@ type testService struct {
 	progress *fakeProgress
 }
 
-// fakeStepDecoder decodes every line into one agent text Step holding the
+// fakeStreamReader decodes every line into one agent text Step holding the
 // line, so a test can tell decoded steps from raw ones without depending on a
-// real harness format.
-type fakeStepDecoder struct{}
+// real harness format. It answers the session id and the outcome of a stream
+// from what the sample events say, and skips a line it has no sample for.
+type fakeStreamReader struct{}
 
-func (fakeStepDecoder) Decode(line string) []Step {
+func (fakeStreamReader) Decode(line string) []Step {
 	return []Step{{Kind: StepAgentText, Summary: line, Raw: line}}
 }
 
-// testDecoders are the decoders a test service picks from by harness.
-func testDecoders() map[Harness]StreamDecoder {
-	return map[Harness]StreamDecoder{HarnessClaudeCode: fakeStepDecoder{}}
+func (fakeStreamReader) SessionID(stream []byte) (string, error) {
+	samples, err := sampleEventsOf(stream)
+	for _, sample := range samples {
+		if sample.sessionID != "" {
+			return sample.sessionID, err
+		}
+	}
+	return "", err
+}
+
+func (fakeStreamReader) Outcome(stream []byte) (StreamOutcome, error) {
+	var outcome StreamOutcome
+	samples, err := sampleEventsOf(stream)
+	for _, sample := range samples {
+		if sample.errorCode != "" {
+			outcome.ErrorCode = sample.errorCode
+		}
+		if sample.result != nil {
+			outcome.Result = sample.result
+			outcome.IsVendorRefusal = sample.isVendorRefusal
+		}
+	}
+	return outcome, err
+}
+
+// sampleEventsOf looks up what every line of a stream says. It fails on the
+// unreadable event.
+func sampleEventsOf(stream []byte) ([]sampleEvent, error) {
+	var samples []sampleEvent
+	for _, line := range logLines(stream) {
+		if line == unreadableEvent {
+			return nil, errors.New("the fake stream reader cannot read this line")
+		}
+		if sample, ok := sampleEvents[line]; ok {
+			samples = append(samples, sample)
+		}
+	}
+	return samples, nil
+}
+
+func testStreamReaders() map[Harness]StreamReader {
+	return map[Harness]StreamReader{HarnessClaudeCode: fakeStreamReader{}}
+}
+
+// testRunReader reads the runs of a fake run repository like a test service
+// does.
+func testRunReader(runs RunRepository) runReader {
+	return runReader{RunRepository: runs, streams: testStreamReaders(), configured: HarnessClaudeCode}
 }
 
 // testSettings are the settings of the built-in default configs.
@@ -960,7 +1006,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
 	progress := &fakeProgress{}
-	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil, testDecoders())
+	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil, testStreamReaders())
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
@@ -2102,7 +2148,7 @@ func TestDrudgerService_RunTask_ClearsWhatThePreviousRunLeft(t *testing.T) {
 		t.Error("expected the exit code of the previous run to be gone")
 	}
 
-	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRun.ID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), projectLayout{Dir: projectDir}, taskToRun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -2219,7 +2265,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 		t.Error("expected the task record to be left alone")
 	}
 
-	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -2277,7 +2323,7 @@ func TestDrudgerService_RerunTask_ClearsTheFinishedRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -2357,7 +2403,7 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 		t.Errorf("expected the task to stay %q, got %q", task.StatusFuckedUp, taskToRerun.Status)
 	}
 
-	report, err := readSessionReport(service.runs, projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), projectLayout{Dir: projectDir}, taskToRerun.ID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("could not read the run directory: %v", err)
 	}
@@ -3065,7 +3111,7 @@ func TestDrudgerService_RunTask_ReportsASessionIDItCouldNotRead(t *testing.T) {
 
 	commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith(testSandbox)}}
 	commands.onStart = func(runs *fakeRunRepo) {
-		runs.writeStream(taskToRun.ID, strings.Repeat("x", streamLineMaxSize+1))
+		runs.writeStream(taskToRun.ID, unreadableEvent)
 	}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 

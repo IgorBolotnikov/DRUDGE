@@ -117,14 +117,11 @@ func (service *DrudgerService) RunSteps(projectSlug string, requestedID task.Tas
 		return nil, fmt.Errorf("task %s is %q and has no run to show the logs of, run it first", tracked.ID, tracked.Status)
 	}
 
-	harness, isRecorded, err := service.runs.ReadHarness(tracked.ID)
+	harness, err := service.runReader().harnessOf(tracked.ID)
 	if err != nil {
-		return nil, fmt.Errorf("could not read the harness of the run of task %s: %w", tracked.ID, err)
+		return nil, err
 	}
-	if !isRecorded {
-		harness = service.settings.Harness
-	}
-	decoder, isDecoded := service.decoders[harness]
+	decoder, isDecoded := service.streams[harness]
 
 	runDir := layout.RunDir(tracked.ID)
 	stream, isStreamPresent, err := service.runs.ReadStream(tracked.ID)

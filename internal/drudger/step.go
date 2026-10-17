@@ -29,10 +29,3 @@ type Step struct {
 	// Raw is the line the step was decoded from.
 	Raw string
 }
-
-// StreamDecoder turns one line of a run's event stream into the Steps it
-// holds. An event a harness writes only for its own bookkeeping, like a
-// thinking block or a heartbeat, decodes to no Steps.
-type StreamDecoder interface {
-	Decode(line string) []Step
-}

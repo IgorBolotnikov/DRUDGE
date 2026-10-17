@@ -8,7 +8,7 @@ import (
 )
 
 // Lines trimmed from real runs under .drudge/runs, used to build the table of
-// TestClaudeCodeDecoder_Decode.
+// TestClaudeCodeReader_Decode.
 const (
 	initLine = `{"type":"system","subtype":"init","session_id":"13b19929-4c9d-4eca-80dd-4270c085ab69","cwd":"/home/igorbolotnikov/Dev/drudge/.drudge/worktrees/slot-1","model":"claude-opus-5-5"}`
 
@@ -62,7 +62,7 @@ const (
 	unknownTypeLine = `{"type":"stream_event","event":{"type":"message_start"}}`
 )
 
-func TestClaudeCodeDecoder_Decode(t *testing.T) {
+func TestClaudeCodeReader_Decode(t *testing.T) {
 	cases := []struct {
 		name string
 		line string
@@ -223,7 +223,7 @@ func TestClaudeCodeDecoder_Decode(t *testing.T) {
 		},
 	}
 
-	decoder := NewClaudeCodeDecoder()
+	decoder := NewClaudeCodeReader()
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := decoder.Decode(testCase.line)

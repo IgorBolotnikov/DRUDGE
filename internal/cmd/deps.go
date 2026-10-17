@@ -91,15 +91,15 @@ func newCommandDeps() (*commandDeps, error) {
 		globalCfg: globalCfg,
 		out:       out,
 		tasks:     tasks,
-		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote, streamDecoders()),
+		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote, streamReaders()),
 	}, nil
 }
 
-// streamDecoders maps every harness drudge knows how to decode the event
-// stream of onto its decoder.
-func streamDecoders() map[drudger.Harness]drudger.StreamDecoder {
-	return map[drudger.Harness]drudger.StreamDecoder{
-		drudger.HarnessClaudeCode: streams.NewClaudeCodeDecoder(),
+// streamReaders maps every harness drudge knows how to read the event stream
+// of onto its reader.
+func streamReaders() map[drudger.Harness]drudger.StreamReader {
+	return map[drudger.Harness]drudger.StreamReader{
+		drudger.HarnessClaudeCode: streams.NewClaudeCodeReader(),
 	}
 }
 

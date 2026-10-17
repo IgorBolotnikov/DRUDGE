@@ -59,9 +59,9 @@ type DrudgerService struct {
 	// remote is the provider pull requests are opened on. It is nil when pull
 	// requests are off.
 	remote remote.Remote
-	// decoders holds the stream decoder of every harness drudge knows how to
-	// render a compact run log for.
-	decoders map[Harness]StreamDecoder
+	// streams holds the stream reader of every harness drudge knows how to
+	// read the event stream of.
+	streams map[Harness]StreamReader
 	// daemonRetryDelay and launchGrace default to the constants above. A test
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
@@ -71,7 +71,7 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations, remoteOps remote.Remote, decoders map[Harness]StreamDecoder) *DrudgerService {
+func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations, remoteOps remote.Remote, streams map[Harness]StreamReader) *DrudgerService {
 	return &DrudgerService{
 		progress:         progress,
 		settings:         settings,
@@ -81,7 +81,7 @@ func New(progress common.Progress, settings Settings, tasks *task.TaskService, d
 		commands:         commands,
 		gitOps:           gitOps,
 		remote:           remoteOps,
-		decoders:         decoders,
+		streams:          streams,
 		daemonRetryDelay: sbxDaemonRetryDelay,
 		launchGrace:      launchGracePeriod,
 	}
@@ -271,7 +271,7 @@ func (service *DrudgerService) workingDrudger(projectSlug string, layout project
 // sessionStillRunning reports whether the run directory of a task says its
 // Session has not ended.
 func (service *DrudgerService) sessionStillRunning(layout projectLayout, taskID task.TaskID) (bool, error) {
-	report, err := readSessionReport(service.runs, layout, taskID, time.Now().UTC())
+	report, err := readSessionReport(service.runReader(), layout, taskID, time.Now().UTC())
 	if errors.Is(err, errNoRunDirectory) {
 		return false, nil
 	}
@@ -298,7 +298,14 @@ func formatStatuses(statuses []task.TaskStatus) string {
 // The lock covers the sandbox steps, which take minutes on a first launch.
 // Only commands working on this same task wait that long, which is what a
 // second launch of it should do.
+//
+// It refuses a configured harness DRUDGE cannot read the event stream of
+// before it claims a Drudger.
 func (service *DrudgerService) launch(projectSlug string, taskID task.TaskID, layout projectLayout, accept func(*task.Task) error) error {
+	if err := service.refuseUnreadableHarness(); err != nil {
+		return err
+	}
+
 	isStarted := false
 
 	isStored, err := service.tasks.TryUpdateTask(projectSlug, taskID, func(taskToRun *task.Task) error {
@@ -561,7 +568,7 @@ type SessionIDReadFailed struct {
 // line carrying the id can still be half written, so an empty id is a normal
 // answer.
 func (service *DrudgerService) launchedSessionID(taskID task.TaskID) string {
-	sessionID, err := readSessionID(service.runs, taskID)
+	sessionID, err := service.runReader().sessionID(taskID)
 	if err != nil {
 		service.progress.Report(SessionIDReadFailed{TaskID: taskID, Err: err})
 	}

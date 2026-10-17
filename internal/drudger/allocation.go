@@ -134,7 +134,7 @@ func (service *DrudgerService) recordAgentHealth(projectSlug string, taskID task
 func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug string, taskID task.TaskID, layout projectLayout) (chosen *Drudger, pool []*Drudger, err error) {
 	now := time.Now().UTC()
 
-	if err := reclaimFinished(drudgers, service.runs, layout, now); err != nil {
+	if err := reclaimFinished(drudgers, service.runReader(), layout, now); err != nil {
 		return nil, nil, err
 	}
 
@@ -208,7 +208,7 @@ func (service *DrudgerService) warnAboveLimit(drudgers []*Drudger, projectSlug s
 
 // reclaimFinished frees every Drudger whose Session has finished, and records
 // what that Session said about the agent that ran it.
-func reclaimFinished(drudgers []*Drudger, runs RunRepository, layout projectLayout, now time.Time) error {
+func reclaimFinished(drudgers []*Drudger, runs runReader, layout projectLayout, now time.Time) error {
 	for _, candidate := range drudgers {
 		if candidate.Idle() {
 			continue
@@ -250,7 +250,7 @@ func (service *DrudgerService) reclaimForListing(projectSlug string, layout proj
 
 	var reclaimed []*Drudger
 	isStored, err := service.drudgers.TryUpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
-		if err := reclaimFinished(drudgers, service.runs, layout, time.Now().UTC()); err != nil {
+		if err := reclaimFinished(drudgers, service.runReader(), layout, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 		reclaimed = drudgers
@@ -307,7 +307,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 	var pool []*Drudger
 	err = service.drudgers.UpdateDrudgers(projectSlug, func(drudgers []*Drudger) ([]*Drudger, error) {
 		now := time.Now().UTC()
-		if err := reclaimFinished(drudgers, service.runs, layout, now); err != nil {
+		if err := reclaimFinished(drudgers, service.runReader(), layout, now); err != nil {
 			return nil, err
 		}
 		stuck, err := freeStuckSlots(drudgers, service.runs, running, now)
