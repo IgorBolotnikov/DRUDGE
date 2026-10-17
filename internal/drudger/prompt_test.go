@@ -66,6 +66,24 @@ func TestRenderPrompt(t *testing.T) {
 			want:      "Fix login: SSO is broken",
 		},
 		{
+			name:      "substitutes the repositories a task lists",
+			template:  "{{taskTitle}} {{taskDescription}} in {{repositories}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken", Repositories: []string{"api", "web/app"}},
+			want:      "Fix login SSO is broken in api, web/app",
+		},
+		{
+			name:      "substitutes every repository for a task that lists none",
+			template:  "{{taskTitle}} {{taskDescription}} in {{repositories}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
+			want:      "Fix login SSO is broken in " + everyRepository,
+		},
+		{
+			name:      "repositories placeholder may be absent from the template",
+			template:  "{{taskTitle}}: {{taskDescription}}",
+			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken", Repositories: []string{"api"}},
+			want:      "Fix login: SSO is broken",
+		},
+		{
 			name:      "pull request steps expand to nothing with pull requests off",
 			template:  "{{taskTitle}} {{taskDescription}}{{pullRequestSteps}}",
 			taskToRun: &task.Task{Title: "Fix login", Description: "SSO is broken"},
@@ -144,14 +162,14 @@ func TestDefaultPromptTemplate_HasRequiredPlaceholders(t *testing.T) {
 }
 
 func TestDefaultPromptTemplate_RendersTaskDetails(t *testing.T) {
-	taskToRun := &task.Task{Title: "Fix login", Description: "SSO is broken", TicketID: "PROJ-123"}
+	taskToRun := &task.Task{Title: "Fix login", Description: "SSO is broken", TicketID: "PROJ-123", Repositories: []string{"api", "web"}}
 
 	prompt, err := renderPrompt(defaultPromptTemplate, taskToRun, promptWorkspace{Branch: testTaskBranch, DefaultBranch: testDefaultBranch}, promptPullRequests{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID, testTaskBranch} {
+	for _, want := range []string{taskToRun.Title, taskToRun.Description, taskToRun.TicketID, testTaskBranch, "api, web"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("expected rendered default prompt to contain %q, got %q", want, prompt)
 		}

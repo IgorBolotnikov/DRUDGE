@@ -20,6 +20,7 @@ const (
 	placeholderBranch           = "{{branch}}"
 	placeholderDefaultBranch    = "{{defaultBranch}}"
 	placeholderPullRequestSteps = "{{pullRequestSteps}}"
+	placeholderRepositories     = "{{repositories}}"
 )
 
 // Placeholders the pull request steps may use.
@@ -35,6 +36,13 @@ var requiredPlaceholders = []string{placeholderTaskTitle, placeholderTaskDescrip
 // pullRequestFilePath is where an agent writes the pull request description
 // of a repository, relative to the root of its worktree.
 const pullRequestFilePath = common.DotDrudgeDirName + "/pull-request.md"
+
+// everyRepository is what the repositories placeholder says for a task that
+// lists no repository.
+const everyRepository = "every repository of the workspace"
+
+// repositorySeparator joins the repositories a task lists.
+const repositorySeparator = ", "
 
 // templatePathPrefix starts every template path the pull request steps list.
 const templatePathPrefix = "- "
@@ -64,9 +72,11 @@ Description:
 {{taskDescription}}
 
 ---
-Work in the repository you were started in. Read the surrounding code before
-you change it and follow the conventions you find there. Keep the change
-scoped to this task.
+Make your changes in these repositories: {{repositories}}. The other
+repositories of the workspace are there to read. Leave them unchanged unless
+the task cannot be done without changing them. Read the surrounding code
+before you change it and follow the conventions you find there. Keep the
+change scoped to this task.
 
 You are working in a fully autonomous session. You will not get any
 interactions from the user so use your best judgement when dealing with
@@ -134,8 +144,18 @@ func renderPrompt(template string, taskToRun *task.Task, workspace promptWorkspa
 		placeholderBranch, workspace.Branch,
 		placeholderDefaultBranch, workspace.DefaultBranch,
 		placeholderPullRequestSteps, pullRequests.Steps,
+		placeholderRepositories, promptRepositories(taskToRun.Repositories),
 	)
 	return replacer.Replace(template), nil
+}
+
+// promptRepositories lists the repositories a task changes. A task that lists
+// none changes every repository of the workspace.
+func promptRepositories(repositories []string) string {
+	if len(repositories) == 0 {
+		return everyRepository
+	}
+	return strings.Join(repositories, repositorySeparator)
 }
 
 // renderPullRequestSteps fills the pull request steps in. The title format
