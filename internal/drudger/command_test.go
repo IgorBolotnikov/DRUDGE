@@ -135,6 +135,49 @@ func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testi
 	}
 }
 
+func TestDrudgerService_RunTask_LauncherPassesTheModel(t *testing.T) {
+	cases := []struct {
+		name        string
+		model       string
+		wantCommand string
+	}{
+		{
+			name:        "no model leaves the choice to the harness",
+			wantCommand: "--permission-mode bypassPermissions > ",
+		},
+		{
+			name:        "an alias",
+			model:       "opus",
+			wantCommand: "--permission-mode bypassPermissions --model 'opus' > ",
+		},
+		{
+			name:        "a full model name",
+			model:       "claude-opus-5-5",
+			wantCommand: "--permission-mode bypassPermissions --model 'claude-opus-5-5' > ",
+		},
+		{
+			name:        "a model with a single quote",
+			model:       "it's",
+			wantCommand: `--permission-mode bypassPermissions --model 'it'\''s' > `,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			settings := testSettings()
+			settings.Model = testCase.model
+			commands := runTaskFor(t, settings, projectDir, sandboxListingWith(testSandbox))
+
+			start := commands.call(sbxExecSubcommand)
+			launcher := start[len(start)-1]
+			if !strings.Contains(launcher, testCase.wantCommand) {
+				t.Errorf("expected the launcher to contain %q, got %q", testCase.wantCommand, launcher)
+			}
+		})
+	}
+}
+
 func TestDrudgerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T) {
 	cases := []struct {
 		name    string

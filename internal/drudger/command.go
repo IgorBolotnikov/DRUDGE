@@ -69,6 +69,7 @@ const (
 	claudeVerboseFlag       = "--verbose"
 	claudePermissionFlag    = "--permission-mode"
 	claudeBypassPermissions = "bypassPermissions"
+	claudeModelFlag         = "--model"
 )
 
 // Drudger name prefixes.
@@ -162,7 +163,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 			},
 			start: []string{
 				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
-				shellBinary, shellCommandFlag, formatLauncher(workspaceRoot, runDir),
+				shellBinary, shellCommandFlag, formatLauncher(workspaceRoot, runDir, service.settings.Model),
 			},
 		}, nil
 	}
@@ -193,15 +194,21 @@ func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCom
 // because it waits for a tool call approval. The sandbox is the security
 // boundary here.
 //
+// An empty model leaves the choice of model to the harness.
+//
 // The exit file is written last and is the only marker of a finished run.
-func formatLauncher(workspace, runDir string) string {
-	agentCommand := strings.Join([]string{
+func formatLauncher(workspace, runDir, model string) string {
+	agentArgs := []string{
 		claudeBinary,
 		claudePromptFlag, catPrompt(runDir),
 		claudeOutputFormatFlag, claudeStreamJSONFormat,
 		claudeVerboseFlag,
 		claudePermissionFlag, claudeBypassPermissions,
-	}, " ")
+	}
+	if model != "" {
+		agentArgs = append(agentArgs, claudeModelFlag, shellQuote(model))
+	}
+	agentCommand := strings.Join(agentArgs, " ")
 
 	return fmt.Sprintf(
 		"cd %s || exit 1\n%s > %s 2> %s\necho $? > %s\n",

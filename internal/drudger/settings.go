@@ -42,6 +42,8 @@ type Settings struct {
 	// PromptPath is the prompt file to hand an agent. Empty means the
 	// built-in prompt.
 	PromptPath string
+	// Model is the model the harness runs. Empty means the harness picks.
+	Model string
 	// BranchFormat is the format the branch name of a task is built from.
 	BranchFormat    string
 	SandboxTimeouts SandboxTimeouts

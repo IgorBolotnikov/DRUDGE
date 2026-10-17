@@ -131,6 +131,7 @@ type DrudgerConfig struct {
 	Env                   Env             `json:"environment"`
 	Harness               Harness         `json:"harness"`
 	PromptFile            string          `json:"promptFile,omitempty"`
+	Model                 string          `json:"model,omitempty"`                 // model the harness runs, empty means the harness picks
 	MaxConcurrentDrudgers int             `json:"maxConcurrentDrudgers,omitempty"` // Drudgers allowed on one project at once, zero means unset
 	SandboxTimeouts       SandboxTimeouts `json:"sandboxTimeouts"`
 	GitTimeouts           GitTimeouts     `json:"gitTimeouts"`
