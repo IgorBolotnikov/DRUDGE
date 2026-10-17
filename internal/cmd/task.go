@@ -140,10 +140,12 @@ var TaskCmd = &Cmd{
 			Setup: func(*flag.FlagSet) func(args []string) error { return taskPullRequests },
 		},
 		{
-			Name:  "status",
-			Args:  []string{taskIDArg},
-			Desc:  "Tell how the agent working on a task is doing",
-			Help:  "Tell whether the agent working on a task is working, stuck or has .",
+			Name: "status",
+			Args: []string{taskIDArg},
+			Desc: "Tell how the agent working on a task is doing",
+			Help: "Tell whether the agent on a task is working, needs babysitting, fucked up, got shit done or never got going.\n" +
+				"A finished run is recorded on the task.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return taskSessionStatus },
 		},
 		{
