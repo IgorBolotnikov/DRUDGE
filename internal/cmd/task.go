@@ -152,9 +152,12 @@ var TaskCmd = &Cmd{
 			Name: "runlog",
 			Args: []string{taskIDArg},
 			Desc: "Print the logs of the latest run of a task",
-			Help: "Print the event stream and the stderr log of the latest run of a task. Lines that are JSON are indented.\n" +
+			Help: "Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it.\n" +
 				"The task ID may be the short one a listing prints, as long as it names a single task.",
-			Setup: func(*flag.FlagSet) func(args []string) error { return taskRunlog },
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isRaw := fs.Bool(rawFlagName, false, rawUsage)
+				return func(args []string) error { return taskRunlog(task.TaskID(args[0]), *isRaw) }
+			},
 		},
 	},
 }
@@ -164,6 +167,11 @@ const taskIDArg = "task-id"
 const (
 	dryRunFlagName = "dry-run"
 	dryRunUsage    = "Print the prompt the agent would get and stop"
+)
+
+const (
+	rawFlagName = "raw"
+	rawUsage    = "Print the files the agent wrote as it wrote them, with JSON lines indented"
 )
 
 // Flags a task command reads a value after.

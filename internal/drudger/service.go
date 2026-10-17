@@ -59,6 +59,9 @@ type DrudgerService struct {
 	// remote is the provider pull requests are opened on. It is nil when pull
 	// requests are off.
 	remote remote.Remote
+	// decoders holds the stream decoder of every harness drudge knows how to
+	// render a compact run log for.
+	decoders map[Harness]StreamDecoder
 	// daemonRetryDelay and launchGrace default to the constants above. A test
 	// sets them to zero to skip the waits.
 	daemonRetryDelay time.Duration
@@ -68,7 +71,7 @@ type DrudgerService struct {
 	// Some of the service methods live in other files of this package.
 }
 
-func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations, remoteOps remote.Remote) *DrudgerService {
+func New(progress common.Progress, settings Settings, tasks *task.TaskService, drudgers DrudgerRepository, runs RunRepository, commands CommandRunner, gitOps git.Operations, remoteOps remote.Remote, decoders map[Harness]StreamDecoder) *DrudgerService {
 	return &DrudgerService{
 		progress:         progress,
 		settings:         settings,
@@ -78,6 +81,7 @@ func New(progress common.Progress, settings Settings, tasks *task.TaskService, d
 		commands:         commands,
 		gitOps:           gitOps,
 		remote:           remoteOps,
+		decoders:         decoders,
 		daemonRetryDelay: sbxDaemonRetryDelay,
 		launchGrace:      launchGracePeriod,
 	}

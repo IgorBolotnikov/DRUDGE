@@ -64,9 +64,78 @@ func (service *DrudgerService) RunLogs(projectSlug string, requestedID task.Task
 // runLogOf splits the content of one log file of a run directory into lines.
 // It reports a file the agent has not written yet as missing.
 func runLogOf(path string, content []byte, isPresent bool) RunLog {
-	log := RunLog{Name: filepath.Base(path), Path: path, IsMissing: !isPresent}
-	if len(content) > 0 {
-		log.Lines = strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
+	return RunLog{Name: filepath.Base(path), Path: path, Lines: logLines(content), IsMissing: !isPresent}
+}
+
+// logLines splits the content of a run log file into lines, dropping its
+// trailing newline. Content with nothing in it has no lines.
+func logLines(content []byte) []string {
+	if len(content) == 0 {
+		return nil
 	}
-	return log
+	return strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
+}
+
+// TaskRunSteps pairs a task with the steps decoded from its latest run and the
+// stderr log beside them.
+type TaskRunSteps struct {
+	Task   *task.Task
+	RunDir string
+	// Steps is empty and IsStreamMissing is true while the agent has not
+	// written the event stream yet.
+	Steps           []Step
+	IsStreamMissing bool
+	// Stderr is empty when the run has no stderr log, or an empty one.
+	Stderr []string
+}
+
+// RunSteps decodes the event stream of the latest run of a task into the
+// harness-neutral Steps a compact view renders, using the decoder configured
+// for the project's harness. It refuses a task with no run directory.
+func (service *DrudgerService) RunSteps(projectSlug string, requestedID task.TaskID) (*TaskRunSteps, error) {
+	tracked, err := service.tasks.GetTask(projectSlug, requestedID)
+	if err != nil {
+		return nil, err
+	}
+
+	layout, err := service.layout()
+	if err != nil {
+		return nil, err
+	}
+
+	hasRun, err := service.runs.HasRun(tracked.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasRun {
+		return nil, fmt.Errorf("task %s is %q and has no run to show the logs of, run it first", tracked.ID, tracked.Status)
+	}
+
+	decoder, ok := service.decoders[service.settings.Harness]
+	if !ok {
+		return nil, fmt.Errorf("DRUDGE does not know how to decode the run log of harness %q, print it with --raw instead", service.settings.Harness)
+	}
+
+	runDir := layout.RunDir(tracked.ID)
+	stream, isStreamPresent, err := service.runs.ReadStream(tracked.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the logs of task %s: %w", tracked.ID, err)
+	}
+	stderr, _, err := service.runs.ReadStderr(tracked.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the logs of task %s: %w", tracked.ID, err)
+	}
+
+	var steps []Step
+	for _, line := range logLines(stream) {
+		steps = append(steps, decoder.Decode(line)...)
+	}
+
+	return &TaskRunSteps{
+		Task:            tracked,
+		RunDir:          runDir,
+		Steps:           steps,
+		IsStreamMissing: !isStreamPresent,
+		Stderr:          logLines(stderr),
+	}, nil
 }

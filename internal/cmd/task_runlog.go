@@ -9,6 +9,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 const (
@@ -17,22 +18,126 @@ const (
 	logLineIndent      = "  "
 )
 
-// taskRunlog prints the logs of the latest run of a task.
-func taskRunlog(args []string) error {
-	taskID := task.TaskID(args[0])
+// stderrHeading opens the stderr log of a compact view. It only shows when
+// the log holds something.
+const stderrHeading = "stderr:"
 
+// toolColumnWidth is how wide a tool name sits before the summary of a tool
+// call or a tool error.
+const toolColumnWidth = 7
+
+// Tool names whose summary is a path.
+const (
+	toolRead  = "Read"
+	toolEdit  = "Edit"
+	toolWrite = "Write"
+)
+
+// pathSummaryTools are the tools whose summary is a path, colored RolePath
+// instead of RoleSecondary.
+var pathSummaryTools = map[string]bool{
+	toolRead:  true,
+	toolEdit:  true,
+	toolWrite: true,
+}
+
+// taskRunlog prints the latest run of a task: a compact view of its steps by
+// default, or the raw files the agent wrote with isRaw.
+func taskRunlog(taskID task.TaskID, isRaw bool) error {
 	deps, err := newCommandDeps()
 	if err != nil {
 		return err
 	}
 
-	runLogs, err := deps.drudger.RunLogs(deps.localCfg.ProjectSlug, taskID)
+	if isRaw {
+		runLogs, err := deps.drudger.RunLogs(deps.localCfg.ProjectSlug, taskID)
+		if err != nil {
+			return err
+		}
+		printRunLogs(deps.out, runLogs)
+		return nil
+	}
+
+	runSteps, err := deps.drudger.RunSteps(deps.localCfg.ProjectSlug, taskID)
 	if err != nil {
 		return err
 	}
-
-	printRunLogs(deps.out, runLogs)
+	printRunSteps(deps.out, runSteps)
 	return nil
+}
+
+// printRunSteps prints a compact view of a run: the task heading, the run
+// directory, one line per step and the stderr log when it has content.
+func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
+	palette := out.Theme()
+	lines := []string{
+		fmt.Sprintf("Task [%s] %s", runSteps.Task.ID, runSteps.Task.Title),
+		palette.Paint(theme.Stdout, theme.RoleMuted, runSteps.RunDir),
+	}
+
+	if runSteps.IsStreamMissing {
+		lines = append(lines, notWrittenYetLabel)
+	}
+	for _, step := range runSteps.Steps {
+		lines = append(lines, compactStepLine(palette, step))
+	}
+
+	if len(runSteps.Stderr) > 0 {
+		lines = append(lines, "", stderrHeading)
+		for _, line := range runSteps.Stderr {
+			lines = append(lines, palette.Paint(theme.Stdout, theme.RoleError, line))
+		}
+	}
+
+	out.View(lines)
+}
+
+// compactStepLine renders one Step as the single line a compact view shows
+// for it.
+func compactStepLine(palette *theme.Theme, step drudger.Step) string {
+	switch step.Kind {
+	case drudger.StepInit:
+		return palette.Paint(theme.Stdout, theme.RoleMuted, step.Summary)
+	case drudger.StepUnrecognized:
+		return palette.Paint(theme.Stdout, theme.RoleMuted, step.Raw)
+	case drudger.StepAgentText:
+		return step.Summary
+	case drudger.StepToolCall, drudger.StepToolError:
+		return toolStepLine(palette, step)
+	case drudger.StepFinalResult:
+		return finalResultLine(palette, step)
+	default:
+		return step.Summary
+	}
+}
+
+// toolStepLine renders a tool call or a tool error: the tool name padded to a
+// column followed by its summary, or the summary alone when there is no tool
+// name or no summary to pad against.
+func toolStepLine(palette *theme.Theme, step drudger.Step) string {
+	summaryRole := theme.RoleSecondary
+	if pathSummaryTools[step.Tool] {
+		summaryRole = theme.RolePath
+	}
+
+	if step.Summary == "" {
+		return palette.Paint(theme.Stdout, theme.RolePrimary, step.Tool)
+	}
+	summary := palette.Paint(theme.Stdout, summaryRole, step.Summary)
+	if step.Tool == "" {
+		return summary
+	}
+	tool := palette.Paint(theme.Stdout, theme.RolePrimary, fmt.Sprintf("%-*s", toolColumnWidth, step.Tool))
+	return tool + " " + summary
+}
+
+// finalResultLine colors the terminal line of a run by its verdict.
+func finalResultLine(palette *theme.Theme, step drudger.Step) string {
+	role := theme.RoleError
+	if strings.HasPrefix(step.Summary, string(drudger.StatusGotShitDone)) {
+		role = theme.RoleSuccess
+	}
+	return palette.Paint(theme.Stdout, role, step.Summary)
 }
 
 // printRunLogs prints every log of a run under a heading naming its file.

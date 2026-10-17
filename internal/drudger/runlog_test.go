@@ -110,3 +110,108 @@ func TestDrudgerService_RunLogs(t *testing.T) {
 		})
 	}
 }
+
+func TestDrudgerService_RunSteps(t *testing.T) {
+	cases := []struct {
+		name string
+		// hasRun stands for a task whose run directory exists. stream and
+		// stderr are only written when it is set.
+		hasRun bool
+		stream []string
+		stderr string
+
+		requestedID       task.TaskID
+		wantStreamMissing bool
+		wantStderrLines   []string
+		wantErr           bool
+	}{
+		{
+			name:            "a run whose stream the decoder turns into steps",
+			hasRun:          true,
+			stream:          []string{initEvent, resultEvent},
+			stderr:          "warning: 100% of nothing",
+			wantStderrLines: []string{"warning: 100% of nothing"},
+		},
+		{
+			name:              "a run whose agent has not written a stream yet",
+			hasRun:            true,
+			wantStreamMissing: true,
+		},
+		{
+			name:    "a task that was never run",
+			wantErr: true,
+		},
+		{
+			name:        "a task id nothing carries",
+			hasRun:      true,
+			requestedID: "nonesuch",
+			wantErr:     true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			tracked := todoTask()
+
+			service := newTestService(tracked)
+			if testCase.hasRun {
+				service.runs.PrepareRun(tracked.ID, "prompt")
+				if testCase.stream != nil {
+					service.runs.writeStream(tracked.ID, testCase.stream...)
+				}
+				if testCase.stderr != "" {
+					service.runs.writeStderr(tracked.ID, testCase.stderr)
+				}
+			}
+			requestedID := testCase.requestedID
+			if requestedID == "" {
+				requestedID = tracked.ID
+			}
+
+			runSteps, err := service.RunSteps(testProjectSlug, requestedID)
+
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got %+v", runSteps)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if runSteps.Task.ID != tracked.ID {
+				t.Errorf("expected task %q, got %q", tracked.ID, runSteps.Task.ID)
+			}
+			if runSteps.IsStreamMissing != testCase.wantStreamMissing {
+				t.Errorf("expected the stream missing %v, got %v", testCase.wantStreamMissing, runSteps.IsStreamMissing)
+			}
+
+			var wantSteps []Step
+			for _, line := range testCase.stream {
+				wantSteps = append(wantSteps, Step{Kind: StepUnrecognized, Raw: line})
+			}
+			if !reflect.DeepEqual(runSteps.Steps, wantSteps) {
+				t.Errorf("expected steps %+v, got %+v", wantSteps, runSteps.Steps)
+			}
+			if !reflect.DeepEqual(runSteps.Stderr, testCase.wantStderrLines) {
+				t.Errorf("expected stderr lines %q, got %q", testCase.wantStderrLines, runSteps.Stderr)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunSteps_NoDecoderForHarness(t *testing.T) {
+	setupProjectDir(t)
+	tracked := todoTask()
+
+	settings := testSettings()
+	settings.Harness = HarnessOpencode
+	service := newTestServiceWith(settings, &fakeCommandRunner{}, tracked)
+	service.runs.PrepareRun(tracked.ID, "prompt")
+	service.runs.writeStream(tracked.ID, initEvent)
+
+	if _, err := service.RunSteps(testProjectSlug, tracked.ID); err == nil {
+		t.Fatal("expected an error for a harness with no registered decoder")
+	}
+}

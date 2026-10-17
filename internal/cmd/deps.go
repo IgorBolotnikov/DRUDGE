@@ -5,6 +5,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	remoteadapter "github.com/IgorBolotnikov/DRUDGE/internal/adapters/remote"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/streams"
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
@@ -90,8 +91,16 @@ func newCommandDeps() (*commandDeps, error) {
 		globalCfg: globalCfg,
 		out:       out,
 		tasks:     tasks,
-		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote),
+		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote, streamDecoders()),
 	}, nil
+}
+
+// streamDecoders maps every harness drudge knows how to decode the event
+// stream of onto its decoder.
+func streamDecoders() map[drudger.Harness]drudger.StreamDecoder {
+	return map[drudger.Harness]drudger.StreamDecoder{
+		drudger.HarnessClaudeCode: streams.NewClaudeCodeDecoder(),
+	}
 }
 
 // repositoryPaths lists the paths of the repositories the local config

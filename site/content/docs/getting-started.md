@@ -85,7 +85,7 @@ Watch it with [`drg task list`]({{< relref "/docs/cli/task/list" >}}), [`drg tas
 ```sh
 drg task list                # every Task of the project and its status
 drg task show 3f9a1c2e       # one Task in full, with what its last run left behind
-drg task runlog 3f9a1c2e     # the event stream and the stderr log of the latest run
+drg task runlog 3f9a1c2e     # a compact view of the latest run, or --raw for the files the agent wrote
 drg task status 3f9a1c2e     # whether the agent is working, stuck or finished
 ```
 

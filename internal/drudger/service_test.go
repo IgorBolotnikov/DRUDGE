@@ -902,6 +902,20 @@ type testService struct {
 	progress *fakeProgress
 }
 
+// fakeStepDecoder decodes every line into one unrecognized Step holding the
+// line, so a test can tell which decoder a service picked without depending
+// on a real harness format.
+type fakeStepDecoder struct{}
+
+func (fakeStepDecoder) Decode(line string) []Step {
+	return []Step{{Kind: StepUnrecognized, Raw: line}}
+}
+
+// testDecoders are the decoders a test service picks from by harness.
+func testDecoders() map[Harness]StreamDecoder {
+	return map[Harness]StreamDecoder{HarnessClaudeCode: fakeStepDecoder{}}
+}
+
 // testSettings are the settings of the built-in default configs.
 func testSettings() Settings {
 	return Settings{
@@ -940,7 +954,7 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 		settings.Repositories = []project.Repository{{Path: testRepoPath}}
 	}
 	progress := &fakeProgress{}
-	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil)
+	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil, testDecoders())
 	// Tests check what a retry and a grace period do. Sitting through the real
 	// durations adds nothing.
 	service.daemonRetryDelay = 0
