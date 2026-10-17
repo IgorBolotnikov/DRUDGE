@@ -151,6 +151,19 @@ func TestPrintTask(t *testing.T) {
 			wantAbsent: []string{"commits", committedNothingLabel},
 		},
 		{
+			name: "a run drudge has not closed out yet in a repository the task does not change",
+			task: task.Task{
+				Status:    task.StatusInProgress,
+				CreatedAt: now.Add(-2 * time.Hour),
+				StartedAt: now.Add(-time.Hour),
+				Landings: map[string]task.Landing{
+					"docs": {Base: "9f1c2b3a4d5e6f70"},
+				},
+			},
+			want:       []string{workLabel, "docs", noBranchLabel + ", at 9f1c2b3a4d5e"},
+			wantAbsent: []string{"commits", committedNothingLabel},
+		},
+		{
 			name: "a task blocked by other tasks",
 			task: task.Task{
 				Status:    task.StatusTodo,

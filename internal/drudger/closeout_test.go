@@ -262,6 +262,121 @@ func TestDrudgerService_SessionStatus_ARefusedRunClosesOutNothing(t *testing.T) 
 	}
 }
 
+func TestDrudgerService_SessionStatus_ClosesOutARepositoryTheTaskDoesNotChange(t *testing.T) {
+	const listed, unlisted = "api", "ui"
+
+	cases := []struct {
+		name string
+		// leave puts the worktree of the repository the task does not change in
+		// the state the agent left it behind in.
+		leave func(fake *fakeGit, worktree string)
+
+		// wantLanding is the landing left in the repository. Nil means none.
+		wantLanding *task.Landing
+		// wantCreated are the branches close-out made.
+		wantCreated []string
+	}{
+		{
+			name: "no new commits",
+			leave: func(fake *fakeGit, worktree string) {
+				fake.leaveDetached(worktree, testBaseSHA)
+			},
+		},
+		{
+			name: "commits on a branch the agent made",
+			leave: func(fake *fakeGit, worktree string) {
+				fake.leaveOn(worktree, testSideBranch, testHeadSHA)
+				fake.commitsOn(testHeadSHA, 2)
+			},
+			wantLanding: &task.Landing{Branch: testSideBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 2},
+		},
+		{
+			name: "commits on a detached HEAD",
+			leave: func(fake *fakeGit, worktree string) {
+				fake.leaveDetached(worktree, testHeadSHA)
+				fake.commitsOn(testHeadSHA, 1)
+			},
+			wantLanding: &task.Landing{Branch: testTaskBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 1},
+			wantCreated: []string{testTaskBranch},
+		},
+		{
+			name: "commits on a detached HEAD in a repository that has the task branch",
+			leave: func(fake *fakeGit, worktree string) {
+				fake.leaveDetached(worktree, testHeadSHA)
+				fake.branchAt(worktree, testTaskBranch, testBaseSHA)
+				fake.commitsOn(testHeadSHA, 1)
+			},
+			wantLanding: &task.Landing{Branch: testRescueBranch, Base: testBaseSHA, Head: testHeadSHA, Commits: 1},
+			wantCreated: []string{testRescueBranch},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repositories := []string{listed, unlisted}
+			projectDir := setupProjectDir(t)
+			tracked := handedOverTask(listed)
+			tracked.RecordLanding(unlisted, task.Landing{Base: testBaseSHA})
+
+			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
+			service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, pool, tracked)
+			pullRequestRemote := &fakeRemote{}
+			service.remote = pullRequestRemote
+			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+			service.runs.writeExit(tracked.ID, "0\n")
+			worktrees := worktreesOf(projectDir, repositories)
+			makeWorktrees(t, worktrees)
+			service.git.leaveOn(worktrees[listed], testTaskBranch, testBaseSHA)
+			testCase.leave(service.git, worktrees[unlisted])
+			writeTestFile(t, filepath.Join(worktrees[unlisted], pullRequestFilePath), "Fix the ui too")
+
+			session, err := service.SessionStatus(testProjectSlug, tracked.ID)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			landing, hasLanding := session.Task.Landings[unlisted]
+			switch {
+			case testCase.wantLanding == nil && hasLanding:
+				t.Errorf("expected no landing in %s, got %+v", unlisted, landing)
+			case testCase.wantLanding != nil && landing != *testCase.wantLanding:
+				t.Errorf("expected the landing %+v in %s, got %+v", *testCase.wantLanding, unlisted, landing)
+			}
+			if session.Task.Status != task.StatusDone {
+				t.Errorf("expected work out of scope to leave the task %q, got %q", task.StatusDone, session.Task.Status)
+			}
+			if got := branchesOf(service.git.createdBranches); !slices.Equal(got, testCase.wantCreated) {
+				t.Errorf("expected close-out to make the branches %v, got %v", testCase.wantCreated, got)
+			}
+
+			warnings := reportedEvents[WorkOutOfScope](service.progress)
+			if testCase.wantLanding == nil {
+				if len(warnings) != 0 {
+					t.Errorf("expected no warning, got %+v", warnings)
+				}
+				return
+			}
+
+			want := WorkOutOfScope{
+				TaskID:     tracked.ID,
+				Repository: unlisted,
+				Branch:     testCase.wantLanding.Branch,
+				Commits:    testCase.wantLanding.Commits,
+				Command:    "drg task pr " + task.ShortID(tracked.ID),
+			}
+			if warning := singleEvent[WorkOutOfScope](t, service.progress); warning != want {
+				t.Errorf("expected the warning %+v, got %+v", want, warning)
+			}
+			if len(pullRequestRemote.opened) != 0 || len(service.git.pushed) != 0 {
+				t.Errorf("expected no pull request, got %+v pushed as %v", pullRequestRemote.opened, service.git.pushed)
+			}
+			if _, isKept := service.runs.file(tracked.ID, pullRequestFileName(unlisted)); !isKept {
+				t.Errorf("expected the description of %s to be in the run directory", unlisted)
+			}
+		})
+	}
+}
+
 // handedOverTask is a task an agent is working on, carrying what the handover
 // recorded in each repository.
 func handedOverTask(repositories ...string) *task.Task {

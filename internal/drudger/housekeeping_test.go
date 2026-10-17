@@ -456,3 +456,151 @@ func writeTestFile(t *testing.T, path string, content string) {
 		t.Fatalf("could not write %s: %v", path, err)
 	}
 }
+
+func TestDrudgerService_RunTask_PreparesOnlyTheRepositoriesATaskChanges(t *testing.T) {
+	projectRepositories := []string{"api", "ui", "docs"}
+
+	cases := []struct {
+		name string
+		// listed are the repositories the task changes.
+		listed []string
+		// dirty are the repositories whose worktree holds uncommitted changes.
+		dirty []string
+		// heads are the commits worktrees sit on, keyed by repository. A
+		// worktree with no entry sits on the base.
+		heads map[string]string
+
+		// wantBranched are the repositories fetched and put on the task branch.
+		wantBranched []string
+		wantStashed  []string
+		wantLandings map[string]task.Landing
+	}{
+		{
+			name:         "a task that lists no repository changes all of them",
+			wantBranched: projectRepositories,
+			wantLandings: map[string]task.Landing{
+				"api":  {Branch: testTaskBranch, Base: testBaseSHA},
+				"ui":   {Branch: testTaskBranch, Base: testBaseSHA},
+				"docs": {Branch: testTaskBranch, Base: testBaseSHA},
+			},
+		},
+		{
+			name:         "a task that lists one repository out of three",
+			listed:       []string{"api"},
+			dirty:        []string{"ui"},
+			heads:        map[string]string{"docs": testHeadSHA},
+			wantBranched: []string{"api"},
+			wantStashed:  []string{"ui"},
+			wantLandings: map[string]task.Landing{
+				"api":  {Branch: testTaskBranch, Base: testBaseSHA},
+				"ui":   {Base: testBaseSHA},
+				"docs": {Base: testHeadSHA},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			taskToRun.Repositories = testCase.listed
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settingsWith(projectRepositories...), commands, taskToRun)
+			worktrees := worktreesOf(projectDir, projectRepositories)
+			service.git.dirtyWorktrees = map[string]bool{}
+			for _, repository := range testCase.dirty {
+				service.git.dirtyWorktrees[worktrees[repository]] = true
+			}
+			for repository, head := range testCase.heads {
+				service.git.setHead(worktrees[repository], head)
+			}
+
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if want := pathsIn(projectDir, testCase.wantBranched...); !slices.Equal(service.git.fetched, want) {
+				t.Errorf("expected the fetches %v, got %v", want, service.git.fetched)
+			}
+
+			var branchedIn []string
+			for _, created := range service.git.createdBranches {
+				branchedIn = append(branchedIn, created.dir)
+			}
+			wantBranchedIn := make([]string, 0, len(testCase.wantBranched))
+			for _, repository := range testCase.wantBranched {
+				wantBranchedIn = append(wantBranchedIn, worktrees[repository])
+			}
+			if !slices.Equal(branchedIn, wantBranchedIn) {
+				t.Errorf("expected the task branch in %v, got %v", wantBranchedIn, branchedIn)
+			}
+
+			wantStashes := map[string]string{}
+			for _, stash := range service.git.stashes {
+				repository := filepath.Base(stash.dir)
+				if !slices.Contains(testCase.wantStashed, repository) {
+					t.Errorf("expected no stash in %s, got %+v", repository, stash)
+				}
+				wantStashes[repository] = stash.sha
+			}
+			if len(service.git.stashes) != len(testCase.wantStashed) {
+				t.Errorf("expected stashes in %v, got %v", testCase.wantStashed, service.git.stashes)
+			}
+			if len(wantStashes) > 0 && !maps.Equal(taskToRun.Stashes, wantStashes) {
+				t.Errorf("expected the task to record the stashes %v, got %v", wantStashes, taskToRun.Stashes)
+			}
+
+			if !maps.Equal(taskToRun.Landings, testCase.wantLandings) {
+				t.Errorf("expected the landings %v, got %v", testCase.wantLandings, taskToRun.Landings)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_RefusesARepositoryTheProjectNoLongerRecords(t *testing.T) {
+	cases := []struct {
+		name      string
+		isDryRun  bool
+		isRerun   bool
+		hasStatus task.TaskStatus
+	}{
+		{name: "a run", hasStatus: task.StatusTodo},
+		{name: "a dry run", isDryRun: true, hasStatus: task.StatusTodo},
+		{name: "a rerun", isRerun: true, hasStatus: task.StatusFuckedUp},
+		{name: "a dry rerun", isRerun: true, isDryRun: true, hasStatus: task.StatusFuckedUp},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			taskToRun.Status = testCase.hasStatus
+			taskToRun.Repositories = []string{"api", "billing"}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settingsWith("api", "ui"), commands, taskToRun)
+			worktrees := worktreesOf(projectDir, []string{"api", "ui"})
+			service.git.dirtyWorktrees = map[string]bool{worktrees["api"]: true}
+
+			run := service.RunTask
+			if testCase.isRerun {
+				run = service.RerunTask
+			}
+			err := run(testProjectSlug, taskToRun.ID, testCase.isDryRun)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			for _, want := range []string{`"billing"`, "api, ui"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to name %s", err, want)
+				}
+			}
+
+			if len(service.git.fetched) != 0 || len(service.git.stashes) != 0 || len(service.git.createdBranches) != 0 {
+				t.Errorf("expected no fetch, stash or branch, got %v, %v and %v", service.git.fetched, service.git.stashes, service.git.createdBranches)
+			}
+			if stored := service.taskRepo.stored(taskToRun.ID); stored.Status != testCase.hasStatus {
+				t.Errorf("expected the task to stay %q, got %q", testCase.hasStatus, stored.Status)
+			}
+		})
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // gitDirName is the repository directory a sandbox mounts alongside a
@@ -70,6 +71,42 @@ func (space slotWorkspace) defaultBranch() string {
 		}
 	}
 	return strings.Join(names, ", ")
+}
+
+// listedBy returns the workspace with only the repositories a task changes.
+func (space slotWorkspace) listedBy(taskToRun *task.Task) slotWorkspace {
+	listed := space
+	listed.Repositories = make([]repositoryWorktree, 0, len(space.Repositories))
+	for _, repository := range space.Repositories {
+		if taskToRun.ChangesRepository(repository.Path) {
+			listed.Repositories = append(listed.Repositories, repository)
+		}
+	}
+	return listed
+}
+
+// refuseUnknownRepositories refuses a task that lists a repository the project
+// does not record, and names the repositories it does.
+func (service *DrudgerService) refuseUnknownRepositories(taskToRun *task.Task) error {
+	recorded := make([]string, 0, len(service.settings.Repositories))
+	for _, repository := range service.settings.Repositories {
+		recorded = append(recorded, repository.Path)
+	}
+
+	known := "it records none"
+	if len(recorded) > 0 {
+		known = "it has: " + strings.Join(recorded, ", ")
+	}
+
+	for _, path := range taskToRun.Repositories {
+		if !slices.Contains(recorded, path) {
+			return fmt.Errorf(
+				"task %s changes repository %q, which project %s no longer records, %s. Edit the repositories of the task and run it again",
+				taskToRun.ID, path, service.settings.ProjectSlug, known,
+			)
+		}
+	}
+	return nil
 }
 
 // resolveWorkspace works out where a Drudger works and what each of its

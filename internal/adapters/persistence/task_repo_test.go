@@ -1591,6 +1591,13 @@ func TestTaskFrontMatter_LandingRoundTrip(t *testing.T) {
 			wantKeysInFile: []string{metaKeyBranchPrefix + "drudge", metaKeyBasePrefix + "drudge"},
 		},
 		{
+			name: "a handover of a repository the task does not change",
+			landings: map[string]task.Landing{
+				"docs": {Base: "9f1c2b3a4d5e"},
+			},
+			wantKeysInFile: []string{metaKeyBasePrefix + "docs"},
+		},
+		{
 			name: "a run that committed",
 			landings: map[string]task.Landing{
 				"drudge": {Branch: "drudge/task-1-fix-login", Base: "9f1c2b3a4d5e", Head: "1a2b3c4d5e6f", Commits: 3},

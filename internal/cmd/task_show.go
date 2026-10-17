@@ -54,6 +54,7 @@ const (
 	nothingReportedYetLabel = "nothing reported yet"
 	endedUnreportedLabel    = "ended, the agent reported nothing"
 	committedNothingLabel   = "the agent committed nothing"
+	noBranchLabel           = "no branch"
 	missingTaskLabel        = "no such task"
 )
 
@@ -222,8 +223,12 @@ func taskWorkLines(taskToShow *task.Task) []string {
 }
 
 // formatLanding renders the branch the work of one repository is on, and the
-// range holding it once the run has closed out.
+// range holding it once the run has closed out. A landing with no branch
+// renders as the commit the run started from.
 func formatLanding(landing task.Landing) string {
+	if !landing.HasBranch() {
+		return fmt.Sprintf("%s, at %s", noBranchLabel, git.ShortSHA(landing.Base))
+	}
 	if landing.Commits == 0 {
 		return landing.Branch
 	}

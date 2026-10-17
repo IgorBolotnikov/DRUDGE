@@ -81,11 +81,18 @@ type Task struct {
 
 // Landing is where the work of one run is in one repository. A handover fills
 // Branch and Base, and close-out fills Head and Commits once the run is over.
+// A repository the task does not list is handed over with Base alone, which is
+// the commit its worktree sat on.
 type Landing struct {
 	Branch  string // Branch the work is on
 	Base    string // Commit the branch was cut from
 	Head    string // Commit the branch points at
 	Commits int    // How many commits the branch holds beyond Base
+}
+
+// HasBranch reports whether the landing names a branch the work is on.
+func (landing Landing) HasBranch() bool {
+	return landing.Branch != ""
 }
 
 // Statuses are every status a task can carry.

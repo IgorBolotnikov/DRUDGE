@@ -3,6 +3,7 @@ package drudger
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -184,8 +185,9 @@ func (service *DrudgerService) recordFinishedRun(projectSlug string, tracked *ta
 		service.progress.Report(SessionRecordingStarted{Task: onDisk})
 		recordSessionEnd(onDisk, report)
 		// The status of a clean run depends on the landings close-out leaves.
-		service.finishRun(projectSlug, onDisk, report.Status)
-		onDisk.Status = taskStatusOf(report.Status, onDisk)
+		outOfScope := outOfScopeRepositories(onDisk)
+		service.finishRun(projectSlug, onDisk, report.Status, outOfScope)
+		onDisk.Status = taskStatusOf(report.Status, onDisk, outOfScope)
 		isRecorded = true
 		return nil
 	})
@@ -282,13 +284,16 @@ func agentHealthOf(status SessionStatus) AgentHealth {
 
 // taskStatusOf turns the status of a finished Session into the status of the
 // task it worked on. A clean run whose task still has landings after close-out
-// is unmerged, and one with none left is done.
-func taskStatusOf(status SessionStatus, finished *task.Task) task.TaskStatus {
+// is unmerged, and one with none left is done. A landing in a repository out
+// of scope does not count.
+func taskStatusOf(status SessionStatus, finished *task.Task, outOfScope []string) task.TaskStatus {
 	if status != StatusGotShitDone {
 		return task.StatusFuckedUp
 	}
-	if len(finished.Landings) > 0 {
-		return task.StatusUnmerged
+	for repository := range finished.Landings {
+		if !slices.Contains(outOfScope, repository) {
+			return task.StatusUnmerged
+		}
 	}
 	return task.StatusDone
 }

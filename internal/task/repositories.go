@@ -94,3 +94,9 @@ func removeRepositories(repositories []string, removed []string) []string {
 	}
 	return kept
 }
+
+// ChangesRepository reports whether a task works on the repository at a path.
+// A task that lists no repository works on all of them.
+func (taskToRead *Task) ChangesRepository(path string) bool {
+	return len(taskToRead.Repositories) == 0 || slices.Contains(taskToRead.Repositories, path)
+}

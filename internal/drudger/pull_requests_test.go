@@ -294,6 +294,9 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 		repositories []string
 		// landings are the repositories the task has work in.
 		landings []string
+		// unbranched are the repositories the task has a landing with no
+		// branch in.
+		unbranched []string
 		// descriptions are the pull request descriptions left in the run
 		// directory, keyed by repository name.
 		descriptions map[string]string
@@ -338,6 +341,17 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 			wantKeptIn:       []string{"ui"},
 		},
 		{
+			name:             "a description of a repository the task has a landing with no branch in",
+			repositories:     []string{"api", "ui"},
+			landings:         []string{"api"},
+			unbranched:       []string{"ui"},
+			descriptions:     map[string]string{"ui": "Show retries"},
+			wantPullRequests: []string{openedBefore},
+			wantNothingLeft:  []string{"api"},
+			wantWithout:      []string{"ui"},
+			wantKeptIn:       []string{"ui"},
+		},
+		{
 			name:             "a push that fails",
 			repositories:     []string{"api", "ui"},
 			landings:         []string{"api", "ui"},
@@ -368,6 +382,9 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 			projectDir := setupProjectDir(t)
 			finished := finishedTask(testCase.landings...)
 			finished.PullRequests = []string{openedBefore}
+			for _, repository := range testCase.unbranched {
+				finished.RecordLanding(repository, task.Landing{Base: testBaseSHA})
+			}
 
 			service := newRetryService(testCase.repositories, finished)
 			pullRequestRemote := service.remote.(*fakeRemote)

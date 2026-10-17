@@ -153,12 +153,15 @@ func (service *DrudgerService) RetryPullRequests(projectSlug string, requestedID
 
 // retryPullRequests opens a pull request for every landing of a task with a
 // description left, and reports the landings and the descriptions that do not
-// pair up.
+// pair up. A landing with no branch has nothing to push and counts as none.
 func (service *DrudgerService) retryPullRequests(retried *task.Task, repositories []projectRepository, left []string) PullRequestsRetried {
 	result := PullRequestsRetried{Task: retried}
 
 	for _, name := range slices.Sorted(maps.Keys(retried.Landings)) {
 		landing := retried.Landings[name]
+		if !landing.HasBranch() {
+			continue
+		}
 		if !slices.Contains(left, name) {
 			service.progress.Report(NoPullRequestLeft{Repository: name, Branch: landing.Branch})
 			continue
@@ -178,7 +181,7 @@ func (service *DrudgerService) retryPullRequests(retried *task.Task, repositorie
 	}
 
 	for _, name := range left {
-		if _, hasLanding := retried.Landings[name]; !hasLanding {
+		if !retried.Landings[name].HasBranch() {
 			service.progress.Report(PullRequestWithoutLanding{TaskID: retried.ID, Repository: name})
 		}
 	}
@@ -186,9 +189,10 @@ func (service *DrudgerService) retryPullRequests(retried *task.Task, repositorie
 }
 
 // openPullRequests opens a pull request for every repository of a workspace
-// the task still has a landing in. A repository whose pull request fails is
-// reported and the rest still get theirs.
-func (service *DrudgerService) openPullRequests(space slotWorkspace, finished *task.Task) {
+// the task still has a landing in. A repository named in outOfScope only gets
+// its description moved into the run directory. A repository whose pull
+// request fails is reported and the rest still get theirs.
+func (service *DrudgerService) openPullRequests(space slotWorkspace, finished *task.Task, outOfScope []string) {
 	for _, repository := range space.Repositories {
 		landing, hasLanding := finished.Landings[repository.Name]
 		if !hasLanding {
@@ -205,6 +209,9 @@ func (service *DrudgerService) openPullRequests(space slotWorkspace, finished *t
 			continue
 		}
 
+		if slices.Contains(outOfScope, repository.Name) {
+			continue
+		}
 		service.openPullRequest(finished, repository.projectRepository, repository.Worktree, landing)
 	}
 }

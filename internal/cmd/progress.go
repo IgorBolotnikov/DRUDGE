@@ -148,6 +148,11 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Done("The agent left %s on branch %s, its work is there", event.Repository, event.Branch)
 	case drudger.RescueBranchCreated:
 		p.out.Done("The agent left %s on no branch, its commits are on %s", event.Repository, event.Branch)
+	case drudger.WorkOutOfScope:
+		p.out.Warn(
+			"The agent made %s in %s, which task %s does not change, they are on branch %s. Run %s to open their pull request",
+			git.FormatCommitCount(event.Commits), event.Repository, task.ShortID(event.TaskID), event.Branch, event.Command,
+		)
 	case drudger.EmptyBranchDropped:
 		p.out.Skip("The agent committed nothing in %s, branch %s is deleted", event.Repository, event.Branch)
 	case drudger.BranchPushStarted:

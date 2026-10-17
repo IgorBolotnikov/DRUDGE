@@ -140,11 +140,15 @@ func (service *DrudgerService) RunTask(projectSlug string, requestedID task.Task
 	return service.launch(projectSlug, taskToRun.ID, layout, accept)
 }
 
-// acceptRunnable refuses a task that is not waiting for an agent, and one with
-// a blocker that is not done.
+// acceptRunnable refuses a task that is not waiting for an agent, one that
+// lists a repository the project does not record, and one with a blocker that
+// is not done.
 func (service *DrudgerService) acceptRunnable(projectSlug string, taskToRun *task.Task) error {
 	if taskToRun.Status != task.StatusTodo {
 		return fmt.Errorf("task %s is %q, only %q tasks can be run", taskToRun.ID, taskToRun.Status, task.StatusTodo)
+	}
+	if err := service.refuseUnknownRepositories(taskToRun); err != nil {
+		return err
 	}
 	return service.refuseBlocked(projectSlug, taskToRun)
 }
@@ -189,14 +193,18 @@ func (service *DrudgerService) RerunTask(projectSlug string, requestedID task.Ta
 	return service.launch(projectSlug, taskToRerun.ID, layout, accept)
 }
 
-// acceptRerunnable refuses a task no agent has had yet, one whose agent is
-// still working, and one with a blocker that is not done.
+// acceptRerunnable refuses a task no agent has had yet, one that lists a
+// repository the project does not record, one whose agent is still working,
+// and one with a blocker that is not done.
 func (service *DrudgerService) acceptRerunnable(projectSlug string, layout projectLayout, taskToRerun *task.Task) error {
 	if !slices.Contains(rerunnableStatuses, taskToRerun.Status) {
 		return fmt.Errorf(
 			"task %s is %q, only %s tasks can be rerun",
 			taskToRerun.ID, taskToRerun.Status, formatStatuses(rerunnableStatuses),
 		)
+	}
+	if err := service.refuseUnknownRepositories(taskToRerun); err != nil {
+		return err
 	}
 
 	working, err := service.workingDrudger(projectSlug, layout, taskToRerun.ID)
@@ -374,9 +382,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	if err != nil {
 		return err
 	}
+	listed := space.listedBy(taskToRun)
 
 	// Bases are fetched first, so a new worktree is detached at a fresh base.
-	service.fetchBases(space.Repositories)
+	service.fetchBases(listed.Repositories)
 	if err := service.ensureWorkspace(projectSlug, space); err != nil {
 		return err
 	}
@@ -388,12 +397,12 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	branch, err := service.pickTaskBranch(space, taskToRun)
+	branch, err := service.pickTaskBranch(listed, taskToRun)
 	if err != nil {
 		return err
 	}
 
-	prompt, _, err := service.renderTaskPrompt(taskToRun, space, branch)
+	prompt, _, err := service.renderTaskPrompt(taskToRun, listed, branch)
 	if err != nil {
 		return err
 	}
@@ -425,7 +434,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(taskID))
 	for _, repository := range prepared.Repositories {
 		taskToRun.RecordStash(repository.Name, repository.Stash)
-		taskToRun.RecordLanding(repository.Name, task.Landing{Branch: prepared.Branch, Base: repository.Base})
+		taskToRun.RecordLanding(repository.Name, task.Landing{Branch: repository.Branch, Base: repository.Base})
 	}
 
 	service.progress.Report(AgentLaunched{Task: taskToRun, Sandbox: claimed.Sandbox, Branch: prepared.Branch, RunDir: runDir})
@@ -486,12 +495,13 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	branch, err := service.pickTaskBranch(space, taskToRun)
+	listed := space.listedBy(taskToRun)
+	branch, err := service.pickTaskBranch(listed, taskToRun)
 	if err != nil {
 		return err
 	}
 
-	prompt, promptSource, err := service.renderTaskPrompt(taskToRun, space, branch)
+	prompt, promptSource, err := service.renderTaskPrompt(taskToRun, listed, branch)
 	if err != nil {
 		return err
 	}

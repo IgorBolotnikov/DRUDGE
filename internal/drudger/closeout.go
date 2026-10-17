@@ -2,6 +2,7 @@ package drudger
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
@@ -11,6 +12,10 @@ import (
 // rescueBranchSuffix ends the name of a branch close-out puts on commits no
 // branch reaches.
 const rescueBranchSuffix = "-rescue"
+
+// pullRequestCommand is what a user runs to open the pull requests of a task
+// that close-out left behind.
+const pullRequestCommand = "drg task pr"
 
 // WorkFoundOnBranch reports a repository an agent left on a branch other than
 // the one its handover made. The branch holds the work of the run.
@@ -33,6 +38,17 @@ type EmptyBranchDropped struct {
 	Branch     string
 }
 
+// WorkOutOfScope reports commits an agent made in a repository its task does
+// not change. Their pull request is not opened, and Command is what a user
+// runs to open it.
+type WorkOutOfScope struct {
+	TaskID     task.TaskID
+	Repository string
+	Branch     string
+	Commits    int
+	Command    string
+}
+
 // RunCloseOutFailed reports a step of closing out a finished run that failed.
 // Repository is set for the close-out of one repository.
 type RunCloseOutFailed struct {
@@ -44,6 +60,7 @@ type RunCloseOutFailed struct {
 
 // finishRun records where the work of a finished run landed, opens its pull
 // requests and parks the workspace it ran in. The caller writes the task back.
+// outOfScope names the repositories the handover put on no branch.
 //
 // Close-out runs first. It reads where the agent left each worktree, and
 // parking moves them. Pull requests are opened only for a Session that got
@@ -52,17 +69,17 @@ type RunCloseOutFailed struct {
 // A workspace it cannot read is reported and the task keeps what the handover
 // recorded. Reading git and opening pull requests never cost the outcome of
 // the run.
-func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task, status SessionStatus) {
+func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task, status SessionStatus, outOfScope []string) {
 	space, err := service.workspaceOfTask(projectSlug, finished.ID)
 	if err != nil {
 		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceReadStep, Err: err})
 		return
 	}
 
-	service.closeOutRun(space, finished)
+	service.closeOutRun(space, finished, outOfScope)
 
 	if status == StatusGotShitDone && service.remote != nil {
-		service.openPullRequests(space, finished)
+		service.openPullRequests(space, finished, outOfScope)
 	}
 
 	if err := service.parkWorkspace(space, finished); err != nil {
@@ -70,18 +87,54 @@ func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task
 	}
 }
 
+// outOfScopeRepositories names the repositories a task has a landing with no
+// branch in. The handover leaves a repository the task does not change on no
+// branch. Close-out reads the landings and not the list on the task, so an
+// edit of the list during a run takes effect on the next run.
+func outOfScopeRepositories(finished *task.Task) []string {
+	var outOfScope []string
+	for _, repository := range slices.Sorted(maps.Keys(finished.Landings)) {
+		if !finished.Landings[repository].HasBranch() {
+			outOfScope = append(outOfScope, repository)
+		}
+	}
+	return outOfScope
+}
+
+// handedOverBranch is the branch the handover put the repositories of a task
+// on. It is empty when every landing has no branch.
+func handedOverBranch(handedOver *task.Task) string {
+	for _, repository := range slices.Sorted(maps.Keys(handedOver.Landings)) {
+		if landing := handedOver.Landings[repository]; landing.HasBranch() {
+			return landing.Branch
+		}
+	}
+	return ""
+}
+
 // closeOutRun records where the work of the run is in each repository of the
 // workspace. A repository the task has no landing for is skipped.
 //
 // A repository that cannot be read is reported and the rest are still closed
 // out.
-func (service *DrudgerService) closeOutRun(space slotWorkspace, finished *task.Task) {
+func (service *DrudgerService) closeOutRun(space slotWorkspace, finished *task.Task, outOfScope []string) {
+	// Close-out moves landings to other branches, so the handover branch is
+	// read before any of them.
+	taskBranch := handedOverBranch(finished)
+
 	for _, repository := range space.Repositories {
 		landing, hasLanding := finished.Landings[repository.Name]
 		if !hasLanding {
 			continue
 		}
-		if err := service.closeOutRepository(finished, repository, landing); err != nil {
+
+		var err error
+		if slices.Contains(outOfScope, repository.Name) {
+			err = service.closeOutOutOfScope(finished, repository, landing, taskBranch)
+		} else {
+			err = service.closeOutRepository(finished, repository, landing)
+		}
+		if err != nil {
 			service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: RepositoryCloseOutStep, Repository: repository.Name, Err: err})
 		}
 	}
@@ -136,6 +189,70 @@ func (service *DrudgerService) closeOutRepository(finished *task.Task, repositor
 
 	finished.RecordLanding(repository.Name, task.Landing{Branch: branch, Base: landing.Base, Head: tip.SHA, Commits: commits})
 	return nil
+}
+
+// closeOutOutOfScope records the commits an agent made in a repository its
+// task does not change. A HEAD holding nothing beyond the base loses its
+// landing and is not reported. Commits are reported along with the command
+// that opens their pull request.
+func (service *DrudgerService) closeOutOutOfScope(finished *task.Task, repository repositoryWorktree, landing task.Landing, taskBranch string) error {
+	head, err := service.gitOps.ResolveHeadCommit(repository.Worktree)
+	if err != nil {
+		return err
+	}
+
+	commits, err := service.gitOps.CommitCount(repository.Worktree, landing.Base, head.SHA)
+	if err != nil {
+		return err
+	}
+	if commits == 0 {
+		finished.DropLanding(repository.Name)
+		return nil
+	}
+
+	branch, err := service.gitOps.CurrentBranch(repository.Worktree)
+	if err != nil {
+		return err
+	}
+	if branch == "" {
+		branch, err = service.branchDetachedWork(repository, taskBranch, head.SHA)
+		if err != nil {
+			return err
+		}
+	}
+
+	finished.RecordLanding(repository.Name, task.Landing{Branch: branch, Base: landing.Base, Head: head.SHA, Commits: commits})
+	service.progress.Report(WorkOutOfScope{
+		TaskID:     finished.ID,
+		Repository: repository.Name,
+		Branch:     branch,
+		Commits:    commits,
+		Command:    fmt.Sprintf("%s %s", pullRequestCommand, task.ShortID(finished.ID)),
+	})
+	return nil
+}
+
+// branchDetachedWork puts the task branch on the commits of a detached HEAD
+// in a repository the task does not change. A repository that already has a
+// branch of that name gets a rescue branch.
+func (service *DrudgerService) branchDetachedWork(repository repositoryWorktree, taskBranch string, head string) (string, error) {
+	if taskBranch == "" {
+		return "", fmt.Errorf("the handover put no repository on a branch, so the commits in repository %s get no branch", repository.Name)
+	}
+
+	isTaken, err := service.gitOps.BranchExists(repository.Worktree, taskBranch)
+	if err != nil {
+		return "", err
+	}
+	if isTaken {
+		return service.rescueBranch(repository, taskBranch, head)
+	}
+
+	if err := service.gitOps.CreateBranch(repository.Worktree, taskBranch, head); err != nil {
+		return "", err
+	}
+	service.progress.Report(RescueBranchCreated{Repository: repository.Name, Branch: taskBranch})
+	return taskBranch, nil
 }
 
 // branchOfWork names the branch holding the work of a run. An agent that ended

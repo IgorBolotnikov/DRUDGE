@@ -24,7 +24,7 @@ const branchAttempts = 20
 // handover is what housekeeping did to a workspace before an agent was given
 // it.
 type handover struct {
-	// Branch is the branch every repository of the workspace is checked out
+	// Branch is the branch every repository the task changes is checked out
 	// on. One name across the workspace keeps a change spanning two
 	// repositories on one branch.
 	Branch       string
@@ -37,16 +37,22 @@ type repositoryHandover struct {
 	// Stash is the commit holding what the last Session left uncommitted, and
 	// is empty when the worktree was clean.
 	Stash string
-	// Base is the commit the branch was cut from.
+	// Branch is the branch the worktree was put on. It is empty for a
+	// repository the task does not change.
+	Branch string
+	// Base is the commit the branch was cut from. A repository with no branch
+	// has the commit its worktree sits on.
 	Base string
 }
 
-// prepareWorkspace puts every repository of a workspace onto branch, which is
-// the state a handover needs. With pull requests on, git is told to ignore the
-// drudge dir of every repository and the pull request description of the last
-// Session is deleted. Whatever the last Session left uncommitted is stashed
-// next. The ignore entry goes in before the stash, which would otherwise take
-// the drudge dir along as untracked files. It reports what it did.
+// prepareWorkspace puts every repository a task changes onto branch, which is
+// the state a handover needs. A repository the task does not change stays at
+// the commit its worktree sits on. With pull requests on, git is told to
+// ignore the drudge dir of every repository and the pull request description
+// of the last Session is deleted. Whatever the last Session left uncommitted
+// is stashed next. The ignore entry goes in before the stash, which would
+// otherwise take the drudge dir along as untracked files. It reports what it
+// did.
 //
 // A step that fails stops the handover. An agent is never given a workspace
 // that is not in the state it was meant to be.
@@ -64,6 +70,15 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 			return handover{}, err
 		}
 
+		if !taskToRun.ChangesRepository(repository.Path) {
+			head, err := service.gitOps.ResolveHeadCommit(repository.Worktree)
+			if err != nil {
+				return handover{}, err
+			}
+			prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash, Base: head.SHA})
+			continue
+		}
+
 		base, err := service.gitOps.ResolveCommit(repository.Dir, repository.BaseRef())
 		if err != nil {
 			return handover{}, err
@@ -73,7 +88,7 @@ func (service *DrudgerService) prepareWorkspace(space slotWorkspace, taskToRun *
 			return handover{}, err
 		}
 
-		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash, Base: base.SHA})
+		prepared.Repositories = append(prepared.Repositories, repositoryHandover{Name: repository.Name, Stash: stash, Branch: branch, Base: base.SHA})
 	}
 	return prepared, nil
 }

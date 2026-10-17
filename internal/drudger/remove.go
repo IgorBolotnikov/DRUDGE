@@ -58,7 +58,7 @@ type BranchCleanupFailed struct {
 
 // RemoveEmptyBranches deletes the branch a task left in every repository where
 // it holds no commits, and names the branches it keeps. A task that never ran
-// records no branch and reads no git.
+// records no branch and reads no git, and a landing with no branch is skipped.
 //
 // A repository whose branch cannot be read or deleted is reported, and the
 // other repositories are still cleaned up.
@@ -74,6 +74,9 @@ func (service *DrudgerService) RemoveEmptyBranches(removed *task.Task) error {
 
 	for _, name := range slices.Sorted(maps.Keys(removed.Landings)) {
 		landing := removed.Landings[name]
+		if !landing.HasBranch() {
+			continue
+		}
 
 		recorded, isRecorded := service.recordedRepository(layout, name)
 		if !isRecorded {
