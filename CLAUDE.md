@@ -17,6 +17,13 @@ go test ./internal/task/ -run TestName  # run a single test
 
 DRUDGE is a self-hosted control plane for coding agents: give it a backlog, it hands work to isolated agents, watches them, runs checks, and repeats. See `README.md`.
 
+## Minimal maintenance
+
+DRUDGE is built to need as little maintenance and support as possible. This applies to the tool and to its docs.
+
+- The tool is explicit and configurable. It fails with a clear error that says what went wrong and what to do about it. Behavior a user may want to change is a config key with a documented default.
+- Docs are generated from code wherever possible. Reference pages for commands and config keys are rendered from the command tree and the bundled JSON schemas by golden-file tests, and `go test ./...` fails when a committed page drifts from the code. Only what code can't express is written by hand. Those pages stay short and link to the generated reference for details.
+
 ## Architecture
 
 This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer, and the CLI is only one of several planned interfaces — a TUI and an HTMX-based web frontend are planned on top of the same domain layer. Business logic belongs in the domain packages (`internal/project`, `internal/task`, `internal/drudger`,their services) and never in `internal/cmd`. A command handler should only parse args, call a service, and format output — if a handler is doing anything more than that, it's logic that another interface will need to duplicate, and it should move down into the domain layer instead.
