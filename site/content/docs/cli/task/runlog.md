@@ -7,13 +7,19 @@ generated: true
 ---
 
 ```text
-usage: drg task runlog <task-id>
+usage: drg task runlog <task-id> [options]
 ```
 
-Print the event stream and the stderr log of the latest run of a task. Lines that are JSON are indented.
+Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it.
 
 The task ID may be the short one a listing prints, as long as it names a single task.
 
 ## Arguments
 
 - `<task-id>`
+
+## Options
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--raw` | Print the files the agent wrote as it wrote them, with JSON lines indented | `false` |
