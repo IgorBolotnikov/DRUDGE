@@ -129,6 +129,28 @@ func TestPrintRunSteps(t *testing.T) {
 				"got shit done · 42 turns · 6m12s · $1.84\n",
 		},
 		{
+			name: "subagent steps indent under the call that started them",
+			steps: []drudger.Step{
+				{Kind: drudger.StepToolCall, Tool: "Agent", Summary: "Explore runlog code"},
+				{Kind: drudger.StepToolCall, Tool: "Grep", Summary: "StreamDecoder", Depth: 1},
+				{Kind: drudger.StepToolError, Summary: "File does not exist.", Depth: 1},
+				{Kind: drudger.StepAgentText, Summary: "Found it.\nThe decoder is in streams.", Depth: 1},
+				{Kind: drudger.StepToolCall, Tool: "Task", Summary: "Find tests"},
+				{Kind: drudger.StepToolCall, Tool: "Read", Summary: "internal/cmd/task_runlog_test.go", Depth: 1},
+				{Kind: drudger.StepAgentText, Summary: "Both subagents are done."},
+			},
+			want: "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
+				runDir + "\n" +
+				"Agent   Explore runlog code\n" +
+				"  Grep    StreamDecoder\n" +
+				"  File does not exist.\n" +
+				"  Found it.\n" +
+				"  The decoder is in streams.\n" +
+				"Task    Find tests\n" +
+				"  Read    internal/cmd/task_runlog_test.go\n" +
+				"Both subagents are done.\n",
+		},
+		{
 			name:  "an unknown tool shows its name only",
 			steps: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "WebSearch"}},
 			want: "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +

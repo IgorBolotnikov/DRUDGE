@@ -18,6 +18,9 @@ const (
 	eventTypeUser      = "user"
 	eventTypeResult    = "result"
 	eventTypeRateLimit = "rate_limit_event"
+	// eventTypeToolProgress is a heartbeat the harness writes while a tool
+	// runs.
+	eventTypeToolProgress = "tool_progress"
 
 	subtypeInit            = "init"
 	subtypeThinkingTokens  = "thinking_tokens"
@@ -59,6 +62,10 @@ const summaryCapLength = 120
 // shows abbreviated.
 const summaryCutSuffix = "…"
 
+// subagentDepth is the nesting depth of a step a subagent took. The harness marks
+// such a step with the id of the tool call that started the subagent.
+const subagentDepth = 1
+
 // sessionIDDisplayLength is how many leading characters of a session id the
 // init line shows.
 const sessionIDDisplayLength = 8
@@ -76,9 +83,10 @@ func NewClaudeCodeDecoder() *ClaudeCodeDecoder {
 // streamLine is one line of a Claude Code event stream. The harness writes
 // many more fields than these; only the ones a Step needs are decoded.
 type streamLine struct {
-	Type    string `json:"type"`
-	Subtype string `json:"subtype"`
-	Message struct {
+	Type            string `json:"type"`
+	Subtype         string `json:"subtype"`
+	ParentToolUseID string `json:"parent_tool_use_id"`
+	Message         struct {
 		Content []contentBlock `json:"content"`
 	} `json:"message"`
 
@@ -126,10 +134,10 @@ func (*ClaudeCodeDecoder) Decode(line string) []drudger.Step {
 	case eventTypeSystem:
 		return systemSteps(parsed, line)
 	case eventTypeAssistant, eventTypeUser:
-		return contentSteps(parsed.Message.Content, line)
+		return contentSteps(parsed.Message.Content, eventDepth(parsed), line)
 	case eventTypeResult:
 		return []drudger.Step{resultStep(parsed, line)}
-	case eventTypeRateLimit:
+	case eventTypeRateLimit, eventTypeToolProgress:
 		return nil
 	default:
 		return unrecognizedStep(line)
@@ -180,21 +188,35 @@ func shortSessionID(sessionID string) string {
 	return string(runes[:sessionIDDisplayLength]) + summaryCutSuffix
 }
 
-// contentSteps decodes the content blocks of an assistant or a user event.
-// A thinking block and a successful tool result decode to no Step.
-func contentSteps(blocks []contentBlock, line string) []drudger.Step {
+func eventDepth(parsed streamLine) int {
+	if parsed.ParentToolUseID != "" {
+		return subagentDepth
+	}
+	return 0
+}
+
+// contentSteps decodes the content blocks of an assistant or a user event
+// into Steps at the given depth. A thinking block and a successful tool
+// result decode to no Step.
+func contentSteps(blocks []contentBlock, depth int, line string) []drudger.Step {
 	var steps []drudger.Step
 	for _, block := range blocks {
+		var step drudger.Step
 		switch block.Type {
 		case contentTypeText:
-			steps = append(steps, drudger.Step{Kind: drudger.StepAgentText, Summary: block.Text, Raw: line})
+			step = drudger.Step{Kind: drudger.StepAgentText, Summary: block.Text, Raw: line}
 		case contentTypeToolUse:
-			steps = append(steps, toolCallStep(block, line))
+			step = toolCallStep(block, line)
 		case contentTypeToolResult:
-			if block.IsError {
-				steps = append(steps, toolErrorStep(block, line))
+			if !block.IsError {
+				continue
 			}
+			step = toolErrorStep(block, line)
+		default:
+			continue
 		}
+		step.Depth = depth
+		steps = append(steps, step)
 	}
 	return steps
 }

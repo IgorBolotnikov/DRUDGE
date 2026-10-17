@@ -48,8 +48,14 @@ const (
 	successfulResultLine = `{"type":"result","subtype":"success","is_error":false,"num_turns":12,"duration_ms":43071,"total_cost_usd":0.3134686,"session_id":"67410977-f80b-49e2-9976-6f84cbc3644f","result":"Done."}`
 	failedResultLine     = `{"type":"result","subtype":"success","is_error":true,"num_turns":5,"duration_ms":125000,"total_cost_usd":0.5,"session_id":"67410977-f80b-49e2-9976-6f84cbc3644f","result":"Could not finish."}`
 
+	subagentToolCallLine   = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"StreamDecoder","path":"internal"}}]},"parent_tool_use_id":"toolu_01Er92AJBWSJZzwnhggA4gn6"}`
+	subagentTextLine       = `{"type":"assistant","message":{"content":[{"type":"text","text":"The decoder lives in internal/adapters/streams."}]},"parent_tool_use_id":"toolu_01Er92AJBWSJZzwnhggA4gn6"}`
+	subagentToolErrorLine  = `{"type":"user","message":{"content":[{"type":"tool_result","content":"File does not exist.","is_error":true,"tool_use_id":"toolu_01U9ZWRVbhiY5UbrnGAsFCSb"}]},"parent_tool_use_id":"toolu_01Er92AJBWSJZzwnhggA4gn6"}`
+	topLevelNullParentLine = `{"type":"assistant","message":{"content":[{"type":"text","text":"Back at the top."}]},"parent_tool_use_id":null}`
+	toolProgressLine       = `{"type":"tool_progress","tool_use_id":"toolu_01JjYGKtngbGAEtZwiJKegB9-heartbeat-0","tool_name":"Bash"}`
+
 	malformedLine   = `{"type":"assistant","message":{"content":[{"type":"text","text":"Half`
-	unknownTypeLine = `{"type":"tool_progress","tool_use_id":"toolu_01JjYGKtngbGAEtZwiJKegB9-heartbeat-0","tool_name":"Bash"}`
+	unknownTypeLine = `{"type":"stream_event","event":{"type":"message_start"}}`
 )
 
 func TestClaudeCodeDecoder_Decode(t *testing.T) {
@@ -138,8 +144,29 @@ func TestClaudeCodeDecoder_Decode(t *testing.T) {
 		{name: "task_started is noise", line: taskStartedLine, want: nil},
 		{name: "task_notification is noise", line: taskNotificationLine, want: nil},
 		{name: "task_progress is noise", line: taskProgressLine, want: nil},
+		{name: "tool_progress is noise", line: toolProgressLine, want: nil},
 		{name: "commands_changed is noise", line: commandsChangedLine, want: nil},
 		{name: "vcs_state_changed is noise", line: vcsStateChangedLine, want: nil},
+		{
+			name: "a subagent tool call",
+			line: subagentToolCallLine,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Grep", Summary: "StreamDecoder", Depth: 1, Raw: subagentToolCallLine}},
+		},
+		{
+			name: "subagent text",
+			line: subagentTextLine,
+			want: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "The decoder lives in internal/adapters/streams.", Depth: 1, Raw: subagentTextLine}},
+		},
+		{
+			name: "a subagent tool error",
+			line: subagentToolErrorLine,
+			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "File does not exist.", Depth: 1, Raw: subagentToolErrorLine}},
+		},
+		{
+			name: "a null parent tool call is top-level",
+			line: topLevelNullParentLine,
+			want: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "Back at the top.", Raw: topLevelNullParentLine}},
+		},
 		{
 			name: "a successful tool result is hidden",
 			line: successfulToolResultLine,

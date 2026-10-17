@@ -22,6 +22,10 @@ const (
 // the log holds something.
 const stderrHeading = "stderr:"
 
+// depthIndent is how far a compact view indents a step for each level of
+// subagent nesting it ran at.
+const depthIndent = "  "
+
 // toolColumnWidth is how wide a tool name sits before the summary of a tool
 // call or a tool error.
 const toolColumnWidth = 7
@@ -79,7 +83,7 @@ func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
 		lines = append(lines, notWrittenYetLabel)
 	}
 	for _, step := range runSteps.Steps {
-		lines = append(lines, compactStepLine(palette, step))
+		lines = append(lines, indentStepLine(compactStepLine(palette, step), step.Depth))
 	}
 
 	if len(runSteps.Stderr) > 0 {
@@ -109,6 +113,13 @@ func compactStepLine(palette *theme.Theme, step drudger.Step) string {
 	default:
 		return step.Summary
 	}
+}
+
+// indentStepLine indents every line of a rendered step by its depth. Agent
+// text can span several lines.
+func indentStepLine(line string, depth int) string {
+	indent := strings.Repeat(depthIndent, depth)
+	return indent + strings.ReplaceAll(line, "\n", "\n"+indent)
 }
 
 // toolStepLine renders a tool call or a tool error: the tool name padded to a
