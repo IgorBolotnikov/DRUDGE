@@ -12,8 +12,8 @@ layout: hextra-home
 {{< /hextra/hero-headline >}}
 
 {{< hextra/hero-subtitle >}}
-  You make the decisions and review what comes back. The agents do the grunt work in between.<br /><br />
-  They're not coworkers. They're not digital employees. They're tools.
+  You make the decisions and review what comes back. The agents do the grunt work in between.
+  <span class="landing-aside">They're not coworkers. They're not digital employees. They're tools.</span>
 {{< /hextra/hero-subtitle >}}
 
 ```sh
