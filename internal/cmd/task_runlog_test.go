@@ -158,11 +158,15 @@ func TestPrintRunSteps(t *testing.T) {
 				"WebSearch\n",
 		},
 		{
-			name:  "a tool error prints its summary alone",
-			steps: []drudger.Step{{Kind: drudger.StepToolError, Summary: "Exit code 123…"}},
+			name: "a tool error prints under its tool call",
+			steps: []drudger.Step{
+				{Kind: drudger.StepToolCall, Tool: "Bash", Summary: "go test ./internal/cmd/..."},
+				{Kind: drudger.StepToolError, Summary: "exit status 1"},
+			},
 			want: "Task [006684e3-dbe9-4316-8aba-8a67a8f01f8f] Fix login\n" +
 				runDir + "\n" +
-				"Exit code 123…\n",
+				"Bash    go test ./internal/cmd/...\n" +
+				"  ✗ exit status 1\n",
 		},
 		{
 			name:  "an unrecognized line is printed as it is",

@@ -27,8 +27,11 @@ const stderrHeading = "stderr:"
 const depthIndent = "  "
 
 // toolColumnWidth is how wide a tool name sits before the summary of a tool
-// call or a tool error.
+// call.
 const toolColumnWidth = 7
+
+// toolErrorIndent puts a tool error under the tool call it belongs to.
+const toolErrorIndent = "  "
 
 // Tool names whose summary is a path.
 const (
@@ -106,8 +109,10 @@ func compactStepLine(palette *theme.Theme, step drudger.Step) string {
 		return palette.Paint(theme.Stdout, theme.RoleMuted, step.Raw)
 	case drudger.StepAgentText:
 		return step.Summary
-	case drudger.StepToolCall, drudger.StepToolError:
+	case drudger.StepToolCall:
 		return toolStepLine(palette, step)
+	case drudger.StepToolError:
+		return toolErrorIndent + palette.Paint(theme.Stdout, theme.RoleError, printer.FailedGlyph+" "+step.Summary)
 	case drudger.StepFinalResult:
 		return finalResultLine(palette, step)
 	default:
@@ -122,9 +127,8 @@ func indentStepLine(line string, depth int) string {
 	return indent + strings.ReplaceAll(line, "\n", "\n"+indent)
 }
 
-// toolStepLine renders a tool call or a tool error: the tool name padded to a
-// column followed by its summary, or the summary alone when there is no tool
-// name or no summary to pad against.
+// toolStepLine renders a tool call: the tool name padded to a column followed
+// by its summary, or the name alone when there is no summary to pad against.
 func toolStepLine(palette *theme.Theme, step drudger.Step) string {
 	summaryRole := theme.RoleSecondary
 	if pathSummaryTools[step.Tool] {
@@ -135,9 +139,6 @@ func toolStepLine(palette *theme.Theme, step drudger.Step) string {
 		return palette.Paint(theme.Stdout, theme.RolePrimary, step.Tool)
 	}
 	summary := palette.Paint(theme.Stdout, summaryRole, step.Summary)
-	if step.Tool == "" {
-		return summary
-	}
 	tool := palette.Paint(theme.Stdout, theme.RolePrimary, fmt.Sprintf("%-*s", toolColumnWidth, step.Tool))
 	return tool + " " + summary
 }

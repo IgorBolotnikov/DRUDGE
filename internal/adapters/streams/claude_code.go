@@ -104,11 +104,12 @@ type streamLine struct {
 
 // contentBlock is one block of an assistant or a user event's message.
 type contentBlock struct {
-	Type    string          `json:"type"`
-	Text    string          `json:"text"`
-	Name    string          `json:"name"`
-	Input   json.RawMessage `json:"input"`
-	Content string          `json:"content"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
+	// Content of a tool result is a string or a list of text blocks.
+	Content json.RawMessage `json:"content"`
 	IsError bool            `json:"is_error"`
 }
 
@@ -249,9 +250,29 @@ func toolSummary(tool string, input toolInput) string {
 	}
 }
 
-// toolErrorStep summarizes a tool result the agent flagged as an error.
+// toolErrorStep summarizes a tool result the agent flagged as an error by
+// the first line of its text.
 func toolErrorStep(block contentBlock, line string) drudger.Step {
-	return drudger.Step{Kind: drudger.StepToolError, Summary: capSummary(block.Content), Raw: line}
+	return drudger.Step{Kind: drudger.StepToolError, Summary: capSummary(toolResultText(block.Content)), Raw: line}
+}
+
+// toolResultText joins the text of a tool result's content. Content that is
+// neither a string nor a list of blocks reads as empty.
+func toolResultText(content json.RawMessage) string {
+	var text string
+	if err := json.Unmarshal(content, &text); err == nil {
+		return text
+	}
+
+	var blocks []contentBlock
+	_ = json.Unmarshal(content, &blocks)
+	var texts []string
+	for _, block := range blocks {
+		if block.Type == contentTypeText {
+			texts = append(texts, block.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 // resultStep summarizes the terminal event of a run: its verdict, how many

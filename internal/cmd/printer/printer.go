@@ -101,12 +101,15 @@ import (
 )
 
 const (
-	doneGlyph   = "✓"
-	skipGlyph   = "·"
-	stepGlyph   = "›"
-	warnGlyph   = "!"
-	failedGlyph = "✗"
+	doneGlyph = "✓"
+	skipGlyph = "·"
+	stepGlyph = "›"
+	warnGlyph = "!"
 )
+
+// FailedGlyph starts a line about work that failed. A view that formats its
+// own lines uses it too.
+const FailedGlyph = "✗"
 
 // stepEnding ends the line of a step that started.
 const stepEnding = "…"
@@ -184,7 +187,7 @@ func (p *Printer) Step(format string, args ...any) {
 
 // Failed prints a line about work that failed.
 func (p *Printer) Failed(format string, args ...any) {
-	p.glyphLine(theme.RoleError, failedGlyph, format, args...)
+	p.glyphLine(theme.RoleError, FailedGlyph, format, args...)
 }
 
 // Detail prints a dimmed line one level deeper than the lines around it. The

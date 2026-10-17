@@ -152,7 +152,7 @@ var TaskCmd = &Cmd{
 			Name: "runlog",
 			Args: []string{taskIDArg},
 			Desc: "Print the logs of the latest run of a task",
-			Help: "Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it.\n" +
+			Help: "Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it. A tool call that failed shows the first line of its error under it.\n" +
 				"The task ID may be the short one a listing prints, as long as it names a single task.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				isRaw := fs.Bool(rawFlagName, false, rawUsage)

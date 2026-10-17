@@ -43,7 +43,11 @@ const (
 	vcsStateChangedLine  = `{"type":"system","subtype":"vcs_state_changed","kind":"merge"}`
 
 	successfulToolResultLine = `{"type":"user","message":{"content":[{"type":"tool_result","content":"Launching skill: code-style","tool_use_id":"toolu_013ZzTMxvWS8RfWWQasjycQ6"}]}}`
-	failedToolResultLine     = `{"type":"user","message":{"content":[{"type":"tool_result","content":"Exit code 123\n---all tickets---","is_error":true,"tool_use_id":"toolu_01U9ZWRVbhiY5UbrnGAsFCSb"}]}}`
+	failedToolResultLine     = `{"type":"user","message":{"content":[{"type":"tool_result","content":"File does not exist.","is_error":true,"tool_use_id":"toolu_01U9ZWRVbhiY5UbrnGAsFCSb"}]}}`
+	multiLineToolErrorLine   = `{"type":"user","message":{"content":[{"type":"tool_result","content":"Exit code 123\n---all tickets---","is_error":true,"tool_use_id":"toolu_01U9ZWRVbhiY5UbrnGAsFCSb"}]}}`
+	blockListToolErrorLine   = `{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"Agent type 'Explorer' not found."}],"is_error":true,"tool_use_id":"toolu_01Er92AJBWSJZzwnhggA4gn6"}]}}`
+	blockListToolResultLine  = `{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"Found 3 files."}],"tool_use_id":"toolu_01Er92AJBWSJZzwnhggA4gn6"}]}}`
+	mixedToolResultsLine     = `{"type":"user","message":{"content":[{"type":"tool_result","content":"package cmd","tool_use_id":"toolu_013ZzTMxvWS8RfWWQasjycQ6"},{"type":"tool_result","content":"exit status 1","is_error":true,"tool_use_id":"toolu_01U9ZWRVbhiY5UbrnGAsFCSb"}]}}`
 
 	successfulResultLine = `{"type":"result","subtype":"success","is_error":false,"num_turns":12,"duration_ms":43071,"total_cost_usd":0.3134686,"session_id":"67410977-f80b-49e2-9976-6f84cbc3644f","result":"Done."}`
 	failedResultLine     = `{"type":"result","subtype":"success","is_error":true,"num_turns":5,"duration_ms":125000,"total_cost_usd":0.5,"session_id":"67410977-f80b-49e2-9976-6f84cbc3644f","result":"Could not finish."}`
@@ -173,9 +177,29 @@ func TestClaudeCodeDecoder_Decode(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "a successful tool result with a list of blocks is hidden",
+			line: blockListToolResultLine,
+			want: nil,
+		},
+		{
 			name: "a failed tool result",
 			line: failedToolResultLine,
-			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "Exit code 123" + summaryCutSuffix, Raw: failedToolResultLine}},
+			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "File does not exist.", Raw: failedToolResultLine}},
+		},
+		{
+			name: "a failed tool result with a multi-line error keeps only its first line",
+			line: multiLineToolErrorLine,
+			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "Exit code 123" + summaryCutSuffix, Raw: multiLineToolErrorLine}},
+		},
+		{
+			name: "a failed tool result with a list of blocks",
+			line: blockListToolErrorLine,
+			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "Agent type 'Explorer' not found.", Raw: blockListToolErrorLine}},
+		},
+		{
+			name: "a failed tool result next to a successful one",
+			line: mixedToolResultsLine,
+			want: []drudger.Step{{Kind: drudger.StepToolError, Summary: "exit status 1", Raw: mixedToolResultsLine}},
 		},
 		{
 			name: "a successful final result",

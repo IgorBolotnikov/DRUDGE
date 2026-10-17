@@ -10,7 +10,7 @@ generated: true
 usage: drg task runlog <task-id> [options]
 ```
 
-Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it.
+Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it. A tool call that failed shows the first line of its error under it.
 
 The task ID may be the short one a listing prints, as long as it names a single task.
 
