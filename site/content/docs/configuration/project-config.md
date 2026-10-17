@@ -1,0 +1,47 @@
+---
+title: Project config
+weight: 2
+---
+
+The project config file is `.drudge/config.json` in the project directory. `drg project init <name>` writes it with the project slug, the git repositories it finds and the `$schema` pointer. Every task, drudger and run command reads it to find the project of the current directory, so they fail in a directory without one.
+
+## Schema
+
+The file starts with a `$schema` key holding the absolute path of `~/.drudge/schema/local-config.json`. The file lives outside `~/.drudge/`, so a relative path would not resolve. `drg setup` rewrites the schema file on every run. An editor with JSON schema support uses it to complete keys and flag wrong values.
+
+## Defaults
+
+A key set here overrides the same key of the [global config](../config/). `promptFile` and `maxConcurrentDrudgers` override `drudger.promptFile` and `drudger.maxConcurrentDrudgers`. A key left out falls back to the global config, then to the default in the table below. A value DRUDGE does not accept stops the command with an error that names the file and the key.
+
+A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.stepsFile` set here is a file name under `.drudge/prompts/` of the project directory.
+
+## Keys
+
+<!-- BEGIN GENERATED: edits between these markers are overwritten -->
+
+| Key | Type | Default | Allowed | Description |
+| --- | --- | --- | --- | --- |
+| `$schema` | string |  |  | JSON schema reference for configuration validation |
+| `projectSlug` | string |  |  | Required. Slug of the project this directory is linked to. |
+| `promptFile` | string |  |  | File name of the prompt handed to an agent, resolved under .drudge/prompts/ of the project directory. Omit to use the global prompt file. |
+| `maxConcurrentDrudgers` | integer | `3` | minimum 1 | How many Drudgers may work on one project at once. |
+| `task` | object |  |  | Settings for tasks. Each one overrides the global config. |
+| `task.defaultStatus` | string | `"draft"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
+| `task.branchFormat` | string | `"drudge/{{taskShortID}}-{{taskSlug}}"` |  | Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are. |
+| `task.pageSize` | integer | `20` | minimum 0 | How many tasks drg task list shows on one page. 0 shows every task on one page. |
+| `drudger` | object |  |  | Settings for the Drudgers. Each one overrides the global config. |
+| `drudger.pageSize` | integer | `20` | minimum 0 | How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page. |
+| `repositories` | array |  |  | The git repositories of the project. drg project init writes the list. |
+| `repositories[].path` | string |  |  | Required. Where the repository sits relative to the project directory. A project directory that is itself a repository records ".". |
+| `repositories[].defaultBranch` | string |  |  | The branch work is cut from. Omit to read it from origin/HEAD. |
+| `remote` | object |  |  | Settings for the provider the repositories of a project are hosted on. Each one overrides the global config. |
+| `remote.provider` | string |  | `"github"` | The provider the repositories are hosted on. Required when pull requests are on. |
+| `remote.timeoutSeconds` | integer | `60` | minimum 1 | Seconds allowed for one call of the provider CLI. |
+| `remote.pullRequests` | object |  |  | Settings for the pull requests DRUDGE opens. |
+| `remote.pullRequests.isEnabled` | boolean | `false` |  | Open a pull request for the work of a task. When it is off the work is merged locally. When it is on a run is refused unless the provider CLI is installed and logged in and every repository has an origin remote on the provider. |
+| `remote.pullRequests.isDraft` | boolean | `false` |  | Open pull requests as drafts. |
+| `remote.pullRequests.titleFormat` | string | `"<a short summary of the change>"` |  | How the agent is told to write the title of a pull request, word for word. {{ticketID}} and {{taskTitle}} are filled in first. |
+| `remote.pullRequests.templateFile` | string |  |  | File name of the pull request body template used for a repository that has none, resolved under .drudge/prompts/ of the project directory. Omit to use the global template file. |
+| `remote.pullRequests.stepsFile` | string |  |  | File name of the pull request steps the prompt is given in place of {{pullRequestSteps}}, resolved under .drudge/prompts/ of the project directory. It may use the {{titleFormat}}, {{templatePaths}} and {{defaultTemplate}} placeholders. Omit to use the global steps file. |
+
+<!-- END GENERATED -->
