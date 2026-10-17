@@ -272,14 +272,18 @@ func (service *DrudgerService) nukeWorktree(repository repositoryWorktree, messa
 	return stash, service.gitOps.PruneWorktrees(repository.Dir)
 }
 
+// fetchBases updates the tracking ref every given repository cuts work from.
+func (service *DrudgerService) fetchBases(repositories []repositoryWorktree) {
+	for _, repository := range repositories {
+		service.fetchBase(repository)
+	}
+}
+
 // ensureWorkspace makes a Drudger's workspace ready for a handover and records
-// what it saw. Every repository has its base fetched and gets a worktree when
-// the slot has none. A worktree no agent can be given stops the run and names
-// the Drudger to nuke.
+// what it saw. Every repository gets a worktree when the slot has none. A
+// worktree no agent can be given stops the run and names the Drudger to nuke.
 func (service *DrudgerService) ensureWorkspace(projectSlug string, space slotWorkspace) error {
 	for _, repository := range space.Repositories {
-		service.fetchBase(repository)
-
 		health, err := service.ensureWorktree(repository)
 		if err != nil {
 			return err

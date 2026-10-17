@@ -375,6 +375,8 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	// Bases are fetched first, so a new worktree is detached at a fresh base.
+	service.fetchBases(space.Repositories)
 	if err := service.ensureWorkspace(projectSlug, space); err != nil {
 		return err
 	}
