@@ -149,6 +149,11 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "✓ The workspace of api held uncommitted changes, they are stashed at 9f1c2b3a4d5e\n",
 		},
 		{
+			name:       "uncommitted changes out of scope",
+			event:      drudger.UncommittedOutOfScope{TaskID: "3f9a1c2e", Repository: "ui", Commit: "9f1c2b3a4d5e6f7089a1b2c3d4e5f60718293a4b"},
+			wantStderr: "! The agent left uncommitted changes in ui, which task 3f9a1c2e does not list, they are stashed at 9f1c2b3a4d5e\n",
+		},
+		{
 			name:  "a branch checkout started",
 			event: drudger.BranchCheckoutStarted{Branch: "drudge/006684e3-fix-login"},
 			want:  "› Putting the workspace on branch drudge/006684e3-fix-login…\n",

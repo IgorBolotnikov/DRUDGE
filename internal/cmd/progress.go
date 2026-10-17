@@ -153,6 +153,11 @@ func (p *cliProgress) reportDrudger(event any) {
 			"The agent made %s in %s, which task %s does not change, they are on branch %s. Run %s to open their pull request",
 			git.FormatCommitCount(event.Commits), event.Repository, task.ShortID(event.TaskID), event.Branch, event.Command,
 		)
+	case drudger.UncommittedOutOfScope:
+		p.out.Warn(
+			"The agent left uncommitted changes in %s, which task %s does not list, they are stashed at %s",
+			event.Repository, task.ShortID(event.TaskID), git.ShortSHA(event.Commit),
+		)
 	case drudger.EmptyBranchDropped:
 		p.out.Skip("The agent committed nothing in %s, branch %s is deleted", event.Repository, event.Branch)
 	case drudger.BranchPushStarted:

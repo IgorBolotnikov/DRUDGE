@@ -2,6 +2,7 @@ package drudger
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -9,12 +10,13 @@ import (
 
 // parkWorkspace parks every repository of a workspace and records the stashes
 // it makes on parked, which is nil when no task is known to have left the
-// changes. A worktree that is not on disk is skipped.
+// changes. A stash in a repository named by outOfScope is reported. A worktree
+// that is not on disk is skipped.
 //
 // Parking frees the branch a run was on, because git refuses to delete a
 // branch a worktree holds. A workspace that is already parked is only read, so
 // any command can park whatever it finds.
-func (service *DrudgerService) parkWorkspace(space slotWorkspace, parked *task.Task) error {
+func (service *DrudgerService) parkWorkspace(space slotWorkspace, parked *task.Task, outOfScope []string) error {
 	for _, repository := range space.Repositories {
 		isPresent, err := common.Exists(repository.Worktree)
 		if err != nil {
@@ -24,7 +26,8 @@ func (service *DrudgerService) parkWorkspace(space slotWorkspace, parked *task.T
 			continue
 		}
 
-		if err := service.parkRepository(space.Slot, repository, parked); err != nil {
+		isOutOfScope := slices.Contains(outOfScope, repository.Name)
+		if err := service.parkRepository(space.Slot, repository, parked, isOutOfScope); err != nil {
 			return err
 		}
 	}
@@ -34,13 +37,16 @@ func (service *DrudgerService) parkWorkspace(space slotWorkspace, parked *task.T
 // parkRepository stashes what one worktree holds uncommitted and detaches it
 // at the base its repository cuts work from. A worktree that is already
 // detached is left where it sits.
-func (service *DrudgerService) parkRepository(slot int, repository repositoryWorktree, parked *task.Task) error {
+func (service *DrudgerService) parkRepository(slot int, repository repositoryWorktree, parked *task.Task, isOutOfScope bool) error {
 	stash, err := service.stashWorktree(repository, parkingStashMessage(slot, parked))
 	if err != nil {
 		return err
 	}
 	if parked != nil {
 		parked.RecordStash(repository.Name, stash)
+		if isOutOfScope && stash != "" {
+			service.progress.Report(UncommittedOutOfScope{TaskID: parked.ID, Repository: repository.Name, Commit: stash})
+		}
 	}
 
 	branch, err := service.gitOps.CurrentBranch(repository.Worktree)
@@ -55,6 +61,14 @@ func (service *DrudgerService) parkRepository(slot int, repository repositoryWor
 		return fmt.Errorf("could not take the workspace of repository %s off branch %s: %w", repository.Name, branch, err)
 	}
 	return nil
+}
+
+// UncommittedOutOfScope reports uncommitted changes an agent left in a
+// repository its task does not list. Commit is the stash that holds them.
+type UncommittedOutOfScope struct {
+	TaskID     task.TaskID
+	Repository string
+	Commit     string
 }
 
 // WorkspaceStep names the step on a workspace that failed.
@@ -94,7 +108,7 @@ func (service *DrudgerService) parkIdleDrudgers(projectSlug string, layout proje
 			service.progress.Report(IdleWorkspaceParkFailed{ProjectSlug: projectSlug, Slot: candidate.Slot, Step: WorkspaceReadStep, Err: err})
 			continue
 		}
-		if err := service.parkWorkspace(space, nil); err != nil {
+		if err := service.parkWorkspace(space, nil, nil); err != nil {
 			service.progress.Report(IdleWorkspaceParkFailed{ProjectSlug: projectSlug, Slot: candidate.Slot, Step: WorkspaceParkStep, Err: err})
 		}
 	}

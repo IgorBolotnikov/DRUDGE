@@ -9,6 +9,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
@@ -102,6 +103,76 @@ func TestDrudgerService_SessionStatus_ParksTheWorkspace(t *testing.T) {
 				if got := session.Task.Stashes[repository]; got != want {
 					t.Errorf("expected repository %s to record stash %s, got %q", repository, want, got)
 				}
+			}
+		})
+	}
+}
+
+func TestDrudgerService_SessionStatus_WarnsAboutUncommittedChangesOutOfScope(t *testing.T) {
+	const listed, unlisted = "api", "ui"
+
+	cases := []struct {
+		name string
+		// leave puts the worktrees in the state the agent left them in, keyed
+		// by repository name.
+		leave       func(fake *fakeGit, worktrees map[string]string)
+		wantWarning bool
+	}{
+		{
+			name: "an uncommitted change in a repository the task does not list",
+			leave: func(fake *fakeGit, worktrees map[string]string) {
+				fake.leaveDirty(worktrees[unlisted])
+			},
+			wantWarning: true,
+		},
+		{
+			name: "an uncommitted change in a repository the task lists",
+			leave: func(fake *fakeGit, worktrees map[string]string) {
+				fake.leaveDirty(worktrees[listed])
+			},
+		},
+		{
+			name:  "a clean worktree of a repository the task does not list",
+			leave: func(fake *fakeGit, worktrees map[string]string) {},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repositories := []string{listed, unlisted}
+			projectDir := setupProjectDir(t)
+			tracked := handedOverTask(listed)
+			tracked.RecordLanding(unlisted, task.Landing{Base: testBaseSHA})
+
+			pool := []*Drudger{holdingDrudger(projectDir, tracked.ID)}
+			service := newTestServiceWithPool(settingsWith(repositories...), &fakeCommandRunner{}, pool, tracked)
+			service.runs.writeStream(tracked.ID, initEvent, resultEvent)
+			service.runs.writeExit(tracked.ID, "0\n")
+			worktrees := worktreesOf(projectDir, repositories)
+			makeWorktrees(t, worktrees)
+			service.git.leaveOn(worktrees[listed], testTaskBranch, testBaseSHA)
+			service.git.leaveDetached(worktrees[unlisted], testBaseSHA)
+			testCase.leave(service.git, worktrees)
+
+			session, err := service.SessionStatus(testProjectSlug, tracked.ID)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			warnings := reportedEvents[UncommittedOutOfScope](service.progress)
+			if !testCase.wantWarning {
+				if len(warnings) != 0 {
+					t.Errorf("expected no warning, got %+v", warnings)
+				}
+				return
+			}
+
+			want := UncommittedOutOfScope{TaskID: tracked.ID, Repository: unlisted, Commit: session.Task.Stashes[unlisted]}
+			if want.Commit == "" {
+				t.Fatalf("expected repository %s to record a stash, got %v", unlisted, session.Task.Stashes)
+			}
+			if warning := singleEvent[UncommittedOutOfScope](t, service.progress); warning != want {
+				t.Errorf("expected the warning %+v, got %+v", want, warning)
 			}
 		})
 	}

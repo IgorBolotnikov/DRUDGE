@@ -82,7 +82,7 @@ func (service *DrudgerService) finishRun(projectSlug string, finished *task.Task
 		service.openPullRequests(space, finished, outOfScope)
 	}
 
-	if err := service.parkWorkspace(space, finished); err != nil {
+	if err := service.parkWorkspace(space, finished, outOfScope); err != nil {
 		service.progress.Report(RunCloseOutFailed{TaskID: finished.ID, Step: WorkspaceParkStep, Err: err})
 	}
 }
