@@ -12,6 +12,7 @@ go test ./...                           # run all tests
 go test ./internal/task/...             # run tests for one package
 go test ./internal/task/ -run TestName  # run a single test
 make site                               # serve the docs site with hugo server (needs Hugo extended)
+go test ./internal/cmd -run TestCLIReference -update  # regenerate the CLI reference in site/content/docs/cli/
 ```
 
 ## What this is
@@ -61,6 +62,8 @@ Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup
 **`internal/common`** holds the shared low-level helpers everything else depends on: path helpers for the `~/.drudge` layout, generic JSON read/write, the front-matter format, UUID generation, and a minimal `Logger` (`Info` → stdout, `Warn` and `Error` → stderr, optional bracketed prefix). Don't reintroduce these primitives in a domain package.
 
 **Docs site.** `site/` is the Hugo project published at `https://drgtools.dev/` by `.github/workflows/docs.yaml`. It has its own `go.mod`, so `go build ./...` and `go test ./...` skip it. The Hextra theme comes in as a Hugo module pinned in `site/go.mod`. `site/hugo.yaml` mounts the root `install.sh` and `assets/logo.svg`, so those files have one copy each. User docs live in `site/content/docs/`. The key tables of `site/content/docs/configuration/config.md`, `project-config.md` and `theme.md` are generated from the bundled JSON schemas and sit between the `BEGIN GENERATED` and `END GENERATED` markers. Everything outside the markers is hand-written. Regenerate the tables with `go test ./internal/config ./internal/theme -update`. `docs/` holds notes for contributors and agents and is never published.
+
+`site/content/docs/cli/` is the CLI reference, generated from the `drg` command tree by `TestCLIReference` in `internal/cmd`. Never edit it by hand. Regenerate it with `go test ./internal/cmd -run TestCLIReference -update` after changing a command. `site/layouts/_partials/toc.html` is a copy of the Hextra partial that leaves the edit link off generated pages, so update it along with the Hextra version.
 
 A change to user-facing behavior updates the matching page under `site/content/docs/` in the same commit.
 

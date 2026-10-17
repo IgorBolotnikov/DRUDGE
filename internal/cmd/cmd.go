@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -27,6 +28,7 @@ type Cmd struct {
 	Subcommands []*Cmd
 	// Setup declares the flags of the command and returns its run function.
 	// A group without a run function prints its help when no subcommand is given.
+	// Setup must only declare flags, because the CLI reference calls it to list them.
 	Setup func(fs *flag.FlagSet) func(args []string) error
 }
 
@@ -96,18 +98,24 @@ func (c *Cmd) Execute(args []string) error {
 }
 
 func (c *Cmd) execute(path string, args []string) error {
-	fs := flag.NewFlagSet(path, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	var run func(args []string) error
-	if c.Setup != nil {
-		run = c.Setup(fs)
-	}
+	fs, run := c.flagSet(path)
 	repeats := refuseRepeats(fs)
 
 	if len(c.Subcommands) > 0 {
 		return c.executeGroup(path, fs, repeats, run, args)
 	}
 	return c.executeLeaf(path, fs, repeats, run, args)
+}
+
+// flagSet returns the flags of the command at path and its run function, which
+// is nil for a command without Setup.
+func (c *Cmd) flagSet(path string) (*flag.FlagSet, func(args []string) error) {
+	fs := flag.NewFlagSet(path, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if c.Setup == nil {
+		return fs, nil
+	}
+	return fs, c.Setup(fs)
 }
 
 func (c *Cmd) executeGroup(path string, fs *flag.FlagSet, repeats *flagRepeats, run func(args []string) error, args []string) error {
@@ -195,46 +203,57 @@ func (c *Cmd) usage(path string, fs *flag.FlagSet) string {
 	return builder.String()
 }
 
+// printHelp prints the help of the command at path to stdout, after the logo
+// for the root command.
 func (c *Cmd) printHelp(path string, fs *flag.FlagSet) {
 	if path == c.Name {
 		printProjectName(newCommandPrinter().Theme())
 	}
-	fmt.Println(c.usage(path, fs))
+	c.writeHelp(os.Stdout, path, fs)
+}
 
-	text := c.Help
-	if text == "" {
-		text = c.Desc
-	}
-	if text != "" {
-		fmt.Println()
-		fmt.Println(text)
+// writeHelp writes the help of the command at path to out.
+func (c *Cmd) writeHelp(out io.Writer, path string, fs *flag.FlagSet) {
+	fmt.Fprintln(out, c.usage(path, fs))
+
+	if text := c.helpText(); text != "" {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, text)
 	}
 
 	if options := optionLines(fs); len(options) > 0 {
-		fmt.Println()
-		fmt.Println("Options:")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Options:")
 		width := 0
 		for _, option := range options {
 			width = max(width, len(option.label))
 		}
 		for _, option := range options {
-			fmt.Printf("  %-*s  %s\n", width, option.label, option.usage)
+			fmt.Fprintf(out, "  %-*s  %s\n", width, option.label, option.usage)
 		}
 	}
 
 	if len(c.Subcommands) > 0 {
-		fmt.Println()
-		fmt.Println("Subcommands:")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Subcommands:")
 		width := 0
 		for _, sub := range c.Subcommands {
 			width = max(width, len(sub.Name))
 		}
 		for _, sub := range c.Subcommands {
-			fmt.Printf("  %-*s  %s\n", width, sub.Name, sub.Desc)
+			fmt.Fprintf(out, "  %-*s  %s\n", width, sub.Name, sub.Desc)
 		}
-		fmt.Println()
-		fmt.Printf("Run %s <subcommand> --help for the details of one.\n", path)
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "Run %s <subcommand> --help for the details of one.\n", path)
 	}
+}
+
+// helpText returns the text of the command's own help, Desc when Help is empty.
+func (c *Cmd) helpText() string {
+	if c.Help == "" {
+		return c.Desc
+	}
+	return c.Help
 }
 
 func hasFlags(fs *flag.FlagSet) bool {
@@ -243,13 +262,14 @@ func hasFlags(fs *flag.FlagSet) bool {
 	return hasAny
 }
 
-// optionLine is one line of the Options list: every name of one flag.Value
-// and the usage text of the flag.
+// optionLine is one line of the Options list: every name of one flag.Value,
+// the usage text of the flag and its default value.
 type optionLine struct {
-	value flag.Value
-	names []string
-	label string
-	usage string
+	value        flag.Value
+	names        []string
+	label        string
+	usage        string
+	defaultValue string
 }
 
 // optionLines lists the flags of fs, one line per flag.Value, in the order
@@ -270,8 +290,9 @@ func optionLines(fs *flag.FlagSet) []*optionLine {
 	for _, line := range lines {
 		// A short alias sorts first, as in "-f, --force".
 		slices.SortStableFunc(line.names, func(left, right string) int { return len(left) - len(right) })
+		longFlag := fs.Lookup(line.names[len(line.names)-1])
 		// The placeholder comes from the type of the value, which a wrapper hides.
-		placeholder, usage := flag.UnquoteUsage(&flag.Flag{Usage: fs.Lookup(line.names[len(line.names)-1]).Usage, Value: line.value})
+		placeholder, usage := flag.UnquoteUsage(&flag.Flag{Usage: longFlag.Usage, Value: line.value})
 		labels := make([]string, len(line.names))
 		for index, name := range line.names {
 			labels[index] = flagLabel(name)
@@ -281,6 +302,7 @@ func optionLines(fs *flag.FlagSet) []*optionLine {
 			line.label += " <" + placeholder + ">"
 		}
 		line.usage = usage
+		line.defaultValue = longFlag.DefValue
 	}
 	return lines
 }

@@ -38,7 +38,7 @@ go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
 drg setup
 ```
 
-`drg setup` creates `~/.drudge/` and writes:
+[`drg setup`]({{< relref "/docs/cli/setup" >}}) creates `~/.drudge/` and writes:
 
 - `~/.drudge/config.json`, the global config
 - `~/.drudge/theme.json`, the color theme
@@ -51,7 +51,7 @@ The schemas and the skill are rewritten on every run. The config files are writt
 
 ## First project
 
-Run `drg project init` in the directory you want the agents to work on:
+Run [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in the directory you want the agents to work on:
 
 ```sh
 cd ~/code/uploader
@@ -64,7 +64,7 @@ A directory that is a git repository becomes the one repository of the project. 
 
 ## First task
 
-Add a Task. Its description is the prompt the agent gets:
+Add a Task with [`drg task new`]({{< relref "/docs/cli/task/new" >}}). Its description is the prompt the agent gets:
 
 ```sh
 drg task new --title "Add retry to uploader" --description "Retry a failed upload three times before giving up." --status todo
@@ -78,9 +78,9 @@ Hand it to a Drudger:
 drg task run 3f9a1c2e
 ```
 
-`drg task run` takes the lowest free slot of the project. A slot with no Drudger yet gets one: a git worktree per repository under `.drudge/worktrees/slot-<n>/` and an sbx sandbox over them. An idle Drudger is reused. The Drudger checks out a branch for the Task, starts the agent in its sandbox and returns. `drudger.maxConcurrentDrudgers` in the global config caps how many Drudgers work on one project at once, and defaults to 3. `drg task run 3f9a1c2e --dry-run` prints the prompt the agent would get and starts nothing.
+[`drg task run`]({{< relref "/docs/cli/task/run" >}}) takes the lowest free slot of the project. A slot with no Drudger yet gets one: a git worktree per repository under `.drudge/worktrees/slot-<n>/` and an sbx sandbox over them. An idle Drudger is reused. The Drudger checks out a branch for the Task, starts the agent in its sandbox and returns. `drudger.maxConcurrentDrudgers` in the global config caps how many Drudgers work on one project at once, and defaults to 3. `drg task run 3f9a1c2e --dry-run` prints the prompt the agent would get and starts nothing.
 
-Watch it:
+Watch it with [`drg task list`]({{< relref "/docs/cli/task/list" >}}), [`drg task show`]({{< relref "/docs/cli/task/show" >}}), [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) and [`drg task status`]({{< relref "/docs/cli/task/status" >}}):
 
 ```sh
 drg task list                # every Task of the project and its status
@@ -89,9 +89,9 @@ drg task runlog 3f9a1c2e     # the event stream and the stderr log of the latest
 drg task status 3f9a1c2e     # whether the agent is working, stuck or finished
 ```
 
-Once the Session has ended, `drg task status` records the outcome on the Task. A Task that got shit done ends up `done`, or `unmerged` while its work is not on the default branch yet. A Task that fucked up ends up `fucked-up`. A Task the vendor turned away goes back to `todo`. Mark an `unmerged` Task done with `drg task done` once its work is merged.
+Once the Session has ended, `drg task status` records the outcome on the Task. A Task that got shit done ends up `done`, or `unmerged` while its work is not on the default branch yet. A Task that fucked up ends up `fucked-up`. A Task the vendor turned away goes back to `todo`. Mark an `unmerged` Task done with [`drg task done`]({{< relref "/docs/cli/task/done" >}}) once its work is merged.
 
-`drg drudger list` shows what each Drudger of the project is doing.
+[`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) shows what each Drudger of the project is doing.
 
 ## Update and uninstall
 
@@ -99,10 +99,10 @@ Once the Session has ended, `drg task status` records the outcome on the Task. A
 drg update
 ```
 
-`drg update` replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
+[`drg update`]({{< relref "/docs/cli/update" >}}) replaces the binary with the latest release and checks it against the release checksums. A binary built from source is updated by building it again.
 
 ```sh
 drg cleanup
 ```
 
-`drg cleanup` asks before it removes `~/.drudge/` with every project and Task in it. `--force` skips the question. It leaves the `drg` binary, the skill under `~/.claude/skills/`, the `.drudge/` directories of your projects and the sbx sandboxes in place. Remove the sandboxes first with `drg drudger nuke <slot>` in each project, then delete the binary.
+[`drg cleanup`]({{< relref "/docs/cli/cleanup" >}}) asks before it removes `~/.drudge/` with every project and Task in it. `--force` skips the question. It leaves the `drg` binary, the skill under `~/.claude/skills/`, the `.drudge/` directories of your projects and the sbx sandboxes in place. Remove the sandboxes first with [`drg drudger nuke <slot>`]({{< relref "/docs/cli/drudger/nuke" >}}) in each project, then delete the binary.
