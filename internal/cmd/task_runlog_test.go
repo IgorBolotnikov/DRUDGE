@@ -143,7 +143,7 @@ func TestPrintRunSteps(t *testing.T) {
 				runDir + "\n" +
 				"Agent   Explore runlog code\n" +
 				"  Grep    StreamDecoder\n" +
-				"  File does not exist.\n" +
+				"    ✗ File does not exist.\n" +
 				"  Found it.\n" +
 				"  The decoder is in streams.\n" +
 				"Task    Find tests\n" +
