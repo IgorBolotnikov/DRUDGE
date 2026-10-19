@@ -35,12 +35,7 @@ Installing the tool involves a second request. The install script downloads the 
 
 I do not operate a server for this site and have **no access to raw access logs**.
 
-GitHub does make two kinds of aggregate figure available to me:
-
-- Through the repository's Insights panel: page view counts, counts of unique visitors, and referring sites, over a rolling two-week window.
-- Through the releases page: a download count for each release asset.
-
-These are aggregates produced by GitHub. They do not show me individual visitors, individual downloads or IP addresses, and I do not combine them with anything else.
+GitHub provides no visitor analytics for GitHub Pages sites. I have **no figures of any kind about visits to this website**. That means no page views, no visitor counts, no referrers, no countries and no device or browser data.
 
 ## Email
 
