@@ -13,13 +13,13 @@ import (
 
 func TestNewDrudgerSettings(t *testing.T) {
 	const projectSlug = "drudge"
-	repositories := []project.Repository{{Path: "api"}, {Path: "ui", DefaultBranch: "trunk"}}
+	repositories := []project.Repository{{Path: "api", Setup: []string{"npm ci"}}, {Path: "ui", DefaultBranch: "trunk"}}
 
 	customGlobal := config.DefaultConfig()
 	customGlobal.Drudger.Env = config.Env("bare-metal")
 	customGlobal.Drudger.Harness = config.HarnessOpencode
 	customGlobal.Drudger.MaxConcurrentDrudgers = 5
-	customGlobal.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7}
+	customGlobal.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7, SetupSeconds: 300}
 
 	cases := []struct {
 		name         string
@@ -43,6 +43,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					List:   30 * time.Second,
 					Create: 10 * time.Minute,
 					Remove: 2 * time.Minute,
+					Setup:  15 * time.Minute,
 				},
 			},
 		},
@@ -61,6 +62,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					List:   5 * time.Second,
 					Create: time.Minute,
 					Remove: 7 * time.Second,
+					Setup:  5 * time.Minute,
 				},
 			},
 		},
@@ -79,6 +81,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					List:   5 * time.Second,
 					Create: time.Minute,
 					Remove: 7 * time.Second,
+					Setup:  5 * time.Minute,
 				},
 			},
 		},
@@ -97,6 +100,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					List:   30 * time.Second,
 					Create: 10 * time.Minute,
 					Remove: 2 * time.Minute,
+					Setup:  15 * time.Minute,
 				},
 			},
 		},
@@ -122,6 +126,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 					List:   30 * time.Second,
 					Create: 10 * time.Minute,
 					Remove: 2 * time.Minute,
+					Setup:  15 * time.Minute,
 				},
 				PullRequests: drudger.PullRequestSettings{
 					IsDraft:      true,

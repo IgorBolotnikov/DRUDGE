@@ -15,6 +15,10 @@ A key set here overrides the same key of the [global config](../config/). `promp
 
 A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.stepsFile` set here is a file name under `.drudge/prompts/` of the project directory.
 
+## Setup
+
+Each entry of `repositories` can list `setup` commands, like `npm ci` or `make deps`. A launch runs them in the sandbox of the Drudger after it puts the worktrees on the task branch and before it starts the agent. They run for every repository the task changes, in config order, each with `sh -c` in the worktree of its repository. The output goes to `setup.log` in the run directory. The first command that fails stops the launch and the task stays where it was. `sandboxTimeouts.setupSeconds` of the [global config](../config/) caps each command. `drg task run --dry-run` lists the commands without running them.
+
 ## Keys
 
 <!-- BEGIN GENERATED: edits between these markers are overwritten -->
@@ -34,6 +38,7 @@ A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.steps
 | `repositories` | array |  |  | The git repositories of the project. drg project init writes the list. |
 | `repositories[].path` | string |  |  | Required. Where the repository sits relative to the project directory. A project directory that is itself a repository records ".". |
 | `repositories[].defaultBranch` | string |  |  | The branch work is cut from. Omit to read it from origin/HEAD. |
+| `repositories[].setup` | array |  |  | Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order. |
 | `remote` | object |  |  | Settings for the provider the repositories of a project are hosted on. Each one overrides the global config. |
 | `remote.provider` | string |  | `"github"` | The provider the repositories are hosted on. Required when pull requests are on. |
 | `remote.timeoutSeconds` | integer | `60` | minimum 1 | Seconds allowed for one call of the provider CLI. |

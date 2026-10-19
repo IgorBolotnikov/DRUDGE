@@ -23,8 +23,9 @@ type DrudgerRepository interface {
 }
 
 // RunRepository stores the latest run of each task. A run holds the prompt the
-// agent is given, the harness that runs it, and the event stream, the stderr log and the exit code the
-// agent leaves behind. The agent writes its files from inside its sandbox, so
+// agent is given, the harness that runs it, the output of the repository setup
+// commands, and the event stream, the stderr log and the exit code the agent
+// leaves behind. The agent writes its files from inside its sandbox, so
 // the repository only reads them. A run also holds the pull request
 // descriptions close-out has not opened a pull request from yet, keyed by
 // repository name.
@@ -32,6 +33,9 @@ type RunRepository interface {
 	// PrepareRun deletes whatever an earlier run of a task left and stores the
 	// prompt and the harness of a fresh run.
 	PrepareRun(taskID task.TaskID, prompt string, harness Harness) error
+	// WriteSetupLog stores the output of the repository setup commands of a
+	// run, replacing what it held. It refuses a task with no run.
+	WriteSetupLog(taskID task.TaskID, content string) error
 	// HasRun tells whether a task has a run.
 	HasRun(taskID task.TaskID) (bool, error)
 	// ReadHarness returns the harness a run was launched with. isPresent is

@@ -40,13 +40,15 @@ var frontMatterEscaper = strings.NewReplacer(
 )
 
 // Files of a task's run directory. The agent writes all of them but the
-// prompt and the harness, which drudge writes before the agent starts.
+// prompt, the harness and the setup log, which drudge writes before the agent
+// starts.
 const (
-	RunPromptName  = "prompt.txt"
-	RunHarnessName = "harness"
-	RunStreamName  = "stream.jsonl"
-	RunStderrName  = "stderr.log"
-	RunExitName    = "exit"
+	RunPromptName   = "prompt.txt"
+	RunHarnessName  = "harness"
+	RunSetupLogName = "setup.log"
+	RunStreamName   = "stream.jsonl"
+	RunStderrName   = "stderr.log"
+	RunExitName     = "exit"
 )
 
 // Pull request descriptions of a run directory. Close-out moves each one there
@@ -367,6 +369,12 @@ func RunPromptPath(runDir string) string {
 // run directory.
 func RunHarnessPath(runDir string) string {
 	return filepath.Join(runDir, RunHarnessName)
+}
+
+// RunSetupLogPath returns the path to the output of the repository setup
+// commands of a run directory.
+func RunSetupLogPath(runDir string) string {
+	return filepath.Join(runDir, RunSetupLogName)
 }
 
 // RunStreamPath returns the path to the event stream of a run directory.

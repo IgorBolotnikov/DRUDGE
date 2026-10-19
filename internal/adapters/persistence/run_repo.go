@@ -48,6 +48,16 @@ func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string, har
 	return common.WriteFile(common.RunHarnessPath(runDir), string(harness))
 }
 
+// WriteSetupLog writes the setup log of the run directory of a task. A task
+// with no run directory is refused.
+func (repo *FileRunRepository) WriteSetupLog(taskID task.TaskID, content string) error {
+	runDir, err := repo.existingRunDir(taskID)
+	if err != nil {
+		return err
+	}
+	return common.WriteFile(common.RunSetupLogPath(runDir), content)
+}
+
 // HasRun tells whether a task has a run directory.
 func (repo *FileRunRepository) HasRun(taskID task.TaskID) (bool, error) {
 	runDir, err := repo.runDir(taskID)

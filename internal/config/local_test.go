@@ -136,6 +136,13 @@ func TestLoadLocal(t *testing.T) {
 			wantRepos:       []project.Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 		},
 		{
+			name:            "repositories with setup commands",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "setup": ["npm ci", "make deps"]}, {"path": "ui", "setup": []}]}`,
+			wantSlug:        "test-project",
+			wantRepos:       []project.Repository{{Path: "api", Setup: []string{"npm ci", "make deps"}}, {Path: "ui", Setup: []string{}}},
+		},
+		{
 			name:            "repository with no path",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"defaultBranch": "main"}]}`,
@@ -251,7 +258,11 @@ func TestSave_RoundTrips(t *testing.T) {
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
 		Task:                  TaskConfig{DefaultStatus: task.StatusTodo},
-		Repositories:          []project.Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
+		Repositories: []project.Repository{
+			{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}},
+			{Path: "ui", Setup: []string{}},
+			{Path: "docs"},
+		},
 	}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)

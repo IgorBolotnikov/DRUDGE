@@ -68,6 +68,12 @@ const schemaJSON = `{
               "type": "integer",
               "minimum": 1,
               "default": 120
+            },
+            "setupSeconds": {
+              "description": "Seconds allowed for each setup command of a repository, run in the sandbox before the agent starts.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 900
             }
           },
           "additionalProperties": false
@@ -269,6 +275,13 @@ const localSchemaJSON = `{
           "defaultBranch": {
             "description": "The branch work is cut from. Omit to read it from origin/HEAD.",
             "type": "string"
+          },
+          "setup": {
+            "description": "Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": ["path"],

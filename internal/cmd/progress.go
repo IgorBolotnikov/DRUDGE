@@ -108,6 +108,10 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Warn("The sbx daemon did not come up, DRUDGE gives it one more try")
 	case drudger.SbxDaemonStarted:
 		p.out.Done("The sbx daemon was not running, sbx started it")
+	case drudger.SetupCommandStarted:
+		p.out.Step("Running setup of %s, up to %s: %s", event.Repository, event.Timeout, event.Command)
+	case drudger.SetupOutput:
+		p.out.Detail("%s", event.Line)
 	case drudger.AgentLaunchStarted:
 		p.out.Step("Starting the agent, waiting up to %s for its first output", event.GracePeriod)
 	case drudger.AgentLaunched:

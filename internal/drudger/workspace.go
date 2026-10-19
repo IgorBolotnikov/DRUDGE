@@ -42,6 +42,9 @@ type projectRepository struct {
 	DefaultBranch string
 	// HasRemote says whether the repository has an origin to fetch from.
 	HasRemote bool
+	// Setup are the shell commands a launch runs in the worktree before the
+	// agent starts.
+	Setup []string
 }
 
 // BaseRef is what a repository cuts work from. A repository with a remote
@@ -173,6 +176,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, repositor
 		GitDir:        filepath.Join(dir, gitDirName),
 		DefaultBranch: branch,
 		HasRemote:     hasRemote,
+		Setup:         repository.Setup,
 	}, nil
 }
 

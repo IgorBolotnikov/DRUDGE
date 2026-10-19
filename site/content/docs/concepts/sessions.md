@@ -19,6 +19,7 @@ Every run writes its files to `.drudge/runs/<task-id>/` in the project directory
 
 - `prompt.txt`: the prompt the agent got
 - `harness`: the agent harness that launched the run. `drg task runlog`, close-out and the Session checks read the stream with it, so a change to the configured harness leaves old runs readable. A run with no `harness` file is read with the configured harness. Close-out and the Session checks fail on a harness DRUDGE cannot read the stream of, and so does `drg task run` before it claims a Drudger
+- `setup.log`: the output of the [setup commands]({{< relref "/docs/configuration/project-config#setup" >}}) of the repositories, written when the project has any
 - `stream.jsonl`: the event stream of the agent, one JSON event per line
 - `stderr.log`: what the agent wrote to stderr
 - `exit`: the exit code of the agent, written once it exits

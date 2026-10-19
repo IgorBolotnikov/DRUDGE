@@ -184,6 +184,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "    sbx: Pulling agent image 40%\n",
 		},
 		{
+			name:  "a setup command started",
+			event: drudger.SetupCommandStarted{Repository: "api", Command: "npm ci", Timeout: 15 * time.Minute},
+			want:  "› Running setup of api, up to 15m0s: npm ci…\n",
+		},
+		{
+			name:  "a line of setup output with ANSI codes",
+			event: drudger.SetupOutput{Line: "\x1b[32madded\x1b[0m 120 packages"},
+			want:  "    added 120 packages\n",
+		},
+		{
 			name:       "an sbx daemon retried",
 			event:      drudger.SbxDaemonRetried{},
 			wantStderr: "! The sbx daemon did not come up, DRUDGE gives it one more try\n",

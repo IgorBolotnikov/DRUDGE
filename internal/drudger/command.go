@@ -42,6 +42,7 @@ const (
 	sbxJSONFlag         = "--json"
 	sbxNameFlag         = "--name"
 	sbxDetachedFlag     = "-d"
+	sbxWorkdirFlag      = "-w"
 	// sbx asks for confirmation before removing a sandbox and this flag is used
 	// only to skip the confirmation prompt. The flag is always passed since
 	// drudge has no terminal to confirm the action. Drudge has its own
@@ -107,7 +108,16 @@ type sandboxCommand struct {
 type sandboxPlan struct {
 	inspect sandboxCommand // lists sandboxes so drudge can tell whether this Drudger's sandbox exists
 	create  sandboxCommand // creates the sandbox, runs only when it does not exist yet
+	setup   []setupCommand // prepares the repositories the task changes, in config order
 	start   []string       // starts the agent and passes the prompt, always runs and is never waited for
+}
+
+// setupCommand is one setup command of a repository, as the config lists it
+// and as it runs in the sandbox.
+type setupCommand struct {
+	sandboxCommand
+	repository string
+	command    string
 }
 
 // sandboxListing is what `sbx ls --json` reports.
@@ -142,10 +152,11 @@ func (service *DrudgerService) sbxInspectCommand() sandboxCommand {
 	}
 }
 
-// pickDrudgerCommand builds the commands that ensure the sandbox exists and
-// put an agent to work on the configured prompt. The sandbox is created over
-// every mount, and the agent works in the workspace root.
-func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceRoot string, mounts []string, runDir string) (sandboxPlan, error) {
+// pickDrudgerCommand builds the commands that ensure the sandbox exists, run
+// the setup commands of the repositories a task changes and put an agent to
+// work on the configured prompt. The sandbox is created over every mount, and
+// the agent works in the workspace root.
+func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceRoot string, mounts []string, runDir string, changed []repositoryWorktree) (sandboxPlan, error) {
 	env := service.settings.Env
 	harness := service.settings.Harness
 
@@ -161,14 +172,58 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 				argv:    create,
 				timeout: service.settings.SandboxTimeouts.Create,
 			},
-			start: []string{
-				sbxBinary, sbxExecSubcommand, sbxDetachedFlag, sandboxName,
-				shellBinary, shellCommandFlag, formatLauncher(workspaceRoot, runDir, service.settings.Model),
-			},
+			setup: service.sbxSetupCommands(sandboxName, changed),
+			start: sbxExecCommand(sbxExec{
+				sandbox:    sandboxName,
+				script:     formatLauncher(workspaceRoot, runDir, service.settings.Model),
+				isDetached: true,
+			}),
 		}, nil
 	}
 
 	return sandboxPlan{}, fmt.Errorf("DRUDGE does not know how to start harness %q in environment %q, check the Drudger settings in the config", harness, env)
+}
+
+// sbxSetupCommands builds the setup commands of every given repository. Each
+// one runs in the worktree of its repository, which the sandbox mounts at its
+// host path.
+func (service *DrudgerService) sbxSetupCommands(sandboxName string, repositories []repositoryWorktree) []setupCommand {
+	var commands []setupCommand
+	for _, repository := range repositories {
+		for _, command := range repository.Setup {
+			commands = append(commands, setupCommand{
+				sandboxCommand: sandboxCommand{
+					argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, workdir: repository.Worktree, script: command}),
+					timeout: service.settings.SandboxTimeouts.Setup,
+				},
+				repository: repository.Name,
+				command:    command,
+			})
+		}
+	}
+	return commands
+}
+
+// sbxExec is a shell script to run in a sandbox. An empty workdir leaves the
+// working directory to sbx. A detached script is not waited for.
+type sbxExec struct {
+	sandbox    string
+	workdir    string
+	script     string
+	isDetached bool
+}
+
+// sbxExecCommand builds the sbx exec command line that runs a script in a
+// sandbox with sh -c. Every command drudge runs inside a sandbox is built here.
+func sbxExecCommand(invocation sbxExec) []string {
+	argv := []string{sbxBinary, sbxExecSubcommand}
+	if invocation.isDetached {
+		argv = append(argv, sbxDetachedFlag)
+	}
+	if invocation.workdir != "" {
+		argv = append(argv, sbxWorkdirFlag, invocation.workdir)
+	}
+	return append(argv, invocation.sandbox, shellBinary, shellCommandFlag, invocation.script)
 }
 
 // pickRemoveCommand builds the command that deletes a Drudger's sandbox.

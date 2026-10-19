@@ -133,6 +133,7 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 			List:   timeouts.List(),
 			Create: timeouts.Create(),
 			Remove: timeouts.Remove(),
+			Setup:  timeouts.Setup(),
 		},
 		PullRequests: drudger.PullRequestSettings{
 			IsDraft:      pullRequests.IsDraft,

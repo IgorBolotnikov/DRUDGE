@@ -26,6 +26,7 @@ const (
 const (
 	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
 	CreateTimeoutKey         = "sandboxTimeouts.createSeconds"
+	SetupTimeoutKey          = "sandboxTimeouts.setupSeconds"
 )
 
 // Settings is what a DrudgerService reads from the configs.
@@ -71,4 +72,5 @@ type SandboxTimeouts struct {
 	List   time.Duration
 	Create time.Duration
 	Remove time.Duration
+	Setup  time.Duration
 }

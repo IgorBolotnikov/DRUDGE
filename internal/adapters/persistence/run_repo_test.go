@@ -313,6 +313,45 @@ func ptr(value string) *string {
 	return &value
 }
 
+func TestFileRunRepository_WriteSetupLog(t *testing.T) {
+	const setupLog = "$ npm ci\nadded 120 packages\n"
+
+	cases := []struct {
+		name            string
+		files           runFiles
+		wantErrContains string
+	}{
+		{name: "a run with no setup log", files: runFiles{}},
+		{name: "a run whose setup log is replaced", files: runFiles{common.RunSetupLogName: "the old log"}},
+		{name: "a task with no run", wantErrContains: "has no run directory"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, runDir := setupRunRepo(t, testCase.files)
+
+			err := repo.WriteSetupLog(runTestTaskID, setupLog)
+			if testCase.wantErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.wantErrContains) {
+					t.Fatalf("expected an error naming %q, got %v", testCase.wantErrContains, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("WriteSetupLog: %v", err)
+			}
+
+			onDisk, err := common.ReadFile(common.RunSetupLogPath(runDir))
+			if err != nil {
+				t.Fatalf("expected the setup log in the run directory: %v", err)
+			}
+			if onDisk != setupLog {
+				t.Errorf("expected %q on disk, got %q", setupLog, onDisk)
+			}
+		})
+	}
+}
+
 func TestFileRunRepository_PullRequests(t *testing.T) {
 	const (
 		repository  = "api"

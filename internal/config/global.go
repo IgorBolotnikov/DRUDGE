@@ -42,6 +42,7 @@ const (
 	defaultListTimeoutSeconds   = 30
 	defaultCreateTimeoutSeconds = 600
 	defaultRemoveTimeoutSeconds = 120
+	defaultSetupTimeoutSeconds  = 900
 )
 
 // How long a git command may run before DRUDGE kills it, in seconds. Creating
@@ -62,6 +63,7 @@ const (
 	listTimeoutKey           = "sandboxTimeouts.listSeconds"
 	createTimeoutKey         = drudger.CreateTimeoutKey
 	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
+	setupTimeoutKey          = drudger.SetupTimeoutKey
 	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
 	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"
@@ -145,6 +147,7 @@ type SandboxTimeouts struct {
 	ListSeconds   int `json:"listSeconds,omitempty"`
 	CreateSeconds int `json:"createSeconds,omitempty"`
 	RemoveSeconds int `json:"removeSeconds,omitempty"`
+	SetupSeconds  int `json:"setupSeconds,omitempty"`
 }
 
 // List returns how long listing the sandboxes may take.
@@ -160,6 +163,11 @@ func (timeouts SandboxTimeouts) Create() time.Duration {
 // Remove returns how long removing a sandbox may take.
 func (timeouts SandboxTimeouts) Remove() time.Duration {
 	return time.Duration(timeouts.RemoveSeconds) * time.Second
+}
+
+// Setup returns how long each setup command of a repository may take.
+func (timeouts SandboxTimeouts) Setup() time.Duration {
+	return time.Duration(timeouts.SetupSeconds) * time.Second
 }
 
 // GitTimeouts caps how long DRUDGE waits for each git command it runs. A
@@ -253,6 +261,7 @@ func DefaultConfig() *GlobalConfig {
 				ListSeconds:   defaultListTimeoutSeconds,
 				CreateSeconds: defaultCreateTimeoutSeconds,
 				RemoveSeconds: defaultRemoveTimeoutSeconds,
+				SetupSeconds:  defaultSetupTimeoutSeconds,
 			},
 			GitTimeouts: GitTimeouts{
 				FetchSeconds:    defaultFetchTimeoutSeconds,
@@ -282,6 +291,9 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 	}
 	if loadedCfg.Drudger.SandboxTimeouts.RemoveSeconds == 0 {
 		loadedCfg.Drudger.SandboxTimeouts.RemoveSeconds = defaultCfg.Drudger.SandboxTimeouts.RemoveSeconds
+	}
+	if loadedCfg.Drudger.SandboxTimeouts.SetupSeconds == 0 {
+		loadedCfg.Drudger.SandboxTimeouts.SetupSeconds = defaultCfg.Drudger.SandboxTimeouts.SetupSeconds
 	}
 	if loadedCfg.Drudger.GitTimeouts.FetchSeconds == 0 {
 		loadedCfg.Drudger.GitTimeouts.FetchSeconds = defaultCfg.Drudger.GitTimeouts.FetchSeconds
@@ -357,6 +369,7 @@ func validateSandboxTimeouts(timeouts SandboxTimeouts, path string) error {
 		{key: listTimeoutKey, value: timeouts.ListSeconds},
 		{key: createTimeoutKey, value: timeouts.CreateSeconds},
 		{key: removeTimeoutKey, value: timeouts.RemoveSeconds},
+		{key: setupTimeoutKey, value: timeouts.SetupSeconds},
 	}
 	for _, timeout := range seconds {
 		if timeout.value < 0 {

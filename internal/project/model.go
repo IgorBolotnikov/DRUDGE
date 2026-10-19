@@ -20,4 +20,8 @@ type Repository struct {
 	// DefaultBranch is the branch work is cut from. An empty value means
 	// drudge reads it from origin/HEAD.
 	DefaultBranch string `json:"defaultBranch,omitempty"`
+	// Setup are the shell commands a launch runs in the worktree of the
+	// repository before the agent starts. Nil and empty both run nothing, and
+	// a saved config keeps an empty list.
+	Setup []string `json:"setup,omitzero"`
 }

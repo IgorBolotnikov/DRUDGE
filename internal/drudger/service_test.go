@@ -765,6 +765,15 @@ func (repo *fakeRunRepo) PrepareRun(taskID task.TaskID, prompt string, harness H
 	return nil
 }
 
+func (repo *fakeRunRepo) WriteSetupLog(taskID task.TaskID, content string) error {
+	run, ok := repo.runs[taskID]
+	if !ok {
+		return fmt.Errorf("task %s has no run", taskID)
+	}
+	run.files[common.RunSetupLogName] = content
+	return nil
+}
+
 func (repo *fakeRunRepo) ReadHarness(taskID task.TaskID) (Harness, bool, error) {
 	content, isPresent := repo.file(taskID, common.RunHarnessName)
 	return Harness(content), isPresent, nil
@@ -980,6 +989,7 @@ func testSettings() Settings {
 			List:   30 * time.Second,
 			Create: 10 * time.Minute,
 			Remove: 2 * time.Minute,
+			Setup:  15 * time.Minute,
 		},
 	}
 }

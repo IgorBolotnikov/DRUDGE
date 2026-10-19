@@ -33,6 +33,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.sandboxTimeouts.listSeconds` | integer | `30` | minimum 1 | Seconds allowed for listing the sandboxes. |
 | `drudger.sandboxTimeouts.createSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a sandbox. A first creation pulls an image, which is why this one is generous. |
 | `drudger.sandboxTimeouts.removeSeconds` | integer | `120` | minimum 1 | Seconds allowed for removing a sandbox. |
+| `drudger.sandboxTimeouts.setupSeconds` | integer | `900` | minimum 1 | Seconds allowed for each setup command of a repository, run in the sandbox before the agent starts. |
 | `drudger.gitTimeouts` | object |  |  | How long DRUDGE waits for a git command before it kills it. Git has no timeout of its own. |
 | `drudger.gitTimeouts.fetchSeconds` | integer | `15` | minimum 1 | Seconds allowed for fetching from a remote. Kept short so an unreachable remote costs seconds. |
 | `drudger.gitTimeouts.worktreeSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a worktree, which is a full checkout. |

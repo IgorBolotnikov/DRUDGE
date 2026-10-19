@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -200,13 +201,8 @@ func TestDiscoverRepositories(t *testing.T) {
 				t.Fatalf("DiscoverRepositories: %v", err)
 			}
 
-			if len(got) != len(test.want) {
-				t.Fatalf("DiscoverRepositories = %+v, want %+v", got, test.want)
-			}
-			for index, repository := range got {
-				if repository != test.want[index] {
-					t.Errorf("repository %d = %+v, want %+v", index, repository, test.want[index])
-				}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("DiscoverRepositories = %+v, want %+v", got, test.want)
 			}
 		})
 	}

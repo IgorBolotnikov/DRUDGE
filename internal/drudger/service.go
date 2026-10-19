@@ -403,7 +403,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 
 	mounts := space.mounts(layout.RunsDir())
 
-	plan, err := service.pickDrudgerCommand(claimed.Sandbox, space.Root, mounts, runDir)
+	plan, err := service.pickDrudgerCommand(claimed.Sandbox, space.Root, mounts, runDir, listed.Repositories)
 	if err != nil {
 		return err
 	}
@@ -429,6 +429,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	}
 
 	if err := service.ensureSandbox(projectSlug, claimed, plan, mounts); err != nil {
+		return err
+	}
+
+	if err := service.runSetup(taskID, runDir, plan.setup); err != nil {
 		return err
 	}
 
@@ -501,12 +505,12 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, space.Root, space.mounts(layout.RunsDir()), runDir)
+	listed := space.listedBy(taskToRun)
+	plan, err := service.pickDrudgerCommand(wouldUse.Sandbox, space.Root, space.mounts(layout.RunsDir()), runDir, listed.Repositories)
 	if err != nil {
 		return err
 	}
 
-	listed := space.listedBy(taskToRun)
 	branch, err := service.pickTaskBranch(listed, taskToRun)
 	if err != nil {
 		return err
@@ -517,13 +521,19 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
+	commands := [][]string{plan.inspect.argv, plan.create.argv}
+	for _, setup := range plan.setup {
+		commands = append(commands, setup.argv)
+	}
+	commands = append(commands, plan.start)
+
 	described := RunDescribed{
 		Task:         taskToRun,
 		Slot:         wouldUse.Slot,
 		Sandbox:      wouldUse.Sandbox,
 		PromptSource: promptSource,
 		Prompt:       prompt,
-		Commands:     [][]string{plan.inspect.argv, plan.create.argv, plan.start},
+		Commands:     commands,
 	}
 	if service.remote != nil {
 		described.PullRequestProvider = service.remote.Provider()
