@@ -59,3 +59,7 @@
   display: block;
   margin-top: 0.5rem;
 }
+
+.footer-links a:hover {
+  text-decoration: underline;
+}
