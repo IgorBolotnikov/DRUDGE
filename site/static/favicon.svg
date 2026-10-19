@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-17 -3 96 96" width="96" height="96">
+  <path fill="none" stroke="#723A40" stroke-width="1" stroke-linejoin="miter" d="M48 6.5H53.5V16 M48 9.5H50.5V16 M24 22.5H18.5V32 M24 25.5H21.5V32 M24 22.5H32 M24 25.5H32 M32 22.5H40 M32 25.5H40 M56 22.5H61.5V32 M56 25.5H58.5V32 M18.5 32V48 M21.5 32V48 M58.5 32V48 M61.5 32V48 M18.5 48V64 M21.5 48V64 M58.5 48V64 M61.5 48V64 M56 70.5H50.5V80 M56 73.5H53.5V80 M56 73.5H61.5V64 M56 70.5H58.5V64 M8 89.5H2.5V80 M8 86.5H5.5V80 M8 86.5H16 M8 89.5H16 M16 86.5H24 M16 89.5H24 M24 86.5H32 M24 89.5H32 M32 86.5H40 M32 89.5H40 M40 86.5H48 M40 89.5H48 M48 89.5H53.5V80 M48 86.5H50.5V80"/>
+  <g shape-rendering="crispEdges">
+    <rect x="0" y="0" width="48" height="16" fill="#FF818D"/>
+    <rect x="0" y="16" width="16" height="16" fill="#E5747F"/>
+    <rect x="40" y="16" width="16" height="16" fill="#E5747F"/>
+    <rect x="0" y="32" width="16" height="16" fill="#CC6771"/>
+    <rect x="40" y="32" width="16" height="16" fill="#CC6771"/>
+    <rect x="0" y="48" width="16" height="16" fill="#B25B63"/>
+    <rect x="40" y="48" width="16" height="16" fill="#B25B63"/>
+    <rect x="0" y="64" width="48" height="16" fill="#994E55"/>
+  </g>
+</svg>
