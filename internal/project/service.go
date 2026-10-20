@@ -82,15 +82,16 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 
 // InitProject creates a project for projectDir and links the current directory
 // to it through the DirectoryLinker, together with the repositories of
-// projectDir and the setup and copy paths detected for each of them. A
-// directory holding no repository is refused before the project is created.
+// projectDir, the setup and copy paths detected for each of them and the
+// environment variable names they need. A directory holding no repository is
+// refused before the project is created.
 func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []Repository, []SetupDetection, error) {
 	repositories, err := p.DiscoverRepositories(projectDir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	detections, setups, err := p.proposeSetups(projectDir, repositories, false)
+	detections, setups, err := p.proposeSetups(projectDir, repositories, nil, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -104,7 +105,7 @@ func (p *ProjectService) InitProject(name string, projectDir string) (*Project, 
 		return nil, nil, nil, err
 	}
 
-	if err := p.linker.LinkDirectory(created.Slug, repositories); err != nil {
+	if err := p.linker.LinkDirectory(created.Slug, repositories, addedEnvNames(detections)); err != nil {
 		return nil, nil, nil, err
 	}
 	return created, repositories, detections, nil

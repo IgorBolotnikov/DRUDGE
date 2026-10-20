@@ -18,11 +18,13 @@ import (
 type fakeSetupRecorder struct {
 	wasCalled bool
 	setups    map[string]DetectedSetup
+	envNames  []string
 }
 
-func (recorder *fakeSetupRecorder) RecordSetup(setups map[string]DetectedSetup) error {
+func (recorder *fakeSetupRecorder) RecordSetup(setups map[string]DetectedSetup, envNames []string) error {
 	recorder.wasCalled = true
 	recorder.setups = setups
+	recorder.envNames = envNames
 	return nil
 }
 
@@ -200,7 +202,7 @@ func TestDetectSetup_Rules(t *testing.T) {
 			recorder := &fakeSetupRecorder{}
 			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, DetectSetupOptions{})
+			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, nil, DetectSetupOptions{})
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}
@@ -290,7 +292,7 @@ func TestDetectSetup_Options(t *testing.T) {
 			recorder := &fakeSetupRecorder{}
 			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, test.repositories, test.options)
+			got, err := service.DetectSetup(projectDir, test.repositories, nil, test.options)
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}
@@ -311,7 +313,7 @@ func TestDetectSetup_Options(t *testing.T) {
 func TestDetectSetup_RefusesAProjectWithNoRepositories(t *testing.T) {
 	service := NewProjectService(nil, nil, &fakeSetupRecorder{}, nil, &fakeProgress{})
 
-	_, err := service.DetectSetup(t.TempDir(), nil, DetectSetupOptions{})
+	_, err := service.DetectSetup(t.TempDir(), nil, nil, DetectSetupOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), RepositoriesKey) {
 		t.Errorf("error = %v, want it to name %q", err, RepositoriesKey)
@@ -398,7 +400,7 @@ func TestDetectSetup_CopyPaths(t *testing.T) {
 			gitOps := gitcli.New(exec.NewCommandRunner(), git.Timeouts{Command: 30 * time.Second})
 			service := NewProjectService(nil, nil, recorder, gitOps, &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, DetectSetupOptions{})
+			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, nil, DetectSetupOptions{})
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}
@@ -408,6 +410,106 @@ func TestDetectSetup_CopyPaths(t *testing.T) {
 			}
 			if !reflect.DeepEqual(recorder.setups["."].Copy, test.want) {
 				t.Errorf("recorded copy paths %q, want %q", recorder.setups["."].Copy, test.want)
+			}
+		})
+	}
+}
+
+func TestDetectSetup_EnvNames(t *testing.T) {
+	tests := []struct {
+		name         string
+		repositories []Repository
+		files        map[string]string
+		// listed is the Drudger env before detection.
+		listed []string
+		want   []SetupDetection
+		// wantEnvNames is what the recorder is handed.
+		wantEnvNames []string
+	}{
+		{
+			name:         "an npmrc with one name",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			files:        map[string]string{"api/.npmrc": "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n"},
+			want:         []SetupDetection{{Repository: "api", IsKept: true, EnvNames: []EnvName{{Name: "NODE_AUTH_TOKEN", Trigger: ".npmrc"}}}},
+			wantEnvNames: []string{"NODE_AUTH_TOKEN"},
+		},
+		{
+			name:         "an npmrc with two names",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			files: map[string]string{"api/.npmrc": "@acme:registry=https://${ACME_REGISTRY}/\n" +
+				"# //old.example.com/:_authToken=${OLD_TOKEN}\n" +
+				"; ${OLD_TOKEN}\n" +
+				"//${ACME_REGISTRY}/:_authToken=${ACME_TOKEN}\n"},
+			want: []SetupDetection{{Repository: "api", IsKept: true, EnvNames: []EnvName{
+				{Name: "ACME_REGISTRY", Trigger: ".npmrc"},
+				{Name: "ACME_TOKEN", Trigger: ".npmrc"},
+			}}},
+			wantEnvNames: []string{"ACME_REGISTRY", "ACME_TOKEN"},
+		},
+		{
+			name:         "an npmrc with no names",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			files:        map[string]string{"api/.npmrc": "save-exact=true\n"},
+			want:         []SetupDetection{{Repository: "api", IsKept: true}},
+		},
+		{
+			name:         "no npmrc",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			want:         []SetupDetection{{Repository: "api", IsKept: true}},
+		},
+		{
+			name:         "an npmrc below the root is not read",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			files:        map[string]string{"api/web/.npmrc": "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n"},
+			want:         []SetupDetection{{Repository: "api", IsKept: true}},
+		},
+		{
+			name:         "a listed name is not added again",
+			repositories: []Repository{{Path: "api", Setup: []string{}}},
+			files:        map[string]string{"api/.npmrc": "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n"},
+			listed:       []string{"NPM_TOKEN"},
+			want:         []SetupDetection{{Repository: "api", IsKept: true}},
+		},
+		{
+			name:         "a name two repositories need is added once",
+			repositories: []Repository{{Path: "api", Setup: []string{}}, {Path: "ui", Setup: []string{}}},
+			files: map[string]string{
+				"api/.npmrc": "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
+				"ui/.npmrc":  "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
+			},
+			want: []SetupDetection{
+				{Repository: "api", IsKept: true, EnvNames: []EnvName{{Name: "NPM_TOKEN", Trigger: ".npmrc"}}},
+				{Repository: "ui", IsKept: true},
+			},
+			wantEnvNames: []string{"NPM_TOKEN"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			for _, repository := range test.repositories {
+				if err := os.MkdirAll(filepath.Join(projectDir, repository.Path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeFiles(t, projectDir, test.files)
+			recorder := &fakeSetupRecorder{}
+			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
+
+			got, err := service.DetectSetup(projectDir, test.repositories, test.listed, DetectSetupOptions{})
+			if err != nil {
+				t.Fatalf("DetectSetup: %v", err)
+			}
+
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("DetectSetup = %+v, want %+v", got, test.want)
+			}
+			if recorder.wasCalled != (test.wantEnvNames != nil) {
+				t.Errorf("recorder called: %v, want %v", recorder.wasCalled, test.wantEnvNames != nil)
+			}
+			if !reflect.DeepEqual(recorder.envNames, test.wantEnvNames) {
+				t.Errorf("recorded env names %q, want %q", recorder.envNames, test.wantEnvNames)
 			}
 		})
 	}

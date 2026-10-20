@@ -13,6 +13,7 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 		name         string
 		slug         string
 		repositories []project.Repository
+		envNames     []string
 	}{
 		{
 			name:         "a directory that is a repository",
@@ -24,6 +25,12 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			slug:         "my-cool-app",
 			repositories: []project.Repository{{Path: "api", DefaultBranch: "trunk"}, {Path: "ui"}},
 		},
+		{
+			name:         "a repository that needs environment variables",
+			slug:         "test-project",
+			repositories: []project.Repository{{Path: "."}},
+			envNames:     []string{"NPM_TOKEN"},
+		},
 	}
 
 	for _, test := range tests {
@@ -31,7 +38,7 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			setupLocalDir(t)
 			home := "/home/user"
 
-			if err := NewLocalConfigLinker(home).LinkDirectory(test.slug, test.repositories); err != nil {
+			if err := NewLocalConfigLinker(home).LinkDirectory(test.slug, test.repositories, test.envNames); err != nil {
 				t.Fatalf("LinkDirectory: %v", err)
 			}
 
@@ -42,6 +49,7 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			want := LocalConfig{
 				Schema:       filepath.Join(home, ".drudge", "schema", "local-config.json"),
 				ProjectSlug:  test.slug,
+				Drudger:      LocalDrudgerConfig{Env: test.envNames},
 				Repositories: test.repositories,
 			}
 			if !reflect.DeepEqual(*loaded, want) {
@@ -95,7 +103,11 @@ func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 		name         string
 		repositories []project.Repository
 		setups       map[string]project.DetectedSetup
-		want         []project.Repository
+		// listedEnv is the Drudger env before the setup is recorded.
+		listedEnv []string
+		envNames  []string
+		want      []project.Repository
+		wantEnv   []string
 	}{
 		{
 			name:         "a missing setup is filled",
@@ -127,17 +139,25 @@ func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 			setups:       map[string]project.DetectedSetup{"api": {Setup: []string{"npm ci"}}},
 			want:         []project.Repository{{Path: "api", Setup: []string{"npm ci"}, Copy: []string{"secrets.json"}}},
 		},
+		{
+			name:         "env names are added after the listed ones",
+			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			listedEnv:    []string{"GITHUB_TOKEN"},
+			envNames:     []string{"NPM_TOKEN", "GITHUB_TOKEN"},
+			want:         []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			wantEnv:      []string{"GITHUB_TOKEN", "NPM_TOKEN"},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			setupLocalDir(t)
 			linker := NewLocalConfigLinker("/home/user")
-			if err := linker.LinkDirectory("demo", test.repositories); err != nil {
+			if err := linker.LinkDirectory("demo", test.repositories, test.listedEnv); err != nil {
 				t.Fatalf("LinkDirectory: %v", err)
 			}
 
-			if err := linker.RecordSetup(test.setups); err != nil {
+			if err := linker.RecordSetup(test.setups, test.envNames); err != nil {
 				t.Fatalf("RecordSetup: %v", err)
 			}
 
@@ -147,6 +167,9 @@ func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 			}
 			if !reflect.DeepEqual(loaded.Repositories, test.want) {
 				t.Errorf("repositories = %+v, want %+v", loaded.Repositories, test.want)
+			}
+			if !reflect.DeepEqual(loaded.Drudger.Env, test.wantEnv) {
+				t.Errorf("env = %q, want %q", loaded.Drudger.Env, test.wantEnv)
 			}
 		})
 	}

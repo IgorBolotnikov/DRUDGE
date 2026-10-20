@@ -44,6 +44,8 @@ A worktree is a fresh checkout, so gitignored files like `.env` never reach it. 
 
 `drudger.env` lists the names of environment variables to pass from the shell of `drg` into the sandbox, like `NODE_AUTH_TOKEN` for a private package registry. Every setup command and the agent get them through `sbx exec -e NAME`, so DRUDGE never stores their values. A launch checks every name before setup runs and stops when one of them is not set. `drg task run --dry-run` lists the names and warns about each one that is not set.
 
+`drg project detect` and `drg project init` add every `${NAME}` in the `.npmrc` at the root of a repository to `drudger.env`, like `NODE_AUTH_TOKEN` in `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`. They read every repository, one that keeps its `setup` included. A name already in `drudger.env` stays and no name is ever removed, `--force` included. `--dry-run` writes nothing.
+
 ## Keys
 
 <!-- BEGIN GENERATED: edits between these markers are overwritten -->
@@ -60,7 +62,7 @@ A worktree is a fresh checkout, so gitignored files like `.env` never reach it. 
 | `task.pageSize` | integer | `20` | minimum 0 | How many tasks drg task list shows on one page. 0 shows every task on one page. |
 | `drudger` | object |  |  | Settings for the Drudgers. Each one overrides the global config. |
 | `drudger.pageSize` | integer | `20` | minimum 0 | How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page. |
-| `drudger.env` | array |  |  | Names of environment variables passed from the shell of drg into the sandbox, to every setup command and to the agent. A launch stops when one of them is not set. DRUDGE never stores their values. |
+| `drudger.env` | array |  |  | Names of environment variables passed from the shell of drg into the sandbox, to every setup command and to the agent. A launch stops when one of them is not set. DRUDGE never stores their values. drg project detect adds the names a .npmrc reads. |
 | `repositories` | array |  |  | The git repositories of the project. drg project init writes the list. |
 | `repositories[].path` | string |  |  | Required. Where the repository sits relative to the project directory. A project directory that is itself a repository records ".". |
 | `repositories[].defaultBranch` | string |  |  | The branch work is cut from. Omit to read it from origin/HEAD. |

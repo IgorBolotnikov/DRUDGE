@@ -69,11 +69,18 @@ func TestProjectInit(t *testing.T) {
 		wantStderr       string
 		wantErr          string
 		wantRepositories []project.Repository
+		wantEnv          []string
 	}{
 		{
 			name:         "a project with one resolved and one unresolved repository",
 			repositories: map[string]string{"a": "", "b": "main"},
-			files:        map[string]string{"b/package-lock.json": "{}", "b/.gitignore": ".env\n", "b/.env": "TOKEN=1\n", "b/.env.example": "TOKEN=\n"},
+			files: map[string]string{
+				"b/package-lock.json": "{}",
+				"b/.gitignore":        ".env\n",
+				"b/.env":              "TOKEN=1\n",
+				"b/.env.example":      "TOKEN=\n",
+				"b/.npmrc":            "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
+			},
 			wantStdout: "Initializing project demo in .drudge\n" +
 				"✓ Initialized project demo\n" +
 				"\n" +
@@ -83,6 +90,7 @@ func TestProjectInit(t *testing.T) {
 				"Setup of b\n" +
 				"  ✓ npm ci  package-lock.json\n" +
 				"  ✓ Copy .env\n" +
+				"  ✓ Add NPM_TOKEN to drudger.env  .npmrc\n" +
 				"\n" +
 				"Repositories (2):\n" +
 				"  REPOSITORY                      DEFAULT BRANCH\n" +
@@ -92,6 +100,7 @@ func TestProjectInit(t *testing.T) {
 			wantStderr: "  ! could not work out the default branch of a, run `git remote set-head origin -a` in it, " +
 				"or set \"defaultBranch\" for it in the local config\n",
 			wantRepositories: []project.Repository{{Path: "a", Setup: []string{}, Copy: []string{}}, {Path: "b", Setup: []string{"npm ci"}, Copy: []string{".env"}}},
+			wantEnv:          []string{"NPM_TOKEN"},
 		},
 		{
 			name:       "a directory that holds no repository",
@@ -144,6 +153,9 @@ func TestProjectInit(t *testing.T) {
 			if !reflect.DeepEqual(localConfig.Repositories, testCase.wantRepositories) {
 				t.Errorf("repositories = %+v, want %+v", localConfig.Repositories, testCase.wantRepositories)
 			}
+			if !reflect.DeepEqual(localConfig.Drudger.Env, testCase.wantEnv) {
+				t.Errorf("env = %q, want %q", localConfig.Drudger.Env, testCase.wantEnv)
+			}
 		})
 	}
 }
@@ -154,11 +166,14 @@ func TestProjectDetect(t *testing.T) {
 		repositories []project.Repository
 		// files are created in the project directory, each path mapped to its
 		// content.
-		files            map[string]string
+		files map[string]string
+		// env is the Drudger env of the local config before detection.
+		env              []string
 		args             []string
 		wantStdout       string
 		wantErr          string
 		wantRepositories []project.Repository
+		wantEnv          []string
 	}{
 		{
 			name: "only missing setups are filled",
@@ -246,10 +261,51 @@ func TestProjectDetect(t *testing.T) {
 			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"npm ci"}, Copy: []string{"secrets.json"}}},
 		},
 		{
+			name:         "a name an npmrc needs is added",
+			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			files:        map[string]string{"api/.npmrc": "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n"},
+			env:          []string{"SENTRY_DSN"},
+			wantStdout: "Setup of api\n" +
+				"  · Kept the existing setup\n" +
+				"  ✓ Add NODE_AUTH_TOKEN to drudger.env  .npmrc\n" +
+				"✓ Wrote the detected setup to .drudge/config.json\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			wantEnv:          []string{"SENTRY_DSN", "NODE_AUTH_TOKEN"},
+		},
+		{
+			name:         "a name already listed is kept",
+			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			files:        map[string]string{"api/.npmrc": "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n"},
+			env:          []string{"NODE_AUTH_TOKEN"},
+			wantStdout: "Setup of api\n" +
+				"  · Kept the existing setup\n" +
+				"· Every repository has a setup already, --force replaces it\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			wantEnv:          []string{"NODE_AUTH_TOKEN"},
+		},
+		{
+			name:         "force keeps names no repository needs",
+			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}},
+			files:        map[string]string{"api/.npmrc": "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n"},
+			env:          []string{"SENTRY_DSN"},
+			args:         []string{"--force"},
+			wantStdout: "Setup of api\n" +
+				"  ✓ Nothing to set up, wrote an empty list\n" +
+				"  ✓ Add NPM_TOKEN to drudger.env  .npmrc\n" +
+				"✓ Wrote the detected setup to .drudge/config.json\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{}, Copy: []string{}}},
+			wantEnv:          []string{"SENTRY_DSN", "NPM_TOKEN"},
+		},
+		{
 			name:         "a dry run writes nothing",
 			repositories: []project.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs", Setup: []string{"make docs"}}},
-			files:        map[string]string{"api/uv.lock": "", "api/.gitignore": ".env\n", "api/.env": "TOKEN=1\n"},
-			args:         []string{"--dry-run"},
+			files: map[string]string{
+				"api/uv.lock":    "",
+				"api/.gitignore": ".env\n",
+				"api/.env":       "TOKEN=1\n",
+				"docs/.npmrc":    "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
+			},
+			args: []string{"--dry-run"},
 			wantStdout: "Setup of api\n" +
 				"  · uv sync --frozen  uv.lock\n" +
 				"  · Copy .env\n" +
@@ -259,6 +315,7 @@ func TestProjectDetect(t *testing.T) {
 				"\n" +
 				"Setup of docs\n" +
 				"  · Kept the existing setup\n" +
+				"  · Add NPM_TOKEN to drudger.env  .npmrc\n" +
 				"· Dry run, wrote nothing\n",
 			wantRepositories: []project.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs", Setup: []string{"make docs"}}},
 		},
@@ -278,7 +335,11 @@ func TestProjectDetect(t *testing.T) {
 				runGit(t, projectDir, "init", "-q", repository.Path)
 			}
 			writeProjectFiles(t, projectDir, testCase.files)
-			localConfig := &config.LocalConfig{ProjectSlug: "demo", Repositories: testCase.repositories}
+			localConfig := &config.LocalConfig{
+				ProjectSlug:  "demo",
+				Drudger:      config.LocalDrudgerConfig{Env: testCase.env},
+				Repositories: testCase.repositories,
+			}
 			if err := localConfig.Save(); err != nil {
 				t.Fatal(err)
 			}
@@ -305,6 +366,9 @@ func TestProjectDetect(t *testing.T) {
 			}
 			if !reflect.DeepEqual(loaded.Repositories, testCase.wantRepositories) {
 				t.Errorf("repositories = %+v, want %+v", loaded.Repositories, testCase.wantRepositories)
+			}
+			if !reflect.DeepEqual(loaded.Drudger.Env, testCase.wantEnv) {
+				t.Errorf("env = %q, want %q", loaded.Drudger.Env, testCase.wantEnv)
 			}
 		})
 	}

@@ -20,8 +20,8 @@ type ProjectRepository interface {
 // link back.
 type DirectoryLinker interface {
 	// LinkDirectory links the current directory to the project with the slug
-	// slug and records the repositories of the project.
-	LinkDirectory(slug string, repositories []Repository) error
+	// slug and records the repositories and the Drudger env of the project.
+	LinkDirectory(slug string, repositories []Repository, envNames []string) error
 	// LinkedSlug reads the slug of the project the current directory is
 	// linked to. isLinked is false outside a project directory.
 	LinkedSlug() (slug string, isLinked bool, err error)
@@ -36,6 +36,7 @@ type DetectedSetup struct {
 
 // SetupRecorder writes detected setups into the repositories of the local
 // config. Setups maps the path of a repository to what detection wrote for it.
+// EnvNames are added to the Drudger env.
 type SetupRecorder interface {
-	RecordSetup(setups map[string]DetectedSetup) error
+	RecordSetup(setups map[string]DetectedSetup, envNames []string) error
 }

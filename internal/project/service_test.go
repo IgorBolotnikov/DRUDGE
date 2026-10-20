@@ -61,6 +61,7 @@ type fakeLinker struct {
 	wasCalled    bool
 	slug         string
 	repositories []Repository
+	envNames     []string
 	linkedSlug   string
 }
 
@@ -68,10 +69,11 @@ func (linker *fakeLinker) LinkedSlug() (string, bool, error) {
 	return linker.linkedSlug, linker.linkedSlug != "", nil
 }
 
-func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository) error {
+func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository, envNames []string) error {
 	linker.wasCalled = true
 	linker.slug = slug
 	linker.repositories = repositories
+	linker.envNames = envNames
 	return nil
 }
 

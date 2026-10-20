@@ -8,6 +8,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -26,7 +27,7 @@ var ProjectCmd = &Cmd{
 			Help: "Record a project and link the current directory to it. Task commands run here work on that project.\n" +
 				"A directory that is a git repository becomes the one repository of the project.\n" +
 				"Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.\n" +
-				"It writes the setup commands and copy paths it detects for each repository, like drg project detect does.\n" +
+				"It writes the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.\n" +
 				"It prints each repository with the default branch that task branches are cut from.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return projectInit },
 		},
@@ -37,6 +38,7 @@ var ProjectCmd = &Cmd{
 				"A version file like .tool-versions, mise.toml, .nvmrc or .python-version gets mise and the pinned toolchains installed.\n" +
 				"The first lockfile found gets its packages installed. A repository that matches nothing gets an empty list.\n" +
 				"Files git ignores whose name starts with .env, like .env and .env.local, and a .envs directory get copied. A .envrc is never copied.\n" +
+				"Every ${NAME} in a .npmrc is added to " + drudger.EnvKey + " of the local config, for every repository. Names already there stay and no name is ever removed, --force included.\n" +
 				"It reads only the root of each repository.\n" +
 				"A repository that has a setup key keeps it and its copy key, an empty list included, unless --force is given.\n" +
 				"A repository with no setup key keeps a copy key it has, unless --force is given.",
@@ -145,7 +147,7 @@ func projectDetect(options project.DetectSetupOptions) error {
 		return err
 	}
 
-	detections, err := svc.DetectSetup(projectDir, localCfg.Repositories, options)
+	detections, err := svc.DetectSetup(projectDir, localCfg.Repositories, localCfg.Drudger.Env, options)
 	if err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func projectDetect(options project.DetectSetupOptions) error {
 	switch {
 	case options.IsDryRun:
 		out.SkipResult("Dry run, wrote nothing")
-	case !slices.ContainsFunc(detections, func(detection project.SetupDetection) bool { return !detection.IsKept }):
+	case !slices.ContainsFunc(detections, func(detection project.SetupDetection) bool { return !detection.IsKept || len(detection.EnvNames) > 0 }):
 		out.SkipResult("Every repository has a setup already, --%s replaces it", forceFlagName)
 	default:
 		out.Result("Wrote the detected setup to %s", common.LocalConfigPath())
@@ -164,7 +166,8 @@ func projectDetect(options project.DetectSetupOptions) error {
 
 // printSetupDetections prints one group per repository, with every setup line
 // detected for it followed by the file that triggered it, and then every copy
-// path. A dry run prints the lines as skipped.
+// path and every environment variable name followed by the file that names it.
+// A dry run prints the lines as skipped.
 func printSetupDetections(out *printer.Printer, detections []project.SetupDetection, isDryRun bool) {
 	for _, detection := range detections {
 		out.Header("Setup of %s", detection.Repository)
@@ -193,6 +196,14 @@ func printSetupDetections(out *printer.Printer, detections []project.SetupDetect
 				continue
 			}
 			out.Done("Copy %s", path)
+		}
+		for _, envName := range detection.EnvNames {
+			trigger := out.Theme().Paint(theme.Stdout, theme.RoleMuted, envName.Trigger)
+			if isDryRun {
+				out.Skip("Add %s to %s  %s", envName.Name, drudger.EnvKey, trigger)
+				continue
+			}
+			out.Done("Add %s to %s  %s", envName.Name, drudger.EnvKey, trigger)
 		}
 	}
 }

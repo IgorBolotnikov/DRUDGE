@@ -1,6 +1,8 @@
 package config
 
 import (
+	"slices"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
@@ -18,13 +20,19 @@ func NewLocalConfigLinker(home string) *LocalConfigLinker {
 }
 
 // LinkDirectory writes a local config file holding the schema reference, the
-// slug and the repositories. It replaces a local config file that is already
-// there.
-func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []project.Repository) error {
+// slug, the repositories and the Drudger env. It replaces a local config file
+// that is already there.
+func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []project.Repository, envNames []string) error {
 	localCfg := LocalConfig{
 		Schema:       LocalSchemaRef(linker.home),
 		ProjectSlug:  slug,
+		Drudger:      LocalDrudgerConfig{Env: envNames},
 		Repositories: repositories,
+	}
+	for _, name := range envNames {
+		if !slices.Contains(localCfg.Drudger.Env, name) {
+			localCfg.Drudger.Env = append(localCfg.Drudger.Env, name)
+		}
 	}
 	return localCfg.Save()
 }
@@ -46,8 +54,9 @@ func (linker *LocalConfigLinker) LinkedSlug() (slug string, isLinked bool, err e
 
 // RecordSetup sets the setup and the copy paths of every repository of the
 // local config that setups names, and leaves the other repositories and keys
-// as they are. A nil copy keeps the copy paths of the repository.
-func (linker *LocalConfigLinker) RecordSetup(setups map[string]project.DetectedSetup) error {
+// as they are. A nil copy keeps the copy paths of the repository. Every name
+// of envNames missing from the Drudger env is appended to it.
+func (linker *LocalConfigLinker) RecordSetup(setups map[string]project.DetectedSetup, envNames []string) error {
 	localCfg, err := LoadLocal()
 	if err != nil {
 		return err
@@ -60,6 +69,11 @@ func (linker *LocalConfigLinker) RecordSetup(setups map[string]project.DetectedS
 		localCfg.Repositories[index].Setup = detected.Setup
 		if detected.Copy != nil {
 			localCfg.Repositories[index].Copy = detected.Copy
+		}
+	}
+	for _, name := range envNames {
+		if !slices.Contains(localCfg.Drudger.Env, name) {
+			localCfg.Drudger.Env = append(localCfg.Drudger.Env, name)
 		}
 	}
 	return localCfg.Save()

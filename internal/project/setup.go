@@ -22,6 +22,9 @@ type SetupDetection struct {
 	CopyPaths  []string
 	// IsCopyKept means the repository had copy paths and they stay.
 	IsCopyKept bool
+	// EnvNames are the names the repository adds to the Drudger env, kept
+	// repositories included.
+	EnvNames []EnvName
 }
 
 // DetectSetupOptions says which setups detection replaces and whether it
@@ -39,43 +42,57 @@ type DetectSetupOptions struct {
 // project from the files in the root of each repository, and records them
 // through the SetupRecorder. A repository that has a setup key keeps it and
 // its copy paths, an empty list included, unless the options force new ones.
-func (p *ProjectService) DetectSetup(projectDir string, repositories []Repository, options DetectSetupOptions) ([]SetupDetection, error) {
+// Every environment variable name a repository needs that envNames, the
+// Drudger env of the project, does not list is recorded too. A name is never
+// removed from the Drudger env.
+func (p *ProjectService) DetectSetup(projectDir string, repositories []Repository, envNames []string, options DetectSetupOptions) ([]SetupDetection, error) {
 	if len(repositories) == 0 {
 		return nil, fmt.Errorf("the local config records no %s, add them under %q", RepositoriesKey, RepositoriesKey)
 	}
 
-	detections, setups, err := p.proposeSetups(projectDir, repositories, options.IsForced)
+	detections, setups, err := p.proposeSetups(projectDir, repositories, envNames, options.IsForced)
 	if err != nil {
 		return nil, err
 	}
 
-	if options.IsDryRun || len(setups) == 0 {
+	added := addedEnvNames(detections)
+	if options.IsDryRun || (len(setups) == 0 && len(added) == 0) {
 		return detections, nil
 	}
-	if err := p.setups.RecordSetup(setups); err != nil {
+	if err := p.setups.RecordSetup(setups, added); err != nil {
 		return nil, fmt.Errorf("could not write the detected setup into the local config: %w", err)
 	}
 	return detections, nil
 }
 
-// proposeSetups runs detection on every repository with no setup key, or on
-// every repository when forced. It returns what it did for each repository and
-// what it proposed, keyed by repository path.
-func (p *ProjectService) proposeSetups(projectDir string, repositories []Repository, isForced bool) ([]SetupDetection, map[string]DetectedSetup, error) {
+// proposeSetups runs setup detection on every repository with no setup key,
+// or on every repository when forced, and environment detection on every
+// repository. It returns what it did for each repository and the setup it
+// proposed, keyed by repository path. A name in envNames is not added again.
+func (p *ProjectService) proposeSetups(projectDir string, repositories []Repository, envNames []string, isForced bool) ([]SetupDetection, map[string]DetectedSetup, error) {
+	listed := map[string]bool{}
+	for _, name := range envNames {
+		listed[name] = true
+	}
+
 	detections := make([]SetupDetection, 0, len(repositories))
 	setups := map[string]DetectedSetup{}
 	for _, repository := range repositories {
+		dir := filepath.Join(projectDir, repository.Path)
+		added, err := detectEnvNames(dir, listed)
+		if err != nil {
+			return nil, nil, err
+		}
 		if repository.Setup != nil && !isForced {
-			detections = append(detections, SetupDetection{Repository: repository.Path, IsKept: true})
+			detections = append(detections, SetupDetection{Repository: repository.Path, IsKept: true, EnvNames: added})
 			continue
 		}
 
-		dir := filepath.Join(projectDir, repository.Path)
 		lines, err := detectSetupLines(dir)
 		if err != nil {
 			return nil, nil, err
 		}
-		detection := SetupDetection{Repository: repository.Path, Lines: lines}
+		detection := SetupDetection{Repository: repository.Path, Lines: lines, EnvNames: added}
 		detected := DetectedSetup{Setup: setupCommands(lines)}
 		if repository.Copy != nil && !isForced {
 			detection.IsCopyKept = true
