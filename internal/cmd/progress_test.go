@@ -119,19 +119,34 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "✓ Added task 006684e3  Fix login, it is in progress on the other device\n",
 		},
 		{
-			name:  "a task import skipped",
-			event: task.TaskImportSkipped{Task: sampleTask},
-			want:  "· Skipped task 006684e3  Fix login, the project has it\n",
+			name:  "a task updated by an import",
+			event: task.TaskImportUpdated{Task: sampleTask},
+			want:  "✓ Updated task 006684e3  Fix login, the archive holds a newer copy\n",
+		},
+		{
+			name:  "a task import skipped as older",
+			event: task.TaskImportSkipped{Task: sampleTask, Reason: task.SkipReasonOlder},
+			want:  "· Skipped task 006684e3  Fix login, the archive holds no newer copy\n",
+		},
+		{
+			name:  "a task import skipped as in progress",
+			event: task.TaskImportSkipped{Task: sampleTask, Reason: task.SkipReasonInProgress},
+			want:  "· Skipped task 006684e3  Fix login, it is in progress here\n",
 		},
 		{
 			name:  "an import that added tasks",
-			event: task.TasksImported{ProjectSlug: "demo", Added: 2, Skipped: 1},
-			want:  "✓ Added 2 tasks to project demo, skipped 1\n",
+			event: task.TasksImported{ProjectSlug: "demo", Added: 2, SkippedAsOlder: 1},
+			want:  "✓ Imported into project demo, added 2, updated 0, skipped 1 as older and 0 as in progress\n",
 		},
 		{
-			name:  "an import that added nothing",
-			event: task.TasksImported{ProjectSlug: "demo", Skipped: 3},
-			want:  "· Added no tasks to project demo, skipped 3\n",
+			name:  "an import that only updated tasks",
+			event: task.TasksImported{ProjectSlug: "demo", Updated: 1, SkippedAsInProgress: 1},
+			want:  "✓ Imported into project demo, added 0, updated 1, skipped 0 as older and 1 as in progress\n",
+		},
+		{
+			name:  "an import that changed nothing",
+			event: task.TasksImported{ProjectSlug: "demo", SkippedAsOlder: 2, SkippedAsInProgress: 1},
+			want:  "· Changed no tasks in project demo, added 0, updated 0, skipped 2 as older and 1 as in progress\n",
 		},
 		{
 			name:  "a project created",

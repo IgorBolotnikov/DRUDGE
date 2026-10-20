@@ -59,8 +59,10 @@ func (p *cliProgress) Report(event any) {
 		p.out.Warn("The archive holds tasks of project %s, they go into project %s", event.ArchiveSlug, event.ProjectSlug)
 	case task.TaskImported:
 		p.reportTaskImported(event)
+	case task.TaskImportUpdated:
+		p.out.Done("Updated task %s, the archive holds a newer copy", p.out.Task(event.Task))
 	case task.TaskImportSkipped:
-		p.out.Skip("Skipped task %s, the project has it", p.out.Task(event.Task))
+		p.reportTaskImportSkipped(event)
 	case task.TasksImported:
 		p.tasksImportedResult(event)
 	case project.ProjectCreated:
@@ -93,14 +95,26 @@ func (p *cliProgress) reportTaskImported(event task.TaskImported) {
 	p.out.Done("Added task %s", p.out.Task(event.Task))
 }
 
-// tasksImportedResult closes an import with how many tasks it added and
-// skipped.
-func (p *cliProgress) tasksImportedResult(event task.TasksImported) {
-	if event.Added == 0 {
-		p.out.SkipResult("Added no tasks to project %s, skipped %d", event.ProjectSlug, event.Skipped)
+func (p *cliProgress) reportTaskImportSkipped(event task.TaskImportSkipped) {
+	if event.Reason == task.SkipReasonInProgress {
+		p.out.Skip("Skipped task %s, it is in progress here", p.out.Task(event.Task))
 		return
 	}
-	p.out.Result("Added %s to project %s, skipped %d", task.FormatTaskCount(event.Added), event.ProjectSlug, event.Skipped)
+	p.out.Skip("Skipped task %s, the archive holds no newer copy", p.out.Task(event.Task))
+}
+
+// tasksImportedResult closes an import with how many tasks it added, updated
+// and skipped.
+func (p *cliProgress) tasksImportedResult(event task.TasksImported) {
+	counts := fmt.Sprintf(
+		"added %d, updated %d, skipped %d as older and %d as in progress",
+		event.Added, event.Updated, event.SkippedAsOlder, event.SkippedAsInProgress,
+	)
+	if event.Added == 0 && event.Updated == 0 {
+		p.out.SkipResult("Changed no tasks in project %s, %s", event.ProjectSlug, counts)
+		return
+	}
+	p.out.Result("Imported into project %s, %s", event.ProjectSlug, counts)
 }
 
 func (p *cliProgress) warnTaskUnlinkFailed(event task.TaskUnlinkFailed) {

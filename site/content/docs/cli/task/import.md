@@ -12,7 +12,7 @@ usage: drg task import <file> [options]
 
 Add every task of an archive drg task export wrote that the project does not have yet, with its id, its timestamps and its run state as they are.
 
-A task whose id the project already has is skipped. Tasks of another project are moved into this one.
+A task whose id the project already has is replaced when the archived copy has a newer update time, and skipped otherwise. A task in progress here is always skipped. Tasks of another project are moved into this one.
 
 It reads the whole archive first and stops at an archive it cannot read, before it writes anything.
 

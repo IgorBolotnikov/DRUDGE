@@ -36,23 +36,47 @@ type TaskImported struct {
 	Task *Task
 }
 
-// TaskImportSkipped reports a task ImportTasks left alone, because the project
-// has a task with its id.
-type TaskImportSkipped struct {
+// TaskImportUpdated reports a task ImportTasks replaced with a newer copy from
+// the archive.
+type TaskImportUpdated struct {
 	Task *Task
+}
+
+// ImportSkipReason says why ImportTasks kept the copy of a task the project
+// has.
+type ImportSkipReason string
+
+const (
+	// SkipReasonOlder means the archived copy has the same or an older update
+	// time.
+	SkipReasonOlder ImportSkipReason = "older"
+	// SkipReasonInProgress means the task is in progress in the project. A
+	// Drudger on this device holds it.
+	SkipReasonInProgress ImportSkipReason = "in-progress"
+)
+
+// TaskImportSkipped reports a task of the archive ImportTasks did not write
+// over the copy the project has.
+type TaskImportSkipped struct {
+	Task   *Task
+	Reason ImportSkipReason
 }
 
 // TasksImported reports how an import ended. It is the last event of an
 // import.
 type TasksImported struct {
-	ProjectSlug string
-	Added       int
-	Skipped     int
+	ProjectSlug         string
+	Added               int
+	Updated             int
+	SkippedAsOlder      int
+	SkippedAsInProgress int
 }
 
-// ImportTasks adds every task of an archive the project does not have yet, as
-// it is in the archive. A task keeps its id, its timestamps and its run state,
-// and only its project slug is set to the target project. It reads and parses
+// ImportTasks adds every task of an archive the project does not have yet, and
+// replaces every task the archive holds a newer copy of, as it is in the
+// archive. A task in progress in the project is never replaced. A task keeps
+// its id, its timestamps and its run state, and only its project slug is set
+// to the target project. It reads and parses
 // the whole archive before it writes anything, and refuses an archive of
 // another format version.
 func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
@@ -87,19 +111,33 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		archived := file.Task
 		archived.ProjectSlug = dto.ProjectSlug
 
+		var isStored bool
+		var skipReason ImportSkipReason
 		isWritten, err := service.repo.WriteTask(dto.ProjectSlug, archived, func(stored *Task) error {
-			return resolveImport(stored, archived)
+			isStored = stored != nil
+			skipReason = resolveImport(stored, archived)
+			if skipReason != "" {
+				return ErrTaskUnchanged
+			}
+			return nil
 		})
 		if err != nil {
 			return fmt.Errorf("could not import task %s: %w", archived.ID, err)
 		}
 
-		if isWritten {
+		switch {
+		case isWritten && isStored:
+			summary.Updated++
+			service.progress.Report(TaskImportUpdated{Task: archived})
+		case isWritten:
 			summary.Added++
 			service.progress.Report(TaskImported{Task: archived})
-		} else {
-			summary.Skipped++
-			service.progress.Report(TaskImportSkipped{Task: archived})
+		case skipReason == SkipReasonInProgress:
+			summary.SkippedAsInProgress++
+			service.progress.Report(TaskImportSkipped{Task: archived, Reason: skipReason})
+		default:
+			summary.SkippedAsOlder++
+			service.progress.Report(TaskImportSkipped{Task: archived, Reason: skipReason})
 		}
 	}
 
@@ -108,11 +146,17 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 }
 
 // resolveImport decides whether an archived task replaces the stored copy of
-// it. stored is nil when the project has no task with its id. It returns
-// ErrTaskUnchanged to keep the stored copy.
-func resolveImport(stored *Task, archived *Task) error {
-	if stored != nil {
-		return ErrTaskUnchanged
+// it. stored is nil when the project has no task with its id. It returns why
+// the stored copy stays, or an empty reason when the archived task is written.
+func resolveImport(stored *Task, archived *Task) ImportSkipReason {
+	switch {
+	case stored == nil:
+		return ""
+	case stored.Status == StatusInProgress:
+		return SkipReasonInProgress
+	case archived.UpdatedAt.After(stored.UpdatedAt):
+		return ""
+	default:
+		return SkipReasonOlder
 	}
-	return nil
 }

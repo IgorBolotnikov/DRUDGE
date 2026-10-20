@@ -384,9 +384,57 @@ func TestTaskService_ImportTasks_RoundTrip(t *testing.T) {
 	if again := listTasksByID(t, target); !reflect.DeepEqual(again, imported) {
 		t.Errorf("expected the second import to change nothing, got %+v", again)
 	}
-	wantSummary = task.TasksImported{ProjectSlug: "beta", Skipped: 2}
+	wantSummary = task.TasksImported{ProjectSlug: "beta", SkippedAsOlder: 1, SkippedAsInProgress: 1}
 	if summary := secondImport.events[len(secondImport.events)-1]; summary != wantSummary {
 		t.Errorf("expected summary %+v, got %+v", wantSummary, summary)
+	}
+
+	returnPath := filepath.Join(t.TempDir(), "tasks.zip")
+	if _, err := task.NewTaskService(target, &recordedProgress{}, "", nil).ExportTasks(task.ExportTasksDto{ProjectSlug: "beta", Path: returnPath}); err != nil {
+		t.Fatalf("return export: %v", err)
+	}
+	returnImport := &recordedProgress{}
+	if err := task.NewTaskService(source, returnImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "alpha", Path: returnPath}); err != nil {
+		t.Fatalf("return import: %v", err)
+	}
+	if returned := listTasksByID(t, source); !reflect.DeepEqual(returned, exported) {
+		t.Errorf("expected the return import to change nothing, got %+v", returned)
+	}
+	wantSummary = task.TasksImported{ProjectSlug: "alpha", SkippedAsOlder: 1, SkippedAsInProgress: 1}
+	if summary := returnImport.events[len(returnImport.events)-1]; summary != wantSummary {
+		t.Errorf("expected summary %+v, got %+v", wantSummary, summary)
+	}
+}
+
+func TestTaskService_ImportTasks_RenamesUpdatedTask(t *testing.T) {
+	setupTaskTestHome(t)
+	stored := fullTask(loginTaskID, "Old title", "test-project")
+	stored.Status = task.StatusTodo
+	repo := NewFileTaskRepository("test-project")
+	if _, err := repo.WriteTask("test-project", stored, func(*task.Task) error { return nil }); err != nil {
+		t.Fatalf("store task: %v", err)
+	}
+
+	edited := *stored
+	edited.Title = "Fix login"
+	edited.UpdatedAt = stored.UpdatedAt.Add(time.Hour)
+	content := common.FormatFrontMatter(taskFrontMatter(&edited)) + edited.Description
+	path := filepath.Join(t.TempDir(), "tasks.zip")
+	writeZipArchive(t, path, map[string]string{ManifestFileName: testManifest, loginTaskFile: content})
+
+	if err := task.NewTaskService(repo, &recordedProgress{}, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	if tasks := listTasksByID(t, repo); len(tasks) != 1 || !reflect.DeepEqual(tasks[0], &edited) {
+		t.Errorf("expected only task %+v, got %+v", &edited, tasks)
+	}
+	files, err := repo.taskFiles()
+	if err != nil {
+		t.Fatalf("list task files: %v", err)
+	}
+	if len(files) != 1 || filepath.Base(files[0].path) != loginTaskFile {
+		t.Errorf("expected only file %s, got %+v", loginTaskFile, files)
 	}
 }
 

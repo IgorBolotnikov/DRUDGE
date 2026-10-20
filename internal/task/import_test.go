@@ -31,13 +31,33 @@ func inProgressTask(projectSlug string) *Task {
 	return inProgress
 }
 
-func storedCopy() *Task {
+// storedCopy is the copy of the archived task the project has, edited here
+// at updatedAt.
+func storedCopy(updatedAt time.Time) *Task {
 	stored := archivedTask(testProjectSlug)
-	stored.Title = "Add retry, edited here"
+	stored.Description = "Retry uploads, edited here"
+	stored.UpdatedAt = updatedAt
 	return stored
 }
 
+func storedInProgressCopy(updatedAt time.Time) *Task {
+	stored := inProgressTask(testProjectSlug)
+	stored.UpdatedAt = updatedAt
+	return stored
+}
+
+// renamedTask is the archived task with the title edited on the other device.
+func renamedTask(projectSlug string) *Task {
+	renamed := archivedTask(projectSlug)
+	renamed.Title = "Add retry with backoff"
+	return renamed
+}
+
 func TestTaskService_ImportTasks(t *testing.T) {
+	archivedUpdatedAt := archivedTask(testProjectSlug).UpdatedAt
+	before := archivedUpdatedAt.Add(-time.Hour)
+	after := archivedUpdatedAt.Add(time.Hour)
+
 	cases := []struct {
 		name         string
 		manifestSlug string
@@ -57,14 +77,70 @@ func TestTaskService_ImportTasks(t *testing.T) {
 			},
 		},
 		{
-			name:         "a task whose id the project has",
+			name:         "a newer copy of a task the project has",
 			manifestSlug: testProjectSlug,
 			archived:     archivedTask(testProjectSlug),
-			stored:       []*Task{storedCopy()},
-			wantTasks:    []*Task{storedCopy()},
+			stored:       []*Task{storedCopy(before)},
+			wantTasks:    []*Task{archivedTask(testProjectSlug)},
 			wantEvents: []any{
-				TaskImportSkipped{Task: archivedTask(testProjectSlug)},
-				TasksImported{ProjectSlug: testProjectSlug, Skipped: 1},
+				TaskImportUpdated{Task: archivedTask(testProjectSlug)},
+				TasksImported{ProjectSlug: testProjectSlug, Updated: 1},
+			},
+		},
+		{
+			name:         "a copy as new as the task the project has",
+			manifestSlug: testProjectSlug,
+			archived:     archivedTask(testProjectSlug),
+			stored:       []*Task{storedCopy(archivedUpdatedAt)},
+			wantTasks:    []*Task{storedCopy(archivedUpdatedAt)},
+			wantEvents: []any{
+				TaskImportSkipped{Task: archivedTask(testProjectSlug), Reason: SkipReasonOlder},
+				TasksImported{ProjectSlug: testProjectSlug, SkippedAsOlder: 1},
+			},
+		},
+		{
+			name:         "an older copy of a task the project has",
+			manifestSlug: testProjectSlug,
+			archived:     archivedTask(testProjectSlug),
+			stored:       []*Task{storedCopy(after)},
+			wantTasks:    []*Task{storedCopy(after)},
+			wantEvents: []any{
+				TaskImportSkipped{Task: archivedTask(testProjectSlug), Reason: SkipReasonOlder},
+				TasksImported{ProjectSlug: testProjectSlug, SkippedAsOlder: 1},
+			},
+		},
+		{
+			name:         "a newer copy of a task in progress here",
+			manifestSlug: testProjectSlug,
+			archived:     archivedTask(testProjectSlug),
+			stored:       []*Task{storedInProgressCopy(before)},
+			wantTasks:    []*Task{storedInProgressCopy(before)},
+			wantEvents: []any{
+				TaskImportSkipped{Task: archivedTask(testProjectSlug), Reason: SkipReasonInProgress},
+				TasksImported{ProjectSlug: testProjectSlug, SkippedAsInProgress: 1},
+			},
+		},
+		{
+			name:         "a newer copy with another title",
+			manifestSlug: testProjectSlug,
+			archived:     renamedTask(testProjectSlug),
+			stored:       []*Task{storedCopy(before)},
+			wantTasks:    []*Task{renamedTask(testProjectSlug)},
+			wantEvents: []any{
+				TaskImportUpdated{Task: renamedTask(testProjectSlug)},
+				TasksImported{ProjectSlug: testProjectSlug, Updated: 1},
+			},
+		},
+		{
+			name:         "a newer copy from another project",
+			manifestSlug: otherProjectSlug,
+			archived:     archivedTask(otherProjectSlug),
+			stored:       []*Task{storedCopy(before)},
+			wantTasks:    []*Task{archivedTask(testProjectSlug)},
+			wantEvents: []any{
+				ProjectSlugRewritten{ArchiveSlug: otherProjectSlug, ProjectSlug: testProjectSlug},
+				TaskImportUpdated{Task: archivedTask(testProjectSlug)},
+				TasksImported{ProjectSlug: testProjectSlug, Updated: 1},
 			},
 		},
 		{
