@@ -3,6 +3,7 @@ package drudger
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +27,37 @@ type SetupOutput struct {
 // exitCoder is an error that carries the exit code of a process.
 type exitCoder interface {
 	ExitCode() int
+}
+
+// refuseUnsetEnv refuses a launch while a variable the sandbox is passed is not
+// set in the environment of drg. It names every such variable.
+func (service *DrudgerService) refuseUnsetEnv() error {
+	unset := service.unsetEnvNames()
+	if len(unset) == 0 {
+		return nil
+	}
+	if len(unset) == 1 {
+		return fmt.Errorf(
+			"environment variable %s is not set in the environment of drg, set it or remove it from %q in the local config",
+			unset[0], EnvKey,
+		)
+	}
+	return fmt.Errorf(
+		"environment variables %s are not set in the environment of drg, set them or remove them from %q in the local config",
+		strings.Join(unset, ", "), EnvKey,
+	)
+}
+
+// unsetEnvNames returns the variables the sandbox is passed that are not set in
+// the environment of drg. A variable set to the empty string is set.
+func (service *DrudgerService) unsetEnvNames() []string {
+	var unset []string
+	for _, name := range service.settings.EnvNames {
+		if _, ok := os.LookupEnv(name); !ok {
+			unset = append(unset, name)
+		}
+	}
+	return unset
 }
 
 // runSetup runs the reset of a plan and then its setup commands in order, and

@@ -274,6 +274,30 @@ func TestCLIProgress_Report(t *testing.T) {
 				"· Nothing ran, it was a dry run\n",
 		},
 		{
+			name: "a run described with environment variables",
+			event: drudger.RunDescribed{
+				Task:          sampleTask,
+				Slot:          3,
+				Sandbox:       "drudge-claude-demo-3",
+				PromptSource:  "~/.drudge/prompt.md",
+				Prompt:        "Fix login\n",
+				EnvNames:      []string{"NODE_AUTH_TOKEN", "NPM_TOKEN"},
+				UnsetEnvNames: []string{"NPM_TOKEN"},
+				Commands:      [][]string{{"sbx", "ls", "--json"}},
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"      Environment  NODE_AUTH_TOKEN, NPM_TOKEN\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
+			wantStderr: "  ! NPM_TOKEN is not set in this environment, a launch stops on it\n",
+		},
+		{
 			name: "Drudgers above the limit",
 			event: drudger.DrudgersAboveLimit{
 				ProjectSlug: "demo",

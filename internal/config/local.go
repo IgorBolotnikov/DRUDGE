@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -27,7 +28,13 @@ type LocalConfig struct {
 // LocalDrudgerConfig holds the Drudger settings a local config overrides.
 type LocalDrudgerConfig struct {
 	PageSize *int `json:"pageSize,omitempty"` // Drudgers on one page of a listing, nil means unset and zero means every Drudger on one page
+	// Env names the environment variables passed from the shell of drg into
+	// the sandbox. Their values are never stored.
+	Env []string `json:"env,omitempty"`
 }
+
+// envNamePattern is what a shell accepts as a variable name.
+var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // LocalSchemaRef returns the $schema reference for the local config file, the
 // absolute path of the local config schema. The local config file lives outside
@@ -80,6 +87,9 @@ func LoadLocal() (*LocalConfig, error) {
 	if err := validatePageSize(cfg.Drudger.PageSize, DrudgerPageSizeKey, "Drudger", path); err != nil {
 		return nil, err
 	}
+	if err := validateEnvNames(cfg.Drudger.Env, path); err != nil {
+		return nil, err
+	}
 	if err := validateRemote(cfg.Remote, path); err != nil {
 		return nil, err
 	}
@@ -106,6 +116,20 @@ func validateRepositories(repositories []project.Repository, path string) error 
 		}
 		if filepath.IsAbs(repository.Path) || escapesDir(repository.Path) {
 			return fmt.Errorf("%s has %s entry %q, a repository path must stay inside the project directory", path, project.RepositoriesKey, repository.Path)
+		}
+	}
+	return nil
+}
+
+// validateEnvNames rejects an environment variable name a shell would not
+// accept.
+func validateEnvNames(names []string, path string) error {
+	for _, name := range names {
+		if !envNamePattern.MatchString(name) {
+			return fmt.Errorf(
+				"%s has %s entry %q, a name must start with a letter or _ and hold only letters, digits and _",
+				path, drudgerEnvKey, name,
+			)
 		}
 	}
 	return nil

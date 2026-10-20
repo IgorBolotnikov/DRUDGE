@@ -372,6 +372,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	taskID := taskToRun.ID
 	runDir := layout.RunDir(taskID)
 
+	if err := service.refuseUnsetEnv(); err != nil {
+		return err
+	}
+
 	claimed, err := service.claimDrudger(projectSlug, taskID, layout)
 	if err != nil {
 		return err
@@ -478,14 +482,18 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 }
 
 // RunDescribed reports what a dry run would use: the Drudger, the prompt and
-// where it came from, and the argv of every command in the order they run.
-// With pull requests on it also names the provider they would be opened on.
+// where it came from, the environment variables the sandbox is passed and the
+// argv of every command in the order they run. UnsetEnvNames are the variables
+// a launch would stop on. With pull requests on it also names the provider
+// they would be opened on.
 type RunDescribed struct {
 	Task                *task.Task
 	Slot                int
 	Sandbox             string
 	PromptSource        string
 	Prompt              string
+	EnvNames            []string
+	UnsetEnvNames       []string
 	Commands            [][]string
 	PullRequestProvider remote.Provider
 }
@@ -528,12 +536,14 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 	commands = append(commands, plan.start)
 
 	described := RunDescribed{
-		Task:         taskToRun,
-		Slot:         wouldUse.Slot,
-		Sandbox:      wouldUse.Sandbox,
-		PromptSource: promptSource,
-		Prompt:       prompt,
-		Commands:     commands,
+		Task:          taskToRun,
+		Slot:          wouldUse.Slot,
+		Sandbox:       wouldUse.Sandbox,
+		PromptSource:  promptSource,
+		Prompt:        prompt,
+		EnvNames:      service.settings.EnvNames,
+		UnsetEnvNames: service.unsetEnvNames(),
+		Commands:      commands,
 	}
 	if service.remote != nil {
 		described.PullRequestProvider = service.remote.Provider()

@@ -258,6 +258,14 @@ const localSchemaJSON = `{
           "type": "integer",
           "minimum": 0,
           "default": 20
+        },
+        "env": {
+          "description": "Names of environment variables passed from the shell of drg into the sandbox, to every setup command and to the agent. A launch stops when one of them is not set. DRUDGE never stores their values.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
         }
       },
       "additionalProperties": false

@@ -27,6 +27,7 @@ const (
 	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
 	CreateTimeoutKey         = "sandboxTimeouts.createSeconds"
 	SetupTimeoutKey          = "sandboxTimeouts.setupSeconds"
+	EnvKey                   = "drudger.env"
 )
 
 // Settings is what a DrudgerService reads from the configs.
@@ -45,6 +46,9 @@ type Settings struct {
 	PromptPath string
 	// Model is the model the harness runs. Empty means the harness picks.
 	Model string
+	// EnvNames are the environment variables passed from the environment of
+	// drg to every command run in the sandbox.
+	EnvNames []string
 	// BranchFormat is the format the branch name of a task is built from.
 	BranchFormat    string
 	SandboxTimeouts SandboxTimeouts

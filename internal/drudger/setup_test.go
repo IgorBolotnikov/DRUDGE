@@ -3,6 +3,7 @@ package drudger
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -343,6 +344,199 @@ func TestDrudgerService_RunTask_GivesEachRepositoryItsOwnHooksDirectory(t *testi
 			calls := commands.calls
 			if got := calls[2 : len(calls)-1]; !slices.EqualFunc(got, wantCalls, slices.Equal[[]string]) {
 				t.Errorf("expected the reset and setup calls %q, got %q", wantCalls, got)
+			}
+		})
+	}
+}
+
+// Environment variables the tests pass into the sandbox.
+const (
+	testTokenEnv    = "DRUDGE_TEST_AUTH_TOKEN"
+	testRegistryEnv = "DRUDGE_TEST_REGISTRY"
+	testTokenValue  = "s3cret-token"
+)
+
+// settingsWithEnv are the settings of a project of the setup repositories that
+// passes the given variables into the sandbox.
+func settingsWithEnv(names ...string) Settings {
+	settings := settingsWithSetup()
+	settings.EnvNames = names
+	return settings
+}
+
+// unsetEnv unsets a variable for the length of a test.
+func unsetEnv(t *testing.T, name string) {
+	t.Helper()
+	t.Setenv(name, "")
+	if err := os.Unsetenv(name); err != nil {
+		t.Fatalf("could not unset %s: %v", name, err)
+	}
+}
+
+// envFlags are the sbx exec flags that pass the given variables.
+func envFlags(names ...string) []string {
+	var flags []string
+	for _, name := range names {
+		flags = append(flags, sbxEnvFlag, name)
+	}
+	return flags
+}
+
+func TestDrudgerService_RunTask_PassesTheEnvToTheSandbox(t *testing.T) {
+	cases := []struct {
+		name     string
+		envNames []string
+	}{
+		{name: "no variables pass no flags"},
+		{name: "one variable", envNames: []string{testTokenEnv}},
+		{name: "several variables in config order", envNames: []string{testTokenEnv, testRegistryEnv}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, name := range testCase.envNames {
+				t.Setenv(name, testTokenValue)
+			}
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			taskToRun.Repositories = []string{"ui"}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settingsWithEnv(testCase.envNames...), commands, taskToRun)
+
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			flags := envFlags(testCase.envNames...)
+			withoutEnv := setupCall(projectDir, "ui", ".drudge/hooks/ui", "pnpm install")
+			wantSetup := slices.Concat(withoutEnv[:4], flags, withoutEnv[4:])
+			if got := commands.calls[3]; !slices.Equal(got, wantSetup) {
+				t.Errorf("expected the setup call %q, got %q", wantSetup, got)
+			}
+			wantStart := slices.Concat([]string{sbxBinary, sbxExecSubcommand, sbxDetachedFlag}, flags, []string{testSandbox})
+			if got := commands.started[0]; !slices.Equal(got[:len(wantStart)], wantStart) {
+				t.Errorf("expected the agent start to begin with %q, got %q", wantStart, got)
+			}
+			for _, call := range commands.calls {
+				if slices.ContainsFunc(call, func(arg string) bool { return strings.Contains(arg, testTokenValue) }) {
+					t.Errorf("expected no command line to hold the value of a variable, got %q", call)
+				}
+			}
+			if got := fmt.Sprintf("%+v", service.progress.events); strings.Contains(got, testTokenValue) {
+				t.Errorf("expected no progress event to hold the value of a variable, got %s", got)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_UnsetEnvStopsTheLaunchBeforeSetup(t *testing.T) {
+	cases := []struct {
+		name       string
+		setNames   []string
+		unsetNames []string
+		wantInErr  []string
+	}{
+		{
+			name:       "one variable not set",
+			setNames:   []string{testTokenEnv},
+			unsetNames: []string{testRegistryEnv},
+			wantInErr:  []string{testRegistryEnv, EnvKey},
+		},
+		{
+			name:       "every variable not set",
+			unsetNames: []string{testTokenEnv, testRegistryEnv},
+			wantInErr:  []string{testTokenEnv, testRegistryEnv, EnvKey},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, name := range testCase.setNames {
+				t.Setenv(name, testTokenValue)
+			}
+			for _, name := range testCase.unsetNames {
+				unsetEnv(t, name)
+			}
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settingsWithEnv(testTokenEnv, testRegistryEnv), commands, taskToRun)
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+
+			if err == nil {
+				t.Fatal("expected an unset variable to stop the launch")
+			}
+			for _, want := range testCase.wantInErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected the error to name %q, got %q", want, err)
+				}
+			}
+			if strings.Contains(err.Error(), testTokenValue) {
+				t.Errorf("expected the error to leave out the value of a variable, got %q", err)
+			}
+			if commands.calls != nil || commands.started != nil {
+				t.Errorf("expected nothing to run, got calls %q and starts %q", commands.calls, commands.started)
+			}
+			if index := firstEventIndex[SetupCommandStarted](service.progress); index >= 0 {
+				t.Errorf("expected no setup to start, got %+v", service.progress.events)
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+				t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_DryRunReportsTheEnv(t *testing.T) {
+	cases := []struct {
+		name      string
+		envNames  []string
+		setNames  []string
+		wantUnset []string
+	}{
+		{name: "no variables"},
+		{
+			name:     "every variable set",
+			envNames: []string{testTokenEnv, testRegistryEnv},
+			setNames: []string{testTokenEnv, testRegistryEnv},
+		},
+		{
+			name:      "a variable not set",
+			envNames:  []string{testTokenEnv, testRegistryEnv},
+			setNames:  []string{testTokenEnv},
+			wantUnset: []string{testRegistryEnv},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			unsetEnv(t, testTokenEnv)
+			unsetEnv(t, testRegistryEnv)
+			for _, name := range testCase.setNames {
+				t.Setenv(name, testTokenValue)
+			}
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir}
+			service := newTestServiceWith(settingsWithEnv(testCase.envNames...), commands, taskToRun)
+
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			described := singleEvent[RunDescribed](t, service.progress)
+			if !slices.Equal(described.EnvNames, testCase.envNames) {
+				t.Errorf("expected the variables %q, got %q", testCase.envNames, described.EnvNames)
+			}
+			if !slices.Equal(described.UnsetEnvNames, testCase.wantUnset) {
+				t.Errorf("expected the unset variables %q, got %q", testCase.wantUnset, described.UnsetEnvNames)
+			}
+			if commands.calls != nil {
+				t.Errorf("expected nothing to run, got %q", commands.calls)
 			}
 		})
 	}

@@ -51,6 +51,7 @@ func TestLoadLocal(t *testing.T) {
 		wantDrudgers    int
 		wantRepos       []project.Repository
 		wantTaskStatus  task.TaskStatus
+		wantEnv         []string
 	}{
 		{
 			name:            "no file",
@@ -175,6 +176,31 @@ func TestLoadLocal(t *testing.T) {
 			wantErr:         true,
 		},
 		{
+			name:            "environment variable names",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "drudger": {"env": ["NODE_AUTH_TOKEN", "_private", "npm_token2"]}}`,
+			wantSlug:        "test-project",
+			wantEnv:         []string{"NODE_AUTH_TOKEN", "_private", "npm_token2"},
+		},
+		{
+			name:            "environment variable name starting with a digit",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "drudger": {"env": ["2FA_TOKEN"]}}`,
+			wantErr:         true,
+		},
+		{
+			name:            "environment variable name with a value",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "drudger": {"env": ["NODE_AUTH_TOKEN=secret"]}}`,
+			wantErr:         true,
+		},
+		{
+			name:            "empty environment variable name",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "drudger": {"env": [""]}}`,
+			wantErr:         true,
+		},
+		{
 			name:            "absolute repository path",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "/srv/elsewhere"}]}`,
@@ -218,6 +244,9 @@ func TestLoadLocal(t *testing.T) {
 			if cfg.Task.DefaultStatus != test.wantTaskStatus {
 				t.Errorf("Task.DefaultStatus = %q, want %q", cfg.Task.DefaultStatus, test.wantTaskStatus)
 			}
+			if !reflect.DeepEqual(cfg.Drudger.Env, test.wantEnv) {
+				t.Errorf("Drudger.Env = %q, want %q", cfg.Drudger.Env, test.wantEnv)
+			}
 		})
 	}
 }
@@ -249,6 +278,21 @@ func TestLoadLocal_InvalidDefaultTaskStatus_ErrorNamesFileKeyAndValues(t *testin
 	}
 }
 
+func TestLoadLocal_InvalidEnvName_ErrorNamesFileKeyAndName(t *testing.T) {
+	setupLocalDir(t)
+	writeLocalConfig(t, `{"projectSlug": "test-project", "drudger": {"env": ["NODE-AUTH-TOKEN"]}}`)
+
+	_, err := LoadLocal()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, fragment := range []string{common.LocalConfigPath(), drudgerEnvKey, `"NODE-AUTH-TOKEN"`} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("error = %q, want it to name %q", err, fragment)
+		}
+	}
+}
+
 func TestSave_RoundTrips(t *testing.T) {
 	setupLocalDir(t)
 
@@ -258,6 +302,7 @@ func TestSave_RoundTrips(t *testing.T) {
 		PromptFile:            "impl.md",
 		MaxConcurrentDrudgers: 5,
 		Task:                  TaskConfig{DefaultStatus: task.StatusTodo},
+		Drudger:               LocalDrudgerConfig{Env: []string{"NODE_AUTH_TOKEN", "NPM_TOKEN"}},
 		Repositories: []project.Repository{
 			{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}},
 			{Path: "ui", Setup: []string{}},

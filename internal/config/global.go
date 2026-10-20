@@ -64,6 +64,7 @@ const (
 	createTimeoutKey         = drudger.CreateTimeoutKey
 	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
 	setupTimeoutKey          = drudger.SetupTimeoutKey
+	drudgerEnvKey            = drudger.EnvKey
 	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
 	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"

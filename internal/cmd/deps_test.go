@@ -105,6 +105,26 @@ func TestNewDrudgerSettings(t *testing.T) {
 			},
 		},
 		{
+			name:   "the local environment variable names",
+			local:  &config.LocalConfig{ProjectSlug: projectSlug, Repositories: repositories, Drudger: config.LocalDrudgerConfig{Env: []string{"NODE_AUTH_TOKEN"}}},
+			global: config.DefaultConfig(),
+			want: drudger.Settings{
+				ProjectSlug:           projectSlug,
+				Repositories:          repositories,
+				Env:                   drudger.EnvDockerSbx,
+				Harness:               drudger.HarnessClaudeCode,
+				MaxConcurrentDrudgers: 3,
+				EnvNames:              []string{"NODE_AUTH_TOKEN"},
+				BranchFormat:          task.DefaultBranchFormat,
+				SandboxTimeouts: drudger.SandboxTimeouts{
+					List:   30 * time.Second,
+					Create: 10 * time.Minute,
+					Remove: 2 * time.Minute,
+					Setup:  15 * time.Minute,
+				},
+			},
+		},
+		{
 			name:   "the pull request settings",
 			local:  &config.LocalConfig{ProjectSlug: projectSlug, Repositories: repositories},
 			global: config.DefaultConfig(),

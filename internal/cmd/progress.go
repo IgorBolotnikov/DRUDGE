@@ -131,6 +131,12 @@ func (p *cliProgress) reportDrudger(event any) {
 		if event.PullRequestProvider != "" {
 			p.out.Field("Pull requests", fmt.Sprintf("opened on %s", event.PullRequestProvider))
 		}
+		if len(event.EnvNames) > 0 {
+			p.out.Field("Environment", strings.Join(event.EnvNames, ", "))
+		}
+		for _, name := range event.UnsetEnvNames {
+			p.out.Warn("%s is not set in this environment, a launch stops on it", name)
+		}
 		p.out.Block(event.Prompt)
 		p.out.Field("Commands", "")
 		p.out.Block(strings.Join(commands, "\n"))

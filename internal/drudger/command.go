@@ -45,6 +45,9 @@ const (
 	sbxNameFlag         = "--name"
 	sbxDetachedFlag     = "-d"
 	sbxWorkdirFlag      = "-w"
+	// An env flag with a bare name makes sbx take the value from its own
+	// environment, so the value stays off the command line.
+	sbxEnvFlag = "-e"
 	// sbx asks for confirmation before removing a sandbox and this flag is used
 	// only to skip the confirmation prompt. The flag is always passed since
 	// drudge has no terminal to confirm the action. Drudge has its own
@@ -204,6 +207,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 			setup: service.sbxSetupCommands(sandboxName, changed),
 			start: sbxExecCommand(sbxExec{
 				sandbox:    sandboxName,
+				env:        service.settings.EnvNames,
 				script:     formatLauncher(workspaceRoot, runDir, service.settings.Model),
 				isDetached: true,
 			}),
@@ -224,7 +228,12 @@ func (service *DrudgerService) sbxSetupCommands(sandboxName string, repositories
 		for _, command := range repository.Setup {
 			commands = append(commands, setupCommand{
 				sandboxCommand: sandboxCommand{
-					argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, workdir: repository.Worktree, script: environment + command}),
+					argv: sbxExecCommand(sbxExec{
+						sandbox: sandboxName,
+						workdir: repository.Worktree,
+						env:     service.settings.EnvNames,
+						script:  environment + command,
+					}),
 					timeout: service.settings.SandboxTimeouts.Setup,
 				},
 				repository: repository.Name,
@@ -274,10 +283,12 @@ func sandboxHomePath(relative string) string {
 }
 
 // sbxExec is a shell script to run in a sandbox. An empty workdir leaves the
-// working directory to sbx. A detached script is not waited for.
+// working directory to sbx. Env names the variables the script gets from the
+// environment of drg. A detached script is not waited for.
 type sbxExec struct {
 	sandbox    string
 	workdir    string
+	env        []string
 	script     string
 	isDetached bool
 }
@@ -291,6 +302,9 @@ func sbxExecCommand(invocation sbxExec) []string {
 	}
 	if invocation.workdir != "" {
 		argv = append(argv, sbxWorkdirFlag, invocation.workdir)
+	}
+	for _, name := range invocation.env {
+		argv = append(argv, sbxEnvFlag, name)
 	}
 	return append(argv, invocation.sandbox, shellBinary, shellCommandFlag, invocation.script)
 }
