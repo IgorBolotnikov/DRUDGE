@@ -44,16 +44,22 @@ func (linker *LocalConfigLinker) LinkedSlug() (slug string, isLinked bool, err e
 	return localCfg.ProjectSlug, true, nil
 }
 
-// RecordSetup sets the setup of every repository of the local config that
-// setups names, and leaves the other repositories and keys as they are.
-func (linker *LocalConfigLinker) RecordSetup(setups map[string][]string) error {
+// RecordSetup sets the setup and the copy paths of every repository of the
+// local config that setups names, and leaves the other repositories and keys
+// as they are. A nil copy keeps the copy paths of the repository.
+func (linker *LocalConfigLinker) RecordSetup(setups map[string]project.DetectedSetup) error {
 	localCfg, err := LoadLocal()
 	if err != nil {
 		return err
 	}
 	for index, repository := range localCfg.Repositories {
-		if setup, ok := setups[repository.Path]; ok {
-			localCfg.Repositories[index].Setup = setup
+		detected, ok := setups[repository.Path]
+		if !ok {
+			continue
+		}
+		localCfg.Repositories[index].Setup = detected.Setup
+		if detected.Copy != nil {
+			localCfg.Repositories[index].Copy = detected.Copy
 		}
 	}
 	return localCfg.Save()

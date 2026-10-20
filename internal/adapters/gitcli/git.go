@@ -72,6 +72,19 @@ const (
 // not have" from.
 const commitRange = "%s..%s"
 
+// Pieces of a git check-ignore invocation. The NUL separated flag makes git
+// read and print paths unquoted, each one ended by a NUL byte.
+const (
+	checkIgnoreSubcommand = "check-ignore"
+	stdinFlag             = "--stdin"
+	nulSeparatedFlag      = "-z"
+	pathSeparator         = "\x00"
+)
+
+// noMatchExitCode is what git check-ignore exits with when it ignores none of
+// the paths it is asked about.
+const noMatchExitCode = 1
+
 // worktreeField starts the porcelain listing line that carries a worktree's
 // path.
 const worktreeField = "worktree "
@@ -251,6 +264,29 @@ func (adapter *Git) HasWorktree(dir string, path string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// IgnoredPaths returns those of paths, relative to the repository root, that
+// git ignores. Git leaves tracked files out and exits 1 when it ignores none of
+// the paths.
+func (adapter *Git) IgnoredPaths(dir string, paths []string) ([]string, error) {
+	argv := []string{gitBinary, gitWorkDirFlag, dir, checkIgnoreSubcommand, stdinFlag, nulSeparatedFlag}
+	input := strings.Join(paths, pathSeparator) + pathSeparator
+	stdout, stderr, err := adapter.runner.RunWithInput(argv, input, adapter.timeouts.Command)
+	if exitCode(err) == noMatchExitCode {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("could not ask git which of %s it ignores in %s: %w: %s", strings.Join(paths, ", "), dir, err, strings.TrimSpace(stderr))
+	}
+
+	var ignored []string
+	for path := range strings.SplitSeq(stdout, pathSeparator) {
+		if path != "" {
+			ignored = append(ignored, path)
+		}
+	}
+	return ignored, nil
 }
 
 // IsDirty reports whether a work tree holds changes that are not committed.
@@ -460,6 +496,16 @@ func (adapter *Git) run(dir string, timeout time.Duration, args ...string) (stdo
 func refused(err error) bool {
 	var exitErr *osexec.ExitError
 	return errors.As(err, &exitErr)
+}
+
+// exitCode returns the code git exited with, and -1 when git did not run or
+// err is nil.
+func exitCode(err error) int {
+	var exitErr *osexec.ExitError
+	if !errors.As(err, &exitErr) {
+		return -1
+	}
+	return exitErr.ExitCode()
 }
 
 // realPath resolves a path through symlinks so two names for one directory

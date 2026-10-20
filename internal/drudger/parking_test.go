@@ -425,6 +425,10 @@ func (fake *refusingGit) HasWorktree(dir string, path string) (bool, error) {
 	return false, fake.refuse("HasWorktree")
 }
 
+func (fake *refusingGit) IgnoredPaths(dir string, paths []string) ([]string, error) {
+	return nil, fake.refuse("IgnoredPaths")
+}
+
 func (fake *refusingGit) IsDirty(dir string) (bool, error) {
 	return false, fake.refuse("IsDirty")
 }

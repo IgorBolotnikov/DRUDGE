@@ -17,7 +17,7 @@ Project management commands
 | Command | Description |
 | --- | --- |
 | [`drg project init`]({{< relref "/docs/cli/project/init" >}}) | Record a project and link the current directory to it |
-| [`drg project detect`]({{< relref "/docs/cli/project/detect" >}}) | Detect the setup commands of the repositories |
+| [`drg project detect`]({{< relref "/docs/cli/project/detect" >}}) | Detect the setup commands and copy paths of the repositories |
 | [`drg project delete`]({{< relref "/docs/cli/project/delete" >}}) | Delete a project and its tasks |
 | [`drg project rename`]({{< relref "/docs/cli/project/rename" >}}) | Give a project a new name |
 | [`drg project list`]({{< relref "/docs/cli/project/list" >}}) | List the projects |

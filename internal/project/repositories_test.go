@@ -65,6 +65,10 @@ func (fake *fakeGit) HasWorktree(dir string, path string) (bool, error) {
 	return false, fmt.Errorf("HasWorktree should not be called")
 }
 
+func (fake *fakeGit) IgnoredPaths(dir string, paths []string) ([]string, error) {
+	return nil, fmt.Errorf("IgnoredPaths should not be called")
+}
+
 func (fake *fakeGit) IsDirty(dir string) (bool, error) {
 	return false, fmt.Errorf("IsDirty should not be called")
 }

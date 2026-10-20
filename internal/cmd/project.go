@@ -26,18 +26,20 @@ var ProjectCmd = &Cmd{
 			Help: "Record a project and link the current directory to it. Task commands run here work on that project.\n" +
 				"A directory that is a git repository becomes the one repository of the project.\n" +
 				"Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.\n" +
-				"It writes the setup commands it detects for each repository, like drg project detect does.\n" +
+				"It writes the setup commands and copy paths it detects for each repository, like drg project detect does.\n" +
 				"It prints each repository with the default branch that task branches are cut from.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return projectInit },
 		},
 		{
 			Name: "detect",
-			Desc: "Detect the setup commands of the repositories",
-			Help: "Detect the setup commands of every repository of the project from the files in its root, and write them to the setup key of each repository in the local config.\n" +
+			Desc: "Detect the setup commands and copy paths of the repositories",
+			Help: "Detect the setup commands and copy paths of every repository of the project from the files in its root, and write them to the setup and copy keys of each repository in the local config.\n" +
 				"A version file like .tool-versions, mise.toml, .nvmrc or .python-version gets mise and the pinned toolchains installed.\n" +
 				"The first lockfile found gets its packages installed. A repository that matches nothing gets an empty list.\n" +
+				"Files git ignores whose name starts with .env, like .env and .env.local, and a .envs directory get copied. A .envrc is never copied.\n" +
 				"It reads only the root of each repository.\n" +
-				"A repository that has a setup key keeps it, an empty list included, unless --force is given.",
+				"A repository that has a setup key keeps it and its copy key, an empty list included, unless --force is given.\n" +
+				"A repository with no setup key keeps a copy key it has, unless --force is given.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				var flags projectDetectFlags
 				flags.declare(fs)
@@ -118,9 +120,9 @@ type projectDetectFlags struct {
 }
 
 func (flags *projectDetectFlags) declare(fs *flag.FlagSet) {
-	fs.BoolVar(&flags.isForced, forceFlagName, false, "Replace the setup of every repository, existing ones included")
+	fs.BoolVar(&flags.isForced, forceFlagName, false, "Replace the setup and copy paths of every repository, existing ones included")
 	alias(fs, forceFlagShortName, forceFlagName)
-	fs.BoolVar(&flags.isDryRun, dryRunFlagName, false, "Print the detected setup and write nothing")
+	fs.BoolVar(&flags.isDryRun, dryRunFlagName, false, "Print the detected setup and copy paths and write nothing")
 }
 
 func (flags *projectDetectFlags) options() project.DetectSetupOptions {
@@ -161,8 +163,8 @@ func projectDetect(options project.DetectSetupOptions) error {
 }
 
 // printSetupDetections prints one group per repository, with every setup line
-// detected for it followed by the file that triggered it. A dry run prints
-// the lines as skipped.
+// detected for it followed by the file that triggered it, and then every copy
+// path. A dry run prints the lines as skipped.
 func printSetupDetections(out *printer.Printer, detections []project.SetupDetection, isDryRun bool) {
 	for _, detection := range detections {
 		out.Header("Setup of %s", detection.Repository)
@@ -181,6 +183,16 @@ func printSetupDetections(out *printer.Printer, detections []project.SetupDetect
 				continue
 			}
 			out.Done("%s  %s", line.Command, trigger)
+		}
+		if detection.IsCopyKept {
+			out.Skip("Kept the existing copy paths")
+		}
+		for _, path := range detection.CopyPaths {
+			if isDryRun {
+				out.Skip("Copy %s", path)
+				continue
+			}
+			out.Done("Copy %s", path)
 		}
 	}
 }

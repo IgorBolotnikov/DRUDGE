@@ -73,7 +73,7 @@ func TestProjectInit(t *testing.T) {
 		{
 			name:         "a project with one resolved and one unresolved repository",
 			repositories: map[string]string{"a": "", "b": "main"},
-			files:        map[string]string{"b/package-lock.json": "{}"},
+			files:        map[string]string{"b/package-lock.json": "{}", "b/.gitignore": ".env\n", "b/.env": "TOKEN=1\n", "b/.env.example": "TOKEN=\n"},
 			wantStdout: "Initializing project demo in .drudge\n" +
 				"✓ Initialized project demo\n" +
 				"\n" +
@@ -82,6 +82,7 @@ func TestProjectInit(t *testing.T) {
 				"\n" +
 				"Setup of b\n" +
 				"  ✓ npm ci  package-lock.json\n" +
+				"  ✓ Copy .env\n" +
 				"\n" +
 				"Repositories (2):\n" +
 				"  REPOSITORY                      DEFAULT BRANCH\n" +
@@ -90,7 +91,7 @@ func TestProjectInit(t *testing.T) {
 				"  b                               main\n",
 			wantStderr: "  ! could not work out the default branch of a, run `git remote set-head origin -a` in it, " +
 				"or set \"defaultBranch\" for it in the local config\n",
-			wantRepositories: []project.Repository{{Path: "a", Setup: []string{}}, {Path: "b", Setup: []string{"npm ci"}}},
+			wantRepositories: []project.Repository{{Path: "a", Setup: []string{}, Copy: []string{}}, {Path: "b", Setup: []string{"npm ci"}, Copy: []string{".env"}}},
 		},
 		{
 			name:       "a directory that holds no repository",
@@ -167,13 +168,21 @@ func TestProjectDetect(t *testing.T) {
 				{Path: "ui", Setup: []string{"make deps"}},
 				{Path: "tools"},
 			},
-			files: map[string]string{"api/package-lock.json": "{}", "api/.nvmrc": "22\n", "ui/yarn.lock": "", "tools/go.mod": ""},
+			files: map[string]string{
+				"api/package-lock.json": "{}",
+				"api/.nvmrc":            "22\n",
+				"api/.gitignore":        ".env*\n",
+				"api/.env.local":        "TOKEN=1\n",
+				"ui/yarn.lock":          "",
+				"tools/go.mod":          "",
+			},
 			wantStdout: "Setup of api\n" +
 				"  ✓ command -v mise >/dev/null 2>&1 || curl -fsSL https://mise.run | sh  .nvmrc\n" +
 				"  ✓ mise settings set idiomatic_version_file_enable_tools node,python  .nvmrc\n" +
 				"  ✓ mise install  .nvmrc\n" +
 				"  ✓ echo \"$HOME/.local/share/mise/shims\" >> \"$DRUDGE_PATH\"  .nvmrc\n" +
 				"  ✓ npm ci  package-lock.json\n" +
+				"  ✓ Copy .env.local\n" +
 				"\n" +
 				"Setup of docs\n" +
 				"  · Kept the existing setup\n" +
@@ -191,10 +200,10 @@ func TestProjectDetect(t *testing.T) {
 					"mise install",
 					`echo "$HOME/.local/share/mise/shims" >> "$DRUDGE_PATH"`,
 					"npm ci",
-				}},
+				}, Copy: []string{".env.local"}},
 				{Path: "docs", Setup: []string{}},
 				{Path: "ui", Setup: []string{"make deps"}},
-				{Path: "tools", Setup: []string{}},
+				{Path: "tools", Setup: []string{}, Copy: []string{}},
 			},
 		},
 		{
@@ -207,25 +216,43 @@ func TestProjectDetect(t *testing.T) {
 			wantRepositories: []project.Repository{{Path: "api", Setup: []string{}}},
 		},
 		{
-			name:         "force replaces every setup",
-			repositories: []project.Repository{{Path: "api", Setup: []string{}}, {Path: "ui", Setup: []string{"make deps"}}},
-			files:        map[string]string{"api/package-lock.json": "{}"},
-			args:         []string{"--force"},
+			name: "force replaces every setup and copy",
+			repositories: []project.Repository{
+				{Path: "api", Setup: []string{}},
+				{Path: "ui", Setup: []string{"make deps"}, Copy: []string{"secrets.json"}},
+			},
+			files: map[string]string{"api/package-lock.json": "{}", "ui/.gitignore": ".envs/\n", "ui/.envs/dev": "DEBUG=1\n"},
+			args:  []string{"--force"},
 			wantStdout: "Setup of api\n" +
 				"  ✓ npm ci  package-lock.json\n" +
 				"\n" +
 				"Setup of ui\n" +
 				"  ✓ Nothing to set up, wrote an empty list\n" +
+				"  ✓ Copy .envs\n" +
 				"✓ Wrote the detected setup to .drudge/config.json\n",
-			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"npm ci"}}, {Path: "ui", Setup: []string{}}},
+			wantRepositories: []project.Repository{
+				{Path: "api", Setup: []string{"npm ci"}, Copy: []string{}},
+				{Path: "ui", Setup: []string{}, Copy: []string{".envs"}},
+			},
+		},
+		{
+			name:         "a hand-written copy is kept",
+			repositories: []project.Repository{{Path: "api", Copy: []string{"secrets.json"}}},
+			files:        map[string]string{"api/package-lock.json": "{}", "api/.gitignore": ".env\n", "api/.env": "TOKEN=1\n"},
+			wantStdout: "Setup of api\n" +
+				"  ✓ npm ci  package-lock.json\n" +
+				"  · Kept the existing copy paths\n" +
+				"✓ Wrote the detected setup to .drudge/config.json\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"npm ci"}, Copy: []string{"secrets.json"}}},
 		},
 		{
 			name:         "a dry run writes nothing",
 			repositories: []project.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs", Setup: []string{"make docs"}}},
-			files:        map[string]string{"api/uv.lock": ""},
+			files:        map[string]string{"api/uv.lock": "", "api/.gitignore": ".env\n", "api/.env": "TOKEN=1\n"},
 			args:         []string{"--dry-run"},
 			wantStdout: "Setup of api\n" +
 				"  · uv sync --frozen  uv.lock\n" +
+				"  · Copy .env\n" +
 				"\n" +
 				"Setup of ui\n" +
 				"  · Nothing to set up\n" +
@@ -247,6 +274,9 @@ func TestProjectDetect(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			projectDir := t.TempDir()
 			t.Chdir(projectDir)
+			for _, repository := range testCase.repositories {
+				runGit(t, projectDir, "init", "-q", repository.Path)
+			}
 			writeProjectFiles(t, projectDir, testCase.files)
 			localConfig := &config.LocalConfig{ProjectSlug: "demo", Repositories: testCase.repositories}
 			if err := localConfig.Save(); err != nil {

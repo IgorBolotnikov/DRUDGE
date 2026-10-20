@@ -530,6 +530,10 @@ func (fake *fakeGit) HasWorktree(dir string, path string) (bool, error) {
 	return fake.registeredWorktrees[path], nil
 }
 
+func (fake *fakeGit) IgnoredPaths(dir string, paths []string) ([]string, error) {
+	return nil, fmt.Errorf("IgnoredPaths should not be called")
+}
+
 func (fake *fakeGit) IsDirty(dir string) (bool, error) {
 	return fake.dirtyWorktrees[dir], nil
 }

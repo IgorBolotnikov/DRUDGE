@@ -2,19 +2,25 @@ package project
 
 import (
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
+	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
 
 // fakeSetupRecorder records the setups it is handed.
 type fakeSetupRecorder struct {
 	wasCalled bool
-	setups    map[string][]string
+	setups    map[string]DetectedSetup
 }
 
-func (recorder *fakeSetupRecorder) RecordSetup(setups map[string][]string) error {
+func (recorder *fakeSetupRecorder) RecordSetup(setups map[string]DetectedSetup) error {
 	recorder.wasCalled = true
 	recorder.setups = setups
 	return nil
@@ -199,11 +205,11 @@ func TestDetectSetup_Rules(t *testing.T) {
 				t.Fatalf("DetectSetup: %v", err)
 			}
 
-			want := []SetupDetection{{Repository: ".", Lines: test.want}}
+			want := []SetupDetection{{Repository: ".", Lines: test.want, CopyPaths: []string{}}}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("DetectSetup = %+v, want %+v", got, want)
 			}
-			wantSetups := map[string][]string{".": setupCommands(test.want)}
+			wantSetups := map[string]DetectedSetup{".": {Setup: setupCommands(test.want), Copy: []string{}}}
 			if !reflect.DeepEqual(recorder.setups, wantSetups) {
 				t.Errorf("recorded %+v, want %+v", recorder.setups, wantSetups)
 			}
@@ -212,7 +218,7 @@ func TestDetectSetup_Rules(t *testing.T) {
 }
 
 func TestDetectSetup_Options(t *testing.T) {
-	// Every repository holds an npm lockfile.
+	// Every repository holds an npm lockfile and nothing to copy.
 	detected := linesFrom("package-lock.json", "npm ci")
 
 	tests := []struct {
@@ -222,13 +228,13 @@ func TestDetectSetup_Options(t *testing.T) {
 		want         []SetupDetection
 		// wantSetups is what the recorder is handed, and nil when it is not
 		// called.
-		wantSetups map[string][]string
+		wantSetups map[string]DetectedSetup
 	}{
 		{
 			name:         "a missing setup is filled",
 			repositories: []Repository{{Path: "api"}},
-			want:         []SetupDetection{{Repository: "api", Lines: detected}},
-			wantSetups:   map[string][]string{"api": {"npm ci"}},
+			want:         []SetupDetection{{Repository: "api", Lines: detected, CopyPaths: []string{}}},
+			wantSetups:   map[string]DetectedSetup{"api": {Setup: []string{"npm ci"}, Copy: []string{}}},
 		},
 		{
 			name:         "an empty setup and a hand-written one are kept",
@@ -236,9 +242,15 @@ func TestDetectSetup_Options(t *testing.T) {
 			want: []SetupDetection{
 				{Repository: "api", IsKept: true},
 				{Repository: "ui", IsKept: true},
-				{Repository: "web", Lines: detected},
+				{Repository: "web", Lines: detected, CopyPaths: []string{}},
 			},
-			wantSetups: map[string][]string{"web": {"npm ci"}},
+			wantSetups: map[string]DetectedSetup{"web": {Setup: []string{"npm ci"}, Copy: []string{}}},
+		},
+		{
+			name:         "a hand-written copy is kept",
+			repositories: []Repository{{Path: "api", Copy: []string{"secrets.json"}}},
+			want:         []SetupDetection{{Repository: "api", Lines: detected, IsCopyKept: true}},
+			wantSetups:   map[string]DetectedSetup{"api": {Setup: []string{"npm ci"}}},
 		},
 		{
 			name:         "every setup kept writes nothing",
@@ -246,17 +258,26 @@ func TestDetectSetup_Options(t *testing.T) {
 			want:         []SetupDetection{{Repository: "api", IsKept: true}},
 		},
 		{
-			name:         "force replaces every setup",
-			repositories: []Repository{{Path: "api", Setup: []string{}}, {Path: "ui", Setup: []string{"make deps"}}},
-			options:      DetectSetupOptions{IsForced: true},
-			want:         []SetupDetection{{Repository: "api", Lines: detected}, {Repository: "ui", Lines: detected}},
-			wantSetups:   map[string][]string{"api": {"npm ci"}, "ui": {"npm ci"}},
+			name: "force replaces every setup and copy",
+			repositories: []Repository{
+				{Path: "api", Setup: []string{}},
+				{Path: "ui", Setup: []string{"make deps"}, Copy: []string{"secrets.json"}},
+			},
+			options: DetectSetupOptions{IsForced: true},
+			want: []SetupDetection{
+				{Repository: "api", Lines: detected, CopyPaths: []string{}},
+				{Repository: "ui", Lines: detected, CopyPaths: []string{}},
+			},
+			wantSetups: map[string]DetectedSetup{
+				"api": {Setup: []string{"npm ci"}, Copy: []string{}},
+				"ui":  {Setup: []string{"npm ci"}, Copy: []string{}},
+			},
 		},
 		{
 			name:         "a dry run writes nothing",
 			repositories: []Repository{{Path: "api"}, {Path: "ui", Setup: []string{"make deps"}}},
 			options:      DetectSetupOptions{IsDryRun: true},
-			want:         []SetupDetection{{Repository: "api", Lines: detected}, {Repository: "ui", IsKept: true}},
+			want:         []SetupDetection{{Repository: "api", Lines: detected, CopyPaths: []string{}}, {Repository: "ui", IsKept: true}},
 		},
 	}
 
@@ -296,3 +317,116 @@ func TestDetectSetup_RefusesAProjectWithNoRepositories(t *testing.T) {
 		t.Errorf("error = %v, want it to name %q", err, RepositoriesKey)
 	}
 }
+
+func TestDetectSetup_CopyPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		// gitignore is the ignore file of the repository.
+		gitignore string
+		files     map[string]string
+		// tracked are files added to the index, whatever the ignore file says.
+		tracked []string
+		want    []string
+	}{
+		{
+			name:      "an ignored env file",
+			gitignore: ".env\n",
+			files:     map[string]string{".env": "TOKEN=1\n"},
+			want:      []string{".env"},
+		},
+		{
+			name:      "every ignored file starting with .env",
+			gitignore: ".env*\n",
+			files:     map[string]string{".env": "", ".env.local": "", ".environment": ""},
+			want:      []string{".env", ".env.local", ".environment"},
+		},
+		{
+			name:      "a tracked env example is left out",
+			gitignore: ".env*\n",
+			files:     map[string]string{".env": "", ".env.example": "TOKEN=\n"},
+			tracked:   []string{".env.example"},
+			want:      []string{".env"},
+		},
+		{
+			name:      "an env file git does not ignore is left out",
+			gitignore: "",
+			files:     map[string]string{".env.example": "TOKEN=\n"},
+			want:      []string{},
+		},
+		{
+			name:      "an envrc is left out",
+			gitignore: ".env*\n",
+			files:     map[string]string{".envrc": "use mise\n"},
+			want:      []string{},
+		},
+		{
+			name:      "an envs directory",
+			gitignore: ".envs/\n",
+			files:     map[string]string{".envs/.local/.django": "DEBUG=1\n"},
+			want:      []string{".envs"},
+		},
+		{
+			name:      "an ignored env directory other than envs is left out",
+			gitignore: ".env/\n",
+			files:     map[string]string{".env/bin/python": ""},
+			want:      []string{},
+		},
+		{
+			name:      "files below the root are not read",
+			gitignore: ".env\n",
+			files:     map[string]string{"web/.env": ""},
+			want:      []string{},
+		},
+		{
+			name:      "nothing to copy",
+			gitignore: "node_modules/\n",
+			files:     map[string]string{"package-lock.json": "{}"},
+			want:      []string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			runGit(t, projectDir, "init", "-q")
+			writeFiles(t, projectDir, map[string]string{".gitignore": test.gitignore})
+			writeFiles(t, projectDir, test.files)
+			for _, path := range test.tracked {
+				runGit(t, projectDir, "add", "--force", path)
+			}
+			recorder := &fakeSetupRecorder{}
+			gitOps := gitcli.New(exec.NewCommandRunner(), git.Timeouts{Command: 30 * time.Second})
+			service := NewProjectService(nil, nil, recorder, gitOps, &fakeProgress{})
+
+			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, DetectSetupOptions{})
+			if err != nil {
+				t.Fatalf("DetectSetup: %v", err)
+			}
+
+			if !reflect.DeepEqual(got[0].CopyPaths, test.want) {
+				t.Errorf("copy paths = %q, want %q", got[0].CopyPaths, test.want)
+			}
+			if !reflect.DeepEqual(recorder.setups["."].Copy, test.want) {
+				t.Errorf("recorded copy paths %q, want %q", recorder.setups["."].Copy, test.want)
+			}
+		})
+	}
+}
+
+// runGit runs git in dir with the git variables of the environment cleared,
+// so a git hook running the tests does not point it at another repository.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	command := osexec.Command("git", args...)
+	command.Dir = dir
+	for _, variable := range os.Environ() {
+		if !strings.HasPrefix(variable, gitVariablePrefix) {
+			command.Env = append(command.Env, variable)
+		}
+	}
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v: %s", args, dir, err, output)
+	}
+}
+
+const gitVariablePrefix = "GIT_"

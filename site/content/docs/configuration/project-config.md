@@ -38,6 +38,8 @@ Every setup command gets two environment variables:
 
 A worktree is a fresh checkout, so gitignored files like `.env` never reach it. Each entry of `repositories` can list `copy` paths relative to the repository. On every launch `drg` copies each one from the repository into the worktree before setup runs, for every repository the task changes. A file overwrites the one in the worktree and a directory is copied whole. A path the repository does not have is a warning and the launch goes on. `drg task run --dry-run` lists the paths without copying them.
 
+`drg project detect` and `drg project init` fill `copy` together with `setup`. They propose the files in the root of the repository that git ignores and whose name starts with `.env`, like `.env` and `.env.local`, and a `.envs` directory. A tracked file like `.env.example` is left out, and `.envrc` is never proposed. A repository with a `setup` key keeps its `copy` too. A repository with no `setup` key keeps a `copy` it already has. `--force` replaces both and `--dry-run` writes nothing.
+
 ## Environment
 
 `drudger.env` lists the names of environment variables to pass from the shell of `drg` into the sandbox, like `NODE_AUTH_TOKEN` for a private package registry. Every setup command and the agent get them through `sbx exec -e NAME`, so DRUDGE never stores their values. A launch checks every name before setup runs and stops when one of them is not set. `drg task run --dry-run` lists the names and warns about each one that is not set.
@@ -63,7 +65,7 @@ A worktree is a fresh checkout, so gitignored files like `.env` never reach it. 
 | `repositories[].path` | string |  |  | Required. Where the repository sits relative to the project directory. A project directory that is itself a repository records ".". |
 | `repositories[].defaultBranch` | string |  |  | The branch work is cut from. Omit to read it from origin/HEAD. |
 | `repositories[].setup` | array |  |  | Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order. An empty list means nothing to do. A missing key means the setup is not decided yet, it runs nothing and a launch warns about it. drg project detect fills it in. |
-| `repositories[].copy` | array |  |  | Paths relative to the repository that a launch copies from the repository into its worktree before setup runs, like gitignored .env files. Files are overwritten and directories are copied whole. A path missing from the repository is a warning. |
+| `repositories[].copy` | array |  |  | Paths relative to the repository that a launch copies from the repository into its worktree before setup runs, like gitignored .env files. Files are overwritten and directories are copied whole. A path missing from the repository is a warning. drg project detect fills it in. |
 | `remote` | object |  |  | Settings for the provider the repositories of a project are hosted on. Each one overrides the global config. |
 | `remote.provider` | string |  | `"github"` | The provider the repositories are hosted on. Required when pull requests are on. |
 | `remote.timeoutSeconds` | integer | `60` | minimum 1 | Seconds allowed for one call of the provider CLI. |

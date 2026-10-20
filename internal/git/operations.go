@@ -57,6 +57,9 @@ type Operations interface {
 	// until it is pruned, so this answers what the repository knows and not
 	// what is on disk.
 	HasWorktree(dir string, path string) (bool, error)
+	// IgnoredPaths returns those of paths, relative to the repository root,
+	// that git ignores. A tracked file is never ignored.
+	IgnoredPaths(dir string, paths []string) ([]string, error)
 	// IsDirty reports whether a work tree holds changes that are not
 	// committed. Untracked files count and ignored files do not.
 	IsDirty(dir string) (bool, error)

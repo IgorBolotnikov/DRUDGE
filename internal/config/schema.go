@@ -292,7 +292,7 @@ const localSchemaJSON = `{
             }
           },
           "copy": {
-            "description": "Paths relative to the repository that a launch copies from the repository into its worktree before setup runs, like gitignored .env files. Files are overwritten and directories are copied whole. A path missing from the repository is a warning.",
+            "description": "Paths relative to the repository that a launch copies from the repository into its worktree before setup runs, like gitignored .env files. Files are overwritten and directories are copied whole. A path missing from the repository is a warning. drg project detect fills it in.",
             "type": "array",
             "items": {
               "type": "string"

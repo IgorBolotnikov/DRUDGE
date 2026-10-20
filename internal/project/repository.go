@@ -27,8 +27,15 @@ type DirectoryLinker interface {
 	LinkedSlug() (slug string, isLinked bool, err error)
 }
 
-// SetupRecorder writes setup commands into the repositories of the local
-// config. Setups maps the path of a repository to its commands.
+// DetectedSetup is what detection writes into one repository. A nil Copy
+// leaves the copy paths of the repository as they are.
+type DetectedSetup struct {
+	Setup []string
+	Copy  []string
+}
+
+// SetupRecorder writes detected setups into the repositories of the local
+// config. Setups maps the path of a repository to what detection wrote for it.
 type SetupRecorder interface {
-	RecordSetup(setups map[string][]string) error
+	RecordSetup(setups map[string]DetectedSetup) error
 }

@@ -591,6 +591,65 @@ func TestIsDirty(t *testing.T) {
 	}
 }
 
+func TestIgnoredPaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(t *testing.T, repo string)
+		paths []string
+		want  []string
+	}{
+		{
+			name: "ignored files and directories",
+			build: func(t *testing.T, repo string) {
+				commitFile(t, repo, ".gitignore", ".env\n.envs/\n")
+				writeFile(t, repo, ".env", "TOKEN=1")
+				makeDir(t, filepath.Join(repo, ".envs"))
+			},
+			paths: []string{".env", ".envs", "main.go"},
+			want:  []string{".env", ".envs"},
+		},
+		{
+			name: "a tracked file matching an ignore pattern",
+			build: func(t *testing.T, repo string) {
+				commitFile(t, repo, ".gitignore", ".env*\n")
+				writeFile(t, repo, ".env.example", "TOKEN=")
+				runGit(t, repo, "add", "--force", ".env.example")
+			},
+			paths: []string{".env.example"},
+			want:  nil,
+		},
+		{
+			name:  "nothing ignored",
+			build: func(t *testing.T, repo string) { writeFile(t, repo, ".env", "TOKEN=1") },
+			paths: []string{".env"},
+			want:  nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := initRepo(t, filepath.Join(t.TempDir(), "repo"), "main")
+			test.build(t, repo)
+
+			got, err := newTestAdapter().IgnoredPaths(repo, test.paths)
+			if err != nil {
+				t.Fatalf("IgnoredPaths: %v", err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Errorf("IgnoredPaths(%v) = %v, want %v", test.paths, got, test.want)
+			}
+		})
+	}
+}
+
+func TestIgnoredPaths_NotARepository(t *testing.T) {
+	_, err := newTestAdapter().IgnoredPaths(t.TempDir(), []string{".env"})
+
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
 func TestStash_TakesEverythingTheAgentLeft(t *testing.T) {
 	repo := initRepo(t, filepath.Join(t.TempDir(), "repo"), "main")
 	commitFile(t, repo, ".gitignore", "build/\n")

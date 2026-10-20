@@ -94,26 +94,38 @@ func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 	tests := []struct {
 		name         string
 		repositories []project.Repository
-		setups       map[string][]string
+		setups       map[string]project.DetectedSetup
 		want         []project.Repository
 	}{
 		{
 			name:         "a missing setup is filled",
 			repositories: []project.Repository{{Path: "api", DefaultBranch: "trunk"}},
-			setups:       map[string][]string{"api": {"npm ci"}},
+			setups:       map[string]project.DetectedSetup{"api": {Setup: []string{"npm ci"}}},
 			want:         []project.Repository{{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}}},
 		},
 		{
 			name:         "an empty setup is kept as an empty list",
 			repositories: []project.Repository{{Path: "api"}},
-			setups:       map[string][]string{"api": {}},
-			want:         []project.Repository{{Path: "api", Setup: []string{}}},
+			setups:       map[string]project.DetectedSetup{"api": {Setup: []string{}, Copy: []string{}}},
+			want:         []project.Repository{{Path: "api", Setup: []string{}, Copy: []string{}}},
 		},
 		{
 			name:         "a repository setups does not name is left alone",
 			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}, {Path: "ui"}},
-			setups:       map[string][]string{"ui": {"npm ci"}},
+			setups:       map[string]project.DetectedSetup{"ui": {Setup: []string{"npm ci"}}},
 			want:         []project.Repository{{Path: "api", Setup: []string{"make deps"}}, {Path: "ui", Setup: []string{"npm ci"}}},
+		},
+		{
+			name:         "copy paths replace the ones there",
+			repositories: []project.Repository{{Path: "api", Copy: []string{"secrets.json"}}},
+			setups:       map[string]project.DetectedSetup{"api": {Setup: []string{}, Copy: []string{".env"}}},
+			want:         []project.Repository{{Path: "api", Setup: []string{}, Copy: []string{".env"}}},
+		},
+		{
+			name:         "no copy paths keep the ones there",
+			repositories: []project.Repository{{Path: "api", Copy: []string{"secrets.json"}}},
+			setups:       map[string]project.DetectedSetup{"api": {Setup: []string{"npm ci"}}},
+			want:         []project.Repository{{Path: "api", Setup: []string{"npm ci"}, Copy: []string{"secrets.json"}}},
 		},
 	}
 

@@ -94,7 +94,7 @@ func TestProjectService_InitProject(t *testing.T) {
 			projectName:      "Test Project",
 			roots:            []string{"."},
 			wantSlug:         "test-project",
-			wantRepositories: []Repository{{Path: ".", Setup: []string{}}},
+			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
 		},
 		{
 			name:             "a directory holding repositories",
@@ -102,7 +102,7 @@ func TestProjectService_InitProject(t *testing.T) {
 			subdirs:          []string{"api", "docs", "ui"},
 			roots:            []string{"api", "ui"},
 			wantSlug:         "my-cool-app",
-			wantRepositories: []Repository{{Path: "api", Setup: []string{}}, {Path: "ui", Setup: []string{}}},
+			wantRepositories: []Repository{{Path: "api", Setup: []string{}, Copy: []string{}}, {Path: "ui", Setup: []string{}, Copy: []string{}}},
 		},
 		{
 			name:        "a directory holding no repository",
