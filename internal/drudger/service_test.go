@@ -129,8 +129,8 @@ func (repo *fakeTaskRepo) WriteTaskArchive(path string, manifest task.ArchiveMan
 	return fmt.Errorf("WriteTaskArchive should not be called")
 }
 
-func (repo *fakeTaskRepo) ReadTaskArchive(path string) (task.ArchiveManifest, []task.TaskFile, error) {
-	return task.ArchiveManifest{}, nil, fmt.Errorf("ReadTaskArchive should not be called")
+func (repo *fakeTaskRepo) ReadTaskArchive(path string) (task.TaskArchive, error) {
+	return task.TaskArchive{}, fmt.Errorf("ReadTaskArchive should not be called")
 }
 
 func (repo *fakeTaskRepo) WriteTask(projectSlug string, taskToWrite *task.Task, decide func(*task.Task) error) (bool, error) {

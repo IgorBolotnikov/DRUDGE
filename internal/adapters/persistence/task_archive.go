@@ -3,6 +3,7 @@ package persistence
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -150,52 +151,57 @@ func writeZipEntry(archive *zip.Writer, name string, modified time.Time, content
 }
 
 // ReadTaskArchive reads the manifest and every task file of a zip archive
-// WriteTaskArchive wrote, and checks each task file against its name. An
-// entry that is not a task file at the root of the archive fails the read
-// with task.BrokenArchiveError.
-func (r *FileTaskRepository) ReadTaskArchive(path string) (task.ArchiveManifest, []task.TaskFile, error) {
+// WriteTaskArchive wrote, and checks each task file against its name. An entry
+// that is not a task file at the root of the archive comes back as a bad
+// entry. An archive with no manifest or a manifest that does not parse fails
+// the read with task.BrokenArchiveError.
+func (r *FileTaskRepository) ReadTaskArchive(path string) (task.TaskArchive, error) {
 	archiveFile, err := os.Open(path)
 	if err != nil {
-		return task.ArchiveManifest{}, nil, err
+		return task.TaskArchive{}, err
 	}
 	defer archiveFile.Close()
 
 	info, err := archiveFile.Stat()
 	if err != nil {
-		return task.ArchiveManifest{}, nil, err
+		return task.TaskArchive{}, err
 	}
+	// The reader refuses an entry path outside the archive only under a
+	// GODEBUG setting, and hands back a working reader either way. Such an
+	// entry is reported as bad below.
 	archive, err := zip.NewReader(archiveFile, info.Size())
-	if err != nil {
-		return task.ArchiveManifest{}, nil, brokenArchive("it is not a zip archive: %v", err)
+	if err != nil && !errors.Is(err, zip.ErrInsecurePath) {
+		return task.TaskArchive{}, brokenArchive("it is not a zip archive: %v", err)
 	}
 
 	var manifest *task.ArchiveManifest
-	var files []task.TaskFile
+	read := task.TaskArchive{}
 	for _, entry := range archive.File {
-		content, err := readZipEntry(entry)
-		if err != nil {
-			return task.ArchiveManifest{}, nil, brokenArchive("could not read %s: %v", entry.Name, err)
-		}
-
 		if entry.Name == ManifestFileName {
+			content, err := readZipEntry(entry)
+			if err != nil {
+				return task.TaskArchive{}, brokenArchive("could not read %s: %v", entry.Name, err)
+			}
 			manifest, err = parseManifest(content)
 			if err != nil {
-				return task.ArchiveManifest{}, nil, err
+				return task.TaskArchive{}, err
 			}
 			continue
 		}
 
-		file, err := parseArchivedTaskFile(entry.Name, content)
-		if err != nil {
-			return task.ArchiveManifest{}, nil, err
+		file, reason := readArchivedTaskFile(entry)
+		if reason != "" {
+			read.BadEntries = append(read.BadEntries, task.BadArchiveEntry{Name: entry.Name, Reason: reason})
+			continue
 		}
-		files = append(files, file)
+		read.Files = append(read.Files, file)
 	}
 
 	if manifest == nil {
-		return task.ArchiveManifest{}, nil, brokenArchive("it has no %s", ManifestFileName)
+		return task.TaskArchive{}, brokenArchive("it has no %s", ManifestFileName)
 	}
-	return *manifest, files, nil
+	read.Manifest = *manifest
+	return read, nil
 }
 
 func brokenArchive(format string, args ...any) error {
@@ -231,15 +237,24 @@ func parseManifest(content []byte) (*task.ArchiveManifest, error) {
 	}, nil
 }
 
-// parseArchivedTaskFile parses an archive entry as a task file. Task files sit
-// at the root of an archive.
-func parseArchivedTaskFile(name string, content []byte) (task.TaskFile, error) {
+// readArchivedTaskFile reads an archive entry as a task file. Task files sit
+// at the root of an archive. It returns why the entry is bad, or an empty
+// reason.
+func readArchivedTaskFile(entry *zip.File) (task.TaskFile, string) {
+	name := entry.Name
+	if !filepath.IsLocal(name) {
+		return task.TaskFile{}, "its path points outside the archive"
+	}
 	if name != filepath.Base(name) || !strings.HasSuffix(name, taskFileExtension) {
-		return task.TaskFile{}, brokenArchive("it holds %s, which is not a task file", name)
+		return task.TaskFile{}, "it is neither a task file nor the " + ManifestFileName
+	}
+	content, err := readZipEntry(entry)
+	if err != nil {
+		return task.TaskFile{}, fmt.Sprintf("could not read it: %v", err)
 	}
 	parsed, err := parseTaskFile(describeTaskFile("", name), content)
 	if err != nil {
-		return task.TaskFile{}, brokenArchive("%v", err)
+		return task.TaskFile{}, fmt.Sprintf("it does not parse: %v", err)
 	}
-	return task.TaskFile{Name: name, Content: content, Task: parsed}, nil
+	return task.TaskFile{Name: name, Content: content, Task: parsed}, ""
 }

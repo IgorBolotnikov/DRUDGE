@@ -3,6 +3,9 @@ package task
 import (
 	"errors"
 	"fmt"
+	"slices"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 )
 
 // freshExportAdvice tells the user how to get past an archive import cannot
@@ -16,6 +19,21 @@ type BrokenArchiveError struct {
 
 func (err *BrokenArchiveError) Error() string {
 	return err.Reason
+}
+
+// TaskArchive is what an archive holds. BadEntries are the entries that are
+// neither a task file that parses nor the manifest.
+type TaskArchive struct {
+	Manifest   ArchiveManifest
+	Files      []TaskFile
+	BadEntries []BadArchiveEntry
+}
+
+// BadArchiveEntry warns about an entry of an archive ImportTasks skips, and
+// says why.
+type BadArchiveEntry struct {
+	Name   string
+	Reason string
 }
 
 // ImportTasksDto names the archive to import and the project it goes into.
@@ -70,15 +88,17 @@ type TasksImported struct {
 	Updated             int
 	SkippedAsOlder      int
 	SkippedAsInProgress int
+	SkippedAsBad        int
 }
 
 // ImportTasks adds every task of an archive the project does not have yet, and
 // replaces every task the archive holds a newer copy of, as it is in the
 // archive. A task in progress in the project is never replaced. A task keeps
 // its id, its timestamps and its run state, and only its project slug is set
-// to the target project. It reads and parses
-// the whole archive before it writes anything, and refuses an archive of
-// another format version.
+// to the target project. It reads and checks the whole archive before it
+// writes anything, and refuses an archive of another format version. A bad
+// entry is skipped with a warning, the other entries are imported, and the
+// import fails once it is over.
 func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 	if dto.ProjectSlug == "" {
 		return errors.New("project slug is required")
@@ -87,7 +107,7 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		return errors.New("archive path is required")
 	}
 
-	manifest, files, err := service.repo.ReadTaskArchive(dto.Path)
+	archive, err := service.repo.ReadTaskArchive(dto.Path)
 	var broken *BrokenArchiveError
 	if errors.As(err, &broken) {
 		return fmt.Errorf("could not import %s: %w, %s", dto.Path, err, freshExportAdvice)
@@ -95,6 +115,7 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 	if err != nil {
 		return fmt.Errorf("could not import %s: %w", dto.Path, err)
 	}
+	manifest := archive.Manifest
 	if manifest.FormatVersion != ArchiveFormatVersion {
 		return fmt.Errorf(
 			"could not import %s: it has archive format version %d and drg reads version %d, %s",
@@ -106,7 +127,12 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		service.progress.Report(ProjectSlugRewritten{ArchiveSlug: manifest.ProjectSlug, ProjectSlug: dto.ProjectSlug})
 	}
 
-	summary := TasksImported{ProjectSlug: dto.ProjectSlug}
+	files, badEntries := checkArchivedTasks(archive)
+	for _, badEntry := range badEntries {
+		service.progress.Report(badEntry)
+	}
+
+	summary := TasksImported{ProjectSlug: dto.ProjectSlug, SkippedAsBad: len(badEntries)}
 	for _, file := range files {
 		archived := file.Task
 		archived.ProjectSlug = dto.ProjectSlug
@@ -142,7 +168,46 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 	}
 
 	service.progress.Report(summary)
+	if len(badEntries) > 0 {
+		return fmt.Errorf("skipped %s of %s as bad, a fresh export on the source device fixes them", formatEntryCount(len(badEntries)), dto.Path)
+	}
 	return nil
+}
+
+// checkArchivedTasks splits the task files of an archive into the ones import
+// can write and the bad ones. A bad entry the repository found comes first.
+func checkArchivedTasks(archive TaskArchive) ([]TaskFile, []BadArchiveEntry) {
+	badEntries := slices.Clone(archive.BadEntries)
+	files := make([]TaskFile, 0, len(archive.Files))
+	for _, file := range archive.Files {
+		reason := checkArchivedTask(file.Task)
+		if reason != "" {
+			badEntries = append(badEntries, BadArchiveEntry{Name: file.Name, Reason: reason})
+			continue
+		}
+		files = append(files, file)
+	}
+	return files, badEntries
+}
+
+// checkArchivedTask says what makes an archived task unfit to write, or
+// returns an empty reason. The task id names the task file, so an id that is
+// not a UUID could name a file outside the tasks directory.
+func checkArchivedTask(archived *Task) string {
+	if !common.IsUUID(string(archived.ID)) {
+		return fmt.Sprintf("its id %q is not a UUID", archived.ID)
+	}
+	if !KnownStatus(archived.Status) {
+		return fmt.Sprintf("it has unknown status %q, drg knows %s", archived.Status, FormatStatuses(Statuses))
+	}
+	return ""
+}
+
+func formatEntryCount(count int) string {
+	if count == 1 {
+		return "1 entry"
+	}
+	return fmt.Sprintf("%d entries", count)
 }
 
 // resolveImport decides whether an archived task replaces the stored copy of

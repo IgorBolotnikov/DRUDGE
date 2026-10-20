@@ -234,3 +234,44 @@ func TestTaskService_ImportTasks_Refusals(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
+	unknownStatus := archivedTask(testProjectSlug)
+	unknownStatus.ID = "22222222-dbe9-4316-8aba-8a67a8f01f8f"
+	unknownStatus.Status = "someday"
+	notUUID := archivedTask(testProjectSlug)
+	notUUID.ID = "add-retry"
+	stray := BadArchiveEntry{Name: "notes.txt", Reason: "it is neither a task file nor the manifest.json"}
+
+	repo := &fakeTaskRepo{
+		manifest: ArchiveManifest{FormatVersion: ArchiveFormatVersion, ProjectSlug: testProjectSlug},
+		files: []TaskFile{
+			{Name: "11111111 Add retry.md", Task: archivedTask(testProjectSlug)},
+			{Name: "22222222 Add retry.md", Task: unknownStatus},
+			{Name: "add-retry Add retry.md", Task: notUUID},
+		},
+		badEntries: []BadArchiveEntry{stray},
+	}
+	progress := &fakeProgress{}
+	service := NewTaskService(repo, progress, "", nil)
+
+	err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip"})
+
+	wantErr := "skipped 3 entries of tasks.zip as bad, a fresh export on the source device fixes them"
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("expected error %q, got %v", wantErr, err)
+	}
+	if wantTasks := []*Task{archivedTask(testProjectSlug)}; !reflect.DeepEqual(repo.tasks, wantTasks) {
+		t.Errorf("expected tasks %+v, got %+v", wantTasks, repo.tasks)
+	}
+	wantEvents := []any{
+		stray,
+		BadArchiveEntry{Name: "22222222 Add retry.md", Reason: `it has unknown status "someday", drg knows draft, todo, in-progress, fucked-up, unmerged, done`},
+		BadArchiveEntry{Name: "add-retry Add retry.md", Reason: `its id "add-retry" is not a UUID`},
+		TaskImported{Task: archivedTask(testProjectSlug)},
+		TasksImported{ProjectSlug: testProjectSlug, Added: 1, SkippedAsBad: 3},
+	}
+	if !reflect.DeepEqual(progress.events, wantEvents) {
+		t.Errorf("expected events %+v, got %+v", wantEvents, progress.events)
+	}
+}

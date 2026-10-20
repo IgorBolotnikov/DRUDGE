@@ -109,6 +109,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			wantStderr: "! The archive holds tasks of project alpha, they go into project beta\n",
 		},
 		{
+			name:       "a bad archive entry",
+			event:      task.BadArchiveEntry{Name: "notes.txt", Reason: "it is neither a task file nor the manifest.json"},
+			wantStderr: "! Skipped notes.txt, it is neither a task file nor the manifest.json\n",
+		},
+		{
+			name:  "an import that skipped bad entries",
+			event: task.TasksImported{ProjectSlug: "demo", Added: 1, SkippedAsBad: 2},
+			want:  "✓ Imported into project demo, added 1, updated 0, skipped 0 as older, 0 as in progress and 2 as bad\n",
+		},
+		{
 			name:  "a task imported",
 			event: task.TaskImported{Task: sampleTask},
 			want:  "✓ Added task 006684e3  Fix login\n",
@@ -136,17 +146,17 @@ func TestCLIProgress_Report(t *testing.T) {
 		{
 			name:  "an import that added tasks",
 			event: task.TasksImported{ProjectSlug: "demo", Added: 2, SkippedAsOlder: 1},
-			want:  "✓ Imported into project demo, added 2, updated 0, skipped 1 as older and 0 as in progress\n",
+			want:  "✓ Imported into project demo, added 2, updated 0, skipped 1 as older, 0 as in progress and 0 as bad\n",
 		},
 		{
 			name:  "an import that only updated tasks",
 			event: task.TasksImported{ProjectSlug: "demo", Updated: 1, SkippedAsInProgress: 1},
-			want:  "✓ Imported into project demo, added 0, updated 1, skipped 0 as older and 1 as in progress\n",
+			want:  "✓ Imported into project demo, added 0, updated 1, skipped 0 as older, 1 as in progress and 0 as bad\n",
 		},
 		{
 			name:  "an import that changed nothing",
 			event: task.TasksImported{ProjectSlug: "demo", SkippedAsOlder: 2, SkippedAsInProgress: 1},
-			want:  "· Changed no tasks in project demo, added 0, updated 0, skipped 2 as older and 1 as in progress\n",
+			want:  "· Changed no tasks in project demo, added 0, updated 0, skipped 2 as older, 1 as in progress and 0 as bad\n",
 		},
 		{
 			name:  "a project created",

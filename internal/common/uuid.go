@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/rand"
 	"fmt"
+	"regexp"
 )
 
 // GenerateUUID generates a random UUID v4
@@ -27,4 +28,12 @@ func GenerateUUID() (string, error) {
 		b[8:10],
 		b[10:16],
 	), nil
+}
+
+// uuidPattern matches a UUID in its canonical hyphenated form.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// IsUUID reports whether value is a UUID in its canonical hyphenated form.
+func IsUUID(value string) bool {
+	return uuidPattern.MatchString(value)
 }

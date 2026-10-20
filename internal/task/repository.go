@@ -55,10 +55,12 @@ type TaskRepository interface {
 	// fs.ErrExist.
 	WriteTaskArchive(path string, manifest ArchiveManifest, files []TaskFile) error
 	// ReadTaskArchive reads the manifest and every task file of the archive
-	// at path, and parses each task file the way a listing does. An archive
-	// that is not a zip, has no manifest or holds a manifest or a task file
-	// that does not parse fails with BrokenArchiveError.
-	ReadTaskArchive(path string) (ArchiveManifest, []TaskFile, error)
+	// at path, and parses each task file the way a listing does. A task file
+	// that does not parse, an entry with a path outside the archive and any
+	// other entry come back as bad entries. An archive that is not a zip, has
+	// no manifest or holds a manifest that does not parse fails with
+	// BrokenArchiveError.
+	ReadTaskArchive(path string) (TaskArchive, error)
 	// WriteTask stores a whole task under its own id, as it is given, and
 	// changes none of its timestamps. decide runs under an exclusive lock on
 	// that task against the stored copy, which is nil when the project has no

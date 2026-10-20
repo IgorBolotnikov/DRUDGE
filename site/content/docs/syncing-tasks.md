@@ -43,9 +43,23 @@ Importing the same archive twice changes nothing the second time. An import in t
 
 When the archive comes from a Project with another slug, import moves every task into the target Project and warns once, naming both slugs.
 
-Import prints one line per task, `✓` for an added or updated task and `·` for a skipped one with the reason, and ends with how many tasks it added, updated, skipped as older and skipped as in progress.
+Import prints one line per task, `✓` for an added or updated task and `·` for a skipped one with the reason, and ends with how many tasks it added, updated, skipped as older, skipped as in progress and skipped as bad.
 
-Import writes nothing when the archive is not a zip, holds no `manifest.json`, holds a manifest or a task file that does not parse, or has a format version this `drg` does not read. Make a fresh export on the source device and import that.
+Import writes nothing when the archive is not a zip, holds no `manifest.json`, holds a manifest that does not parse, or has a format version this `drg` does not read. Make a fresh export on the source device and import that.
+
+### Bad entries
+
+Import checks every entry of the archive before it compares it with the Project. An entry is bad when it is:
+
+- a task file that does not parse.
+- a task with a status `drg` does not know.
+- a task whose ID is not a UUID.
+- an entry whose path points outside the archive.
+- anything other than a task file at the root of the archive or the `manifest.json`.
+
+A bad entry is skipped and writes nothing into the Project. Import prints a `!` warning for it that names the entry and says what is wrong with it, and imports the other entries as usual. The command then exits with an error that names how many entries were bad.
+
+To fix a bad entry, make a fresh export on the source device and import that. When the entry is a task file, fix it there first. Export refuses a task file that does not parse and names what is wrong with it.
 
 ## Limits
 

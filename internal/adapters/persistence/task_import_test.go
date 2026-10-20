@@ -20,6 +20,8 @@ const (
 	testManifest             = `{"formatVersion":1,"projectSlug":"test-project","exportedAt":"2026-10-18T14:30:05Z"}`
 )
 
+var testArchiveManifest = task.ArchiveManifest{FormatVersion: 1, ProjectSlug: "test-project", ExportedAt: time.Date(2026, 10, 18, 14, 30, 5, 0, time.UTC)}
+
 // recordedProgress records the events a service reports.
 type recordedProgress struct {
 	events []any
@@ -185,16 +187,17 @@ func TestFileTaskRepository_ReadTaskArchive(t *testing.T) {
 		name string
 		// entries are the entries of the archive. A nil map writes a file
 		// that is not a zip.
-		entries      map[string]string
-		wantManifest task.ArchiveManifest
-		wantFiles    map[string]task.TaskStatus
+		entries        map[string]string
+		wantManifest   task.ArchiveManifest
+		wantFiles      map[string]task.TaskStatus
+		wantBadEntries []task.BadArchiveEntry
 		// wantErrText is a fragment a refusal must carry.
 		wantErrText string
 	}{
 		{
 			name:         "a few tasks",
 			entries:      map[string]string{ManifestFileName: testManifest, loginTaskFile: loginTask, shipTaskFile: shipTask},
-			wantManifest: task.ArchiveManifest{FormatVersion: 1, ProjectSlug: "test-project", ExportedAt: time.Date(2026, 10, 18, 14, 30, 5, 0, time.UTC)},
+			wantManifest: testArchiveManifest,
 			wantFiles:    map[string]task.TaskStatus{loginTaskFile: task.StatusDone, shipTaskFile: task.StatusDraft},
 		},
 		{
@@ -222,14 +225,31 @@ func TestFileTaskRepository_ReadTaskArchive(t *testing.T) {
 			wantErrText: "its manifest.json names no project",
 		},
 		{
-			name:        "an entry in a directory",
-			entries:     map[string]string{ManifestFileName: testManifest, "tasks/" + loginTaskFile: loginTask},
-			wantErrText: "it holds tasks/" + loginTaskFile + ", which is not a task file",
+			name:         "an entry in a directory",
+			entries:      map[string]string{ManifestFileName: testManifest, "tasks/" + loginTaskFile: loginTask, shipTaskFile: shipTask},
+			wantManifest: testArchiveManifest,
+			wantFiles:    map[string]task.TaskStatus{shipTaskFile: task.StatusDraft},
+			wantBadEntries: []task.BadArchiveEntry{
+				{Name: "tasks/" + loginTaskFile, Reason: "it is neither a task file nor the manifest.json"},
+			},
 		},
 		{
-			name:        "a task file holding another task",
-			entries:     map[string]string{ManifestFileName: testManifest, shipTaskFile: loginTask},
-			wantErrText: "task file " + shipTaskFile + " holds task " + string(loginTaskID),
+			name:         "an entry outside the archive",
+			entries:      map[string]string{ManifestFileName: testManifest, "../" + loginTaskFile: loginTask},
+			wantManifest: testArchiveManifest,
+			wantFiles:    map[string]task.TaskStatus{},
+			wantBadEntries: []task.BadArchiveEntry{
+				{Name: "../" + loginTaskFile, Reason: "its path points outside the archive"},
+			},
+		},
+		{
+			name:         "a task file holding another task",
+			entries:      map[string]string{ManifestFileName: testManifest, shipTaskFile: loginTask},
+			wantManifest: testArchiveManifest,
+			wantFiles:    map[string]task.TaskStatus{},
+			wantBadEntries: []task.BadArchiveEntry{
+				{Name: shipTaskFile, Reason: "it does not parse: task file " + shipTaskFile + " holds task " + string(loginTaskID) + ", rename it back or fix its id"},
+			},
 		},
 	}
 
@@ -244,7 +264,7 @@ func TestFileTaskRepository_ReadTaskArchive(t *testing.T) {
 				writeZipArchive(t, path, testCase.entries)
 			}
 
-			manifest, files, err := NewFileTaskRepository("test-project").ReadTaskArchive(path)
+			archive, err := NewFileTaskRepository("test-project").ReadTaskArchive(path)
 
 			if testCase.wantErrText != "" {
 				var broken *task.BrokenArchiveError
@@ -257,11 +277,11 @@ func TestFileTaskRepository_ReadTaskArchive(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if manifest != testCase.wantManifest {
-				t.Errorf("expected manifest %+v, got %+v", testCase.wantManifest, manifest)
+			if archive.Manifest != testCase.wantManifest {
+				t.Errorf("expected manifest %+v, got %+v", testCase.wantManifest, archive.Manifest)
 			}
 			gotFiles := map[string]task.TaskStatus{}
-			for _, file := range files {
+			for _, file := range archive.Files {
 				gotFiles[file.Name] = file.Task.Status
 				if string(file.Content) != testCase.entries[file.Name] {
 					t.Errorf("expected %s read byte for byte, got %q", file.Name, file.Content)
@@ -269,6 +289,9 @@ func TestFileTaskRepository_ReadTaskArchive(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotFiles, testCase.wantFiles) {
 				t.Errorf("expected files %v, got %v", testCase.wantFiles, gotFiles)
+			}
+			if !reflect.DeepEqual(archive.BadEntries, testCase.wantBadEntries) {
+				t.Errorf("expected bad entries %+v, got %+v", testCase.wantBadEntries, archive.BadEntries)
 			}
 		})
 	}
@@ -328,6 +351,89 @@ func TestTaskService_ImportTasks_RefusesBrokenArchives(t *testing.T) {
 			}
 			if len(progress.events) != 0 {
 				t.Errorf("expected no events, got %+v", progress.events)
+			}
+		})
+	}
+}
+
+func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
+	cases := []struct {
+		name         string
+		badEntryName string
+		badEntry     string
+		// wantReason is a fragment the warning about the bad entry carries.
+		wantReason string
+	}{
+		{
+			name:         "a task file that does not parse",
+			badEntryName: shipTaskFile,
+			badEntry:     "Ship it without front matter\n",
+			wantReason:   "it does not parse: task file " + shipTaskFile + ` has no "id" in its front matter`,
+		},
+		{
+			name:         "a task with an unknown status",
+			badEntryName: shipTaskFile,
+			badEntry:     strings.Replace(shipTask, "status: draft", "status: someday", 1),
+			wantReason:   `it has unknown status "someday"`,
+		},
+		{
+			name:         "a task with an id that is not a UUID",
+			badEntryName: "ship-it Ship it.md",
+			badEntry:     strings.Replace(shipTask, "id: abcd1234-2222-4316-8aba-8a67a8f01f8f", "id: ship-it", 1),
+			wantReason:   `its id "ship-it" is not a UUID`,
+		},
+		{
+			name:         "a path outside the archive",
+			badEntryName: "../" + shipTaskFile,
+			badEntry:     shipTask,
+			wantReason:   "its path points outside the archive",
+		},
+		{
+			name:         "a stray file",
+			badEntryName: "notes.txt",
+			badEntry:     "Ship it on Friday\n",
+			wantReason:   "it is neither a task file nor the manifest.json",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, _ := setupTaskTestHome(t)
+			path := filepath.Join(t.TempDir(), "tasks.zip")
+			writeZipArchive(t, path, map[string]string{
+				ManifestFileName:      testManifest,
+				loginTaskFile:         loginTask,
+				testCase.badEntryName: testCase.badEntry,
+			})
+			repo := NewFileTaskRepository("test-project")
+			progress := &recordedProgress{}
+
+			err := task.NewTaskService(repo, progress, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path})
+
+			wantErrText := "skipped 1 entry of " + path + " as bad, a fresh export on the source device fixes them"
+			if err == nil || err.Error() != wantErrText {
+				t.Fatalf("expected error %q, got %v", wantErrText, err)
+			}
+			if tasks := listTasksByID(t, repo); len(tasks) != 1 || tasks[0].ID != loginTaskID {
+				t.Errorf("expected only task %s, got %+v", loginTaskID, tasks)
+			}
+			tasksDir := filepath.Join(common.ProjectsDir(home), "test-project", TasksDirName)
+			if _, err := os.Stat(filepath.Join(tasksDir, testCase.badEntryName)); !os.IsNotExist(err) {
+				t.Errorf("expected nothing written for the bad entry, got %v", err)
+			}
+
+			var warnings []task.BadArchiveEntry
+			for _, event := range progress.events {
+				if warning, ok := event.(task.BadArchiveEntry); ok {
+					warnings = append(warnings, warning)
+				}
+			}
+			if len(warnings) != 1 || warnings[0].Name != testCase.badEntryName || !strings.Contains(warnings[0].Reason, testCase.wantReason) {
+				t.Errorf("expected one warning about %s containing %q, got %+v", testCase.badEntryName, testCase.wantReason, warnings)
+			}
+			wantSummary := task.TasksImported{ProjectSlug: "test-project", Added: 1, SkippedAsBad: 1}
+			if summary := progress.events[len(progress.events)-1]; summary != wantSummary {
+				t.Errorf("expected summary %+v, got %+v", wantSummary, summary)
 			}
 		})
 	}

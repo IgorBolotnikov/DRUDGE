@@ -16,6 +16,8 @@ A task whose id the project already has is replaced when the archived copy has a
 
 It reads the whole archive first and stops at an archive it cannot read, before it writes anything.
 
+An entry that is not a task file it can import is skipped with a warning. The other tasks are imported and the command fails at the end.
+
 ## Arguments
 
 - `<file>`

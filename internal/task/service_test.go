@@ -70,8 +70,8 @@ func (m *mockRepo) WriteTaskArchive(path string, manifest ArchiveManifest, files
 	return errors.New("WriteTaskArchive should not be called")
 }
 
-func (m *mockRepo) ReadTaskArchive(path string) (ArchiveManifest, []TaskFile, error) {
-	return ArchiveManifest{}, nil, errors.New("ReadTaskArchive should not be called")
+func (m *mockRepo) ReadTaskArchive(path string) (TaskArchive, error) {
+	return TaskArchive{}, errors.New("ReadTaskArchive should not be called")
 }
 
 func (m *mockRepo) WriteTask(projectSlug string, taskToWrite *Task, decide func(*Task) error) (bool, error) {

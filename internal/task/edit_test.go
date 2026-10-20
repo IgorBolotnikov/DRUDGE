@@ -26,8 +26,10 @@ type fakeTaskRepo struct {
 	// readErr fails either read.
 	files   []TaskFile
 	readErr error
-	// manifest is the manifest reading an archive hands back.
-	manifest ArchiveManifest
+	// manifest and badEntries are what reading an archive hands back along
+	// with files.
+	manifest   ArchiveManifest
+	badEntries []BadArchiveEntry
 	// existingPaths are the paths an archive write refuses.
 	existingPaths []string
 	archive       *writtenArchive
@@ -68,8 +70,8 @@ func (repo *fakeTaskRepo) WriteTaskArchive(path string, manifest ArchiveManifest
 	return nil
 }
 
-func (repo *fakeTaskRepo) ReadTaskArchive(path string) (ArchiveManifest, []TaskFile, error) {
-	return repo.manifest, repo.files, repo.readErr
+func (repo *fakeTaskRepo) ReadTaskArchive(path string) (TaskArchive, error) {
+	return TaskArchive{Manifest: repo.manifest, Files: repo.files, BadEntries: repo.badEntries}, repo.readErr
 }
 
 func (repo *fakeTaskRepo) WriteTask(projectSlug string, taskToWrite *Task, decide func(*Task) error) (bool, error) {

@@ -57,6 +57,8 @@ func (p *cliProgress) Report(event any) {
 		p.out.Done("Updated task %s, it is now %q", p.out.Task(event.Task), event.Task.Status)
 	case task.ProjectSlugRewritten:
 		p.out.Warn("The archive holds tasks of project %s, they go into project %s", event.ArchiveSlug, event.ProjectSlug)
+	case task.BadArchiveEntry:
+		p.out.Warn("Skipped %s, %s", event.Name, event.Reason)
 	case task.TaskImported:
 		p.reportTaskImported(event)
 	case task.TaskImportUpdated:
@@ -107,8 +109,8 @@ func (p *cliProgress) reportTaskImportSkipped(event task.TaskImportSkipped) {
 // and skipped.
 func (p *cliProgress) tasksImportedResult(event task.TasksImported) {
 	counts := fmt.Sprintf(
-		"added %d, updated %d, skipped %d as older and %d as in progress",
-		event.Added, event.Updated, event.SkippedAsOlder, event.SkippedAsInProgress,
+		"added %d, updated %d, skipped %d as older, %d as in progress and %d as bad",
+		event.Added, event.Updated, event.SkippedAsOlder, event.SkippedAsInProgress, event.SkippedAsBad,
 	)
 	if event.Added == 0 && event.Updated == 0 {
 		p.out.SkipResult("Changed no tasks in project %s, %s", event.ProjectSlug, counts)
