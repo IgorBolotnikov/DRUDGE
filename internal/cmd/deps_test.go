@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -166,6 +167,54 @@ func TestNewDrudgerSettings(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Errorf("expected settings %+v, got %+v", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestNewTaskService(t *testing.T) {
+	const projectSlug = "drudge"
+
+	todoGlobal := config.DefaultConfig()
+	todoGlobal.Task.DefaultStatus = task.StatusTodo
+
+	cases := []struct {
+		name       string
+		global     *config.GlobalConfig
+		wantStatus task.TaskStatus
+	}{
+		{name: "the default global config", global: config.DefaultConfig(), wantStatus: task.StatusDraft},
+		{name: "a global default status", global: todoGlobal, wantStatus: task.StatusTodo},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			t.Chdir(t.TempDir())
+			if _, err := persistence.NewFileTaskRepository("other").CreateTask(task.CreateTaskDto{Title: "Other task", Status: task.StatusTodo, ProjectSlug: "other"}); err != nil {
+				t.Fatal(err)
+			}
+
+			service := newTaskService(projectSlug, nil, testCase.global, newCommandPrinter())
+			var created *task.Task
+			var err error
+			captureOutput(func() {
+				created, err = service.CreateTask(task.CreateTaskDto{Title: "Add retry to uploader", ProjectSlug: projectSlug})
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			listed, err := service.ListTasks(projectSlug, task.ListTasksFilter{}, 1, 0)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(listed.Items) != 1 || listed.Items[0].Task.ID != created.ID {
+				t.Fatalf("expected only task %s listed, got %+v", created.ID, listed.Items)
+			}
+			if got := listed.Items[0].Task.Status; got != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
 			}
 		})
 	}

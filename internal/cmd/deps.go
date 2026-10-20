@@ -68,8 +68,7 @@ func newCommandDeps() (*commandDeps, error) {
 
 	out := newCommandPrinter()
 	progress := newCLIProgress(out)
-	repo := persistence.NewFileTaskRepository(localCfg.ProjectSlug)
-	tasks := task.NewTaskService(repo, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
+	tasks := newTaskService(localCfg.ProjectSlug, localCfg, globalCfg, out)
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
@@ -93,6 +92,17 @@ func newCommandDeps() (*commandDeps, error) {
 		tasks:     tasks,
 		drudger:   drudger.New(progress, settings, tasks, drudgers, runs, cmdRunner, newGitOperations(globalCfg), pullRequestRemote, streamReaders()),
 	}, nil
+}
+
+// newTaskService wires a task service over the task files of a project.
+// localCfg is nil outside a project directory. The default status then comes
+// from the global config and a task may list no repositories.
+func newTaskService(projectSlug string, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, out *printer.Printer) *task.TaskService {
+	if localCfg == nil {
+		localCfg = &config.LocalConfig{ProjectSlug: projectSlug}
+	}
+	repo := persistence.NewFileTaskRepository(projectSlug)
+	return task.NewTaskService(repo, newCLIProgress(out), config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
 }
 
 // streamReaders maps every harness drudge knows how to read the event stream
