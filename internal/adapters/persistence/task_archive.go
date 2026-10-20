@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -146,4 +147,99 @@ func writeZipEntry(archive *zip.Writer, name string, modified time.Time, content
 		return fmt.Errorf("could not add %s to the archive: %w", name, err)
 	}
 	return nil
+}
+
+// ReadTaskArchive reads the manifest and every task file of a zip archive
+// WriteTaskArchive wrote, and checks each task file against its name. An
+// entry that is not a task file at the root of the archive fails the read
+// with task.BrokenArchiveError.
+func (r *FileTaskRepository) ReadTaskArchive(path string) (task.ArchiveManifest, []task.TaskFile, error) {
+	archiveFile, err := os.Open(path)
+	if err != nil {
+		return task.ArchiveManifest{}, nil, err
+	}
+	defer archiveFile.Close()
+
+	info, err := archiveFile.Stat()
+	if err != nil {
+		return task.ArchiveManifest{}, nil, err
+	}
+	archive, err := zip.NewReader(archiveFile, info.Size())
+	if err != nil {
+		return task.ArchiveManifest{}, nil, brokenArchive("it is not a zip archive: %v", err)
+	}
+
+	var manifest *task.ArchiveManifest
+	var files []task.TaskFile
+	for _, entry := range archive.File {
+		content, err := readZipEntry(entry)
+		if err != nil {
+			return task.ArchiveManifest{}, nil, brokenArchive("could not read %s: %v", entry.Name, err)
+		}
+
+		if entry.Name == ManifestFileName {
+			manifest, err = parseManifest(content)
+			if err != nil {
+				return task.ArchiveManifest{}, nil, err
+			}
+			continue
+		}
+
+		file, err := parseArchivedTaskFile(entry.Name, content)
+		if err != nil {
+			return task.ArchiveManifest{}, nil, err
+		}
+		files = append(files, file)
+	}
+
+	if manifest == nil {
+		return task.ArchiveManifest{}, nil, brokenArchive("it has no %s", ManifestFileName)
+	}
+	return *manifest, files, nil
+}
+
+func brokenArchive(format string, args ...any) error {
+	return &task.BrokenArchiveError{Reason: fmt.Sprintf(format, args...)}
+}
+
+func readZipEntry(entry *zip.File) ([]byte, error) {
+	reader, err := entry.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}
+
+// parseManifest reads the manifest of an archive. A manifest without a format
+// version or a project slug does not parse.
+func parseManifest(content []byte) (*task.ArchiveManifest, error) {
+	var stored archiveManifest
+	if err := json.Unmarshal(content, &stored); err != nil {
+		return nil, brokenArchive("its %s does not parse: %v", ManifestFileName, err)
+	}
+	if stored.FormatVersion == 0 {
+		return nil, brokenArchive("its %s has no format version", ManifestFileName)
+	}
+	if stored.ProjectSlug == "" {
+		return nil, brokenArchive("its %s names no project", ManifestFileName)
+	}
+	return &task.ArchiveManifest{
+		FormatVersion: stored.FormatVersion,
+		ProjectSlug:   stored.ProjectSlug,
+		ExportedAt:    stored.ExportedAt,
+	}, nil
+}
+
+// parseArchivedTaskFile parses an archive entry as a task file. Task files sit
+// at the root of an archive.
+func parseArchivedTaskFile(name string, content []byte) (task.TaskFile, error) {
+	if name != filepath.Base(name) || !strings.HasSuffix(name, taskFileExtension) {
+		return task.TaskFile{}, brokenArchive("it holds %s, which is not a task file", name)
+	}
+	parsed, err := parseTaskFile(describeTaskFile("", name), content)
+	if err != nil {
+		return task.TaskFile{}, brokenArchive("%v", err)
+	}
+	return task.TaskFile{Name: name, Content: content, Task: parsed}, nil
 }

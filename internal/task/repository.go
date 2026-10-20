@@ -54,6 +54,17 @@ type TaskRepository interface {
 	// It refuses a path that already exists with an error matching
 	// fs.ErrExist.
 	WriteTaskArchive(path string, manifest ArchiveManifest, files []TaskFile) error
+	// ReadTaskArchive reads the manifest and every task file of the archive
+	// at path, and parses each task file the way a listing does. An archive
+	// that is not a zip, has no manifest or holds a manifest or a task file
+	// that does not parse fails with BrokenArchiveError.
+	ReadTaskArchive(path string) (ArchiveManifest, []TaskFile, error)
+	// WriteTask stores a whole task under its own id, as it is given, and
+	// changes none of its timestamps. decide runs under an exclusive lock on
+	// that task against the stored copy, which is nil when the project has no
+	// task with that id. A decide returning ErrTaskUnchanged writes nothing.
+	// isWritten says whether the task was written.
+	WriteTask(projectSlug string, taskToWrite *Task, decide func(stored *Task) error) (isWritten bool, err error)
 }
 
 // ErrTaskUnchanged tells an update that the task needs no write. A change

@@ -55,6 +55,14 @@ func (p *cliProgress) Report(event any) {
 		p.out.Done("Task %s is %q", p.out.Task(event.Task), event.Task.Status)
 	case task.TaskEdited:
 		p.out.Done("Updated task %s, it is now %q", p.out.Task(event.Task), event.Task.Status)
+	case task.ProjectSlugRewritten:
+		p.out.Warn("The archive holds tasks of project %s, they go into project %s", event.ArchiveSlug, event.ProjectSlug)
+	case task.TaskImported:
+		p.reportTaskImported(event)
+	case task.TaskImportSkipped:
+		p.out.Skip("Skipped task %s, the project has it", p.out.Task(event.Task))
+	case task.TasksImported:
+		p.tasksImportedResult(event)
 	case project.ProjectCreated:
 		// Project init prints the result line itself, after the warnings
 		// about its repositories.
@@ -75,6 +83,24 @@ func (p *cliProgress) Report(event any) {
 // command that writes one.
 func warnSetupUndecided(out *printer.Printer, repository string) {
 	out.Warn("Repository %s has no setup in the local config, run %s to detect it", repository, drudger.DetectCommand)
+}
+
+func (p *cliProgress) reportTaskImported(event task.TaskImported) {
+	if event.Task.Status == task.StatusInProgress {
+		p.out.Done("Added task %s, it is in progress on the other device", p.out.Task(event.Task))
+		return
+	}
+	p.out.Done("Added task %s", p.out.Task(event.Task))
+}
+
+// tasksImportedResult closes an import with how many tasks it added and
+// skipped.
+func (p *cliProgress) tasksImportedResult(event task.TasksImported) {
+	if event.Added == 0 {
+		p.out.SkipResult("Added no tasks to project %s, skipped %d", event.ProjectSlug, event.Skipped)
+		return
+	}
+	p.out.Result("Added %s to project %s, skipped %d", task.FormatTaskCount(event.Added), event.ProjectSlug, event.Skipped)
 }
 
 func (p *cliProgress) warnTaskUnlinkFailed(event task.TaskUnlinkFailed) {

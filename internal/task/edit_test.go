@@ -22,10 +22,12 @@ type fakeTaskRepo struct {
 	// storing it.
 	writeFailures map[TaskID]error
 	writes        int
-	// files are what reading the task files hands back, and readErr fails
-	// the read.
+	// files are what reading the task files or an archive hands back, and
+	// readErr fails either read.
 	files   []TaskFile
 	readErr error
+	// manifest is the manifest reading an archive hands back.
+	manifest ArchiveManifest
 	// existingPaths are the paths an archive write refuses.
 	existingPaths []string
 	archive       *writtenArchive
@@ -64,6 +66,34 @@ func (repo *fakeTaskRepo) WriteTaskArchive(path string, manifest ArchiveManifest
 	}
 	repo.archive = &writtenArchive{path: path, manifest: manifest, files: files}
 	return nil
+}
+
+func (repo *fakeTaskRepo) ReadTaskArchive(path string) (ArchiveManifest, []TaskFile, error) {
+	return repo.manifest, repo.files, repo.readErr
+}
+
+func (repo *fakeTaskRepo) WriteTask(projectSlug string, taskToWrite *Task, decide func(*Task) error) (bool, error) {
+	index := slices.IndexFunc(repo.tasks, func(candidate *Task) bool { return candidate.ID == taskToWrite.ID })
+	var stored *Task
+	if index >= 0 {
+		stored = repo.tasks[index]
+	}
+
+	if err := decide(stored); err != nil {
+		if errors.Is(err, ErrTaskUnchanged) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	written := *taskToWrite
+	if index >= 0 {
+		repo.tasks[index] = &written
+	} else {
+		repo.tasks = append(repo.tasks, &written)
+	}
+	repo.writes++
+	return true, nil
 }
 
 func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*Task, error) {

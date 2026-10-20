@@ -172,6 +172,19 @@ var TaskCmd = &Cmd{
 				return func([]string) error { return taskExport(flags) }
 			},
 		},
+		{
+			Name: "import",
+			Args: []string{archiveFileArg},
+			Desc: "Add the tasks of a zip archive the project does not have yet",
+			Help: "Add every task of an archive drg task export wrote that the project does not have yet, with its id, its timestamps and its run state as they are.\n" +
+				"A task whose id the project already has is skipped. Tasks of another project are moved into this one.\n" +
+				"It reads the whole archive first and stops at an archive it cannot read, before it writes anything.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskImportFlags{}
+				flags.declare(fs)
+				return func(args []string) error { return taskImport(flags, args[0]) }
+			},
+		},
 	},
 }
 

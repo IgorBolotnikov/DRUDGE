@@ -104,6 +104,36 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  `✓ Updated task 006684e3  Fix login, it is now "todo"` + "\n",
 		},
 		{
+			name:       "an archive of another project",
+			event:      task.ProjectSlugRewritten{ArchiveSlug: "alpha", ProjectSlug: "beta"},
+			wantStderr: "! The archive holds tasks of project alpha, they go into project beta\n",
+		},
+		{
+			name:  "a task imported",
+			event: task.TaskImported{Task: sampleTask},
+			want:  "✓ Added task 006684e3  Fix login\n",
+		},
+		{
+			name:  "a task imported in progress",
+			event: task.TaskImported{Task: &task.Task{ID: sampleTask.ID, Title: sampleTask.Title, Status: task.StatusInProgress}},
+			want:  "✓ Added task 006684e3  Fix login, it is in progress on the other device\n",
+		},
+		{
+			name:  "a task import skipped",
+			event: task.TaskImportSkipped{Task: sampleTask},
+			want:  "· Skipped task 006684e3  Fix login, the project has it\n",
+		},
+		{
+			name:  "an import that added tasks",
+			event: task.TasksImported{ProjectSlug: "demo", Added: 2, Skipped: 1},
+			want:  "✓ Added 2 tasks to project demo, skipped 1\n",
+		},
+		{
+			name:  "an import that added nothing",
+			event: task.TasksImported{ProjectSlug: "demo", Skipped: 3},
+			want:  "· Added no tasks to project demo, skipped 3\n",
+		},
+		{
 			name:  "a project created",
 			event: project.ProjectCreated{Project: &project.Project{Name: "Test Project"}},
 			want:  "",

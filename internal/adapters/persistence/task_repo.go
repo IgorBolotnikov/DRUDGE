@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -715,4 +716,64 @@ func (r *FileTaskRepository) DeleteTask(projectSlug string, id task.TaskID, acce
 		return true, fmt.Errorf("task %s was removed, but its lock file %s was not: %w", id, lockPath, err)
 	}
 	return true, nil
+}
+
+// WriteTask stores a whole task under its own id, as it is given, and stamps
+// none of its timestamps. decide runs against the stored copy under an
+// exclusive lock on the task, and gets nil when the project has no task with
+// that id. A decide returning task.ErrTaskUnchanged writes nothing.
+func (r *FileTaskRepository) WriteTask(projectSlug string, taskToWrite *task.Task, decide func(*task.Task) error) (isWritten bool, err error) {
+	if taskToWrite.ID == "" {
+		return false, task.ErrNoTaskID
+	}
+	if err := common.EnsureDir(r.taskDir()); err != nil {
+		return false, fmt.Errorf("could not create tasks directory: %w", err)
+	}
+
+	unlock, _, err := lockFile(r.taskLockPath(taskToWrite.ID), waitForLock)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+
+	files, err := r.taskFiles()
+	if err != nil {
+		return false, err
+	}
+	index := slices.IndexFunc(files, func(candidate taskFile) bool { return candidate.id == taskToWrite.ID })
+
+	var stored *task.Task
+	if index >= 0 {
+		stored, err = r.readTaskFile(files[index])
+		if err != nil {
+			return false, err
+		}
+	}
+
+	if err := decide(stored); err != nil {
+		if errors.Is(err, task.ErrTaskUnchanged) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if index < 0 {
+		path := filepath.Join(r.taskDir(), taskFileName(taskToWrite.ID, taskToWrite.Title))
+		if err := storeTaskFile(path, taskToWrite); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	found := files[index]
+	if err := storeTaskFile(found.path, taskToWrite); err != nil {
+		return false, err
+	}
+	return true, r.renameAfterTitleChange(found, taskToWrite.Title)
+}
+
+func storeTaskFile(path string, taskToWrite *task.Task) error {
+	if err := common.WriteFileWithFrontMatter(path, taskFrontMatter(taskToWrite), taskToWrite.Description); err != nil {
+		return fmt.Errorf("could not write task file %s: %w", path, err)
+	}
+	return nil
 }
