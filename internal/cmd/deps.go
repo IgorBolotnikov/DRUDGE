@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/filesystem"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	remoteadapter "github.com/IgorBolotnikov/DRUDGE/internal/adapters/remote"
@@ -165,7 +166,7 @@ func newPullRequestRemote(settings config.RemoteSettings, runner *exec.CommandRu
 }
 
 // newProjectService wires a project service over the project records, the
-// local config file and the git binary.
+// local config file, the git binary and the files of the project directory.
 func newProjectService(out *printer.Printer) (*project.ProjectService, error) {
 	globalCfg, err := config.Load()
 	if err != nil {
@@ -176,7 +177,7 @@ func newProjectService(out *printer.Printer) (*project.ProjectService, error) {
 		return nil, err
 	}
 	linker := config.NewLocalConfigLinker(home)
-	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, linker, newGitOperations(globalCfg), newCLIProgress(out)), nil
+	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, linker, newGitOperations(globalCfg), filesystem.NewRepositoryFiles(), newCLIProgress(out)), nil
 }
 
 // newGitOperations wires the git adapter with the configured timeouts.

@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -18,7 +17,7 @@ const (
 // repository that git ignores: files whose name starts with .env and a .envs
 // directory. A repository with none gets an empty list.
 func (p *ProjectService) detectCopyPaths(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+	entries, err := p.files.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("could not read %s: %w", dir, err)
 	}

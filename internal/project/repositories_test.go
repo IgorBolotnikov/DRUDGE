@@ -2,11 +2,12 @@ package project
 
 import (
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
@@ -129,19 +130,63 @@ func newFakeGit(projectDir string, roots []string, branches map[string]string) *
 	return fake
 }
 
-func newTestService(gitOps git.Operations) *ProjectService {
-	return NewProjectService(nil, nil, nil, gitOps, &fakeProgress{})
+func newTestService(gitOps git.Operations, files RepositoryFiles) *ProjectService {
+	return NewProjectService(nil, nil, nil, gitOps, files, &fakeProgress{})
 }
 
-func makeProjectDir(t *testing.T, subdirs []string) string {
-	t.Helper()
-	dir := t.TempDir()
-	for _, subdir := range subdirs {
-		if err := os.MkdirAll(filepath.Join(dir, subdir), 0o755); err != nil {
-			t.Fatalf("could not create %s: %v", subdir, err)
-		}
+const testProjectDir = "/project"
+
+// fakeFiles serves the files under the test project directory from memory,
+// keyed by their path relative to it.
+type fakeFiles struct {
+	files fstest.MapFS
+}
+
+// filesOf maps each path relative to the test project directory to its content.
+func filesOf(contents map[string]string) fakeFiles {
+	files := fstest.MapFS{}
+	for path, content := range contents {
+		files[path] = &fstest.MapFile{Data: []byte(content)}
 	}
-	return dir
+	return fakeFiles{files: files}
+}
+
+// dirsOf holds an empty directory at each path relative to the test project
+// directory.
+func dirsOf(dirs []string) fakeFiles {
+	files := fstest.MapFS{}
+	for _, dir := range dirs {
+		files[dir] = &fstest.MapFile{Mode: fs.ModeDir}
+	}
+	return fakeFiles{files: files}
+}
+
+func (fake fakeFiles) relative(path string) (string, error) {
+	return filepath.Rel(testProjectDir, path)
+}
+
+func (fake fakeFiles) ReadDir(dir string) ([]fs.DirEntry, error) {
+	relative, err := fake.relative(dir)
+	if err != nil {
+		return nil, err
+	}
+	return fake.files.ReadDir(relative)
+}
+
+func (fake fakeFiles) Stat(path string) (fs.FileInfo, error) {
+	relative, err := fake.relative(path)
+	if err != nil {
+		return nil, err
+	}
+	return fake.files.Stat(relative)
+}
+
+func (fake fakeFiles) ReadFile(path string) ([]byte, error) {
+	relative, err := fake.relative(path)
+	if err != nil {
+		return nil, err
+	}
+	return fake.files.ReadFile(relative)
 }
 
 func TestDiscoverRepositories(t *testing.T) {
@@ -188,8 +233,8 @@ func TestDiscoverRepositories(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			projectDir := makeProjectDir(t, test.subdirs)
-			service := newTestService(newFakeGit(projectDir, test.roots, nil))
+			projectDir := testProjectDir
+			service := newTestService(newFakeGit(projectDir, test.roots, nil), dirsOf(test.subdirs))
 
 			got, err := service.DiscoverRepositories(projectDir)
 			if test.wantErr {
@@ -253,7 +298,7 @@ func TestDefaultBranch(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			projectDir := t.TempDir()
 			fake := newFakeGit(projectDir, test.roots, test.branches)
-			service := newTestService(fake)
+			service := newTestService(fake, nil)
 
 			got, err := service.DefaultBranch(projectDir, test.repository)
 			if test.isGitLeftAlone && fake.calls != 0 {
@@ -292,7 +337,7 @@ func TestResolveRepositories(t *testing.T) {
 	}
 
 	projectDir := t.TempDir()
-	service := newTestService(newFakeGit(projectDir, []string{"api", "ui"}, map[string]string{"api": "main"}))
+	service := newTestService(newFakeGit(projectDir, []string{"api", "ui"}, map[string]string{"api": "main"}), nil)
 
 	resolved := service.ResolveRepositories(projectDir, []Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs"}})
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -253,12 +252,13 @@ func linesFrom(trigger string, commands ...string) []SetupLine {
 // repositoryRoot is the root directory of a repository. The rules read files
 // in it and never below it.
 type repositoryRoot struct {
-	dir string
+	files RepositoryFiles
+	dir   string
 }
 
 // has tells whether the root holds a file of that name.
 func (root repositoryRoot) has(name string) (bool, error) {
-	info, err := os.Stat(filepath.Join(root.dir, name))
+	info, err := root.files.Stat(filepath.Join(root.dir, name))
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
@@ -290,7 +290,7 @@ func (root repositoryRoot) read(name string) (string, error) {
 	if err != nil || !isPresent {
 		return "", err
 	}
-	content, err := os.ReadFile(filepath.Join(root.dir, name))
+	content, err := root.files.ReadFile(filepath.Join(root.dir, name))
 	if err != nil {
 		return "", fmt.Errorf("could not read %s: %w", filepath.Join(root.dir, name), err)
 	}

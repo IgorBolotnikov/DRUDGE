@@ -544,7 +544,7 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range testCase.projects {
 					if _, err := service.CreateProject(name); err != nil {
@@ -624,7 +624,7 @@ func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
 			if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
 				t.Fatal(err)
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range []string{"alpha", "bravo"} {
 					if _, err := service.CreateProject(name); err != nil {

@@ -2,10 +2,10 @@ package project
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -32,19 +32,18 @@ var npmrcEnvReference = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // detectEnvNames returns every name the npm config file in the root of a
 // repository references and listed does not hold yet, and adds each one to
 // listed. A repository with no npm config file gets none.
-func detectEnvNames(dir string, listed map[string]bool) ([]EnvName, error) {
+func (p *ProjectService) detectEnvNames(dir string, listed map[string]bool) ([]EnvName, error) {
 	path := filepath.Join(dir, npmrcFile)
-	file, err := os.Open(path)
+	content, err := p.files.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not read %s: %w", path, err)
 	}
-	defer file.Close()
 
 	var added []EnvName
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(bytes.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if slices.ContainsFunc(npmrcCommentPrefixes, func(prefix string) bool { return strings.HasPrefix(line, prefix) }) {

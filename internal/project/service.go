@@ -14,6 +14,7 @@ type ProjectService struct {
 	linker   DirectoryLinker
 	setups   SetupRecorder
 	gitOps   git.Operations
+	files    RepositoryFiles
 	progress common.Progress
 }
 
@@ -40,8 +41,8 @@ type ProjectAlreadyGone struct {
 	Slug string
 }
 
-func NewProjectService(repo ProjectRepository, linker DirectoryLinker, setups SetupRecorder, gitOps git.Operations, progress common.Progress) *ProjectService {
-	return &ProjectService{repo: repo, linker: linker, setups: setups, gitOps: gitOps, progress: progress}
+func NewProjectService(repo ProjectRepository, linker DirectoryLinker, setups SetupRecorder, gitOps git.Operations, files RepositoryFiles, progress common.Progress) *ProjectService {
+	return &ProjectService{repo: repo, linker: linker, setups: setups, gitOps: gitOps, files: files, progress: progress}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {

@@ -79,7 +79,7 @@ func (p *ProjectService) proposeSetups(projectDir string, repositories []Reposit
 	setups := map[string]DetectedSetup{}
 	for _, repository := range repositories {
 		dir := filepath.Join(projectDir, repository.Path)
-		added, err := detectEnvNames(dir, listed)
+		added, err := p.detectEnvNames(dir, listed)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -88,7 +88,7 @@ func (p *ProjectService) proposeSetups(projectDir string, repositories []Reposit
 			continue
 		}
 
-		lines, err := detectSetupLines(dir)
+		lines, err := detectSetupLines(repositoryRoot{files: p.files, dir: dir})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -110,8 +110,7 @@ func (p *ProjectService) proposeSetups(projectDir string, repositories []Reposit
 }
 
 // detectSetupLines walks the setup rules over the root of one repository.
-func detectSetupLines(dir string) ([]SetupLine, error) {
-	root := repositoryRoot{dir: dir}
+func detectSetupLines(root repositoryRoot) ([]SetupLine, error) {
 	lines := []SetupLine{}
 	for _, rule := range setupRules {
 		proposed, err := rule(root)

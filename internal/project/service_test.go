@@ -136,12 +136,12 @@ func TestProjectService_InitProject(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			projectDir := makeProjectDir(t, test.subdirs)
+			projectDir := testProjectDir
 
 			repo := &fakeProjectRepo{projects: test.existing}
 			linker := &fakeLinker{}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, linker, nil, newFakeGit(projectDir, test.roots, nil), progress)
+			service := NewProjectService(repo, linker, nil, newFakeGit(projectDir, test.roots, nil), dirsOf(test.subdirs), progress)
 
 			created, repositories, _, err := service.InitProject(test.projectName, projectDir)
 
@@ -210,7 +210,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, &fakeProgress{})
+			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, &fakeProgress{})
 
 			found, err := service.LookupProject(testCase.slugOrName)
 			if err != nil {
@@ -224,7 +224,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 }
 
 func TestProjectService_LookupProject_RefusesAnUnknownProject(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, &fakeProgress{})
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, &fakeProgress{})
 
 	_, err := service.LookupProject("wiki")
 	if err == nil || !strings.Contains(err.Error(), `project "wiki" not found`) {
@@ -303,7 +303,7 @@ func TestProjectService_RenameProject(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects()}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, nil, nil, nil, progress)
+			service := NewProjectService(repo, nil, nil, nil, nil, progress)
 
 			err := service.RenameProject(testCase.slugOrName, testCase.newName)
 
@@ -370,7 +370,7 @@ func TestProjectService_DeleteProject(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects(), deleteErr: testCase.deleteErr}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, nil, nil, nil, progress)
+			service := NewProjectService(repo, nil, nil, nil, nil, progress)
 
 			err := service.DeleteProject(testCase.project)
 
@@ -418,7 +418,7 @@ func TestProjectService_ListProjects(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, nil, &fakeProgress{})
+			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, nil, nil, &fakeProgress{})
 
 			listed, err := service.ListProjects(test.page, test.size)
 			if test.wantErr != "" {

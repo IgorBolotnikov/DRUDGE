@@ -3,7 +3,6 @@ package project
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -40,7 +39,7 @@ func (service *ProjectService) DiscoverRepositories(projectDir string) ([]Reposi
 		return []Repository{{Path: selfPath}}, nil
 	}
 
-	entries, err := os.ReadDir(projectDir)
+	entries, err := service.files.ReadDir(projectDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not read %s: %w", projectDir, err)
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
+	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/filesystem"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 )
@@ -230,12 +231,10 @@ func TestDetectSetup_Rules(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			projectDir := t.TempDir()
-			writeFiles(t, projectDir, test.files)
 			recorder := &fakeSetupRecorder{}
-			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, nil, DetectSetupOptions{})
+			got, err := service.DetectSetup(testProjectDir, []Repository{{Path: "."}}, nil, DetectSetupOptions{})
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}
@@ -318,14 +317,14 @@ func TestDetectSetup_Options(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			projectDir := t.TempDir()
+			lockfiles := map[string]string{}
 			for _, repository := range test.repositories {
-				writeFiles(t, projectDir, map[string]string{filepath.Join(repository.Path, "package-lock.json"): "{}"})
+				lockfiles[filepath.Join(repository.Path, "package-lock.json")] = "{}"
 			}
 			recorder := &fakeSetupRecorder{}
-			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(lockfiles), &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, test.repositories, nil, test.options)
+			got, err := service.DetectSetup(testProjectDir, test.repositories, nil, test.options)
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}
@@ -344,9 +343,9 @@ func TestDetectSetup_Options(t *testing.T) {
 }
 
 func TestDetectSetup_RefusesAProjectWithNoRepositories(t *testing.T) {
-	service := NewProjectService(nil, nil, &fakeSetupRecorder{}, nil, &fakeProgress{})
+	service := NewProjectService(nil, nil, &fakeSetupRecorder{}, nil, filesOf(nil), &fakeProgress{})
 
-	_, err := service.DetectSetup(t.TempDir(), nil, nil, DetectSetupOptions{})
+	_, err := service.DetectSetup(testProjectDir, nil, nil, DetectSetupOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), RepositoriesKey) {
 		t.Errorf("error = %v, want it to name %q", err, RepositoriesKey)
@@ -431,7 +430,7 @@ func TestDetectSetup_CopyPaths(t *testing.T) {
 			}
 			recorder := &fakeSetupRecorder{}
 			gitOps := gitcli.New(exec.NewCommandRunner(), git.Timeouts{Command: 30 * time.Second})
-			service := NewProjectService(nil, nil, recorder, gitOps, &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, gitOps, filesystem.NewRepositoryFiles(), &fakeProgress{})
 
 			got, err := service.DetectSetup(projectDir, []Repository{{Path: "."}}, nil, DetectSetupOptions{})
 			if err != nil {
@@ -520,17 +519,10 @@ func TestDetectSetup_EnvNames(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			projectDir := t.TempDir()
-			for _, repository := range test.repositories {
-				if err := os.MkdirAll(filepath.Join(projectDir, repository.Path), 0o755); err != nil {
-					t.Fatal(err)
-				}
-			}
-			writeFiles(t, projectDir, test.files)
 			recorder := &fakeSetupRecorder{}
-			service := NewProjectService(nil, nil, recorder, nil, &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), &fakeProgress{})
 
-			got, err := service.DetectSetup(projectDir, test.repositories, test.listed, DetectSetupOptions{})
+			got, err := service.DetectSetup(testProjectDir, test.repositories, test.listed, DetectSetupOptions{})
 			if err != nil {
 				t.Fatalf("DetectSetup: %v", err)
 			}

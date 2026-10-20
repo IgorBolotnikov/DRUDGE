@@ -1,6 +1,9 @@
 package project
 
-import "time"
+import (
+	"io/fs"
+	"time"
+)
 
 type CreateProjectDto struct {
 	Name      string
@@ -14,6 +17,14 @@ type ProjectRepository interface {
 	ListProjects() ([]*Project, error)
 	RenameProject(slug string, newName string) error
 	DeleteProject(slug string) (isRemoved bool, err error)
+}
+
+// RepositoryFiles reads the files of a project directory that detection
+// looks at. Paths are host paths.
+type RepositoryFiles interface {
+	ReadDir(dir string) ([]fs.DirEntry, error)
+	Stat(path string) (fs.FileInfo, error)
+	ReadFile(path string) ([]byte, error)
 }
 
 // DirectoryLinker links the current directory to a project and reads that
