@@ -2,7 +2,7 @@
 # Generated from the drg command tree. Do not edit it, regenerate it with go test ./internal/cmd -run TestCLIReference -update
 title: drg project delete
 linkTitle: delete
-weight: 2
+weight: 3
 generated: true
 ---
 

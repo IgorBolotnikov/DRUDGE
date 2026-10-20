@@ -89,3 +89,53 @@ func TestLocalConfigLinker_LinkedSlug(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalConfigLinker_RecordSetup(t *testing.T) {
+	tests := []struct {
+		name         string
+		repositories []project.Repository
+		setups       map[string][]string
+		want         []project.Repository
+	}{
+		{
+			name:         "a missing setup is filled",
+			repositories: []project.Repository{{Path: "api", DefaultBranch: "trunk"}},
+			setups:       map[string][]string{"api": {"npm ci"}},
+			want:         []project.Repository{{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}}},
+		},
+		{
+			name:         "an empty setup is kept as an empty list",
+			repositories: []project.Repository{{Path: "api"}},
+			setups:       map[string][]string{"api": {}},
+			want:         []project.Repository{{Path: "api", Setup: []string{}}},
+		},
+		{
+			name:         "a repository setups does not name is left alone",
+			repositories: []project.Repository{{Path: "api", Setup: []string{"make deps"}}, {Path: "ui"}},
+			setups:       map[string][]string{"ui": {"npm ci"}},
+			want:         []project.Repository{{Path: "api", Setup: []string{"make deps"}}, {Path: "ui", Setup: []string{"npm ci"}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupLocalDir(t)
+			linker := NewLocalConfigLinker("/home/user")
+			if err := linker.LinkDirectory("demo", test.repositories); err != nil {
+				t.Fatalf("LinkDirectory: %v", err)
+			}
+
+			if err := linker.RecordSetup(test.setups); err != nil {
+				t.Fatalf("RecordSetup: %v", err)
+			}
+
+			loaded, err := LoadLocal()
+			if err != nil {
+				t.Fatalf("LoadLocal: %v", err)
+			}
+			if !reflect.DeepEqual(loaded.Repositories, test.want) {
+				t.Errorf("repositories = %+v, want %+v", loaded.Repositories, test.want)
+			}
+		})
+	}
+}

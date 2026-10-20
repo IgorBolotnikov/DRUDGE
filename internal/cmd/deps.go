@@ -176,7 +176,7 @@ func newProjectService(out *printer.Printer) (*project.ProjectService, error) {
 		return nil, err
 	}
 	linker := config.NewLocalConfigLinker(home)
-	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, newGitOperations(globalCfg), newCLIProgress(out)), nil
+	return project.NewProjectService(persistence.NewFileProjectRepository(""), linker, linker, newGitOperations(globalCfg), newCLIProgress(out)), nil
 }
 
 // newGitOperations wires the git adapter with the configured timeouts.

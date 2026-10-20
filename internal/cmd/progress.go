@@ -71,6 +71,12 @@ func (p *cliProgress) Report(event any) {
 	}
 }
 
+// warnSetupUndecided warns about a repository with no setup key and names the
+// command that writes one.
+func warnSetupUndecided(out *printer.Printer, repository string) {
+	out.Warn("Repository %s has no setup in the local config, run %s to detect it", repository, drudger.DetectCommand)
+}
+
 func (p *cliProgress) warnTaskUnlinkFailed(event task.TaskUnlinkFailed) {
 	if event.IsHeld {
 		p.out.Warn("Task %s is removed, but another drudge command is working on task %s, which still names it", event.RemovedID, event.LinkedID)
@@ -112,6 +118,8 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Done("Copied %s of %s into its worktree", event.Path, event.Repository)
 	case drudger.LocalFileMissing:
 		p.out.Warn("Did not copy %s of %s, it is not in %s", event.Path, event.Repository, event.Dir)
+	case drudger.SetupUndecided:
+		warnSetupUndecided(p.out, event.Repository)
 	case drudger.SetupCommandStarted:
 		p.out.Step("Running setup of %s, up to %s: %s", event.Repository, event.Timeout, event.Command)
 	case drudger.SetupOutput:
@@ -140,6 +148,9 @@ func (p *cliProgress) reportDrudger(event any) {
 		}
 		for _, name := range event.UnsetEnvNames {
 			p.out.Warn("%s is not set in this environment, a launch stops on it", name)
+		}
+		for _, repository := range event.UndecidedSetups {
+			warnSetupUndecided(p.out, repository)
 		}
 		p.out.Block(event.Prompt)
 		if len(event.Copies) > 0 {

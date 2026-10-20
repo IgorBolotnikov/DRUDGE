@@ -194,6 +194,11 @@ func TestCLIProgress_Report(t *testing.T) {
 			wantStderr: "! Did not copy .env of api, it is not in /work/api\n",
 		},
 		{
+			name:       "a repository with no setup key",
+			event:      drudger.SetupUndecided{Repository: "api"},
+			wantStderr: "! Repository api has no setup in the local config, run drg project detect to detect it\n",
+		},
+		{
 			name:  "a setup command started",
 			event: drudger.SetupCommandStarted{Repository: "api", Command: "npm ci", Timeout: 15 * time.Minute},
 			want:  "› Running setup of api, up to 15m0s: npm ci…\n",
@@ -306,6 +311,29 @@ func TestCLIProgress_Report(t *testing.T) {
 				`      "sbx" "ls" "--json"` + "\n" +
 				"· Nothing ran, it was a dry run\n",
 			wantStderr: "  ! NPM_TOKEN is not set in this environment, a launch stops on it\n",
+		},
+		{
+			name: "a run described with repositories with no setup key",
+			event: drudger.RunDescribed{
+				Task:            sampleTask,
+				Slot:            3,
+				Sandbox:         "drudge-claude-demo-3",
+				PromptSource:    "~/.drudge/prompt.md",
+				Prompt:          "Fix login\n",
+				UndecidedSetups: []string{"api", "ui"},
+				Commands:        [][]string{{"sbx", "ls", "--json"}},
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
+			wantStderr: "  ! Repository api has no setup in the local config, run drg project detect to detect it\n" +
+				"  ! Repository ui has no setup in the local config, run drg project detect to detect it\n",
 		},
 		{
 			name: "a run described with copies",

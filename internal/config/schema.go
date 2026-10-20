@@ -285,7 +285,7 @@ const localSchemaJSON = `{
             "type": "string"
           },
           "setup": {
-            "description": "Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order.",
+            "description": "Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order. An empty list means nothing to do. A missing key means the setup is not decided yet, it runs nothing and a launch warns about it. drg project detect fills it in.",
             "type": "array",
             "items": {
               "type": "string"

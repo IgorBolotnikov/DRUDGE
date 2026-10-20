@@ -722,3 +722,40 @@ func TestCopyPath_MissingSource_ReturnsError(t *testing.T) {
 		t.Errorf("error = %q, want it to name %q", err, source)
 	}
 }
+
+func TestWriteJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{
+			name:  "an object is indented",
+			value: map[string]string{"title": "Hello"},
+			want:  "{\n  \"title\": \"Hello\"\n}",
+		},
+		{
+			name:  "shell characters are kept as they are",
+			value: []string{`command -v mise >/dev/null 2>&1 || curl -fsSL https://mise.run | sh`},
+			want:  "[\n  \"command -v mise >/dev/null 2>&1 || curl -fsSL https://mise.run | sh\"\n]",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), targetFileName)
+
+			if err := WriteJSON(path, test.value); err != nil {
+				t.Fatalf("WriteJSON: %v", err)
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Errorf("wrote %q, want %q", got, test.want)
+			}
+		})
+	}
+}

@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
@@ -60,15 +62,26 @@ func TestProjectInit(t *testing.T) {
 		// the branch origin/HEAD points at. An empty branch leaves origin/HEAD
 		// unset.
 		repositories map[string]string
-		wantStdout   string
-		wantStderr   string
-		wantErr      string
+		// files are created in the project directory, each path mapped to its
+		// content.
+		files            map[string]string
+		wantStdout       string
+		wantStderr       string
+		wantErr          string
+		wantRepositories []project.Repository
 	}{
 		{
 			name:         "a project with one resolved and one unresolved repository",
 			repositories: map[string]string{"a": "", "b": "main"},
+			files:        map[string]string{"b/package-lock.json": "{}"},
 			wantStdout: "Initializing project demo in .drudge\n" +
 				"✓ Initialized project demo\n" +
+				"\n" +
+				"Setup of a\n" +
+				"  ✓ Nothing to set up, wrote an empty list\n" +
+				"\n" +
+				"Setup of b\n" +
+				"  ✓ npm ci  package-lock.json\n" +
 				"\n" +
 				"Repositories (2):\n" +
 				"  REPOSITORY                      DEFAULT BRANCH\n" +
@@ -77,6 +90,7 @@ func TestProjectInit(t *testing.T) {
 				"  b                               main\n",
 			wantStderr: "  ! could not work out the default branch of a, run `git remote set-head origin -a` in it, " +
 				"or set \"defaultBranch\" for it in the local config\n",
+			wantRepositories: []project.Repository{{Path: "a", Setup: []string{}}, {Path: "b", Setup: []string{"npm ci"}}},
 		},
 		{
 			name:       "a directory that holds no repository",
@@ -98,6 +112,7 @@ func TestProjectInit(t *testing.T) {
 					runGit(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/"+branch)
 				}
 			}
+			writeProjectFiles(t, projectDir, testCase.files)
 
 			var err error
 			var stdout string
@@ -118,7 +133,164 @@ func TestProjectInit(t *testing.T) {
 			if stderr != testCase.wantStderr {
 				t.Errorf("stderr:\n%q\nwant:\n%q", stderr, testCase.wantStderr)
 			}
+			if testCase.wantRepositories == nil {
+				return
+			}
+			localConfig, err := config.LoadLocal()
+			if err != nil {
+				t.Fatalf("LoadLocal: %v", err)
+			}
+			if !reflect.DeepEqual(localConfig.Repositories, testCase.wantRepositories) {
+				t.Errorf("repositories = %+v, want %+v", localConfig.Repositories, testCase.wantRepositories)
+			}
 		})
+	}
+}
+
+func TestProjectDetect(t *testing.T) {
+	cases := []struct {
+		name         string
+		repositories []project.Repository
+		// files are created in the project directory, each path mapped to its
+		// content.
+		files            map[string]string
+		args             []string
+		wantStdout       string
+		wantErr          string
+		wantRepositories []project.Repository
+	}{
+		{
+			name: "only missing setups are filled",
+			repositories: []project.Repository{
+				{Path: "api"},
+				{Path: "docs", Setup: []string{}},
+				{Path: "ui", Setup: []string{"make deps"}},
+				{Path: "tools"},
+			},
+			files: map[string]string{"api/package-lock.json": "{}", "api/.nvmrc": "22\n", "ui/yarn.lock": "", "tools/go.mod": ""},
+			wantStdout: "Setup of api\n" +
+				"  ✓ command -v mise >/dev/null 2>&1 || curl -fsSL https://mise.run | sh  .nvmrc\n" +
+				"  ✓ mise settings set idiomatic_version_file_enable_tools node,python  .nvmrc\n" +
+				"  ✓ mise install  .nvmrc\n" +
+				"  ✓ echo \"$HOME/.local/share/mise/shims\" >> \"$DRUDGE_PATH\"  .nvmrc\n" +
+				"  ✓ npm ci  package-lock.json\n" +
+				"\n" +
+				"Setup of docs\n" +
+				"  · Kept the existing setup\n" +
+				"\n" +
+				"Setup of ui\n" +
+				"  · Kept the existing setup\n" +
+				"\n" +
+				"Setup of tools\n" +
+				"  ✓ Nothing to set up, wrote an empty list\n" +
+				"✓ Wrote the detected setup to .drudge/config.json\n",
+			wantRepositories: []project.Repository{
+				{Path: "api", Setup: []string{
+					"command -v mise >/dev/null 2>&1 || curl -fsSL https://mise.run | sh",
+					"mise settings set idiomatic_version_file_enable_tools node,python",
+					"mise install",
+					`echo "$HOME/.local/share/mise/shims" >> "$DRUDGE_PATH"`,
+					"npm ci",
+				}},
+				{Path: "docs", Setup: []string{}},
+				{Path: "ui", Setup: []string{"make deps"}},
+				{Path: "tools", Setup: []string{}},
+			},
+		},
+		{
+			name:         "every setup kept writes nothing",
+			repositories: []project.Repository{{Path: "api", Setup: []string{}}},
+			files:        map[string]string{"api/package-lock.json": "{}"},
+			wantStdout: "Setup of api\n" +
+				"  · Kept the existing setup\n" +
+				"· Every repository has a setup already, --force replaces it\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{}}},
+		},
+		{
+			name:         "force replaces every setup",
+			repositories: []project.Repository{{Path: "api", Setup: []string{}}, {Path: "ui", Setup: []string{"make deps"}}},
+			files:        map[string]string{"api/package-lock.json": "{}"},
+			args:         []string{"--force"},
+			wantStdout: "Setup of api\n" +
+				"  ✓ npm ci  package-lock.json\n" +
+				"\n" +
+				"Setup of ui\n" +
+				"  ✓ Nothing to set up, wrote an empty list\n" +
+				"✓ Wrote the detected setup to .drudge/config.json\n",
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"npm ci"}}, {Path: "ui", Setup: []string{}}},
+		},
+		{
+			name:         "a dry run writes nothing",
+			repositories: []project.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs", Setup: []string{"make docs"}}},
+			files:        map[string]string{"api/uv.lock": ""},
+			args:         []string{"--dry-run"},
+			wantStdout: "Setup of api\n" +
+				"  · uv sync --frozen  uv.lock\n" +
+				"\n" +
+				"Setup of ui\n" +
+				"  · Nothing to set up\n" +
+				"\n" +
+				"Setup of docs\n" +
+				"  · Kept the existing setup\n" +
+				"· Dry run, wrote nothing\n",
+			wantRepositories: []project.Repository{{Path: "api"}, {Path: "ui"}, {Path: "docs", Setup: []string{"make docs"}}},
+		},
+		{
+			name:    "a local config with no repositories",
+			wantErr: "the local config records no repositories",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "1")
+			projectDir := t.TempDir()
+			t.Chdir(projectDir)
+			writeProjectFiles(t, projectDir, testCase.files)
+			localConfig := &config.LocalConfig{ProjectSlug: "demo", Repositories: testCase.repositories}
+			if err := localConfig.Save(); err != nil {
+				t.Fatal(err)
+			}
+
+			var err error
+			args := append([]string{ProjectCmd.Name, "detect"}, testCase.args...)
+			stdout := captureOutput(func() { err = NewRoot("v1.2.3").Execute(args) })
+
+			if testCase.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Fatalf("error = %v, want it to hold %q", err, testCase.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stdout != testCase.wantStdout {
+				t.Errorf("stdout:\n%q\nwant:\n%q", stdout, testCase.wantStdout)
+			}
+			loaded, err := config.LoadLocal()
+			if err != nil {
+				t.Fatalf("LoadLocal: %v", err)
+			}
+			if !reflect.DeepEqual(loaded.Repositories, testCase.wantRepositories) {
+				t.Errorf("repositories = %+v, want %+v", loaded.Repositories, testCase.wantRepositories)
+			}
+		})
+	}
+}
+
+// writeProjectFiles creates files under dir, each path mapped to its content.
+func writeProjectFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for path, content := range files {
+		fullPath := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), common.DefaultFilePerm); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -278,7 +450,7 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range testCase.projects {
 					if _, err := service.CreateProject(name); err != nil {
@@ -358,7 +530,7 @@ func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
 			if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
 				t.Fatal(err)
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range []string{"alpha", "bravo"} {
 					if _, err := service.CreateProject(name); err != nil {

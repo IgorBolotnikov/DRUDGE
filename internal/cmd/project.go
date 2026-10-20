@@ -3,10 +3,13 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"slices"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/cmd/printer"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
 // unresolvedBranch stands in for a default branch drudge could not work out.
@@ -23,8 +26,23 @@ var ProjectCmd = &Cmd{
 			Help: "Record a project and link the current directory to it. Task commands run here work on that project.\n" +
 				"A directory that is a git repository becomes the one repository of the project.\n" +
 				"Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.\n" +
+				"It writes the setup commands it detects for each repository, like drg project detect does.\n" +
 				"It prints each repository with the default branch that task branches are cut from.",
 			Setup: func(*flag.FlagSet) func(args []string) error { return projectInit },
+		},
+		{
+			Name: "detect",
+			Desc: "Detect the setup commands of the repositories",
+			Help: "Detect the setup commands of every repository of the project from the files in its root, and write them to the setup key of each repository in the local config.\n" +
+				"A version file like .tool-versions, mise.toml, .nvmrc or .python-version gets mise and the pinned toolchains installed.\n" +
+				"The first lockfile found gets its packages installed. A repository that matches nothing gets an empty list.\n" +
+				"It reads only the root of each repository.\n" +
+				"A repository that has a setup key keeps it, an empty list included, unless --force is given.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				var flags projectDetectFlags
+				flags.declare(fs)
+				return func([]string) error { return projectDetect(flags.options()) }
+			},
 		},
 		{
 			Name: "delete",
@@ -76,7 +94,7 @@ func projectInit(args []string) error {
 	}
 
 	out.Header("Initializing project %s in %s", name, common.DotDrudgeDirName)
-	_, repositories, err := svc.InitProject(name, projectDir)
+	_, repositories, detections, err := svc.InitProject(name, projectDir)
 	if err != nil {
 		return err
 	}
@@ -88,8 +106,83 @@ func projectInit(args []string) error {
 		}
 	}
 	out.Result("Initialized project %s", name)
+	printSetupDetections(out, detections, false)
 	out.View(repositoryLines(resolved))
 	return nil
+}
+
+// projectDetectFlags are the flags of drg project detect.
+type projectDetectFlags struct {
+	isForced bool
+	isDryRun bool
+}
+
+func (flags *projectDetectFlags) declare(fs *flag.FlagSet) {
+	fs.BoolVar(&flags.isForced, forceFlagName, false, "Replace the setup of every repository, existing ones included")
+	alias(fs, forceFlagShortName, forceFlagName)
+	fs.BoolVar(&flags.isDryRun, dryRunFlagName, false, "Print the detected setup and write nothing")
+}
+
+func (flags *projectDetectFlags) options() project.DetectSetupOptions {
+	return project.DetectSetupOptions{IsForced: flags.isForced, IsDryRun: flags.isDryRun}
+}
+
+func projectDetect(options project.DetectSetupOptions) error {
+	localCfg, err := config.LoadLocal()
+	if err != nil {
+		return err
+	}
+	projectDir, err := common.WorkDir()
+	if err != nil {
+		return err
+	}
+
+	out := newCommandPrinter()
+	svc, err := newProjectService(out)
+	if err != nil {
+		return err
+	}
+
+	detections, err := svc.DetectSetup(projectDir, localCfg.Repositories, options)
+	if err != nil {
+		return err
+	}
+
+	printSetupDetections(out, detections, options.IsDryRun)
+	switch {
+	case options.IsDryRun:
+		out.SkipResult("Dry run, wrote nothing")
+	case !slices.ContainsFunc(detections, func(detection project.SetupDetection) bool { return !detection.IsKept }):
+		out.SkipResult("Every repository has a setup already, --%s replaces it", forceFlagName)
+	default:
+		out.Result("Wrote the detected setup to %s", common.LocalConfigPath())
+	}
+	return nil
+}
+
+// printSetupDetections prints one group per repository, with every setup line
+// detected for it followed by the file that triggered it. A dry run prints
+// the lines as skipped.
+func printSetupDetections(out *printer.Printer, detections []project.SetupDetection, isDryRun bool) {
+	for _, detection := range detections {
+		out.Header("Setup of %s", detection.Repository)
+		switch {
+		case detection.IsKept:
+			out.Skip("Kept the existing setup")
+		case len(detection.Lines) == 0 && isDryRun:
+			out.Skip("Nothing to set up")
+		case len(detection.Lines) == 0:
+			out.Done("Nothing to set up, wrote an empty list")
+		}
+		for _, line := range detection.Lines {
+			trigger := out.Theme().Paint(theme.Stdout, theme.RoleMuted, line.Trigger)
+			if isDryRun {
+				out.Skip("%s  %s", line.Command, trigger)
+				continue
+			}
+			out.Done("%s  %s", line.Command, trigger)
+		}
+	}
 }
 
 // repositoryLines lists the repositories of a project with the branch each

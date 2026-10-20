@@ -26,3 +26,9 @@ type DirectoryLinker interface {
 	// linked to. isLinked is false outside a project directory.
 	LinkedSlug() (slug string, isLinked bool, err error)
 }
+
+// SetupRecorder writes setup commands into the repositories of the local
+// config. Setups maps the path of a repository to its commands.
+type SetupRecorder interface {
+	RecordSetup(setups map[string][]string) error
+}

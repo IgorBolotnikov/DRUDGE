@@ -3,7 +3,7 @@ title: Project config
 weight: 2
 ---
 
-The project config file is `.drudge/config.json` in the project directory. `drg project init <name>` writes it with the project slug, the git repositories it finds and the `$schema` pointer. Every task, drudger and run command reads it to find the project of the current directory, so they fail in a directory without one.
+The project config file is `.drudge/config.json` in the project directory. `drg project init <name>` writes it with the project slug, the git repositories it finds with the setup it detects for each, and the `$schema` pointer. Every task, drudger and run command reads it to find the project of the current directory, so they fail in a directory without one.
 
 ## Schema
 
@@ -18,6 +18,8 @@ A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.steps
 ## Setup
 
 Each entry of `repositories` can list `setup` commands, like `npm ci` or `make deps`. A launch runs them in the sandbox of the Drudger after it puts the worktrees on the task branch and before it starts the agent. They run for every repository the task changes, in config order, each with `sh -c` in the worktree of its repository. The output goes to `setup.log` in the run directory. The first command that fails stops the launch and the task stays where it was. `sandboxTimeouts.setupSeconds` of the [global config](../config/) caps each command. `drg task run --dry-run` lists the commands without running them.
+
+`drg project detect` proposes the setup of each repository from the files in its root and writes it into the config. A version file like `.tool-versions`, `mise.toml`, `.nvmrc` or `.python-version` gets mise and the pinned toolchains installed. The first lockfile found, like `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock` or `requirements.txt`, gets its packages installed. It fills only the repositories with no `setup` key, `--force` replaces every one and `--dry-run` writes nothing. `drg project init` runs the same detection. An empty list means there is nothing to do. A missing key means the setup is not decided yet. It runs nothing too, and a launch and `drg task run --dry-run` warn about it. See [`drg project detect`]({{< relref "/docs/cli/project/detect" >}}) for the details.
 
 Every setup command gets two environment variables:
 
@@ -60,7 +62,7 @@ A worktree is a fresh checkout, so gitignored files like `.env` never reach it. 
 | `repositories` | array |  |  | The git repositories of the project. drg project init writes the list. |
 | `repositories[].path` | string |  |  | Required. Where the repository sits relative to the project directory. A project directory that is itself a repository records ".". |
 | `repositories[].defaultBranch` | string |  |  | The branch work is cut from. Omit to read it from origin/HEAD. |
-| `repositories[].setup` | array |  |  | Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order. |
+| `repositories[].setup` | array |  |  | Shell commands a launch runs in the sandbox, in the worktree of the repository, before the agent starts. Each one runs with sh -c and the first one that fails stops the launch. They run for every repository the task changes, in config order. An empty list means nothing to do. A missing key means the setup is not decided yet, it runs nothing and a launch warns about it. drg project detect fills it in. |
 | `repositories[].copy` | array |  |  | Paths relative to the repository that a launch copies from the repository into its worktree before setup runs, like gitignored .env files. Files are overwritten and directories are copied whole. A path missing from the repository is a warning. |
 | `remote` | object |  |  | Settings for the provider the repositories of a project are hosted on. Each one overrides the global config. |
 | `remote.provider` | string |  | `"github"` | The provider the repositories are hosted on. Required when pull requests are on. |

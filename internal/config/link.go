@@ -5,8 +5,8 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 )
 
-// LocalConfigLinker implements project.DirectoryLinker over the local config
-// file.
+// LocalConfigLinker implements project.DirectoryLinker and
+// project.SetupRecorder over the local config file.
 type LocalConfigLinker struct {
 	home string
 }
@@ -42,4 +42,19 @@ func (linker *LocalConfigLinker) LinkedSlug() (slug string, isLinked bool, err e
 		return "", false, err
 	}
 	return localCfg.ProjectSlug, true, nil
+}
+
+// RecordSetup sets the setup of every repository of the local config that
+// setups names, and leaves the other repositories and keys as they are.
+func (linker *LocalConfigLinker) RecordSetup(setups map[string][]string) error {
+	localCfg, err := LoadLocal()
+	if err != nil {
+		return err
+	}
+	for index, repository := range localCfg.Repositories {
+		if setup, ok := setups[repository.Path]; ok {
+			localCfg.Repositories[index].Setup = setup
+		}
+	}
+	return localCfg.Save()
 }

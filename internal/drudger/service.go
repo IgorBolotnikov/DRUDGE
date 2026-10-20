@@ -44,6 +44,10 @@ const reclaimCommand = "drg drudger reclaim"
 // initCommand is what a user runs to record the repositories of a project.
 const initCommand = "drg project init"
 
+// DetectCommand is what a user runs to write the setup of the repositories of
+// a project.
+const DetectCommand = "drg project detect"
+
 // rerunnableStatuses are the task statuses a rerun accepts. They are the ones
 // an agent has actually had.
 var rerunnableStatuses = []task.TaskStatus{task.StatusInProgress, task.StatusFuckedUp, task.StatusUnmerged}
@@ -398,6 +402,9 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 	listed := space.listedBy(taskToRun)
+	for _, repository := range undecidedSetups(listed.Repositories) {
+		service.progress.Report(SetupUndecided{Repository: repository})
+	}
 
 	// Bases are fetched first, so a new worktree is detached at a fresh base.
 	service.fetchBases(listed.Repositories)
@@ -488,7 +495,8 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 // RunDescribed reports what a dry run would use: the Drudger, the prompt and
 // where it came from, the environment variables the sandbox is passed, the
 // paths copied into the worktrees and the argv of every command in the order
-// they run. UnsetEnvNames are the variables a launch would stop on. With pull
+// they run. UnsetEnvNames are the variables a launch would stop on.
+// UndecidedSetups are the repositories with no setup key. With pull
 // requests on it also names the provider they would be opened on.
 type RunDescribed struct {
 	Task                *task.Task
@@ -498,6 +506,7 @@ type RunDescribed struct {
 	Prompt              string
 	EnvNames            []string
 	UnsetEnvNames       []string
+	UndecidedSetups     []string
 	Copies              []LocalCopy
 	Commands            [][]string
 	PullRequestProvider remote.Provider
@@ -541,15 +550,16 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 	commands = append(commands, plan.start)
 
 	described := RunDescribed{
-		Task:          taskToRun,
-		Slot:          wouldUse.Slot,
-		Sandbox:       wouldUse.Sandbox,
-		PromptSource:  promptSource,
-		Prompt:        prompt,
-		EnvNames:      service.settings.EnvNames,
-		UnsetEnvNames: service.unsetEnvNames(),
-		Copies:        localCopies(listed.Repositories),
-		Commands:      commands,
+		Task:            taskToRun,
+		Slot:            wouldUse.Slot,
+		Sandbox:         wouldUse.Sandbox,
+		PromptSource:    promptSource,
+		Prompt:          prompt,
+		EnvNames:        service.settings.EnvNames,
+		UnsetEnvNames:   service.unsetEnvNames(),
+		UndecidedSetups: undecidedSetups(listed.Repositories),
+		Copies:          localCopies(listed.Repositories),
+		Commands:        commands,
 	}
 	if service.remote != nil {
 		described.PullRequestProvider = service.remote.Provider()

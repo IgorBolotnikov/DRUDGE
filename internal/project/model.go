@@ -21,8 +21,9 @@ type Repository struct {
 	// drudge reads it from origin/HEAD.
 	DefaultBranch string `json:"defaultBranch,omitempty"`
 	// Setup are the shell commands a launch runs in the worktree of the
-	// repository before the agent starts. Nil and empty both run nothing, and
-	// a saved config keeps an empty list.
+	// repository before the agent starts. Nil means the setup is not decided
+	// yet and empty means there is nothing to do. Both run nothing, and a
+	// saved config keeps an empty list.
 	Setup []string `json:"setup,omitzero"`
 	// Copy are the paths, relative to the repository, a launch copies from the
 	// repository into its worktree before setup runs.

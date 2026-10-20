@@ -2,7 +2,7 @@
 # Generated from the drg command tree. Do not edit it, regenerate it with go test ./internal/cmd -run TestCLIReference -update
 title: drg project list
 linkTitle: list
-weight: 4
+weight: 5
 generated: true
 ---
 

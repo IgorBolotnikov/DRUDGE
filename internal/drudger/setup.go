@@ -19,6 +19,12 @@ type SetupCommandStarted struct {
 	Timeout    time.Duration
 }
 
+// SetupUndecided reports a repository a launch changes that has no setup key
+// in the local config. The launch runs no setup for it and goes on.
+type SetupUndecided struct {
+	Repository string
+}
+
 // SetupOutput reports one line a setup command wrote while it ran.
 type SetupOutput struct {
 	Line string
@@ -58,6 +64,18 @@ func (service *DrudgerService) unsetEnvNames() []string {
 		}
 	}
 	return unset
+}
+
+// undecidedSetups names the repositories that have no setup key. An empty
+// list is a decided setup with nothing to run.
+func undecidedSetups(repositories []repositoryWorktree) []string {
+	var undecided []string
+	for _, repository := range repositories {
+		if repository.Setup == nil {
+			undecided = append(undecided, repository.Name)
+		}
+	}
+	return undecided
 }
 
 // runSetup runs the reset of a plan and then its setup commands in order, and

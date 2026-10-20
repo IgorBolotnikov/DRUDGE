@@ -234,11 +234,16 @@ func ReadFile(path string) (string, error) {
 
 // WriteJSON marshals v as indented JSON and writes it to path.
 func WriteJSON(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var data strings.Builder
+	encoder := json.NewEncoder(&data)
+	encoder.SetIndent("", "  ")
+	// A config file holds shell commands a user edits, so <, > and & stay as
+	// they are.
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
 		return fmt.Errorf("could not marshal json for %s: %w", path, err)
 	}
-	return WriteFile(path, string(data))
+	return WriteFile(path, strings.TrimSuffix(data.String(), "\n"))
 }
 
 // WriteJSONIfNotExists writes v as JSON to path only if path doesn't already

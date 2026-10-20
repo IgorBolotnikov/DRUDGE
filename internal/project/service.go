@@ -12,6 +12,7 @@ import (
 type ProjectService struct {
 	repo     ProjectRepository
 	linker   DirectoryLinker
+	setups   SetupRecorder
 	gitOps   git.Operations
 	progress common.Progress
 }
@@ -39,8 +40,8 @@ type ProjectAlreadyGone struct {
 	Slug string
 }
 
-func NewProjectService(repo ProjectRepository, linker DirectoryLinker, gitOps git.Operations, progress common.Progress) *ProjectService {
-	return &ProjectService{repo: repo, linker: linker, gitOps: gitOps, progress: progress}
+func NewProjectService(repo ProjectRepository, linker DirectoryLinker, setups SetupRecorder, gitOps git.Operations, progress common.Progress) *ProjectService {
+	return &ProjectService{repo: repo, linker: linker, setups: setups, gitOps: gitOps, progress: progress}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {
@@ -81,23 +82,31 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 
 // InitProject creates a project for projectDir and links the current directory
 // to it through the DirectoryLinker, together with the repositories of
-// projectDir. A directory holding no repository is refused before the project
-// is created.
-func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []Repository, error) {
+// projectDir and the setup detected for each of them. A directory holding no
+// repository is refused before the project is created.
+func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []Repository, []SetupDetection, error) {
 	repositories, err := p.DiscoverRepositories(projectDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+
+	detections, setups, err := proposeSetups(projectDir, repositories, false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for index, repository := range repositories {
+		repositories[index].Setup = setups[repository.Path]
 	}
 
 	created, err := p.CreateProject(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if err := p.linker.LinkDirectory(created.Slug, repositories); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return created, repositories, nil
+	return created, repositories, detections, nil
 }
 
 // ListProjects returns the page numbered page of the projects, with size

@@ -16,6 +16,8 @@ A directory that is a git repository becomes the one repository of the project.
 
 Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.
 
+It writes the setup commands it detects for each repository, like drg project detect does.
+
 It prints each repository with the default branch that task branches are cut from.
 
 ## Arguments

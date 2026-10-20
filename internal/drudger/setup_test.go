@@ -541,3 +541,70 @@ func TestDrudgerService_RunTask_DryRunReportsTheEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestDrudgerService_RunTask_WarnsAboutUndecidedSetup(t *testing.T) {
+	repositories := []project.Repository{
+		{Path: "api", Setup: []string{"npm ci"}},
+		{Path: "ui", Setup: []string{}},
+		{Path: "docs"},
+		{Path: "web"},
+	}
+
+	cases := []struct {
+		name          string
+		repositories  []string
+		isDryRun      bool
+		wantUndecided []string
+	}{
+		{
+			name:          "a launch warns about every changed repository with no setup key",
+			wantUndecided: []string{"docs", "web"},
+		},
+		{
+			name:          "a launch leaves the repositories the task does not change alone",
+			repositories:  []string{"api", "web"},
+			wantUndecided: []string{"web"},
+		},
+		{
+			name:         "an empty setup is decided",
+			repositories: []string{"api", "ui"},
+		},
+		{
+			name:          "a dry run warns about every changed repository with no setup key",
+			isDryRun:      true,
+			wantUndecided: []string{"docs", "web"},
+		},
+		{
+			name:         "a dry run with every setup decided",
+			repositories: []string{"ui"},
+			isDryRun:     true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			taskToRun.Repositories = testCase.repositories
+			settings := testSettings()
+			settings.Repositories = repositories
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settings, commands, taskToRun)
+
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, testCase.isDryRun); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var undecided []string
+			if testCase.isDryRun {
+				undecided = singleEvent[RunDescribed](t, service.progress).UndecidedSetups
+			}
+			for _, event := range reportedEvents[SetupUndecided](service.progress) {
+				undecided = append(undecided, event.Repository)
+			}
+			if !slices.Equal(undecided, testCase.wantUndecided) {
+				t.Errorf("expected warnings about %q, got %q", testCase.wantUndecided, undecided)
+			}
+		})
+	}
+}
