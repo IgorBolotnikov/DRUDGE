@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -73,6 +75,28 @@ const (
 	claudeModelFlag         = "--model"
 )
 
+// What setup leaves for later setup commands and for the agent. Both paths
+// are relative to the sandbox home, outside every worktree.
+const (
+	drudgePathEnv  = "DRUDGE_PATH"
+	drudgeHooksEnv = "DRUDGE_HOOKS"
+	// sandboxPathFile lists one directory per line to prepend to PATH.
+	sandboxPathFile = ".drudge/path"
+	// sandboxHooksDir holds one git hooks directory per repository.
+	sandboxHooksDir = ".drudge/hooks"
+)
+
+// prependListedPathScript prepends every directory the path file lists to
+// PATH, the first line first. A missing file and empty lines change nothing.
+var prependListedPathScript = fmt.Sprintf(`if [ -f "$%[1]s" ]; then
+  drudge_prefix=
+  while IFS= read -r drudge_dir || [ -n "$drudge_dir" ]; do
+    if [ -n "$drudge_dir" ]; then drudge_prefix="$drudge_prefix$drudge_dir:"; fi
+  done < "$%[1]s"
+  export PATH="$drudge_prefix$PATH"
+fi
+`, drudgePathEnv)
+
 // Drudger name prefixes.
 const (
 	claudeCodeDrudgerPrefix = "drudge-claude"
@@ -108,6 +132,7 @@ type sandboxCommand struct {
 type sandboxPlan struct {
 	inspect sandboxCommand // lists sandboxes so drudge can tell whether this Drudger's sandbox exists
 	create  sandboxCommand // creates the sandbox, runs only when it does not exist yet
+	reset   sandboxCommand // empties the path file and creates the hooks directories, runs before setup
 	setup   []setupCommand // prepares the repositories the task changes, in config order
 	start   []string       // starts the agent and passes the prompt, always runs and is never waited for
 }
@@ -172,6 +197,10 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 				argv:    create,
 				timeout: service.settings.SandboxTimeouts.Create,
 			},
+			reset: sandboxCommand{
+				argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, script: formatSetupReset(changed)}),
+				timeout: service.settings.SandboxTimeouts.Setup,
+			},
 			setup: service.sbxSetupCommands(sandboxName, changed),
 			start: sbxExecCommand(sbxExec{
 				sandbox:    sandboxName,
@@ -186,14 +215,16 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 
 // sbxSetupCommands builds the setup commands of every given repository. Each
 // one runs in the worktree of its repository, which the sandbox mounts at its
-// host path.
+// host path, with the path file and the hooks directory of its repository
+// exported and the listed directories on PATH.
 func (service *DrudgerService) sbxSetupCommands(sandboxName string, repositories []repositoryWorktree) []setupCommand {
 	var commands []setupCommand
 	for _, repository := range repositories {
+		environment := formatPathPreamble() + "export " + drudgeHooksEnv + "=" + sandboxHomePath(hooksDirOf(repository.Path)) + "\n"
 		for _, command := range repository.Setup {
 			commands = append(commands, setupCommand{
 				sandboxCommand: sandboxCommand{
-					argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, workdir: repository.Worktree, script: command}),
+					argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, workdir: repository.Worktree, script: environment + command}),
 					timeout: service.settings.SandboxTimeouts.Setup,
 				},
 				repository: repository.Name,
@@ -202,6 +233,44 @@ func (service *DrudgerService) sbxSetupCommands(sandboxName string, repositories
 		}
 	}
 	return commands
+}
+
+// formatSetupReset renders the script that empties the path file and creates
+// the hooks directory of every repository with setup commands. A launch runs
+// it even with no setup, so the agent never reads directories a previous
+// launch listed.
+func formatSetupReset(repositories []repositoryWorktree) string {
+	dirs := []string{sandboxHomePath(path.Dir(sandboxPathFile))}
+	for _, repository := range repositories {
+		if len(repository.Setup) > 0 {
+			dirs = append(dirs, sandboxHomePath(hooksDirOf(repository.Path)))
+		}
+	}
+	return "mkdir -p " + strings.Join(dirs, " ") + " && : > " + sandboxHomePath(sandboxPathFile)
+}
+
+// formatPathPreamble renders the shell lines that export the path file and put
+// the directories it lists on PATH.
+func formatPathPreamble() string {
+	return "export " + drudgePathEnv + "=" + sandboxHomePath(sandboxPathFile) + "\n" + prependListedPathScript
+}
+
+// hooksDirOf names the hooks directory of a repository under the sandbox home.
+// The repository path is escaped into one file name. A leading dot is escaped
+// too, so the project directory itself, recorded as ".", gets a directory of
+// its own.
+func hooksDirOf(repositoryPath string) string {
+	name := url.PathEscape(repositoryPath)
+	if strings.HasPrefix(name, ".") {
+		name = "%2E" + name[1:]
+	}
+	return path.Join(sandboxHooksDir, name)
+}
+
+// sandboxHomePath renders a path under the sandbox home for a shell in the
+// sandbox, which expands the home and reads the rest literally.
+func sandboxHomePath(relative string) string {
+	return `"$HOME"/` + shellQuote(relative)
 }
 
 // sbxExec is a shell script to run in a sandbox. An empty workdir leaves the
@@ -251,6 +320,8 @@ func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCom
 //
 // An empty model leaves the choice of model to the harness.
 //
+// The agent gets the directories the path file lists on PATH.
+//
 // The exit file is written last and is the only marker of a finished run.
 func formatLauncher(workspace, runDir, model string) string {
 	agentArgs := []string{
@@ -266,7 +337,8 @@ func formatLauncher(workspace, runDir, model string) string {
 	agentCommand := strings.Join(agentArgs, " ")
 
 	return fmt.Sprintf(
-		"cd %s || exit 1\n%s > %s 2> %s\necho $? > %s\n",
+		"%scd %s || exit 1\n%s > %s 2> %s\necho $? > %s\n",
+		formatPathPreamble(),
 		shellQuote(workspace),
 		agentCommand,
 		shellQuote(common.RunStreamPath(runDir)),

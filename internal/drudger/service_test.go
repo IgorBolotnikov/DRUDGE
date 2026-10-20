@@ -257,22 +257,19 @@ func (runner *fakeCommandRunner) writeInitEventOf(argv []string) {
 }
 
 // streamPathIn reads the event stream path out of a launcher script. The
-// script redirects its agent on the second line, and the stream is the first
-// of the two redirects.
+// stream is the first of the two redirects on the line that runs the agent.
 func streamPathIn(argv []string) string {
-	lines := strings.Split(argv[len(argv)-1], "\n")
-	if len(lines) < 2 {
-		return ""
+	for _, line := range strings.Split(argv[len(argv)-1], "\n") {
+		_, redirected, hasRedirect := strings.Cut(line, " > ")
+		if !hasRedirect {
+			continue
+		}
+		quoted, _, hasRedirect := strings.Cut(redirected, " 2> ")
+		if hasRedirect {
+			return shellUnquote(quoted)
+		}
 	}
-	_, redirected, hasRedirect := strings.Cut(lines[1], " > ")
-	if !hasRedirect {
-		return ""
-	}
-	quoted, _, hasRedirect := strings.Cut(redirected, " 2> ")
-	if !hasRedirect {
-		return ""
-	}
-	return shellUnquote(quoted)
+	return ""
 }
 
 // shellUnquote turns a value the launcher quoted back into the path it names.
@@ -1268,8 +1265,9 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 }
 
 func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
-	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
-	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand}
+	// The first exec resets the setup, the second one starts the agent.
+	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxExecSubcommand}
+	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand}
 
 	cases := []struct {
 		name    string
@@ -1581,16 +1579,22 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			wantRuns: 2,
 		},
 		{
-			name:     "starting the agent fails",
+			name:     "emptying the path file fails",
 			outputs:  []string{sandboxListingWith(testSandbox)},
 			errs:     []error{nil, spawnErr},
 			wantRuns: 2,
 		},
 		{
+			name:     "starting the agent fails",
+			outputs:  []string{sandboxListingWith(testSandbox)},
+			errs:     []error{nil, nil, spawnErr},
+			wantRuns: 3,
+		},
+		{
 			name:          "the agent never comes up",
 			outputs:       []string{sandboxListingWith(testSandbox)},
 			isAgentSilent: true,
-			wantRuns:      2,
+			wantRuns:      3,
 		},
 	}
 
@@ -1834,10 +1838,10 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand}) {
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand}) {
 		t.Errorf("expected the stored sandbox to be reused, got %v", got)
 	}
-	if start := commands.call(sbxExecSubcommand); !slices.Contains(start, namedByAnEarlierHarness) {
+	if start := commands.started[0]; !slices.Contains(start, namedByAnEarlierHarness) {
 		t.Errorf("expected the start call to name sandbox %q, got %v", namedByAnEarlierHarness, start)
 	}
 	if claimed := service.drudgers.atSlot(1); claimed.Sandbox != namedByAnEarlierHarness {
@@ -1856,7 +1860,7 @@ func TestDrudgerService_RunTask_LaunchesTheAgentWithoutWaitingForIt(t *testing.T
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	wantAll := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
+	wantAll := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxExecSubcommand}
 	if got := commands.subcommands(); !slices.Equal(got, wantAll) {
 		t.Errorf("expected commands %v, got %v", wantAll, got)
 	}

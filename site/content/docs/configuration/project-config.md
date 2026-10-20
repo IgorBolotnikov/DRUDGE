@@ -19,6 +19,19 @@ A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.steps
 
 Each entry of `repositories` can list `setup` commands, like `npm ci` or `make deps`. A launch runs them in the sandbox of the Drudger after it puts the worktrees on the task branch and before it starts the agent. They run for every repository the task changes, in config order, each with `sh -c` in the worktree of its repository. The output goes to `setup.log` in the run directory. The first command that fails stops the launch and the task stays where it was. `sandboxTimeouts.setupSeconds` of the [global config](../config/) caps each command. `drg task run --dry-run` lists the commands without running them.
 
+Every setup command gets two environment variables:
+
+- `DRUDGE_PATH` names the file `.drudge/path` under the sandbox home. A launch empties it before the first setup command. A command adds a directory to PATH by appending one line to the file. The later setup commands of the launch and the agent get every listed directory prepended to their PATH, in file order.
+- `DRUDGE_HOOKS` names a git hooks directory of the repository under `.drudge/hooks/` of the sandbox home, outside the worktree. A launch creates it before the setup of the repository runs. Every repository gets a directory of its own.
+
+```json
+"setup": [
+  "curl -fsSL https://mise.run | sh",
+  "echo \"$HOME/.local/bin\" >> \"$DRUDGE_PATH\"",
+  "mise install"
+]
+```
+
 ## Keys
 
 <!-- BEGIN GENERATED: edits between these markers are overwritten -->

@@ -432,7 +432,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	if err := service.runSetup(taskID, runDir, plan.setup); err != nil {
+	if err := service.runSetup(taskID, runDir, plan.reset, plan.setup); err != nil {
 		return err
 	}
 
@@ -521,7 +521,7 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		return err
 	}
 
-	commands := [][]string{plan.inspect.argv, plan.create.argv}
+	commands := [][]string{plan.inspect.argv, plan.create.argv, plan.reset.argv}
 	for _, setup := range plan.setup {
 		commands = append(commands, setup.argv)
 	}

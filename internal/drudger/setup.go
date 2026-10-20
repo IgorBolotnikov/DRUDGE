@@ -28,10 +28,15 @@ type exitCoder interface {
 	ExitCode() int
 }
 
-// runSetup runs the setup commands of a plan in order and stops at the first
-// one that fails. Every line they write is reported and goes to the setup log
-// of the run, which is rewritten after each command.
-func (service *DrudgerService) runSetup(taskID task.TaskID, runDir string, commands []setupCommand) error {
+// runSetup runs the reset of a plan and then its setup commands in order, and
+// stops at the first one that fails. Every line the setup commands write is
+// reported and goes to the setup log of the run, which is rewritten after each
+// command.
+func (service *DrudgerService) runSetup(taskID task.TaskID, runDir string, reset sandboxCommand, commands []setupCommand) error {
+	if _, _, err := service.runSbx(reset); err != nil {
+		return fmt.Errorf("could not empty the PATH file and create the git hooks directories in the sandbox: %w", err)
+	}
+
 	logPath := common.RunSetupLogPath(runDir)
 	var setupLog strings.Builder
 

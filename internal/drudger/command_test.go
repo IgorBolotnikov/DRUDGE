@@ -1,6 +1,9 @@
 package drudger
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -39,7 +42,7 @@ func TestDrudgerService_RunTask_IssuesTheSbxCommands(t *testing.T) {
 		t.Errorf("expected create %v, got %v", wantCreate, got)
 	}
 
-	start := commands.call(sbxExecSubcommand)
+	start := commands.started[0]
 	wantStartPrefix := []string{"sbx", "exec", "-d", testSandbox, "sh", "-c"}
 	if len(start) != len(wantStartPrefix)+1 {
 		t.Fatalf("expected the launcher as the last argument of start, got %v", start)
@@ -114,7 +117,7 @@ func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testi
 	projectDir := setupProjectDir(t)
 	commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
 
-	start := commands.call(sbxExecSubcommand)
+	start := commands.started[0]
 	launcher := start[len(start)-1]
 	runDir := common.RunDir(projectDir, "task-1")
 
@@ -132,6 +135,70 @@ func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testi
 		if !strings.Contains(launcher, fragment) {
 			t.Errorf("expected the launcher to contain %q, got %q", fragment, launcher)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_LauncherPutsTheListedDirectoriesOnPath(t *testing.T) {
+	cases := []struct {
+		name string
+		// pathFile is what the path file holds. Nil leaves the file out.
+		pathFile *string
+		// wantPrefix is what the launcher puts before the PATH it was given.
+		wantPrefix string
+	}{
+		{name: "a missing path file"},
+		{name: "an empty path file", pathFile: new("")},
+		{
+			name:       "directories in file order",
+			pathFile:   new("/nonexistent/mise/shims\n/nonexistent/.local/bin\n"),
+			wantPrefix: "/nonexistent/mise/shims:/nonexistent/.local/bin:",
+		},
+		{
+			name:       "empty lines and a missing last newline",
+			pathFile:   new("\n/nonexistent/first\n\n/nonexistent/last"),
+			wantPrefix: "/nonexistent/first:/nonexistent/last:",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
+			launcher := commands.started[0][len(commands.started[0])-1]
+
+			sandboxHome := t.TempDir()
+			if testCase.pathFile != nil {
+				writeTestFile(t, filepath.Join(sandboxHome, sandboxPathFile), *testCase.pathFile)
+			}
+			// The agent stands in for claude and writes its PATH to the stream.
+			agentDir := t.TempDir()
+			agentPath := filepath.Join(agentDir, claudeBinary)
+			writeTestFile(t, agentPath, "#!/bin/sh\nprintf %s \"$PATH\"\n")
+			if err := os.Chmod(agentPath, 0o755); err != nil {
+				t.Fatalf("could not make the agent executable: %v", err)
+			}
+			givenPath := agentDir + ":/usr/bin:/bin"
+			runDir := common.RunDir(projectDir, "task-1")
+			for _, dir := range []string{runDir, slotRoot(projectDir, 1)} {
+				if err := common.EnsureDir(dir); err != nil {
+					t.Fatalf("could not create %s: %v", dir, err)
+				}
+			}
+
+			shell := exec.Command(shellBinary, shellCommandFlag, launcher)
+			shell.Env = []string{"HOME=" + sandboxHome, "PATH=" + givenPath}
+			if output, err := shell.CombinedOutput(); err != nil {
+				t.Fatalf("the launcher failed: %v: %s", err, output)
+			}
+
+			got, err := os.ReadFile(common.RunStreamPath(runDir))
+			if err != nil {
+				t.Fatalf("could not read the stream: %v", err)
+			}
+			if want := testCase.wantPrefix + givenPath; string(got) != want {
+				t.Errorf("expected the agent to get PATH %q, got %q", want, got)
+			}
+		})
 	}
 }
 
@@ -169,7 +236,7 @@ func TestDrudgerService_RunTask_LauncherPassesTheModel(t *testing.T) {
 			settings.Model = testCase.model
 			commands := runTaskFor(t, settings, projectDir, sandboxListingWith(testSandbox))
 
-			start := commands.call(sbxExecSubcommand)
+			start := commands.started[0]
 			launcher := start[len(start)-1]
 			if !strings.Contains(launcher, testCase.wantCommand) {
 				t.Errorf("expected the launcher to contain %q, got %q", testCase.wantCommand, launcher)
@@ -192,7 +259,7 @@ func TestDrudgerService_RunTask_LauncherQuotesAwkwardWorkspacePaths(t *testing.T
 			projectDir := setupProjectDirNamed(t, testCase.dirName)
 			commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
 
-			start := commands.call(sbxExecSubcommand)
+			start := commands.started[0]
 			launcher := start[len(start)-1]
 
 			// A shell must read the path back whole. Single quotes do that for
@@ -229,7 +296,7 @@ func TestDrudgerService_RunTask_NamesASandboxPerProject(t *testing.T) {
 			settings.ProjectSlug = testCase.projectSlug
 			commands := runTaskFor(t, settings, projectDir, sandboxListingWith(testCase.wantSandbox))
 
-			start := commands.call(sbxExecSubcommand)
+			start := commands.started[0]
 			if !slices.Contains(start, testCase.wantSandbox) {
 				t.Errorf("expected the start call to name sandbox %q, got %v", testCase.wantSandbox, start)
 			}
@@ -261,7 +328,7 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 		}
 	}
 
-	wantSubcommands := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand}
+	wantSubcommands := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxExecSubcommand}
 	if len(described.Commands) != len(wantSubcommands) {
 		t.Fatalf("expected the commands %v, got %v", wantSubcommands, described.Commands)
 	}
@@ -273,7 +340,7 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 	if create := described.Commands[1]; !slices.Contains(create, slotRoot(projectDir, 1)) {
 		t.Errorf("expected the create command to mount %s, got %v", slotRoot(projectDir, 1), create)
 	}
-	if start := described.Commands[2]; !slices.Contains(start, sbxDetachedFlag) {
+	if start := described.Commands[3]; !slices.Contains(start, sbxDetachedFlag) {
 		t.Errorf("expected the start command to hold the argument %q, got %v", sbxDetachedFlag, start)
 	}
 

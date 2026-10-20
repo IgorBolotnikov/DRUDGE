@@ -41,10 +41,23 @@ func (exitErr fakeExitError) ExitCode() int {
 	return exitErr.code
 }
 
-// setupCall is the sbx exec command line of one setup command.
-func setupCall(projectDir string, repository string, command string) []string {
+// setupCall is the sbx exec command line of one setup command of a
+// repository whose hooks directory under the sandbox home is hooksDir.
+func setupCall(projectDir string, repository string, hooksDir string, command string) []string {
 	worktree := filepath.Join(slotRoot(projectDir, 1), repository)
-	return []string{sbxBinary, sbxExecSubcommand, sbxWorkdirFlag, worktree, testSandbox, shellBinary, shellCommandFlag, command}
+	script := formatPathPreamble() + `export DRUDGE_HOOKS="$HOME"/'` + hooksDir + "'\n" + command
+	return []string{sbxBinary, sbxExecSubcommand, sbxWorkdirFlag, worktree, testSandbox, shellBinary, shellCommandFlag, script}
+}
+
+// resetCall is the sbx exec command line that empties the path file and
+// creates the given hooks directories under the sandbox home.
+func resetCall(hooksDirs ...string) []string {
+	script := `mkdir -p "$HOME"/'.drudge'`
+	for _, hooksDir := range hooksDirs {
+		script += ` "$HOME"/'` + hooksDir + `'`
+	}
+	script += ` && : > "$HOME"/'.drudge/path'`
+	return []string{sbxBinary, sbxExecSubcommand, testSandbox, shellBinary, shellCommandFlag, script}
 }
 
 // firstEventIndex returns where the first event of a type sits among the
@@ -60,20 +73,24 @@ func TestDrudgerService_RunTask_RunsTheSetupOfTheChangedRepositories(t *testing.
 	cases := []struct {
 		name         string
 		repositories []string
+		// wantHooks are the hooks directories the reset creates.
+		wantHooks []string
 		// wantSetup is every setup command, as its repository and command.
 		wantSetup [][2]string
 	}{
 		{
 			name:      "a task naming no repositories sets up all of them in config order",
+			wantHooks: []string{".drudge/hooks/api", ".drudge/hooks/ui"},
 			wantSetup: [][2]string{{"api", "npm ci"}, {"api", "make deps"}, {"ui", "pnpm install"}},
 		},
 		{
 			name:         "a task sets up only the repositories it lists",
 			repositories: []string{"ui"},
+			wantHooks:    []string{".drudge/hooks/ui"},
 			wantSetup:    [][2]string{{"ui", "pnpm install"}},
 		},
 		{
-			name:         "a repository with no setup runs nothing",
+			name:         "a repository with no setup only empties the path file",
 			repositories: []string{"docs"},
 		},
 	}
@@ -91,25 +108,25 @@ func TestDrudgerService_RunTask_RunsTheSetupOfTheChangedRepositories(t *testing.
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			wantCalls := make([][]string, 0, len(testCase.wantSetup))
+			wantCalls := [][]string{resetCall(testCase.wantHooks...)}
 			for _, setup := range testCase.wantSetup {
-				wantCalls = append(wantCalls, setupCall(projectDir, setup[0], setup[1]))
+				wantCalls = append(wantCalls, setupCall(projectDir, setup[0], ".drudge/hooks/"+setup[0], setup[1]))
 			}
-			// The sandbox is listed and created first, and the agent start is the
-			// last call.
+			// The sandbox is listed and created first, the reset runs before the
+			// setup and the agent start is the last call.
 			calls := commands.calls
 			if got := commands.subcommands()[:2]; !slices.Equal(got, []string{sbxLsSubcommand, sbxCreateSubcommand}) {
 				t.Fatalf("expected the sandbox to be listed and created first, got %v", commands.subcommands())
 			}
 			if got := calls[2 : len(calls)-1]; !slices.EqualFunc(got, wantCalls, slices.Equal[[]string]) {
-				t.Errorf("expected the setup calls %q, got %q", wantCalls, got)
+				t.Errorf("expected the reset and setup calls %q, got %q", wantCalls, got)
 			}
 			if got := calls[len(calls)-1]; !slices.Equal(got, commands.started[0]) {
 				t.Errorf("expected the agent start to be the last call, got %q", got)
 			}
 			for index := range wantCalls {
 				if got := commands.timeouts[2+index]; got != service.settings.SandboxTimeouts.Setup {
-					t.Errorf("expected setup call %d to get %s, got %s", index, service.settings.SandboxTimeouts.Setup, got)
+					t.Errorf("expected call %d after the create to get %s, got %s", index, service.settings.SandboxTimeouts.Setup, got)
 				}
 			}
 
@@ -165,8 +182,8 @@ func TestDrudgerService_RunTask_WritesTheSetupLog(t *testing.T) {
 	taskToRun.Repositories = []string{"api"}
 	commands := &fakeCommandRunner{
 		projectDir: projectDir,
-		outputs:    []string{sandboxListingWith(), "", "added 120 packages", "deps ready"},
-		stderrs:    []string{"", "", "npm warn deprecated", ""},
+		outputs:    []string{sandboxListingWith(), "", "", "added 120 packages", "deps ready"},
+		stderrs:    []string{"", "", "", "npm warn deprecated", ""},
 	}
 	service := newTestServiceWith(settingsWithSetup(), commands, taskToRun)
 
@@ -214,8 +231,8 @@ func TestDrudgerService_RunTask_SetupFailureStopsTheLaunch(t *testing.T) {
 			commands := &fakeCommandRunner{
 				projectDir: projectDir,
 				// The second setup command, make deps of api, fails.
-				outputs: []string{sandboxListingWith(), "", "added 120 packages", "make: *** No rule to make target"},
-				errs:    []error{nil, nil, nil, testCase.err},
+				outputs: []string{sandboxListingWith(), "", "", "added 120 packages", "make: *** No rule to make target"},
+				errs:    []error{nil, nil, nil, nil, testCase.err},
 			}
 			service := newTestServiceWith(settingsWithSetup(), commands, taskToRun)
 
@@ -230,7 +247,7 @@ func TestDrudgerService_RunTask_SetupFailureStopsTheLaunch(t *testing.T) {
 					t.Errorf("expected the error to name %q, got %q", want, err)
 				}
 			}
-			if got := len(commands.calls); got != 4 {
+			if got := len(commands.calls); got != 5 {
 				t.Errorf("expected the setup to stop at the failing command, got calls %q", commands.calls)
 			}
 			if len(commands.started) != 0 {
@@ -265,13 +282,68 @@ func TestDrudgerService_RunTask_DryRunListsTheSetupCommands(t *testing.T) {
 	}
 
 	described := singleEvent[RunDescribed](t, service.progress)
-	if got := len(described.Commands); got != 4 {
-		t.Fatalf("expected the list, create, setup and start commands, got %q", described.Commands)
+	if got := len(described.Commands); got != 5 {
+		t.Fatalf("expected the list, create, reset, setup and start commands, got %q", described.Commands)
 	}
-	if got, want := described.Commands[2], setupCall(projectDir, "ui", "pnpm install"); !slices.Equal(got, want) {
+	if got, want := described.Commands[2], resetCall(".drudge/hooks/ui"); !slices.Equal(got, want) {
+		t.Errorf("expected the reset command %q, got %q", want, got)
+	}
+	if got, want := described.Commands[3], setupCall(projectDir, "ui", ".drudge/hooks/ui", "pnpm install"); !slices.Equal(got, want) {
 		t.Errorf("expected the setup command %q, got %q", want, got)
 	}
 	if commands.calls != nil {
 		t.Errorf("expected nothing to run, got %q", commands.calls)
+	}
+}
+
+func TestDrudgerService_RunTask_GivesEachRepositoryItsOwnHooksDirectory(t *testing.T) {
+	cases := []struct {
+		name  string
+		paths []string
+		// wantHooks is the hooks directory of each repository, in config order.
+		wantHooks []string
+	}{
+		{
+			name:      "a project that is itself a repository",
+			paths:     []string{"."},
+			wantHooks: []string{".drudge/hooks/%2E"},
+		},
+		{
+			name:      "a nested path stays apart from a flat name that looks like it",
+			paths:     []string{"services/api", "services%2Fapi", "services-api"},
+			wantHooks: []string{".drudge/hooks/services%2Fapi", ".drudge/hooks/services%252Fapi", ".drudge/hooks/services-api"},
+		},
+		{
+			name:      "a leading dot is escaped and an inner one is kept",
+			paths:     []string{".config", "web.app"},
+			wantHooks: []string{".drudge/hooks/%2Econfig", ".drudge/hooks/web.app"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			settings := testSettings()
+			for _, path := range testCase.paths {
+				settings.Repositories = append(settings.Repositories, project.Repository{Path: path, Setup: []string{"make hooks"}})
+			}
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settings, commands, taskToRun)
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			wantCalls := [][]string{resetCall(testCase.wantHooks...)}
+			for index, path := range testCase.paths {
+				wantCalls = append(wantCalls, setupCall(projectDir, path, testCase.wantHooks[index], "make hooks"))
+			}
+			calls := commands.calls
+			if got := calls[2 : len(calls)-1]; !slices.EqualFunc(got, wantCalls, slices.Equal[[]string]) {
+				t.Errorf("expected the reset and setup calls %q, got %q", wantCalls, got)
+			}
+		})
 	}
 }

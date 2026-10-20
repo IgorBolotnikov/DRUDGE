@@ -83,7 +83,7 @@ func TestDrudgerService_RunTask_CreatesAWorktreePerRepository(t *testing.T) {
 				t.Errorf("expected create %v, got %v", wantCreate, got)
 			}
 
-			start := commands.call(sbxExecSubcommand)
+			start := commands.started[0]
 			if launcher := start[len(start)-1]; !strings.Contains(launcher, "cd '"+root+"' || exit 1") {
 				t.Errorf("expected the agent to work in %s, got %q", root, launcher)
 			}
@@ -152,7 +152,7 @@ func TestDrudgerService_RunTask_ReusesTheWorkspaceOfTheSlot(t *testing.T) {
 	commands := &fakeCommandRunner{
 		projectDir: projectDir,
 		// The second run lists the sandbox the first one created.
-		outputs: []string{sandboxListingWith(), "", "", sandboxListingWith(testSandbox)},
+		outputs: []string{sandboxListingWith(), "", "", "", sandboxListingWith(testSandbox)},
 	}
 	service := newTestServiceWith(settingsWith(testRepoPath), commands, firstTask, secondTask)
 
