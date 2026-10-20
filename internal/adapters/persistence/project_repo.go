@@ -33,7 +33,7 @@ func (r *FileProjectRepository) CreateProject(dto project.CreateProjectDto) (*pr
 	proj := &project.Project{
 		Slug:      dto.Slug,
 		Name:      dto.Name,
-		Location:  dto.Location,
+		Location:  projectDir,
 		CreatedAt: dto.CreatedAt,
 	}
 

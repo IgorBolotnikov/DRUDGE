@@ -31,7 +31,6 @@ func newTestRepo(t *testing.T, projects ...testProject) (*FileProjectRepository,
 		dto := project.CreateProjectDto{
 			Name:      stored.name,
 			Slug:      stored.slug,
-			Location:  filepath.Join(projectsDir, stored.slug),
 			CreatedAt: time.Now().UTC(),
 		}
 		if _, err := repo.CreateProject(dto); err != nil {
@@ -39,6 +38,66 @@ func newTestRepo(t *testing.T, projects ...testProject) (*FileProjectRepository,
 		}
 	}
 	return repo, projectsDir
+}
+
+func TestFileProjectRepository_CreateProject(t *testing.T) {
+	cases := []struct {
+		name     string
+		projects []testProject
+		created  testProject
+	}{
+		{
+			name:    "the first project",
+			created: testProject{name: "Shop", slug: "shop"},
+		},
+		{
+			name:     "a project beside another",
+			projects: []testProject{{name: "Blog", slug: "blog"}},
+			created:  testProject{name: "Shop", slug: "shop"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, projectsDir := newTestRepo(t, testCase.projects...)
+			createdAt := time.Now().UTC()
+
+			created, err := repo.CreateProject(project.CreateProjectDto{
+				Name:      testCase.created.name,
+				Slug:      testCase.created.slug,
+				CreatedAt: createdAt,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			wantDir := filepath.Join(projectsDir, testCase.created.slug)
+			if info, err := os.Stat(wantDir); err != nil || !info.IsDir() {
+				t.Fatalf("expected the project directory %s, got %v", wantDir, err)
+			}
+			want := project.Project{
+				Name:      testCase.created.name,
+				Slug:      testCase.created.slug,
+				Location:  wantDir,
+				CreatedAt: createdAt,
+			}
+			if *created != want {
+				t.Errorf("expected the created project %+v, got %+v", want, *created)
+			}
+
+			var stored project.Project
+			if err := common.ReadJSON(filepath.Join(wantDir, ProjectConfigFile), &stored); err != nil {
+				t.Fatalf("could not read the project file: %v", err)
+			}
+			if !stored.CreatedAt.Equal(createdAt) {
+				t.Errorf("expected the stored creation time %v, got %v", createdAt, stored.CreatedAt)
+			}
+			stored.CreatedAt = createdAt
+			if stored != want {
+				t.Errorf("expected the stored project %+v, got %+v", want, stored)
+			}
+		})
+	}
 }
 
 func TestFileProjectRepository_DeleteProject(t *testing.T) {

@@ -60,15 +60,9 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 
 	slug := common.SlugFrom(name)
 
-	location, err := common.ResolveProjectDir(slug)
-	if err != nil {
-		return nil, err
-	}
-
 	dto := CreateProjectDto{
 		Name:      name,
 		Slug:      slug,
-		Location:  location,
 		CreatedAt: time.Now().UTC(),
 	}
 

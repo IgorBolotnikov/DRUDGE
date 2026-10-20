@@ -508,14 +508,6 @@ func LocalConfigPath() string {
 	return filepath.Join(DotDrudgeDirName, LocalConfigName)
 }
 
-func ResolveProjectDir(slug string) (string, error) {
-	home, err := HomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(ProjectsDir(home), slug), nil
-}
-
 // ThemeConfigPath returns a path to a global theme config file
 func ThemeConfigPath(home string) string {
 	return filepath.Join(DrudgeDir(home), ThemeConfigName)

@@ -14,7 +14,7 @@ type fakeProjectRepo struct {
 }
 
 func (repo *fakeProjectRepo) CreateProject(dto CreateProjectDto) (*Project, error) {
-	created := &Project{Name: dto.Name, Slug: dto.Slug, Location: dto.Location, CreatedAt: dto.CreatedAt}
+	created := &Project{Name: dto.Name, Slug: dto.Slug, CreatedAt: dto.CreatedAt}
 	repo.projects = append(repo.projects, created)
 	return created, nil
 }
