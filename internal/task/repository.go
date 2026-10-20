@@ -46,6 +46,14 @@ type TaskRepository interface {
 	// accept refuses stays where it is. isRemoved is false when someone else
 	// holds the lock.
 	DeleteTask(projectSlug string, id TaskID, accept func(taskToRemove *Task) error) (isRemoved bool, err error)
+	// ReadTaskFiles reads every task file of a project as it is stored, each
+	// under the lock of its task, and parses it the way a listing does. A file
+	// that does not parse fails the whole read with an error naming the file.
+	ReadTaskFiles(projectSlug string) ([]TaskFile, error)
+	// WriteTaskArchive writes files and manifest into a new archive at path.
+	// It refuses a path that already exists with an error matching
+	// fs.ErrExist.
+	WriteTaskArchive(path string, manifest ArchiveManifest, files []TaskFile) error
 }
 
 // ErrTaskUnchanged tells an update that the task needs no write. A change

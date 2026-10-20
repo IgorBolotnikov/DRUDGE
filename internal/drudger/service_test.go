@@ -121,6 +121,14 @@ func (repo *fakeTaskRepo) CreateTask(dto task.CreateTaskDto) (*task.Task, error)
 	return nil, fmt.Errorf("CreateTask should not be called")
 }
 
+func (repo *fakeTaskRepo) ReadTaskFiles(projectSlug string) ([]task.TaskFile, error) {
+	return nil, fmt.Errorf("ReadTaskFiles should not be called")
+}
+
+func (repo *fakeTaskRepo) WriteTaskArchive(path string, manifest task.ArchiveManifest, files []task.TaskFile) error {
+	return fmt.Errorf("WriteTaskArchive should not be called")
+}
+
 func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*task.Task, error) {
 	if repo.listErr != nil {
 		return nil, repo.listErr

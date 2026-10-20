@@ -160,6 +160,18 @@ var TaskCmd = &Cmd{
 				return func(args []string) error { return taskRunlog(task.TaskID(args[0]), *isRaw) }
 			},
 		},
+		{
+			Name: "export",
+			Desc: "Write every task of a project into a zip archive",
+			Help: "Write every task file of a project, whatever its status, into a new zip archive along with a manifest.\n" +
+				"It reads every task file first and stops at the first one that does not parse, before it writes anything.\n" +
+				"A project with no tasks and an archive path that already exists are refused.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskExportFlags{}
+				flags.declare(fs)
+				return func([]string) error { return taskExport(flags) }
+			},
+		},
 	},
 }
 

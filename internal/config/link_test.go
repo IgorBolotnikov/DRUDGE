@@ -50,3 +50,42 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalConfigLinker_LinkedSlug(t *testing.T) {
+	tests := []struct {
+		name           string
+		raw            string
+		hasLocalConfig bool
+		wantSlug       string
+		wantIsLinked   bool
+		wantErr        bool
+	}{
+		{name: "a directory with no local config"},
+		{name: "a project directory", raw: `{"projectSlug": "drudge"}`, hasLocalConfig: true, wantSlug: "drudge", wantIsLinked: true},
+		{name: "a local config with no slug", raw: `{}`, hasLocalConfig: true, wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupLocalDir(t)
+			if test.hasLocalConfig {
+				writeLocalConfig(t, test.raw)
+			}
+
+			slug, isLinked, err := NewLocalConfigLinker("/home/user").LinkedSlug()
+
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LinkedSlug: %v", err)
+			}
+			if slug != test.wantSlug || isLinked != test.wantIsLinked {
+				t.Errorf("LinkedSlug = %q, %v, want %q, %v", slug, isLinked, test.wantSlug, test.wantIsLinked)
+			}
+		})
+	}
+}

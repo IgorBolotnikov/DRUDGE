@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"io/fs"
 	"reflect"
 	"slices"
 	"strings"
@@ -21,6 +22,20 @@ type fakeTaskRepo struct {
 	// storing it.
 	writeFailures map[TaskID]error
 	writes        int
+	// files are what reading the task files hands back, and readErr fails
+	// the read.
+	files   []TaskFile
+	readErr error
+	// existingPaths are the paths an archive write refuses.
+	existingPaths []string
+	archive       *writtenArchive
+}
+
+// writtenArchive is what an archive write was handed.
+type writtenArchive struct {
+	path     string
+	manifest ArchiveManifest
+	files    []TaskFile
 }
 
 func (repo *fakeTaskRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -37,6 +52,18 @@ func (repo *fakeTaskRepo) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 	repo.tasks = append(repo.tasks, created)
 	return created, nil
+}
+
+func (repo *fakeTaskRepo) ReadTaskFiles(projectSlug string) ([]TaskFile, error) {
+	return repo.files, repo.readErr
+}
+
+func (repo *fakeTaskRepo) WriteTaskArchive(path string, manifest ArchiveManifest, files []TaskFile) error {
+	if slices.Contains(repo.existingPaths, path) {
+		return &fs.PathError{Op: "open", Path: path, Err: fs.ErrExist}
+	}
+	repo.archive = &writtenArchive{path: path, manifest: manifest, files: files}
+	return nil
 }
 
 func (repo *fakeTaskRepo) ListTasks(projectSlug string) ([]*Task, error) {

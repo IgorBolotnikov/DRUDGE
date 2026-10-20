@@ -62,6 +62,14 @@ func (m *mockRepo) DeleteTask(projectSlug string, id TaskID, accept func(*Task) 
 	return false, errors.New("DeleteTask should not be called")
 }
 
+func (m *mockRepo) ReadTaskFiles(projectSlug string) ([]TaskFile, error) {
+	return nil, errors.New("ReadTaskFiles should not be called")
+}
+
+func (m *mockRepo) WriteTaskArchive(path string, manifest ArchiveManifest, files []TaskFile) error {
+	return errors.New("WriteTaskArchive should not be called")
+}
+
 func TestTaskService_UpdateTask(t *testing.T) {
 	cases := []struct {
 		name     string

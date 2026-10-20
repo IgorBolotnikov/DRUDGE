@@ -28,3 +28,4 @@ Task management commands
 | [`drg task pr`]({{< relref "/docs/cli/task/pr" >}}) | Open the pull requests close-out left behind for a task |
 | [`drg task status`]({{< relref "/docs/cli/task/status" >}}) | Tell how the agent working on a task is doing |
 | [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) | Print the logs of the latest run of a task |
+| [`drg task export`]({{< relref "/docs/cli/task/export" >}}) | Write every task of a project into a zip archive |

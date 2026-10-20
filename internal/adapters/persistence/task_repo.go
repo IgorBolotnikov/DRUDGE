@@ -294,7 +294,11 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 	if err != nil {
 		return nil, fmt.Errorf("could not read file %s: %w", path, err)
 	}
+	return parseTask(data), nil
+}
 
+// parseTask reads a task out of the content of a task file.
+func parseTask(data []byte) *task.Task {
 	metadata, content := common.ParseFrontMatter(string(data))
 
 	t := &task.Task{
@@ -372,7 +376,7 @@ func (r *FileTaskRepository) parseTaskFromFile(path string) (*task.Task, error) 
 		t.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	}
 
-	return t, nil
+	return t
 }
 
 func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error) {
@@ -538,14 +542,24 @@ func taskIDMatches(matches []taskFile) []task.IDMatch {
 
 // readTaskFile parses the task a file holds.
 func (r *FileTaskRepository) readTaskFile(found taskFile) (*task.Task, error) {
-	parsed, err := r.parseTaskFromFile(found.path)
+	data, err := os.ReadFile(found.path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not read file %s: %w", found.path, err)
 	}
+	return parseTaskFile(found, data)
+}
+
+// parseTaskFile parses the content of a task file and checks it against the
+// file name.
+func parseTaskFile(found taskFile, data []byte) (*task.Task, error) {
+	parsed := parseTask(data)
 
 	// The file name is what a lookup matches on, and the front matter is what
 	// drudge works from. A file renamed by hand creates ID inconsistency
 	// and is a hard error due to invalid data.
+	if parsed.ID == "" {
+		return nil, fmt.Errorf("task file %s has no %q in its front matter, add the id its file name starts with", found.path, metaKeyID)
+	}
 	if parsed.ID != found.id {
 		return nil, fmt.Errorf("task file %s holds task %s, rename it back or fix its id", found.path, parsed.ID)
 	}

@@ -55,11 +55,17 @@ func (progress *fakeProgress) Report(event any) {
 	progress.events = append(progress.events, event)
 }
 
-// fakeLinker records the links it is handed.
+// fakeLinker records the links it is handed. linkedSlug is the project the
+// current directory is linked to, empty outside a project directory.
 type fakeLinker struct {
 	wasCalled    bool
 	slug         string
 	repositories []Repository
+	linkedSlug   string
+}
+
+func (linker *fakeLinker) LinkedSlug() (string, bool, error) {
+	return linker.linkedSlug, linker.linkedSlug != "", nil
 }
 
 func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository) error {

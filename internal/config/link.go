@@ -1,6 +1,9 @@
 package config
 
-import "github.com/IgorBolotnikov/DRUDGE/internal/project"
+import (
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+)
 
 // LocalConfigLinker implements project.DirectoryLinker over the local config
 // file.
@@ -24,4 +27,19 @@ func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []proje
 		Repositories: repositories,
 	}
 	return localCfg.Save()
+}
+
+// LinkedSlug reads the project slug out of the local config file. A directory
+// with no local config file is linked to no project, and an invalid one is an
+// error.
+func (linker *LocalConfigLinker) LinkedSlug() (slug string, isLinked bool, err error) {
+	isPresent, err := common.Exists(common.LocalConfigPath())
+	if err != nil || !isPresent {
+		return "", false, err
+	}
+	localCfg, err := LoadLocal()
+	if err != nil {
+		return "", false, err
+	}
+	return localCfg.ProjectSlug, true, nil
 }
