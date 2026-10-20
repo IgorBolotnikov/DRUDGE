@@ -184,6 +184,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "    sbx: Pulling agent image 40%\n",
 		},
 		{
+			name:  "a local file copied",
+			event: drudger.LocalFileCopied{LocalCopy: drudger.LocalCopy{Repository: "api", Path: ".env"}},
+			want:  "✓ Copied .env of api into its worktree\n",
+		},
+		{
+			name:       "a local file missing",
+			event:      drudger.LocalFileMissing{LocalCopy: drudger.LocalCopy{Repository: "api", Path: ".env"}, Dir: "/work/api"},
+			wantStderr: "! Did not copy .env of api, it is not in /work/api\n",
+		},
+		{
 			name:  "a setup command started",
 			event: drudger.SetupCommandStarted{Repository: "api", Command: "npm ci", Timeout: 15 * time.Minute},
 			want:  "› Running setup of api, up to 15m0s: npm ci…\n",
@@ -296,6 +306,32 @@ func TestCLIProgress_Report(t *testing.T) {
 				`      "sbx" "ls" "--json"` + "\n" +
 				"· Nothing ran, it was a dry run\n",
 			wantStderr: "  ! NPM_TOKEN is not set in this environment, a launch stops on it\n",
+		},
+		{
+			name: "a run described with copies",
+			event: drudger.RunDescribed{
+				Task:         sampleTask,
+				Slot:         3,
+				Sandbox:      "drudge-claude-demo-3",
+				PromptSource: "~/.drudge/prompt.md",
+				Prompt:       "Fix login\n",
+				Copies:       []drudger.LocalCopy{{Repository: "api", Path: ".env"}, {Repository: "ui", Path: "certs"}},
+				Commands:     [][]string{{"sbx", "ls", "--json"}},
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Copies\n" +
+				"\n" +
+				"      api  .env\n" +
+				"      ui  certs\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
 		},
 		{
 			name: "Drudgers above the limit",

@@ -108,6 +108,10 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Warn("The sbx daemon did not come up, DRUDGE gives it one more try")
 	case drudger.SbxDaemonStarted:
 		p.out.Done("The sbx daemon was not running, sbx started it")
+	case drudger.LocalFileCopied:
+		p.out.Done("Copied %s of %s into its worktree", event.Path, event.Repository)
+	case drudger.LocalFileMissing:
+		p.out.Warn("Did not copy %s of %s, it is not in %s", event.Path, event.Repository, event.Dir)
 	case drudger.SetupCommandStarted:
 		p.out.Step("Running setup of %s, up to %s: %s", event.Repository, event.Timeout, event.Command)
 	case drudger.SetupOutput:
@@ -138,6 +142,14 @@ func (p *cliProgress) reportDrudger(event any) {
 			p.out.Warn("%s is not set in this environment, a launch stops on it", name)
 		}
 		p.out.Block(event.Prompt)
+		if len(event.Copies) > 0 {
+			copies := make([]string, 0, len(event.Copies))
+			for _, copied := range event.Copies {
+				copies = append(copies, fmt.Sprintf("%s  %s", copied.Repository, copied.Path))
+			}
+			p.out.Field("Copies", "")
+			p.out.Block(strings.Join(copies, "\n"))
+		}
 		p.out.Field("Commands", "")
 		p.out.Block(strings.Join(commands, "\n"))
 		p.out.SkipResult("Nothing ran, it was a dry run")

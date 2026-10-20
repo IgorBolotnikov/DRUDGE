@@ -3,7 +3,10 @@ package common
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -128,6 +131,96 @@ func fillTempFile(file *os.File, content string) error {
 		return err
 	}
 	return os.Chmod(file.Name(), DefaultFilePerm)
+}
+
+// CopyPath copies a file or a directory tree from source to target and creates
+// the parents of target. A copied file replaces whatever sits at its target
+// path and keeps the permission bits of its source. A symlink is copied as a
+// link. Anything else, like a socket, is refused.
+func CopyPath(source string, target string) error {
+	if err := EnsureDir(filepath.Dir(target)); err != nil {
+		return err
+	}
+
+	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		return copyEntry(path, filepath.Join(target, relative), entry)
+	})
+	if err != nil {
+		return fmt.Errorf("could not copy %s to %s: %w", source, target, err)
+	}
+	return nil
+}
+
+// copyEntry copies one entry of a tree. A directory is created, its content is
+// copied by the walk.
+func copyEntry(source string, target string, entry fs.DirEntry) error {
+	info, err := entry.Info()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case info.IsDir():
+		return os.MkdirAll(target, info.Mode().Perm())
+	case info.Mode()&fs.ModeSymlink != 0:
+		return copySymlink(source, target)
+	case info.Mode().IsRegular():
+		return copyFile(source, target, info.Mode().Perm())
+	default:
+		return fmt.Errorf("%s is not a file, a directory or a symlink", source)
+	}
+}
+
+// copySymlink points target at what the link at source points at.
+func copySymlink(source string, target string) error {
+	link, err := os.Readlink(source)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return os.Symlink(link, target)
+}
+
+// copyFile copies the content of a file into a temporary file beside target
+// and renames it over target. The rename replaces a symlink at target, so the
+// copy never writes through a link.
+func copyFile(source string, target string, perm fs.FileMode) error {
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	tempFile, err := os.CreateTemp(filepath.Dir(target), tempFilePattern)
+	if err != nil {
+		return err
+	}
+	tempPath := tempFile.Name()
+
+	_, err = io.Copy(tempFile, sourceFile)
+	if closeErr := tempFile.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chmod(tempPath, perm)
+	}
+	if err == nil {
+		err = os.Rename(tempPath, target)
+	}
+	if err != nil {
+		os.Remove(tempPath)
+		return err
+	}
+	return nil
 }
 
 // ReadFile reads path as plain text.

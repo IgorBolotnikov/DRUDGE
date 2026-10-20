@@ -106,9 +106,10 @@ func (cfg *LocalConfig) Save() error {
 	return common.WriteJSON(common.LocalConfigPath(), cfg)
 }
 
-// validateRepositories rejects a repository that names no path, and one whose
-// path reaches outside the project directory. An empty list passes, since that
-// is what an absent key unmarshals to.
+// validateRepositories rejects a repository that names no path, one whose path
+// reaches outside the project directory and one with a copy path that is empty
+// or reaches outside the repository. An empty list passes, since that is what
+// an absent key unmarshals to.
 func validateRepositories(repositories []project.Repository, path string) error {
 	for _, repository := range repositories {
 		if repository.Path == "" {
@@ -116,6 +117,14 @@ func validateRepositories(repositories []project.Repository, path string) error 
 		}
 		if filepath.IsAbs(repository.Path) || escapesDir(repository.Path) {
 			return fmt.Errorf("%s has %s entry %q, a repository path must stay inside the project directory", path, project.RepositoriesKey, repository.Path)
+		}
+		for _, copyPath := range repository.Copy {
+			if copyPath == "" || filepath.IsAbs(copyPath) || escapesDir(copyPath) {
+				return fmt.Errorf(
+					"%s has %s path %q in the %s entry %q, a copy path must stay inside the repository",
+					path, project.RepositoryCopyKey, copyPath, project.RepositoriesKey, repository.Path,
+				)
+			}
 		}
 	}
 	return nil

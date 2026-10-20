@@ -432,6 +432,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
+	if err := service.copyLocalFiles(listed.Repositories); err != nil {
+		return err
+	}
+
 	if err := service.ensureSandbox(projectSlug, claimed, plan, mounts); err != nil {
 		return err
 	}
@@ -482,10 +486,10 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 }
 
 // RunDescribed reports what a dry run would use: the Drudger, the prompt and
-// where it came from, the environment variables the sandbox is passed and the
-// argv of every command in the order they run. UnsetEnvNames are the variables
-// a launch would stop on. With pull requests on it also names the provider
-// they would be opened on.
+// where it came from, the environment variables the sandbox is passed, the
+// paths copied into the worktrees and the argv of every command in the order
+// they run. UnsetEnvNames are the variables a launch would stop on. With pull
+// requests on it also names the provider they would be opened on.
 type RunDescribed struct {
 	Task                *task.Task
 	Slot                int
@@ -494,6 +498,7 @@ type RunDescribed struct {
 	Prompt              string
 	EnvNames            []string
 	UnsetEnvNames       []string
+	Copies              []LocalCopy
 	Commands            [][]string
 	PullRequestProvider remote.Provider
 }
@@ -543,6 +548,7 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		Prompt:        prompt,
 		EnvNames:      service.settings.EnvNames,
 		UnsetEnvNames: service.unsetEnvNames(),
+		Copies:        localCopies(listed.Repositories),
 		Commands:      commands,
 	}
 	if service.remote != nil {

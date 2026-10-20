@@ -24,4 +24,7 @@ type Repository struct {
 	// repository before the agent starts. Nil and empty both run nothing, and
 	// a saved config keeps an empty list.
 	Setup []string `json:"setup,omitzero"`
+	// Copy are the paths, relative to the repository, a launch copies from the
+	// repository into its worktree before setup runs.
+	Copy []string `json:"copy,omitzero"`
 }

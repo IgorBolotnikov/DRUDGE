@@ -144,6 +144,37 @@ func TestLoadLocal(t *testing.T) {
 			wantRepos:       []project.Repository{{Path: "api", Setup: []string{"npm ci", "make deps"}}, {Path: "ui", Setup: []string{}}},
 		},
 		{
+			name:            "repositories with copy paths",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": [".env", "config/local", "./certs/dev.pem"]}, {"path": "ui", "copy": []}]}`,
+			wantSlug:        "test-project",
+			wantRepos:       []project.Repository{{Path: "api", Copy: []string{".env", "config/local", "./certs/dev.pem"}}, {Path: "ui", Copy: []string{}}},
+		},
+		{
+			name:            "copy path outside the repository",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": ["../ui/.env"]}]}`,
+			wantErr:         true,
+		},
+		{
+			name:            "copy path climbing out after a subdirectory",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": ["config/../../.env"]}]}`,
+			wantErr:         true,
+		},
+		{
+			name:            "absolute copy path",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": ["/etc/hosts"]}]}`,
+			wantErr:         true,
+		},
+		{
+			name:            "empty copy path",
+			shouldWriteFile: true,
+			raw:             `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": [""]}]}`,
+			wantErr:         true,
+		},
+		{
 			name:            "repository with no path",
 			shouldWriteFile: true,
 			raw:             `{"projectSlug": "test-project", "repositories": [{"defaultBranch": "main"}]}`,
@@ -293,6 +324,21 @@ func TestLoadLocal_InvalidEnvName_ErrorNamesFileKeyAndName(t *testing.T) {
 	}
 }
 
+func TestLoadLocal_EscapingCopyPath_ErrorNamesFileKeyRepositoryAndPath(t *testing.T) {
+	setupLocalDir(t)
+	writeLocalConfig(t, `{"projectSlug": "test-project", "repositories": [{"path": "api", "copy": ["../.env"]}]}`)
+
+	_, err := LoadLocal()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, fragment := range []string{common.LocalConfigPath(), project.RepositoryCopyKey, `"api"`, `"../.env"`} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("error = %q, want it to name %q", err, fragment)
+		}
+	}
+}
+
 func TestSave_RoundTrips(t *testing.T) {
 	setupLocalDir(t)
 
@@ -304,8 +350,8 @@ func TestSave_RoundTrips(t *testing.T) {
 		Task:                  TaskConfig{DefaultStatus: task.StatusTodo},
 		Drudger:               LocalDrudgerConfig{Env: []string{"NODE_AUTH_TOKEN", "NPM_TOKEN"}},
 		Repositories: []project.Repository{
-			{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}},
-			{Path: "ui", Setup: []string{}},
+			{Path: "api", DefaultBranch: "trunk", Setup: []string{"npm ci"}, Copy: []string{".env", "config/local"}},
+			{Path: "ui", Setup: []string{}, Copy: []string{}},
 			{Path: "docs"},
 		},
 	}

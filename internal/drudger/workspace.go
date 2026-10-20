@@ -45,6 +45,9 @@ type projectRepository struct {
 	// Setup are the shell commands a launch runs in the worktree before the
 	// agent starts.
 	Setup []string
+	// Copy are the paths, relative to the repository, a launch copies from Dir
+	// into the worktree before setup runs.
+	Copy []string
 }
 
 // BaseRef is what a repository cuts work from. A repository with a remote
@@ -177,6 +180,7 @@ func (service *DrudgerService) resolveRepository(layout projectLayout, repositor
 		DefaultBranch: branch,
 		HasRemote:     hasRemote,
 		Setup:         repository.Setup,
+		Copy:          repository.Copy,
 	}, nil
 }
 

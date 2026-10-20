@@ -581,3 +581,144 @@ func assertDirEntries(t *testing.T, dir string, want ...string) {
 		t.Errorf("%s holds %v, want %v", dir, names, want)
 	}
 }
+
+// writeTree writes files under root, keyed by their path relative to root.
+func writeTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for path, content := range files {
+		full := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+}
+
+func TestCopyPath(t *testing.T) {
+	tests := []struct {
+		name string
+		// path is what gets copied, relative to the source and the target root.
+		path   string
+		source map[string]string
+		target map[string]string
+		// want are the files of the target root after the copy.
+		want map[string]string
+	}{
+		{
+			name:   "a file into a missing parent",
+			path:   "config/.env",
+			source: map[string]string{"config/.env": "TOKEN=1"},
+			want:   map[string]string{"config/.env": "TOKEN=1"},
+		},
+		{
+			name:   "a file over an existing one",
+			path:   ".env",
+			source: map[string]string{".env": "TOKEN=new"},
+			target: map[string]string{".env": "TOKEN=old"},
+			want:   map[string]string{".env": "TOKEN=new"},
+		},
+		{
+			name:   "a directory recursively, overwriting and keeping other files",
+			path:   "certs",
+			source: map[string]string{"certs/dev.pem": "new", "certs/nested/ca.pem": "ca"},
+			target: map[string]string{"certs/dev.pem": "old", "certs/extra.pem": "extra"},
+			want:   map[string]string{"certs/dev.pem": "new", "certs/nested/ca.pem": "ca", "certs/extra.pem": "extra"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourceRoot := t.TempDir()
+			targetRoot := t.TempDir()
+			writeTree(t, sourceRoot, test.source)
+			writeTree(t, targetRoot, test.target)
+
+			err := CopyPath(filepath.Join(sourceRoot, test.path), filepath.Join(targetRoot, test.path))
+			if err != nil {
+				t.Fatalf("CopyPath: %v", err)
+			}
+
+			for path, want := range test.want {
+				got, err := os.ReadFile(filepath.Join(targetRoot, path))
+				if err != nil {
+					t.Fatalf("could not read %s: %v", path, err)
+				}
+				if string(got) != want {
+					t.Errorf("%s = %q, want %q", path, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestCopyPath_KeepsPermissions(t *testing.T) {
+	sourceRoot := t.TempDir()
+	targetRoot := t.TempDir()
+	source := filepath.Join(sourceRoot, "run.sh")
+	if err := os.WriteFile(source, []byte("#!/bin/sh"), 0o750); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	target := filepath.Join(targetRoot, "run.sh")
+	if err := CopyPath(source, target); err != nil {
+		t.Fatalf("CopyPath: %v", err)
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o750 {
+		t.Errorf("permissions = %o, want %o", got, 0o750)
+	}
+}
+
+func TestCopyPath_CopiesSymlinksAsLinksAndReplacesThem(t *testing.T) {
+	sourceRoot := t.TempDir()
+	targetRoot := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside")
+	writeTree(t, sourceRoot, map[string]string{"config/.env": "TOKEN=1"})
+	if err := os.Symlink(".env", filepath.Join(sourceRoot, "config", "link")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	if err := os.WriteFile(outside, []byte("untouched"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	// A link in the target where the copy puts a file is replaced, never
+	// written through.
+	if err := os.MkdirAll(filepath.Join(targetRoot, "config"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(targetRoot, "config", ".env")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	if err := CopyPath(filepath.Join(sourceRoot, "config"), filepath.Join(targetRoot, "config")); err != nil {
+		t.Fatalf("CopyPath: %v", err)
+	}
+
+	if got, _ := os.Readlink(filepath.Join(targetRoot, "config", "link")); got != ".env" {
+		t.Errorf("link points at %q, want %q", got, ".env")
+	}
+	if got, _ := os.ReadFile(filepath.Join(targetRoot, "config", ".env")); string(got) != "TOKEN=1" {
+		t.Errorf(".env = %q, want %q", got, "TOKEN=1")
+	}
+	if got, _ := os.ReadFile(outside); string(got) != "untouched" {
+		t.Errorf("the file a target link pointed at = %q, want it untouched", got)
+	}
+}
+
+func TestCopyPath_MissingSource_ReturnsError(t *testing.T) {
+	source := filepath.Join(t.TempDir(), ".env")
+	target := filepath.Join(t.TempDir(), ".env")
+
+	err := CopyPath(source, target)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), source) {
+		t.Errorf("error = %q, want it to name %q", err, source)
+	}
+}

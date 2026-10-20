@@ -15,6 +15,7 @@ import (
 const (
 	RepositoriesKey   = "repositories"
 	RepositoryPathKey = "path"
+	RepositoryCopyKey = "copy"
 	DefaultBranchKey  = "defaultBranch"
 )
 
