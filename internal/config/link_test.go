@@ -98,6 +98,51 @@ func TestLocalConfigLinker_LinkedSlug(t *testing.T) {
 	}
 }
 
+func TestLocalConfigLinker_RecordedSetup(t *testing.T) {
+	tests := []struct {
+		name             string
+		raw              string
+		hasLocalConfig   bool
+		wantRepositories []project.Repository
+		wantEnvNames     []string
+		wantErr          bool
+	}{
+		{name: "a directory with no local config", wantErr: true},
+		{name: "a local config with no slug", raw: `{}`, hasLocalConfig: true, wantErr: true},
+		{
+			name:             "a project directory",
+			raw:              `{"projectSlug": "drudge", "drudger": {"env": ["NPM_TOKEN"]}, "repositories": [{"path": "api", "setup": ["npm ci"]}]}`,
+			hasLocalConfig:   true,
+			wantRepositories: []project.Repository{{Path: "api", Setup: []string{"npm ci"}}},
+			wantEnvNames:     []string{"NPM_TOKEN"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupLocalDir(t)
+			if test.hasLocalConfig {
+				writeLocalConfig(t, test.raw)
+			}
+
+			repositories, envNames, err := NewLocalConfigLinker("/home/user").RecordedSetup()
+
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RecordedSetup: %v", err)
+			}
+			if !reflect.DeepEqual(repositories, test.wantRepositories) || !reflect.DeepEqual(envNames, test.wantEnvNames) {
+				t.Errorf("RecordedSetup = %+v, %q, want %+v, %q", repositories, envNames, test.wantRepositories, test.wantEnvNames)
+			}
+		})
+	}
+}
+
 func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 	tests := []struct {
 		name         string

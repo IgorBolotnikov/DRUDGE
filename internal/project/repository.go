@@ -44,9 +44,13 @@ type DetectedSetup struct {
 	Copy  []string
 }
 
-// SetupRecorder writes detected setups into the repositories of the local
-// config. Setups maps the path of a repository to what detection wrote for it.
-// EnvNames are added to the Drudger env.
+// SetupRecorder reads the repositories and the Drudger env of the local config
+// and writes detected setups into those repositories.
 type SetupRecorder interface {
+	// RecordedSetup reads the repositories and the Drudger env names of the
+	// linked directory.
+	RecordedSetup() (repositories []Repository, envNames []string, err error)
+	// RecordSetup writes setups, keyed by the path of a repository, into the
+	// repositories and adds envNames to the Drudger env.
 	RecordSetup(setups map[string]DetectedSetup, envNames []string) error
 }

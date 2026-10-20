@@ -38,14 +38,18 @@ type DetectSetupOptions struct {
 	IsDryRun bool
 }
 
-// DetectSetup proposes setup commands and copy paths for the repositories of a
-// project from the files in the root of each repository, and records them
-// through the SetupRecorder. A repository that has a setup key keeps it and
-// its copy paths, an empty list included, unless the options force new ones.
-// Every environment variable name a repository needs that envNames, the
-// Drudger env of the project, does not list is recorded too. A name is never
-// removed from the Drudger env.
-func (p *ProjectService) DetectSetup(projectDir string, repositories []Repository, envNames []string, options DetectSetupOptions) ([]SetupDetection, error) {
+// DetectSetup reads the repositories and the Drudger env of a project through
+// the SetupRecorder, proposes setup commands and copy paths for each
+// repository from the files in its root, and records them through the
+// SetupRecorder. A repository that has a setup key keeps it and its copy
+// paths, an empty list included, unless the options force new ones. Every
+// environment variable name a repository needs that the Drudger env does not
+// list is recorded too. A name is never removed from the Drudger env.
+func (p *ProjectService) DetectSetup(projectDir string, options DetectSetupOptions) ([]SetupDetection, error) {
+	repositories, envNames, err := p.setups.RecordedSetup()
+	if err != nil {
+		return nil, err
+	}
 	if len(repositories) == 0 {
 		return nil, fmt.Errorf("the local config records no %s, add them under %q", RepositoriesKey, RepositoriesKey)
 	}

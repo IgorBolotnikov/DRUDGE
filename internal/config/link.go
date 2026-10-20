@@ -52,6 +52,16 @@ func (linker *LocalConfigLinker) LinkedSlug() (slug string, isLinked bool, err e
 	return localCfg.ProjectSlug, true, nil
 }
 
+// RecordedSetup reads the repositories and the Drudger env names out of the
+// local config file. A directory with no local config file is an error.
+func (linker *LocalConfigLinker) RecordedSetup() (repositories []project.Repository, envNames []string, err error) {
+	localCfg, err := LoadLocal()
+	if err != nil {
+		return nil, nil, err
+	}
+	return localCfg.Repositories, localCfg.Drudger.Env, nil
+}
+
 // RecordSetup sets the setup and the copy paths of every repository of the
 // local config that setups names, and leaves the other repositories and keys
 // as they are. A nil copy keeps the copy paths of the repository. Every name

@@ -133,10 +133,6 @@ func (flags *projectDetectFlags) options() project.DetectSetupOptions {
 }
 
 func projectDetect(options project.DetectSetupOptions) error {
-	localCfg, err := config.LoadLocal()
-	if err != nil {
-		return err
-	}
 	projectDir, err := common.WorkDir()
 	if err != nil {
 		return err
@@ -148,7 +144,7 @@ func projectDetect(options project.DetectSetupOptions) error {
 		return err
 	}
 
-	detections, err := svc.DetectSetup(projectDir, localCfg.Repositories, localCfg.Drudger.Env, options)
+	detections, err := svc.DetectSetup(projectDir, options)
 	if err != nil {
 		return err
 	}
