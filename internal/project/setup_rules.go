@@ -19,6 +19,7 @@ type setupRule func(root repositoryRoot) ([]SetupLine, error)
 var setupRules = []setupRule{
 	toolchainSetup,
 	packageSetup,
+	preCommitSetup,
 }
 
 // Files in a repository root the rules read.
@@ -37,6 +38,7 @@ const (
 	poetryLockfile       = "poetry.lock"
 	pyprojectFile        = "pyproject.toml"
 	pipRequirementsFile  = "requirements.txt"
+	preCommitConfigFile  = ".pre-commit-config.yaml"
 	miseToolsTable       = "tools"
 	poetryPyprojectTable = "tool.poetry"
 	commentPrefix        = "#"
@@ -57,10 +59,11 @@ var toolchainPinFiles = []string{
 // tool versions file.
 var miseConfigFiles = []string{miseConfigFile, hiddenMiseConfigFile}
 
-// Tools a package rule takes from mise when the repository pins them.
+// Tools a rule takes from mise when the repository pins them.
 const (
-	yarnTool   = "yarn"
-	poetryTool = "poetry"
+	yarnTool      = "yarn"
+	poetryTool    = "poetry"
+	preCommitTool = "pre-commit"
 )
 
 // Setup lines of the toolchain rule. mise reads the idiomatic version files of
@@ -85,6 +88,19 @@ const (
 	poetryInstallLine      = "poetry install"
 	createVenvLine         = "python3 -m venv .venv"
 	pipInstallLine         = ".venv/bin/pip install -r " + pipRequirementsFile
+)
+
+// Setup lines of the pre-commit rule. A worktree shares the hooks directory of
+// its host repository, so the hook goes into the hooks directory of the
+// sandbox, set for this worktree only. The hook runs hook-impl with the
+// arguments of the hook pre-commit install writes. Pre-commit install itself
+// refuses to run once the hooks path is set.
+const (
+	installPreCommitLine      = "uv tool install pre-commit"
+	enableWorktreeConfigLine  = "git config extensions.worktreeConfig true"
+	setHooksPathLine          = `git config --worktree core.hooksPath "$DRUDGE_HOOKS"`
+	writePreCommitHookLine    = `printf '#!/bin/sh\nexec pre-commit hook-impl --config=` + preCommitConfigFile + ` --hook-type=pre-commit --hook-dir "$(cd "$(dirname "$0")" && pwd)" -- "$@"\n' > "$DRUDGE_HOOKS/pre-commit" && chmod +x "$DRUDGE_HOOKS/pre-commit"`
+	installPreCommitHooksLine = "pre-commit install-hooks"
 )
 
 // toolchainSetup installs mise and the toolchains a repository pins.
@@ -194,6 +210,26 @@ func poetryTrigger(root repositoryRoot) (string, error) {
 
 func pipSetup(root repositoryRoot) ([]SetupLine, error) {
 	return linesIfPresent(root, pipRequirementsFile, createVenvLine, pipInstallLine)
+}
+
+// preCommitSetup installs the hooks of a pre-commit config into the worktree.
+// Pre-commit comes from mise when the repository pins it and from uv
+// otherwise. Hooks a package manager installs, like husky, need no line.
+func preCommitSetup(root repositoryRoot) ([]SetupLine, error) {
+	hasConfig, err := root.has(preCommitConfigFile)
+	if err != nil || !hasConfig {
+		return nil, err
+	}
+
+	hookLines := []string{enableWorktreeConfigLine, setHooksPathLine, writePreCommitHookLine, installPreCommitHooksLine}
+	isPinned, err := root.pins(preCommitTool)
+	if err != nil {
+		return nil, err
+	}
+	if isPinned {
+		return linesFrom(preCommitConfigFile, hookLines...), nil
+	}
+	return linesFrom(preCommitConfigFile, append([]string{installPreCommitLine}, hookLines...)...), nil
 }
 
 // linesIfPresent returns the commands triggered by a file when the root holds

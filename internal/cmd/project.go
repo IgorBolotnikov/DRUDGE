@@ -37,6 +37,7 @@ var ProjectCmd = &Cmd{
 			Help: "Detect the setup commands and copy paths of every repository of the project from the files in its root, and write them to the setup and copy keys of each repository in the local config.\n" +
 				"A version file like .tool-versions, mise.toml, .nvmrc or .python-version gets mise and the pinned toolchains installed.\n" +
 				"The first lockfile found gets its packages installed. A repository that matches nothing gets an empty list.\n" +
+				"A .pre-commit-config.yaml gets pre-commit and its hooks installed into the worktree only, through a hooks directory of the sandbox. Hooks a package manager installs, like husky, get no lines.\n" +
 				"Files git ignores whose name starts with .env, like .env and .env.local, and a .envs directory get copied. A .envrc is never copied.\n" +
 				"Every ${NAME} in a .npmrc is added to " + drudger.EnvKey + " of the local config, for every repository. Names already there stay and no name is ever removed, --force included.\n" +
 				"It reads only the root of each repository.\n" +

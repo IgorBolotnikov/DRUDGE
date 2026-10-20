@@ -46,6 +46,16 @@ func miseLines(trigger string) []SetupLine {
 	return linesFrom(trigger, installMiseLine, enableIdiomaticPinsLine, miseInstallLine, addMiseShimsLine)
 }
 
+func preCommitHookLines() []SetupLine {
+	return linesFrom(
+		".pre-commit-config.yaml",
+		"git config extensions.worktreeConfig true",
+		`git config --worktree core.hooksPath "$DRUDGE_HOOKS"`,
+		`printf '#!/bin/sh\nexec pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$(cd "$(dirname "$0")" && pwd)" -- "$@"\n' > "$DRUDGE_HOOKS/pre-commit" && chmod +x "$DRUDGE_HOOKS/pre-commit"`,
+		"pre-commit install-hooks",
+	)
+}
+
 func TestDetectSetup_Rules(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -187,6 +197,29 @@ func TestDetectSetup_Rules(t *testing.T) {
 			name:  "the first lockfile wins",
 			files: map[string]string{"yarn.lock": "", "package-lock.json": "{}", "requirements.txt": ""},
 			want:  linesFrom("package-lock.json", "npm ci"),
+		},
+		{
+			name:  "a pre-commit config",
+			files: map[string]string{".pre-commit-config.yaml": "repos: []\n"},
+			want:  append(linesFrom(".pre-commit-config.yaml", "uv tool install pre-commit"), preCommitHookLines()...),
+		},
+		{
+			name:  "a pre-commit config with a lockfile",
+			files: map[string]string{".pre-commit-config.yaml": "repos: []\n", "uv.lock": ""},
+			want: append(
+				linesFrom("uv.lock", "uv sync --frozen"),
+				append(linesFrom(".pre-commit-config.yaml", "uv tool install pre-commit"), preCommitHookLines()...)...,
+			),
+		},
+		{
+			name:  "pre-commit pinned in the tool versions file comes from mise",
+			files: map[string]string{".pre-commit-config.yaml": "repos: []\n", ".tool-versions": "pre-commit 4.0.1\n"},
+			want:  append(miseLines(".tool-versions"), preCommitHookLines()...),
+		},
+		{
+			name:  "husky gets no lines",
+			files: map[string]string{".husky/pre-commit": "npm test\n", "package.json": `{"scripts": {"prepare": "husky"}}`},
+			want:  []SetupLine{},
 		},
 		{
 			name:  "files below the root are not read",
