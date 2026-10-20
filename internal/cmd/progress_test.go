@@ -159,6 +159,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "· Changed no tasks in project demo, added 0, updated 0, skipped 2 as older, 1 as in progress and 0 as bad\n",
 		},
 		{
+			name:  "a dry run of an import",
+			event: task.ImportDryRunStarted{ProjectSlug: "demo", Path: "tasks.zip"},
+			want:  "Dry run of an import of tasks.zip into project demo\n",
+		},
+		{
+			name:  "the end of a dry run of an import",
+			event: task.TasksImported{ProjectSlug: "demo", Added: 1, SkippedAsOlder: 1, IsDryRun: true},
+			want:  "· Wrote nothing, it was a dry run. It would have added 1, updated 0, skipped 1 as older, 0 as in progress and 0 as bad\n",
+		},
+		{
 			name:  "a project created",
 			event: project.ProjectCreated{Project: &project.Project{Name: "Test Project"}},
 			want:  "",

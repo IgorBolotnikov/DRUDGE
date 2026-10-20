@@ -40,6 +40,16 @@ type BadArchiveEntry struct {
 type ImportTasksDto struct {
 	ProjectSlug string
 	Path        string
+	// IsDryRun runs every check and comparison of an import and writes
+	// nothing.
+	IsDryRun bool
+}
+
+// ImportDryRunStarted reports that an import is a dry run. It comes before
+// every other event of the import.
+type ImportDryRunStarted struct {
+	ProjectSlug string
+	Path        string
 }
 
 // ProjectSlugRewritten warns that an archive holds the tasks of another
@@ -89,6 +99,7 @@ type TasksImported struct {
 	SkippedAsOlder      int
 	SkippedAsInProgress int
 	SkippedAsBad        int
+	IsDryRun            bool
 }
 
 // ImportTasks adds every task of an archive the project does not have yet, and
@@ -98,7 +109,8 @@ type TasksImported struct {
 // to the target project. It reads and checks the whole archive before it
 // writes anything, and refuses an archive of another format version. A bad
 // entry is skipped with a warning, the other entries are imported, and the
-// import fails once it is over.
+// import fails once it is over. A dry run reports the same events and
+// returns the same error, and writes nothing.
 func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 	if dto.ProjectSlug == "" {
 		return errors.New("project slug is required")
@@ -123,6 +135,9 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		)
 	}
 
+	if dto.IsDryRun {
+		service.progress.Report(ImportDryRunStarted{ProjectSlug: dto.ProjectSlug, Path: dto.Path})
+	}
 	if manifest.ProjectSlug != dto.ProjectSlug {
 		service.progress.Report(ProjectSlugRewritten{ArchiveSlug: manifest.ProjectSlug, ProjectSlug: dto.ProjectSlug})
 	}
@@ -132,23 +147,40 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		service.progress.Report(badEntry)
 	}
 
-	summary := TasksImported{ProjectSlug: dto.ProjectSlug, SkippedAsBad: len(badEntries)}
+	var storedByID map[TaskID]*Task
+	if dto.IsDryRun {
+		storedByID, err = service.storedTasksByID(dto.ProjectSlug)
+		if err != nil {
+			return fmt.Errorf("could not import %s: %w", dto.Path, err)
+		}
+	}
+
+	summary := TasksImported{ProjectSlug: dto.ProjectSlug, SkippedAsBad: len(badEntries), IsDryRun: dto.IsDryRun}
 	for _, file := range files {
 		archived := file.Task
 		archived.ProjectSlug = dto.ProjectSlug
 
 		var isStored bool
 		var skipReason ImportSkipReason
-		isWritten, err := service.repo.WriteTask(dto.ProjectSlug, archived, func(stored *Task) error {
+		decide := func(stored *Task) error {
 			isStored = stored != nil
 			skipReason = resolveImport(stored, archived)
 			if skipReason != "" {
 				return ErrTaskUnchanged
 			}
 			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("could not import task %s: %w", archived.ID, err)
+		}
+
+		// A dry run decides against the tasks it listed. A write creates the
+		// tasks directory and a lock file even when decide keeps the task.
+		var isWritten bool
+		if dto.IsDryRun {
+			isWritten = decide(storedByID[archived.ID]) == nil
+		} else {
+			isWritten, err = service.repo.WriteTask(dto.ProjectSlug, archived, decide)
+			if err != nil {
+				return fmt.Errorf("could not import task %s: %w", archived.ID, err)
+			}
 		}
 
 		switch {
@@ -172,6 +204,18 @@ func (service *TaskService) ImportTasks(dto ImportTasksDto) error {
 		return fmt.Errorf("skipped %s of %s as bad, a fresh export on the source device fixes them", formatEntryCount(len(badEntries)), dto.Path)
 	}
 	return nil
+}
+
+func (service *TaskService) storedTasksByID(projectSlug string) (map[TaskID]*Task, error) {
+	tasks, err := service.repo.ListTasks(projectSlug)
+	if err != nil {
+		return nil, err
+	}
+	storedByID := make(map[TaskID]*Task, len(tasks))
+	for _, stored := range tasks {
+		storedByID[stored.ID] = stored
+	}
+	return storedByID, nil
 }
 
 // checkArchivedTasks splits the task files of an archive into the ones import

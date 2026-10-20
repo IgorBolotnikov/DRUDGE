@@ -47,6 +47,16 @@ Import prints one line per task, `✓` for an added or updated task and `·` for
 
 Import writes nothing when the archive is not a zip, holds no `manifest.json`, holds a manifest that does not parse, or has a format version this `drg` does not read. Make a fresh export on the source device and import that.
 
+### Dry run
+
+Pass `--dry-run` to see what an import would do before it does it:
+
+```sh
+drg task import <slug>-<count>-tasks-<YYYYMMDD-HHMMSS>.zip --dry-run
+```
+
+A dry run reads the archive, checks every entry and compares every task with the Project, the same way an import does. It prints the same lines under a `Dry run of an import` header and ends with what the import would have added, updated and skipped. It exits with an error when the archive holds bad entries, the same way an import does. It writes nothing into the Project.
+
 ### Bad entries
 
 Import checks every entry of the archive before it compares it with the Project. An entry is bad when it is:

@@ -356,47 +356,48 @@ func TestTaskService_ImportTasks_RefusesBrokenArchives(t *testing.T) {
 	}
 }
 
-func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
-	cases := []struct {
-		name         string
-		badEntryName string
-		badEntry     string
-		// wantReason is a fragment the warning about the bad entry carries.
-		wantReason string
-	}{
-		{
-			name:         "a task file that does not parse",
-			badEntryName: shipTaskFile,
-			badEntry:     "Ship it without front matter\n",
-			wantReason:   "it does not parse: task file " + shipTaskFile + ` has no "id" in its front matter`,
-		},
-		{
-			name:         "a task with an unknown status",
-			badEntryName: shipTaskFile,
-			badEntry:     strings.Replace(shipTask, "status: draft", "status: someday", 1),
-			wantReason:   `it has unknown status "someday"`,
-		},
-		{
-			name:         "a task with an id that is not a UUID",
-			badEntryName: "ship-it Ship it.md",
-			badEntry:     strings.Replace(shipTask, "id: abcd1234-2222-4316-8aba-8a67a8f01f8f", "id: ship-it", 1),
-			wantReason:   `its id "ship-it" is not a UUID`,
-		},
-		{
-			name:         "a path outside the archive",
-			badEntryName: "../" + shipTaskFile,
-			badEntry:     shipTask,
-			wantReason:   "its path points outside the archive",
-		},
-		{
-			name:         "a stray file",
-			badEntryName: "notes.txt",
-			badEntry:     "Ship it on Friday\n",
-			wantReason:   "it is neither a task file nor the manifest.json",
-		},
-	}
+// badEntryCases are archives that hold the login task and one bad entry.
+var badEntryCases = []struct {
+	name         string
+	badEntryName string
+	badEntry     string
+	// wantReason is a fragment the warning about the bad entry carries.
+	wantReason string
+}{
+	{
+		name:         "a task file that does not parse",
+		badEntryName: shipTaskFile,
+		badEntry:     "Ship it without front matter\n",
+		wantReason:   "it does not parse: task file " + shipTaskFile + ` has no "id" in its front matter`,
+	},
+	{
+		name:         "a task with an unknown status",
+		badEntryName: shipTaskFile,
+		badEntry:     strings.Replace(shipTask, "status: draft", "status: someday", 1),
+		wantReason:   `it has unknown status "someday"`,
+	},
+	{
+		name:         "a task with an id that is not a UUID",
+		badEntryName: "ship-it Ship it.md",
+		badEntry:     strings.Replace(shipTask, "id: abcd1234-2222-4316-8aba-8a67a8f01f8f", "id: ship-it", 1),
+		wantReason:   `its id "ship-it" is not a UUID`,
+	},
+	{
+		name:         "a path outside the archive",
+		badEntryName: "../" + shipTaskFile,
+		badEntry:     shipTask,
+		wantReason:   "its path points outside the archive",
+	},
+	{
+		name:         "a stray file",
+		badEntryName: "notes.txt",
+		badEntry:     "Ship it on Friday\n",
+		wantReason:   "it is neither a task file nor the manifest.json",
+	},
+}
 
-	for _, testCase := range cases {
+func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
+	for _, testCase := range badEntryCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			home, _ := setupTaskTestHome(t)
 			path := filepath.Join(t.TempDir(), "tasks.zip")
@@ -437,6 +438,67 @@ func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskService_ImportTasks_DryRunOfBadEntries(t *testing.T) {
+	for _, testCase := range badEntryCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, _ := setupTaskTestHome(t)
+			path := filepath.Join(t.TempDir(), "tasks.zip")
+			writeZipArchive(t, path, map[string]string{
+				ManifestFileName:      testManifest,
+				loginTaskFile:         loginTask,
+				testCase.badEntryName: testCase.badEntry,
+			})
+			repo := NewFileTaskRepository("test-project")
+			service := func(progress common.Progress) *task.TaskService { return task.NewTaskService(repo, progress, "", nil) }
+			before := snapshotDir(t, home)
+
+			dryRun := &recordedProgress{}
+			dryRunErr := service(dryRun).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path, IsDryRun: true})
+
+			if after := snapshotDir(t, home); !reflect.DeepEqual(after, before) {
+				t.Fatalf("expected the dry run to leave %v as it was, got %v", before, after)
+			}
+
+			realRun := &recordedProgress{}
+			realErr := service(realRun).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path})
+
+			if dryRunErr == nil || realErr == nil || dryRunErr.Error() != realErr.Error() {
+				t.Errorf("expected the dry run to fail like the import with %v, got %v", realErr, dryRunErr)
+			}
+			wantEvents := []any{task.ImportDryRunStarted{ProjectSlug: "test-project", Path: path}}
+			for _, event := range realRun.events {
+				if summary, ok := event.(task.TasksImported); ok {
+					summary.IsDryRun = true
+					event = summary
+				}
+				wantEvents = append(wantEvents, event)
+			}
+			if !reflect.DeepEqual(dryRun.events, wantEvents) {
+				t.Errorf("expected events %+v, got %+v", wantEvents, dryRun.events)
+			}
+		})
+	}
+}
+
+// snapshotDir reads every file under root, keyed by its path.
+func snapshotDir(t *testing.T, root string) map[string]string {
+	t.Helper()
+	snapshot := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			snapshot[path] = ""
+			return err
+		}
+		content, err := os.ReadFile(path)
+		snapshot[path] = string(content)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
 }
 
 func TestTaskService_ImportTasks_RoundTrip(t *testing.T) {

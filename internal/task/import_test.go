@@ -2,6 +2,7 @@ package task
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -167,27 +168,58 @@ func TestTaskService_ImportTasks(t *testing.T) {
 	}
 
 	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			repo := &fakeTaskRepo{
-				tasks:    testCase.stored,
-				manifest: ArchiveManifest{FormatVersion: ArchiveFormatVersion, ProjectSlug: testCase.manifestSlug},
-				files:    []TaskFile{{Name: "11111111 Add retry.md", Task: testCase.archived}},
-			}
-			progress := &fakeProgress{}
-			service := NewTaskService(repo, progress, "", nil)
+		for _, isDryRun := range []bool{false, true} {
+			t.Run(importRunName(testCase.name, isDryRun), func(t *testing.T) {
+				repo := &fakeTaskRepo{
+					tasks:    slices.Clone(testCase.stored),
+					manifest: ArchiveManifest{FormatVersion: ArchiveFormatVersion, ProjectSlug: testCase.manifestSlug},
+					files:    []TaskFile{{Name: "11111111 Add retry.md", Task: testCase.archived}},
+				}
+				progress := &fakeProgress{}
+				service := NewTaskService(repo, progress, "", nil)
 
-			if err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip"}); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+				err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip", IsDryRun: isDryRun})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 
-			if !reflect.DeepEqual(repo.tasks, testCase.wantTasks) {
-				t.Errorf("expected tasks %+v, got %+v", testCase.wantTasks, repo.tasks)
-			}
-			if !reflect.DeepEqual(progress.events, testCase.wantEvents) {
-				t.Errorf("expected events %+v, got %+v", testCase.wantEvents, progress.events)
-			}
-		})
+				wantTasks, wantEvents := testCase.wantTasks, testCase.wantEvents
+				if isDryRun {
+					wantTasks, wantEvents = testCase.stored, dryRunEvents(testCase.wantEvents)
+				}
+				if !reflect.DeepEqual(repo.tasks, wantTasks) {
+					t.Errorf("expected tasks %+v, got %+v", wantTasks, repo.tasks)
+				}
+				if isDryRun && repo.writes != 0 {
+					t.Errorf("expected no writes in a dry run, got %d", repo.writes)
+				}
+				if !reflect.DeepEqual(progress.events, wantEvents) {
+					t.Errorf("expected events %+v, got %+v", wantEvents, progress.events)
+				}
+			})
+		}
 	}
+}
+
+func importRunName(name string, isDryRun bool) string {
+	if isDryRun {
+		return name + ", dry run"
+	}
+	return name
+}
+
+// dryRunEvents turns the events of an import into the events a dry run of it
+// reports.
+func dryRunEvents(events []any) []any {
+	dryRun := []any{ImportDryRunStarted{ProjectSlug: testProjectSlug, Path: "tasks.zip"}}
+	for _, event := range events {
+		if summary, ok := event.(TasksImported); ok {
+			summary.IsDryRun = true
+			event = summary
+		}
+		dryRun = append(dryRun, event)
+	}
+	return dryRun
 }
 
 func TestTaskService_ImportTasks_Refusals(t *testing.T) {
@@ -243,27 +275,6 @@ func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
 	notUUID.ID = "add-retry"
 	stray := BadArchiveEntry{Name: "notes.txt", Reason: "it is neither a task file nor the manifest.json"}
 
-	repo := &fakeTaskRepo{
-		manifest: ArchiveManifest{FormatVersion: ArchiveFormatVersion, ProjectSlug: testProjectSlug},
-		files: []TaskFile{
-			{Name: "11111111 Add retry.md", Task: archivedTask(testProjectSlug)},
-			{Name: "22222222 Add retry.md", Task: unknownStatus},
-			{Name: "add-retry Add retry.md", Task: notUUID},
-		},
-		badEntries: []BadArchiveEntry{stray},
-	}
-	progress := &fakeProgress{}
-	service := NewTaskService(repo, progress, "", nil)
-
-	err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip"})
-
-	wantErr := "skipped 3 entries of tasks.zip as bad, a fresh export on the source device fixes them"
-	if err == nil || err.Error() != wantErr {
-		t.Fatalf("expected error %q, got %v", wantErr, err)
-	}
-	if wantTasks := []*Task{archivedTask(testProjectSlug)}; !reflect.DeepEqual(repo.tasks, wantTasks) {
-		t.Errorf("expected tasks %+v, got %+v", wantTasks, repo.tasks)
-	}
 	wantEvents := []any{
 		stray,
 		BadArchiveEntry{Name: "22222222 Add retry.md", Reason: `it has unknown status "someday", drg knows draft, todo, in-progress, fucked-up, unmerged, done`},
@@ -271,7 +282,37 @@ func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
 		TaskImported{Task: archivedTask(testProjectSlug)},
 		TasksImported{ProjectSlug: testProjectSlug, Added: 1, SkippedAsBad: 3},
 	}
-	if !reflect.DeepEqual(progress.events, wantEvents) {
-		t.Errorf("expected events %+v, got %+v", wantEvents, progress.events)
+
+	for _, isDryRun := range []bool{false, true} {
+		t.Run(importRunName("bad entries", isDryRun), func(t *testing.T) {
+			repo := &fakeTaskRepo{
+				manifest: ArchiveManifest{FormatVersion: ArchiveFormatVersion, ProjectSlug: testProjectSlug},
+				files: []TaskFile{
+					{Name: "11111111 Add retry.md", Task: archivedTask(testProjectSlug)},
+					{Name: "22222222 Add retry.md", Task: unknownStatus},
+					{Name: "add-retry Add retry.md", Task: notUUID},
+				},
+				badEntries: []BadArchiveEntry{stray},
+			}
+			progress := &fakeProgress{}
+			service := NewTaskService(repo, progress, "", nil)
+
+			err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip", IsDryRun: isDryRun})
+
+			wantErr := "skipped 3 entries of tasks.zip as bad, a fresh export on the source device fixes them"
+			if err == nil || err.Error() != wantErr {
+				t.Fatalf("expected error %q, got %v", wantErr, err)
+			}
+			wantTasks, wantRunEvents := []*Task{archivedTask(testProjectSlug)}, wantEvents
+			if isDryRun {
+				wantTasks, wantRunEvents = nil, dryRunEvents(wantEvents)
+			}
+			if !reflect.DeepEqual(repo.tasks, wantTasks) {
+				t.Errorf("expected tasks %+v, got %+v", wantTasks, repo.tasks)
+			}
+			if !reflect.DeepEqual(progress.events, wantRunEvents) {
+				t.Errorf("expected events %+v, got %+v", wantRunEvents, progress.events)
+			}
+		})
 	}
 }

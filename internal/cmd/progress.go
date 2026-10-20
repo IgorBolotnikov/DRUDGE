@@ -55,6 +55,8 @@ func (p *cliProgress) Report(event any) {
 		p.out.Done("Task %s is %q", p.out.Task(event.Task), event.Task.Status)
 	case task.TaskEdited:
 		p.out.Done("Updated task %s, it is now %q", p.out.Task(event.Task), event.Task.Status)
+	case task.ImportDryRunStarted:
+		p.out.Header("Dry run of an import of %s into project %s", event.Path, event.ProjectSlug)
 	case task.ProjectSlugRewritten:
 		p.out.Warn("The archive holds tasks of project %s, they go into project %s", event.ArchiveSlug, event.ProjectSlug)
 	case task.BadArchiveEntry:
@@ -106,12 +108,16 @@ func (p *cliProgress) reportTaskImportSkipped(event task.TaskImportSkipped) {
 }
 
 // tasksImportedResult closes an import with how many tasks it added, updated
-// and skipped.
+// and skipped, or would have in a dry run.
 func (p *cliProgress) tasksImportedResult(event task.TasksImported) {
 	counts := fmt.Sprintf(
 		"added %d, updated %d, skipped %d as older, %d as in progress and %d as bad",
 		event.Added, event.Updated, event.SkippedAsOlder, event.SkippedAsInProgress, event.SkippedAsBad,
 	)
+	if event.IsDryRun {
+		p.out.SkipResult("Wrote nothing, it was a dry run. It would have %s", counts)
+		return
+	}
 	if event.Added == 0 && event.Updated == 0 {
 		p.out.SkipResult("Changed no tasks in project %s, %s", event.ProjectSlug, counts)
 		return

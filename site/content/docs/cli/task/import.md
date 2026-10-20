@@ -18,6 +18,8 @@ It reads the whole archive first and stops at an archive it cannot read, before 
 
 An entry that is not a task file it can import is skipped with a warning. The other tasks are imported and the command fails at the end.
 
+With --dry-run it runs every check and comparison, prints the same lines and fails the same way, and writes nothing.
+
 ## Arguments
 
 - `<file>`
@@ -26,4 +28,5 @@ An entry that is not a task file it can import is skipped with a warning. The ot
 
 | Option | Description | Default |
 | --- | --- | --- |
+| `--dry-run` | Print what the import would do and write nothing | `false` |
 | `-p, --project <slug>` | The slug of the project to import into, the project of the current directory when left out |  |

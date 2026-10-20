@@ -179,7 +179,8 @@ var TaskCmd = &Cmd{
 			Help: "Add every task of an archive drg task export wrote that the project does not have yet, with its id, its timestamps and its run state as they are.\n" +
 				"A task whose id the project already has is replaced when the archived copy has a newer update time, and skipped otherwise. A task in progress here is always skipped. Tasks of another project are moved into this one.\n" +
 				"It reads the whole archive first and stops at an archive it cannot read, before it writes anything.\n" +
-				"An entry that is not a task file it can import is skipped with a warning. The other tasks are imported and the command fails at the end.",
+				"An entry that is not a task file it can import is skipped with a warning. The other tasks are imported and the command fails at the end.\n" +
+				"With --dry-run it runs every check and comparison, prints the same lines and fails the same way, and writes nothing.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				flags := &taskImportFlags{}
 				flags.declare(fs)
