@@ -15,8 +15,8 @@ type (
 )
 
 const (
-	StatusDraft      TaskStatus = "draft" // Default status
-	StatusTodo       TaskStatus = "todo"
+	StatusDraft      TaskStatus = "draft"
+	StatusTodo       TaskStatus = "todo" // Default status
 	StatusInProgress TaskStatus = "in-progress"
 	StatusFuckedUp   TaskStatus = "fucked-up"
 	StatusUnmerged   TaskStatus = "unmerged" // The work got done and is not on the base yet

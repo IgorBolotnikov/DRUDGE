@@ -42,7 +42,7 @@ type TaskCreated struct {
 }
 
 // NewTaskService builds a task service. defaultStatus is the status CreateTask
-// gives a task that names none, and draft applies when it is empty too.
+// gives a task that names none, and todo applies when it is empty too.
 // repositories are the paths of the repositories the project records, the
 // only paths a task may list.
 func NewTaskService(repo TaskRepository, progress common.Progress, defaultStatus TaskStatus, repositories []string) *TaskService {
@@ -62,7 +62,7 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 		dto.Status = service.defaultStatus
 	}
 	if dto.Status == "" {
-		dto.Status = StatusDraft
+		dto.Status = StatusTodo
 	}
 
 	if dto.CreatedAt.IsZero() {

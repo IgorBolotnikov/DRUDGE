@@ -22,6 +22,6 @@ Add a task to the project linked to the current directory.
 | `--parent <id>` | The id of the task this task belongs to |  |
 | `--pull-requests <urls>` | Comma-separated urls of the pull requests opened for this task |  |
 | `--repos <paths>` | Comma-separated paths of the repositories this task changes, as drg project init prints them, all of them when left out |  |
-| `--status <status>` | Task status (draft, todo, in-progress, fucked-up, unmerged, done), task.defaultStatus from the config when left out, draft when that is unset |  |
+| `--status <status>` | Task status (draft, todo, in-progress, fucked-up, unmerged, done), task.defaultStatus from the config when left out, todo when that is unset |  |
 | `--ticket <ticket>` | The ticket the task came from |  |
 | `--title <title>` | Task title |  |

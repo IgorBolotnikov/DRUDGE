@@ -19,8 +19,8 @@ Add a Task with [`drg task new`]({{< relref "/docs/cli/task/new" >}}), read it w
 
 A status says where a Task stands.
 
-- `draft`: written and waiting for you to review it. A new Task is a draft unless you say otherwise or set `task.defaultStatus` in the [config]({{< relref "/docs/configuration" >}}).
-- `todo`: ready to run. Only a `todo` Task can be handed to a Drudger.
+- `draft`: written and waiting for you to review it.
+- `todo`: ready to run. Only a `todo` Task can be handed to a Drudger. A new Task is `todo` unless you say otherwise or set `task.defaultStatus` in the [config]({{< relref "/docs/configuration" >}}).
 - `in-progress`: handed to a Drudger.
 - `fucked-up`: the Session ended without getting the work done, or its Drudger was nuked while it worked.
 - `unmerged`: the Session got shit done and its commits are on a branch that is not merged yet.

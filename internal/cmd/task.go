@@ -316,7 +316,7 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.descriptionFile, descriptionFileFlagName, "Read the description from the file at `path`, "+stdinPath+" to read stdin")
 	fs.Var(&flags.ticket, ticketFlagName, "The `ticket` the task came from")
 	fs.Var(&flags.status, statusFlagName, "Task `status` ("+task.FormatStatuses(task.Statuses)+"), "+
-		config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusDraft)+" when that is unset")
+		config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusTodo)+" when that is unset")
 	fs.Var(&flags.blockedBy, blockedByFlagName, "Comma-separated `ids` of the tasks this task waits for")
 	fs.Var(&flags.parent, parentFlagName, "The `id` of the task this task belongs to")
 	fs.Var(&flags.pullRequests, pullRequestsFlagName, "Comma-separated `urls` of the pull requests opened for this task")

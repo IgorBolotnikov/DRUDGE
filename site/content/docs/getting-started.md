@@ -67,10 +67,10 @@ A directory that is a git repository becomes the one repository of the project. 
 Add a Task with [`drg task new`]({{< relref "/docs/cli/task/new" >}}). Its description is the prompt the agent gets:
 
 ```sh
-drg task new --title "Add retry to uploader" --description "Retry a failed upload three times before giving up." --status todo
+drg task new --title "Add retry to uploader" --description "Retry a failed upload three times before giving up."
 ```
 
-It prints the short id of the Task. A Task created without `--status` is a `draft`, which waits for you to review it. Only a `todo` Task can be run. `--description-file` reads a longer description from a file, or from stdin with `-`.
+It prints the short id of the Task. A Task created without `--status` is `todo`, which is ready to run. Pass `--status draft` to keep it back for review. `--description-file` reads a longer description from a file, or from stdin with `-`.
 
 Hand it to a Drudger:
 

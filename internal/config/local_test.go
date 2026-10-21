@@ -539,10 +539,16 @@ func TestResolveDefaultTaskStatus(t *testing.T) {
 			want:   task.StatusTodo,
 		},
 		{
-			name:   "falls back to draft",
+			name:   "falls back to global draft",
+			local:  &LocalConfig{},
+			global: &GlobalConfig{Task: TaskConfig{DefaultStatus: task.StatusDraft}},
+			want:   task.StatusDraft,
+		},
+		{
+			name:   "falls back to todo",
 			local:  &LocalConfig{},
 			global: &GlobalConfig{},
-			want:   task.StatusDraft,
+			want:   task.StatusTodo,
 		},
 	}
 

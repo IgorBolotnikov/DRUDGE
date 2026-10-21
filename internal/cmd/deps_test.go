@@ -175,16 +175,16 @@ func TestNewDrudgerSettings(t *testing.T) {
 func TestNewTaskService(t *testing.T) {
 	const projectSlug = "drudge"
 
-	todoGlobal := config.DefaultConfig()
-	todoGlobal.Task.DefaultStatus = task.StatusTodo
+	draftGlobal := config.DefaultConfig()
+	draftGlobal.Task.DefaultStatus = task.StatusDraft
 
 	cases := []struct {
 		name       string
 		global     *config.GlobalConfig
 		wantStatus task.TaskStatus
 	}{
-		{name: "the default global config", global: config.DefaultConfig(), wantStatus: task.StatusDraft},
-		{name: "a global default status", global: todoGlobal, wantStatus: task.StatusTodo},
+		{name: "the default global config", global: config.DefaultConfig(), wantStatus: task.StatusTodo},
+		{name: "a global default status", global: draftGlobal, wantStatus: task.StatusDraft},
 	}
 
 	for _, testCase := range cases {

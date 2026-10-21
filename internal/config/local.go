@@ -192,7 +192,7 @@ func ResolveMaxConcurrentDrudgers(local *LocalConfig, global *GlobalConfig) int 
 
 // ResolveDefaultTaskStatus returns the status of a new task created without
 // one, preferring the local config over the global one and falling back to
-// draft.
+// todo.
 func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.TaskStatus {
 	if local.Task.DefaultStatus != "" {
 		return local.Task.DefaultStatus
@@ -200,7 +200,7 @@ func ResolveDefaultTaskStatus(local *LocalConfig, global *GlobalConfig) task.Tas
 	if global.Task.DefaultStatus != "" {
 		return global.Task.DefaultStatus
 	}
-	return task.StatusDraft
+	return task.StatusTodo
 }
 
 // ResolveBranchFormat returns the format of the branch names of tasks,

@@ -57,7 +57,7 @@ A worktree is a fresh checkout, so gitignored files like `.env` never reach it. 
 | `promptFile` | string |  |  | File name of the prompt handed to an agent, resolved under .drudge/prompts/ of the project directory. Omit to use the global prompt file. |
 | `maxConcurrentDrudgers` | integer | `3` | minimum 1 | How many Drudgers may work on one project at once. |
 | `task` | object |  |  | Settings for tasks. Each one overrides the global config. |
-| `task.defaultStatus` | string | `"draft"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
+| `task.defaultStatus` | string | `"todo"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
 | `task.branchFormat` | string | `"drudge/{{taskShortID}}-{{taskSlug}}"` |  | Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are. |
 | `task.pageSize` | integer | `20` | minimum 0 | How many tasks drg task list shows on one page. 0 shows every task on one page. |
 | `drudger` | object |  |  | Settings for the Drudgers. Each one overrides the global config. |

@@ -184,11 +184,11 @@ func TestTaskService_CreateTask_PicksTheStatus(t *testing.T) {
 		defaultStatus TaskStatus
 		want          TaskStatus
 	}{
-		{name: "no status and no default", want: StatusDraft},
+		{name: "no status and no default", want: StatusTodo},
 		{name: "no status and a todo default", defaultStatus: StatusTodo, want: StatusTodo},
 		{name: "no status and a draft default", defaultStatus: StatusDraft, want: StatusDraft},
 		{name: "an explicit status over the default", status: StatusDraft, defaultStatus: StatusTodo, want: StatusDraft},
-		{name: "an explicit status and no default", status: StatusTodo, want: StatusTodo},
+		{name: "an explicit status and no default", status: StatusDraft, want: StatusDraft},
 	}
 
 	for _, testCase := range cases {

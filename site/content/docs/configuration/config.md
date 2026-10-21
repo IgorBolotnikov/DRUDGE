@@ -39,7 +39,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.gitTimeouts.worktreeSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a worktree, which is a full checkout. |
 | `drudger.gitTimeouts.commandSeconds` | integer | `60` | minimum 1 | Seconds allowed for every other git command. |
 | `task` | object |  |  | Settings for tasks. A project config may override each of them. |
-| `task.defaultStatus` | string | `"draft"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
+| `task.defaultStatus` | string | `"todo"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
 | `task.branchFormat` | string | `"drudge/{{taskShortID}}-{{taskSlug}}"` |  | Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are. |
 | `task.pageSize` | integer | `20` | minimum 0 | How many tasks drg task list shows on one page. 0 shows every task on one page. |
 | `project` | object |  |  | Settings for projects. |
