@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 
@@ -29,10 +30,11 @@ var ProjectCmd = &Cmd{
 			Help: "Record a project and link the current directory to it. Task commands run here work on that project.\n" +
 				"A directory that is a git repository becomes the one repository of the project.\n" +
 				"Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.\n" +
-				"It writes the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.\n" +
 				"In a terminal it asks how many Drudgers may work on the project at once, which branch format its tasks use and whether to open pull requests, each question starting on the value of the global config.\n" +
 				"It writes into the local config only the answers that differ from the global config. Pull requests turned on with no " + config.RemoteProviderKey + " in the global config write " + config.RemoteProviderKey + " too.\n" +
-				"With --defaults or input that is not a terminal it asks nothing and every setting falls back to the global config.\n" +
+				"It then prints the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.\n" +
+				"In a terminal it asks for each repository with detected setup commands whether to keep them, the default, or leave them empty for later. A repository left for later gets no setup and no copy key, and drg project detect fills them in later. The environment variable names are written either way.\n" +
+				"With --defaults or input that is not a terminal it asks nothing, every setting falls back to the global config and every detected setup is kept.\n" +
 				"It prints each repository with the default branch that task branches are cut from.",
 			Setup: func(fs *flag.FlagSet) func(args []string) error {
 				shouldTakeDefaults := fs.Bool(defaultsFlagName, false, "Skip the questions and take the values of the global config")
@@ -109,15 +111,21 @@ func projectInit(name string, shouldTakeDefaults bool) error {
 	if err != nil {
 		return err
 	}
+	isAsking := !shouldTakeDefaults && isInteractive()
 	answers := common.Answers{}
-	if !shouldTakeDefaults && isInteractive() {
-		answers, err = askQuestions(os.Stdin, os.Stdout, out.Theme(), prepared.Questions)
-		if errors.Is(err, errCancelled) {
-			return fmt.Errorf("project init %w, nothing was written", err)
-		}
+	if isAsking {
+		answers, err = askInitQuestions(out, prepared.Questions)
 		if err != nil {
 			return err
 		}
+	}
+	printSetupDetections(out, prepared.Detections, false)
+	if isAsking {
+		setupAnswers, err := askInitQuestions(out, prepared.SetupQuestions)
+		if err != nil {
+			return err
+		}
+		maps.Copy(answers, setupAnswers)
 	}
 	out.Header("Initializing project %s in %s", name, common.DotDrudgeDirName)
 	if _, err := svc.InitProject(prepared, answers); err != nil {
@@ -131,9 +139,17 @@ func projectInit(name string, shouldTakeDefaults bool) error {
 		}
 	}
 	out.Result("Initialized project %s", name)
-	printSetupDetections(out, prepared.Detections, false)
 	out.View(repositoryLines(resolved))
 	return nil
+}
+
+// askInitQuestions asks questions of drg project init on the terminal.
+func askInitQuestions(out *printer.Printer, questions []common.Question) (common.Answers, error) {
+	answers, err := askQuestions(os.Stdin, os.Stdout, out.Theme(), questions)
+	if errors.Is(err, errCancelled) {
+		return nil, fmt.Errorf("project init %w, nothing was written", err)
+	}
+	return answers, err
 }
 
 // projectDetectFlags are the flags of drg project detect.

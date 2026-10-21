@@ -437,6 +437,84 @@ func TestProjectService_InitProject(t *testing.T) {
 	}
 }
 
+// ignoringGit answers every path as ignored by git.
+type ignoringGit struct {
+	*fakeGit
+}
+
+func (fake ignoringGit) IgnoredPaths(dir string, paths []string) ([]string, error) {
+	return paths, nil
+}
+
+func TestProjectService_InitProject_Setup(t *testing.T) {
+	// The api repository has a detected setup, a copy path and an env name.
+	// The docs repository has only an env name.
+	files := filesOf(map[string]string{
+		"api/package-lock.json": "{}",
+		"api/.env":              "TOKEN=secret\n",
+		"api/.npmrc":            "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n",
+		"docs/.npmrc":           "//registry.example.com/:_authToken=${DOCS_TOKEN}\n",
+	})
+	apiSetup := Repository{Path: "api", Setup: []string{npmInstallLine}, Copy: []string{".env"}}
+	docsSetup := Repository{Path: "docs", Setup: []string{}, Copy: []string{}}
+	tests := []struct {
+		name             string
+		answers          common.Answers
+		wantRepositories []Repository
+	}{
+		{
+			name:             "the defaults keep every detected setup",
+			answers:          common.Answers{},
+			wantRepositories: []Repository{apiSetup, docsSetup},
+		},
+		{
+			name:             "keep writes the setup and the copy paths",
+			answers:          common.Answers{setupQuestionKey("api"): keepSetupAnswer},
+			wantRepositories: []Repository{apiSetup, docsSetup},
+		},
+		{
+			name:             "leave empty for later writes neither the setup nor the copy paths",
+			answers:          common.Answers{setupQuestionKey("api"): leaveSetupAnswer},
+			wantRepositories: []Repository{{Path: "api"}, docsSetup},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := testProjectDir
+			linker := &fakeLinker{}
+			gitOps := ignoringGit{fakeGit: newFakeGit(projectDir, []string{"api", "docs"}, nil)}
+			globals := &fakeGlobalSettings{answers: defaultGlobalAnswers()}
+			service := NewProjectService(&fakeProjectRepo{}, linker, nil, gitOps, files, globals, &fakeProgress{})
+			prepared, err := service.PrepareInit("Test Project", projectDir)
+			if err != nil {
+				t.Fatalf("PrepareInit: %v", err)
+			}
+
+			var gotKeys []string
+			for _, question := range prepared.SetupQuestions {
+				gotKeys = append(gotKeys, question.Key)
+			}
+			if wantKeys := []string{setupQuestionKey("api")}; !reflect.DeepEqual(gotKeys, wantKeys) {
+				t.Errorf("setup question keys = %v, want %v", gotKeys, wantKeys)
+			}
+
+			if _, err := service.InitProject(prepared, test.answers); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(linker.repositories, test.wantRepositories) {
+				t.Errorf("repositories = %+v, want %+v", linker.repositories, test.wantRepositories)
+			}
+			if wantEnvNames := []string{"NODE_AUTH_TOKEN", "DOCS_TOKEN"}; !reflect.DeepEqual(linker.envNames, wantEnvNames) {
+				t.Errorf("env names = %v, want %v", linker.envNames, wantEnvNames)
+			}
+			if len(linker.overrides) != 0 {
+				t.Errorf("expected no setup answer in the overrides, got %v", linker.overrides)
+			}
+		})
+	}
+}
+
 // renamedProjects are two projects, one of them renamed since it was made, so
 // its name and its slug differ.
 func renamedProjects() []*Project {

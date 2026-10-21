@@ -16,13 +16,15 @@ A directory that is a git repository becomes the one repository of the project.
 
 Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.
 
-It writes the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.
-
 In a terminal it asks how many Drudgers may work on the project at once, which branch format its tasks use and whether to open pull requests, each question starting on the value of the global config.
 
 It writes into the local config only the answers that differ from the global config. Pull requests turned on with no remote.provider in the global config write remote.provider too.
 
-With --defaults or input that is not a terminal it asks nothing and every setting falls back to the global config.
+It then prints the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.
+
+In a terminal it asks for each repository with detected setup commands whether to keep them, the default, or leave them empty for later. A repository left for later gets no setup and no copy key, and drg project detect fills them in later. The environment variable names are written either way.
+
+With --defaults or input that is not a terminal it asks nothing, every setting falls back to the global config and every detected setup is kept.
 
 It prints each repository with the default branch that task branches are cut from.
 

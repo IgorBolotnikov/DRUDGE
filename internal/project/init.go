@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
@@ -36,6 +37,16 @@ var branchFormatPresets = []string{
 	"feat/" + task.BranchPlaceholderTicketID + "/" + task.BranchPlaceholderSlug,
 }
 
+// Answers of the setup question of a repository.
+const (
+	keepSetupAnswer  = "keep"
+	leaveSetupAnswer = "leave empty for later"
+)
+
+// setupQuestionKeyPrefix starts the key of the setup question of a
+// repository, followed by its path.
+const setupQuestionKeyPrefix = "setup:"
+
 // initKeys are the local config keys init reads from the global config. The
 // provider is never asked. InitProject writes it when pull requests are
 // turned on with no provider in the global config.
@@ -49,6 +60,9 @@ type PreparedInit struct {
 	Detections   []SetupDetection
 	// Questions start on the values the global config resolves to.
 	Questions []common.Question
+	// SetupQuestions ask whether to keep the detected setup of each
+	// repository that has one, in config order.
+	SetupQuestions []common.Question
 	// globalAnswers are the answers that match the values the global config
 	// resolves to, keyed by local config key.
 	globalAnswers common.Answers
@@ -94,11 +108,12 @@ func (p *ProjectService) PrepareInit(name string, projectDir string) (*PreparedI
 		return nil, err
 	}
 	return &PreparedInit{
-		Name:          name,
-		Repositories:  repositories,
-		Detections:    detections,
-		Questions:     questions,
-		globalAnswers: globalAnswers,
+		Name:           name,
+		Repositories:   repositories,
+		Detections:     detections,
+		Questions:      questions,
+		SetupQuestions: setupQuestions(detections),
+		globalAnswers:  globalAnswers,
 	}, nil
 }
 
@@ -109,12 +124,22 @@ func (p *ProjectService) PrepareInit(name string, projectDir string) (*PreparedI
 // answer that differs from the value the global config resolves to is
 // written into the local config. A custom branch format is written as the
 // branch format. Pull requests turned on with no provider in
-// the global config write the provider too. It refuses an invalid answer
-// before it writes anything.
+// the global config write the provider too. A repository whose detected
+// setup is left for later gets no setup and no copy paths. It refuses an
+// invalid answer before it writes anything.
 func (p *ProjectService) InitProject(prepared *PreparedInit, answers common.Answers) (*Project, error) {
-	resolved, err := common.ResolveAnswers(prepared.Questions, answers)
+	resolved, err := common.ResolveAnswers(slices.Concat(prepared.Questions, prepared.SetupQuestions), answers)
 	if err != nil {
 		return nil, err
+	}
+	repositories := slices.Clone(prepared.Repositories)
+	for index, repository := range repositories {
+		key := setupQuestionKey(repository.Path)
+		if resolved[key] == leaveSetupAnswer {
+			repositories[index].Setup = nil
+			repositories[index].Copy = nil
+		}
+		delete(resolved, key)
 	}
 	if resolved[task.BranchFormatKey] == customBranchFormatAnswer {
 		resolved[task.BranchFormatKey] = resolved[customBranchFormatKey]
@@ -134,7 +159,7 @@ func (p *ProjectService) InitProject(prepared *PreparedInit, answers common.Answ
 	if err != nil {
 		return nil, err
 	}
-	if err := p.linker.LinkDirectory(created.Slug, prepared.Repositories, addedEnvNames(prepared.Detections), overrides); err != nil {
+	if err := p.linker.LinkDirectory(created.Slug, repositories, addedEnvNames(prepared.Detections), overrides); err != nil {
 		return nil, err
 	}
 	return created, nil
@@ -165,6 +190,31 @@ func initQuestions(schema []byte, globalAnswers common.Answers) ([]common.Questi
 	draft.Default = globalAnswers[remote.PullRequestsDraftKey]
 	draft.Condition = &common.QuestionCondition{Key: remote.PullRequestsEnabledKey, Answer: common.AnswerYes}
 	return []common.Question{concurrency, branchFormat, customBranchFormat, pullRequests, draft}, nil
+}
+
+// setupQuestions returns a select of keeping or leaving for later the
+// detected setup of each repository with setup lines, starting on keeping it.
+func setupQuestions(detections []SetupDetection) []common.Question {
+	var questions []common.Question
+	for _, detection := range detections {
+		if len(detection.Lines) == 0 {
+			continue
+		}
+		question := common.Question{
+			Key:     setupQuestionKey(detection.Repository),
+			Label:   fmt.Sprintf("Setup of %s", detection.Repository),
+			Kind:    common.QuestionSelect,
+			Options: []common.QuestionOption{{Value: keepSetupAnswer, Label: keepSetupAnswer}, {Value: leaveSetupAnswer, Label: leaveSetupAnswer}},
+			Default: keepSetupAnswer,
+		}
+		question.Validate = question.ValidateOption
+		questions = append(questions, question)
+	}
+	return questions
+}
+
+func setupQuestionKey(repositoryPath string) string {
+	return setupQuestionKeyPrefix + repositoryPath
 }
 
 // branchFormatQuestions returns the select of the branch format presets and

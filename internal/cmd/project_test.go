@@ -81,16 +81,16 @@ func TestProjectInit(t *testing.T) {
 				"b/.env.example":      "TOKEN=\n",
 				"b/.npmrc":            "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
 			},
-			wantStdout: "Initializing project demo in .drudge\n" +
-				"✓ Initialized project demo\n" +
-				"\n" +
-				"Setup of a\n" +
+			wantStdout: "Setup of a\n" +
 				"  ✓ Nothing to set up, wrote an empty list\n" +
 				"\n" +
 				"Setup of b\n" +
 				"  ✓ npm ci  package-lock.json\n" +
 				"  ✓ Copy .env\n" +
 				"  ✓ Add NPM_TOKEN to drudger.env  .npmrc\n" +
+				"\n" +
+				"Initializing project demo in .drudge\n" +
+				"✓ Initialized project demo\n" +
 				"\n" +
 				"Repositories (2):\n" +
 				"  REPOSITORY                      DEFAULT BRANCH\n" +
