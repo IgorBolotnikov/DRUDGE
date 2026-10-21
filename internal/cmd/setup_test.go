@@ -45,7 +45,7 @@ func TestRunSetup(t *testing.T) {
 			t.Setenv("NO_COLOR", "1")
 			for range testCase.runsBefore {
 				captureOutput(func() {
-					if err := runSetup(nil); err != nil {
+					if err := runSetup(false); err != nil {
 						t.Fatalf("runSetup before: %v", err)
 					}
 				})
@@ -54,7 +54,7 @@ func TestRunSetup(t *testing.T) {
 			var err error
 			var stderr string
 			stdout := captureOutput(func() {
-				stderr = captureStderr(func() { err = runSetup(nil) })
+				stderr = captureStderr(func() { err = runSetup(false) })
 			})
 
 			if err != nil {

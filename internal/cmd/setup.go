@@ -1,19 +1,33 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
+	"fmt"
+	"os"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
 )
 
+const (
+	defaultsFlagName      = "defaults"
+	defaultsFlagShortName = "y"
+)
+
 var SetupCmd = &Cmd{
-	Name:  "setup",
-	Desc:  "Setup DRUDGE in this computer",
-	Setup: func(*flag.FlagSet) func(args []string) error { return runSetup },
+	Name: "setup",
+	Desc: "Setup DRUDGE in this computer",
+	Help: "Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config. " +
+		"With --defaults or input that is not a terminal it asks nothing and takes the defaults.",
+	Setup: func(fs *flag.FlagSet) func(args []string) error {
+		shouldTakeDefaults := fs.Bool(defaultsFlagName, false, "Skip the questions and take the default answers")
+		alias(fs, defaultsFlagShortName, defaultsFlagName)
+		return func([]string) error { return runSetup(*shouldTakeDefaults) }
+	},
 }
 
-func runSetup([]string) error {
+func runSetup(shouldTakeDefaults bool) error {
 	out := newCommandPrinter()
 	printProjectName(out.Theme())
 
@@ -21,8 +35,22 @@ func runSetup([]string) error {
 	if err != nil {
 		return err
 	}
+	answers := common.Answers{}
+	if !shouldTakeDefaults && isInteractive() {
+		questions, err := service.Questions()
+		if err != nil {
+			return err
+		}
+		answers, err = askQuestions(os.Stdin, os.Stdout, out.Theme(), questions)
+		if errors.Is(err, errCancelled) {
+			return fmt.Errorf("setup %w, nothing was written", err)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	out.Header("Setting up DRUDGE at %s", service.DrudgeDir())
-	result, err := service.Setup()
+	result, err := service.Setup(answers)
 	if err != nil {
 		return err
 	}

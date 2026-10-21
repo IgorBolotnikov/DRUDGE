@@ -38,14 +38,24 @@ go install github.com/IgorBolotnikov/DRUDGE/cmd/drg@latest
 drg setup
 ```
 
-[`drg setup`]({{< relref "/docs/cli/setup" >}}) creates `~/.drudge/` and writes:
+In a terminal, [`drg setup`]({{< relref "/docs/cli/setup" >}}) first asks which harness the Drudgers run. Move with ↑ and ↓ or `k` and `j`, pick with Enter, and cancel with Esc or Ctrl-C:
+
+```
+Harness
+› claude-code (default)
+  opencode
+```
+
+The list turns into one line with your answer, like `Harness: claude-code`. `drg setup -y`, short for `--defaults`, skips the questions and takes the defaults. A run whose input is not a terminal asks nothing either.
+
+It then creates `~/.drudge/` and writes:
 
 - `~/.drudge/config.json`, the global config
 - `~/.drudge/theme.json`, the color theme
 - `~/.drudge/schema/`, the JSON schemas both config files and the project config point at
 - `~/.drudge/projects/`, where the projects and their Tasks live
 
-It also installs the DRUDGE skill for Claude Code at `~/.claude/skills/DRUDGE/SKILL.md`. The skill lets a planning agent write DRUDGE Tasks for you.
+With the `claude-code` harness it also installs the DRUDGE skill for Claude Code at `~/.claude/skills/DRUDGE/SKILL.md`. The skill lets a planning agent write DRUDGE Tasks for you.
 
 The schemas and the skill are rewritten on every run. The config files are written only when they are missing, so running `drg setup` again keeps your settings.
 

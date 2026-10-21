@@ -17,7 +17,7 @@ func main() {
 
 	if err := root.Execute(os.Args[1:]); err != nil {
 		cmd.NewLogger().Error("%v", err)
-		os.Exit(1)
+		os.Exit(cmd.ExitCode(err))
 	}
 }
 

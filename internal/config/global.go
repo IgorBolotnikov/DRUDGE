@@ -77,6 +77,10 @@ const (
 	TaskPageSizeKey = "task.pageSize"
 	// DrudgerPageSizeKey is exported so the drudger commands can name it in their help.
 	DrudgerPageSizeKey = "drudger.pageSize"
+	// DrudgerEnvironmentKey is exported so drg setup can ask for it.
+	DrudgerEnvironmentKey = "drudger.environment"
+	// DrudgerHarnessKey is exported so drg setup can ask for it.
+	DrudgerHarnessKey = "drudger.harness"
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -102,11 +106,12 @@ type DefaultDrudgerDocument struct {
 	Harness Harness `json:"harness"`
 }
 
-// NewDefaultDocument returns the default global config file.
-func NewDefaultDocument() DefaultDocument {
+// NewDocument returns the global config file with the environment and the
+// harness set.
+func NewDocument(env Env, harness Harness) DefaultDocument {
 	return DefaultDocument{
 		Schema:  schemaRef,
-		Drudger: DefaultDrudgerDocument{Env: defaultEnv, Harness: defaultHarness},
+		Drudger: DefaultDrudgerDocument{Env: env, Harness: harness},
 	}
 }
 

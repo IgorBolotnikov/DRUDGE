@@ -5,6 +5,8 @@ weight: 1
 
 The global config file is `~/.drudge/config.json`. `drg setup` writes it when it is missing, with the Drudger environment and harness set. After that the file is yours to edit. `drg setup` leaves an existing file alone.
 
+In a terminal, `drg setup` asks which harness the Drudgers run before it writes the file. `--defaults`, or `-y`, skips the questions and writes the defaults. Input that is not a terminal skips them too.
+
 ## Schema
 
 The file starts with `"$schema": "./schema/config.json"`, a path relative to the file. It points at `~/.drudge/schema/config.json`, the local copy of the schema that `drg setup` rewrites on every run. An editor with JSON schema support uses it to complete keys and flag wrong values.

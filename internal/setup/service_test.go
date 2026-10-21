@@ -49,7 +49,7 @@ func TestSetup(t *testing.T) {
 			home := tempHome(t)
 			service := NewSetupService(home)
 			for range testCase.runsBefore {
-				if _, err := service.Setup(); err != nil {
+				if _, err := service.Setup(nil); err != nil {
 					t.Fatalf("Setup before: %v", err)
 				}
 				for _, path := range schemaPaths(home) {
@@ -59,7 +59,7 @@ func TestSetup(t *testing.T) {
 				}
 			}
 
-			result, err := service.Setup()
+			result, err := service.Setup(nil)
 			if err != nil {
 				t.Fatalf("Setup: %v", err)
 			}
@@ -103,9 +103,150 @@ func TestSetup(t *testing.T) {
 	}
 }
 
+func TestQuestions(t *testing.T) {
+	testCases := []struct {
+		name            string
+		hasGlobalConfig bool
+		wantKeys        []string
+	}{
+		{name: "a fresh home asks for the harness only", hasGlobalConfig: false, wantKeys: []string{config.DrudgerHarnessKey}},
+		{name: "an existing global config asks nothing", hasGlobalConfig: true, wantKeys: nil},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+			service := NewSetupService(home)
+			if testCase.hasGlobalConfig {
+				if _, err := service.Setup(nil); err != nil {
+					t.Fatalf("Setup: %v", err)
+				}
+			}
+
+			questions, err := service.Questions()
+			if err != nil {
+				t.Fatalf("Questions: %v", err)
+			}
+			var gotKeys []string
+			for _, question := range questions {
+				gotKeys = append(gotKeys, question.Key)
+			}
+			if !slices.Equal(gotKeys, testCase.wantKeys) {
+				t.Errorf("question keys = %v, want %v", gotKeys, testCase.wantKeys)
+			}
+		})
+	}
+}
+
+func TestQuestions_Harness(t *testing.T) {
+	questions, err := NewSetupService(tempHome(t)).Questions()
+	if err != nil {
+		t.Fatalf("Questions: %v", err)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("got %d questions, want 1", len(questions))
+	}
+	harness := questions[0]
+	wantOptions := []common.QuestionOption{
+		{Value: string(config.HarnessClaudeCode), Label: string(config.HarnessClaudeCode)},
+		{Value: string(config.HarnessOpencode), Label: string(config.HarnessOpencode)},
+	}
+	if harness.Kind != common.QuestionSelect {
+		t.Errorf("Kind = %q, want %q", harness.Kind, common.QuestionSelect)
+	}
+	if !slices.Equal(harness.Options, wantOptions) {
+		t.Errorf("Options = %v, want %v", harness.Options, wantOptions)
+	}
+	if harness.Default != string(config.HarnessClaudeCode) {
+		t.Errorf("Default = %q, want %q", harness.Default, config.HarnessClaudeCode)
+	}
+}
+
+func TestSetup_Answers(t *testing.T) {
+	testCases := []struct {
+		name        string
+		answers     common.Answers
+		wantHarness config.Harness
+		wantSkill   bool
+	}{
+		{name: "no answers take the defaults", answers: nil, wantHarness: config.HarnessClaudeCode, wantSkill: true},
+		{name: "claude code gets the skill", answers: common.Answers{config.DrudgerHarnessKey: string(config.HarnessClaudeCode)}, wantHarness: config.HarnessClaudeCode, wantSkill: true},
+		{name: "opencode gets no skill", answers: common.Answers{config.DrudgerHarnessKey: string(config.HarnessOpencode)}, wantHarness: config.HarnessOpencode, wantSkill: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+
+			result, err := NewSetupService(home).Setup(testCase.answers)
+			if err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+
+			var document config.DefaultDocument
+			if err := common.ReadJSON(result.GlobalConfig.Path, &document); err != nil {
+				t.Fatalf("ReadJSON: %v", err)
+			}
+			if want := config.NewDocument(config.EnvDockerSbx, testCase.wantHarness); document != want {
+				t.Errorf("global config = %+v, want %+v", document, want)
+			}
+			if hasSkill := result.SkillPath != ""; hasSkill != testCase.wantSkill {
+				t.Errorf("SkillPath = %q, want a skill: %v", result.SkillPath, testCase.wantSkill)
+			}
+		})
+	}
+}
+
+func TestSetup_InvalidAnswerWritesNothing(t *testing.T) {
+	home := tempHome(t)
+
+	_, err := NewSetupService(home).Setup(common.Answers{config.DrudgerHarnessKey: "vim"})
+	if err == nil {
+		t.Fatal("Setup succeeded, want an error for an unknown harness")
+	}
+	isPresent, err := common.Exists(common.DrudgeDir(home))
+	if err != nil {
+		t.Fatalf("Exists: %v", err)
+	}
+	if isPresent {
+		t.Errorf("%s exists after a refused answer", common.DrudgeDir(home))
+	}
+}
+
+func TestSetup_ExistingGlobalConfigIsLeftAlone(t *testing.T) {
+	home := tempHome(t)
+	service := NewSetupService(home)
+	if _, err := service.Setup(common.Answers{config.DrudgerHarnessKey: string(config.HarnessOpencode)}); err != nil {
+		t.Fatalf("Setup before: %v", err)
+	}
+	before, err := common.ReadFile(common.GlobalConfigPath(home))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	result, err := service.Setup(common.Answers{config.DrudgerHarnessKey: string(config.HarnessClaudeCode)})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	after, err := common.ReadFile(common.GlobalConfigPath(home))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if after != before {
+		t.Errorf("global config = %s, want it left as %s", after, before)
+	}
+	if !result.GlobalConfig.HasExisted {
+		t.Errorf("GlobalConfig.HasExisted = false, want true")
+	}
+	if result.SkillPath != "" {
+		t.Errorf("SkillPath = %q, want no skill for the opencode harness on disk", result.SkillPath)
+	}
+}
+
 func TestSetup_DefaultConfigsLoad(t *testing.T) {
 	home := tempHome(t)
-	if _, err := NewSetupService(home).Setup(); err != nil {
+	if _, err := NewSetupService(home).Setup(nil); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -124,7 +265,7 @@ func TestSetup_DefaultConfigsLoad(t *testing.T) {
 
 func TestSetup_ThemeConfigSharesLoadPath(t *testing.T) {
 	home := tempHome(t)
-	result, err := NewSetupService(home).Setup()
+	result, err := NewSetupService(home).Setup(nil)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -162,7 +303,7 @@ func TestCleanup(t *testing.T) {
 			home := tempHome(t)
 			service := NewSetupService(home)
 			if testCase.isSetUp {
-				if _, err := service.Setup(); err != nil {
+				if _, err := service.Setup(nil); err != nil {
 					t.Fatalf("Setup: %v", err)
 				}
 			}
