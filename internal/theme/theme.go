@@ -250,8 +250,15 @@ func Load(name string) (*Theme, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
 	}
+	return load(common.ThemeConfigPath(home), name)
+}
 
-	cfgPath := common.ThemeConfigPath(home)
+// LoadFile is Load with an empty name for the theme config file at cfgPath.
+func LoadFile(cfgPath string) (*Theme, error) {
+	return load(cfgPath, "")
+}
+
+func load(cfgPath string, name string) (*Theme, error) {
 	var cfg config
 
 	isPresent, statErr := common.Exists(cfgPath)

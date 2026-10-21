@@ -246,22 +246,6 @@ func WriteJSON(path string, v any) error {
 	return WriteFile(path, strings.TrimSuffix(data.String(), "\n"))
 }
 
-// WriteJSONIfNotExists writes v as JSON to path only if path doesn't already
-// exist. Returns whether it wrote the file.
-func WriteJSONIfNotExists(path string, v any) (bool, error) {
-	isPresent, err := Exists(path)
-	if err != nil {
-		return false, err
-	}
-	if isPresent {
-		return false, nil
-	}
-	if err := WriteJSON(path, v); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // ReadJSON reads path and unmarshals it into v.
 func ReadJSON(path string, v any) error {
 	data, err := os.ReadFile(path)

@@ -223,9 +223,11 @@ func Load() (*GlobalConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
 	}
+	return LoadFile(common.GlobalConfigPath(home))
+}
 
-	cfgPath := common.GlobalConfigPath(home)
-
+// LoadFile is Load for the global config file at cfgPath.
+func LoadFile(cfgPath string) (*GlobalConfig, error) {
 	isPresent, statErr := common.Exists(cfgPath)
 	if statErr != nil {
 		return DefaultConfig(), nil

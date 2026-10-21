@@ -31,8 +31,8 @@ func TestRunSetup(t *testing.T) {
 					"  ✓ Created " + home + "/.drudge/schema/config.json\n" +
 					"  ✓ Created " + home + "/.drudge/schema/local-config.json\n" +
 					"  ✓ Created " + home + "/.claude/skills/DRUDGE/SKILL.md\n" +
-					"  · " + home + "/.drudge/config.json already exists\n" +
-					"  · " + home + "/.drudge/theme.json already exists\n" +
+					"  · Left " + home + "/.drudge/config.json as it was\n" +
+					"  · Left " + home + "/.drudge/theme.json as it was\n" +
 					"✓ DRUDGE is set up, run drg project init <name> in a project directory\n"
 			},
 		},

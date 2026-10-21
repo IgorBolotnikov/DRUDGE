@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -38,12 +39,12 @@ func themeConfigPath(home string) string {
 
 func TestSetup(t *testing.T) {
 	testCases := []struct {
-		name               string
-		runsBefore         int
-		wantConfigsExisted bool
+		name        string
+		runsBefore  int
+		wantOutcome ConfigOutcome
 	}{
-		{name: "fresh home creates every file", runsBefore: 0, wantConfigsExisted: false},
-		{name: "second run skips the configs", runsBefore: 1, wantConfigsExisted: true},
+		{name: "fresh home creates every file", runsBefore: 0, wantOutcome: ConfigCreated},
+		{name: "second run leaves the configs", runsBefore: 1, wantOutcome: ConfigUnchanged},
 	}
 
 	for _, testCase := range testCases {
@@ -88,8 +89,8 @@ func TestSetup(t *testing.T) {
 				got  ConfigFile
 				want ConfigFile
 			}{
-				{result.GlobalConfig, ConfigFile{Path: common.GlobalConfigPath(home), HasExisted: testCase.wantConfigsExisted}},
-				{result.ThemeConfig, ConfigFile{Path: themeConfigPath(home), HasExisted: testCase.wantConfigsExisted}},
+				{result.GlobalConfig, ConfigFile{Path: common.GlobalConfigPath(home), Outcome: testCase.wantOutcome}},
+				{result.ThemeConfig, ConfigFile{Path: themeConfigPath(home), Outcome: testCase.wantOutcome}},
 			}
 			for _, configFile := range wantConfigs {
 				if configFile.got != configFile.want {
@@ -105,54 +106,142 @@ func TestSetup(t *testing.T) {
 	}
 }
 
+// writeConfigFiles writes the global config and the theme config of home.
+// An empty content leaves the file missing.
+func writeConfigFiles(t *testing.T, home string, globalConfig string, themeConfig string) {
+	t.Helper()
+	if err := common.EnsureDir(common.DrudgeDir(home)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	for _, file := range []struct{ path, content string }{
+		{common.GlobalConfigPath(home), globalConfig},
+		{themeConfigPath(home), themeConfig},
+	} {
+		if file.content == "" {
+			continue
+		}
+		if err := os.WriteFile(file.path, []byte(file.content), common.DefaultFilePerm); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+}
+
+// pressEnter answers every question the way a frontend does when Enter takes
+// each default, with changes typed in for their keys.
+func pressEnter(t *testing.T, service *SetupService, changes common.Answers) common.Answers {
+	t.Helper()
+	questions, err := service.Questions()
+	if err != nil {
+		t.Fatalf("Questions: %v", err)
+	}
+	answers := common.Answers{}
+	for _, question := range questions {
+		if !question.IsAskedAfter(answers) {
+			continue
+		}
+		answer, ok := changes[question.Key]
+		if !ok {
+			answer = question.Default
+		}
+		answers[question.Key] = answer
+	}
+	return answers
+}
+
 func TestQuestions(t *testing.T) {
+	everyKey := []string{
+		config.DrudgerHarnessKey,
+		config.DrudgerModelKey,
+		config.DrudgerMaxConcurrentKey,
+		config.DefaultTaskStatusKey,
+		config.PullRequestsEnabledKey,
+		config.PullRequestsDraftKey,
+		theme.ThemeKey,
+	}
+	defaults := map[string]string{
+		config.DrudgerHarnessKey:       string(config.HarnessClaudeCode),
+		config.DrudgerModelKey:         "",
+		config.DrudgerMaxConcurrentKey: "3",
+		config.DefaultTaskStatusKey:    "todo",
+		config.PullRequestsEnabledKey:  common.AnswerNo,
+		config.PullRequestsDraftKey:    common.AnswerNo,
+		theme.ThemeKey:                 "system",
+	}
 	testCases := []struct {
-		name            string
-		hasGlobalConfig bool
-		hasThemeConfig  bool
-		wantKeys        []string
+		name                  string
+		globalConfig          string
+		themeConfig           string
+		wantDefaults          map[string]string
+		wantModelLabel        string
+		wantModelDefaultLabel string
 	}{
 		{
-			name: "a fresh home asks every question but the ones with one option",
-			wantKeys: []string{
-				config.DrudgerHarnessKey,
-				config.DrudgerModelKey,
-				config.DrudgerMaxConcurrentKey,
-				config.DefaultTaskStatusKey,
-				config.PullRequestsEnabledKey,
-				config.PullRequestsDraftKey,
-				theme.ThemeKey,
-			},
+			name:                  "a fresh home starts on the defaults",
+			wantDefaults:          defaults,
+			wantModelLabel:        modelLabel,
+			wantModelDefaultLabel: modelDefaultLabel,
 		},
-		{name: "an existing global config asks for the theme", hasGlobalConfig: true, wantKeys: []string{theme.ThemeKey}},
-		{name: "existing configs ask nothing", hasGlobalConfig: true, hasThemeConfig: true, wantKeys: nil},
+		{
+			name: "existing configs start on their values",
+			globalConfig: `{
+				"drudger": {"harness": "opencode", "model": "opus", "maxConcurrentDrudgers": 5},
+				"task": {"defaultStatus": "draft"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}
+			}`,
+			themeConfig: `{"theme": "nord"}`,
+			wantDefaults: map[string]string{
+				config.DrudgerHarnessKey:       string(config.HarnessOpencode),
+				config.DrudgerModelKey:         "opus",
+				config.DrudgerMaxConcurrentKey: "5",
+				config.DefaultTaskStatusKey:    "draft",
+				config.PullRequestsEnabledKey:  common.AnswerYes,
+				config.PullRequestsDraftKey:    common.AnswerYes,
+				theme.ThemeKey:                 "nord",
+			},
+			wantModelLabel:        modelClearLabel,
+			wantModelDefaultLabel: "",
+		},
+		{
+			name:                  "keys the configs do not have start on the defaults",
+			globalConfig:          `{"drudger": {"harness": "opencode"}}`,
+			themeConfig:           `{"overrides": {}}`,
+			wantDefaults:          map[string]string{config.DrudgerHarnessKey: string(config.HarnessOpencode)},
+			wantModelLabel:        modelLabel,
+			wantModelDefaultLabel: modelDefaultLabel,
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
-			service := NewSetupService(home)
-			if testCase.hasGlobalConfig {
-				if _, err := service.Setup(nil); err != nil {
-					t.Fatalf("Setup: %v", err)
-				}
-			}
-			if testCase.hasGlobalConfig && !testCase.hasThemeConfig {
-				if err := os.Remove(themeConfigPath(home)); err != nil {
-					t.Fatalf("Remove: %v", err)
-				}
-			}
+			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
 
-			questions, err := service.Questions()
+			questions, err := NewSetupService(home).Questions()
 			if err != nil {
 				t.Fatalf("Questions: %v", err)
 			}
 			var gotKeys []string
 			for _, question := range questions {
 				gotKeys = append(gotKeys, question.Key)
+				wantDefault, ok := testCase.wantDefaults[question.Key]
+				if !ok {
+					wantDefault = defaults[question.Key]
+				}
+				if question.Default != wantDefault {
+					t.Errorf("Default of %s = %q, want %q", question.Key, question.Default, wantDefault)
+				}
+				if question.Key != config.DrudgerModelKey {
+					continue
+				}
+				if question.Label != testCase.wantModelLabel {
+					t.Errorf("model Label = %q, want %q", question.Label, testCase.wantModelLabel)
+				}
+				if question.DefaultLabel != testCase.wantModelDefaultLabel {
+					t.Errorf("model DefaultLabel = %q, want %q", question.DefaultLabel, testCase.wantModelDefaultLabel)
+				}
 			}
-			if !slices.Equal(gotKeys, testCase.wantKeys) {
-				t.Errorf("question keys = %v, want %v", gotKeys, testCase.wantKeys)
+			if !slices.Equal(gotKeys, everyKey) {
+				t.Errorf("question keys = %v, want %v", gotKeys, everyKey)
 			}
 		})
 	}
@@ -392,37 +481,6 @@ func TestSetup_InvalidAnswerWritesNothing(t *testing.T) {
 	}
 }
 
-func TestSetup_ExistingGlobalConfigIsLeftAlone(t *testing.T) {
-	home := tempHome(t)
-	service := NewSetupService(home)
-	if _, err := service.Setup(common.Answers{config.DrudgerHarnessKey: string(config.HarnessOpencode)}); err != nil {
-		t.Fatalf("Setup before: %v", err)
-	}
-	before, err := common.ReadFile(common.GlobalConfigPath(home))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-
-	result, err := service.Setup(common.Answers{config.DrudgerHarnessKey: string(config.HarnessClaudeCode)})
-	if err != nil {
-		t.Fatalf("Setup: %v", err)
-	}
-
-	after, err := common.ReadFile(common.GlobalConfigPath(home))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if after != before {
-		t.Errorf("global config = %s, want it left as %s", after, before)
-	}
-	if !result.GlobalConfig.HasExisted {
-		t.Errorf("GlobalConfig.HasExisted = false, want true")
-	}
-	if result.SkillPath != "" {
-		t.Errorf("SkillPath = %q, want no skill for the opencode harness on disk", result.SkillPath)
-	}
-}
-
 func TestSetup_ThemeAnswer(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -462,31 +520,290 @@ func TestSetup_ThemeAnswer(t *testing.T) {
 	}
 }
 
-func TestSetup_ExistingThemeConfigIsLeftAlone(t *testing.T) {
-	home := tempHome(t)
-	service := NewSetupService(home)
-	if _, err := service.Setup(common.Answers{theme.ThemeKey: "nord"}); err != nil {
-		t.Fatalf("Setup before: %v", err)
+// assertJSONFile fails the test when the file at path does not hold the JSON
+// of want.
+func assertJSONFile(t *testing.T, path string, want string) {
+	t.Helper()
+	var got, wantValue any
+	if err := common.ReadJSON(path, &got); err != nil {
+		t.Fatalf("ReadJSON: %v", err)
 	}
-	before, err := common.ReadFile(themeConfigPath(home))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(got, wantValue) {
+		t.Errorf("%s = %v, want %v", path, got, wantValue)
+	}
+}
+
+func TestSetup_Rerun(t *testing.T) {
+	const setupGlobalConfig = `{
+		"$schema": "./schema/config.json",
+		"drudger": {"environment": "docker-sbx", "harness": "claude-code", "model": "opus", "maxConcurrentDrudgers": 3},
+		"task": {"defaultStatus": "todo"},
+		"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": false}}
+	}`
+	const setupThemeConfig = `{"$schema": "./schema/theme.json", "theme": "nord", "overrides": {"error": "#FF5555"}}`
+	testCases := []struct {
+		name              string
+		globalConfig      string
+		themeConfig       string
+		changes           common.Answers
+		wantGlobalConfig  string
+		wantThemeConfig   string
+		wantGlobalOutcome ConfigOutcome
+		wantThemeOutcome  ConfigOutcome
+	}{
+		{
+			name:              "Enter on every question leaves the files",
+			globalConfig:      setupGlobalConfig,
+			themeConfig:       setupThemeConfig,
+			wantGlobalConfig:  setupGlobalConfig,
+			wantThemeConfig:   setupThemeConfig,
+			wantGlobalOutcome: ConfigUnchanged,
+			wantThemeOutcome:  ConfigUnchanged,
+		},
+		{
+			name: "unknown keys and keys setup does not ask stay",
+			globalConfig: `{
+				"$schema": "./custom/config.json",
+				"custom": {"keep": true},
+				"drudger": {"harness": "claude-code", "sandboxTimeouts": {"createSeconds": 900}},
+				"project": {"pageSize": 50}
+			}`,
+			themeConfig: `{"$schema": "./custom/theme.json", "custom": 1, "theme": "nord", "overrides": {"error": "#FF5555"}}`,
+			changes:     common.Answers{config.DrudgerHarnessKey: string(config.HarnessOpencode), theme.ThemeKey: "dracula"},
+			wantGlobalConfig: `{
+				"$schema": "./custom/config.json",
+				"custom": {"keep": true},
+				"drudger": {"environment": "docker-sbx", "harness": "opencode", "maxConcurrentDrudgers": 3, "sandboxTimeouts": {"createSeconds": 900}},
+				"task": {"defaultStatus": "todo"},
+				"project": {"pageSize": 50},
+				"remote": {"pullRequests": {"isEnabled": false}}
+			}`,
+			wantThemeConfig:   `{"$schema": "./custom/theme.json", "custom": 1, "theme": "dracula", "overrides": {"error": "#FF5555"}}`,
+			wantGlobalOutcome: ConfigUpdated,
+			wantThemeOutcome:  ConfigUpdated,
+		},
+		{
+			name:         "- removes the model",
+			globalConfig: setupGlobalConfig,
+			themeConfig:  setupThemeConfig,
+			changes:      common.Answers{config.DrudgerModelKey: modelClearAnswer},
+			wantGlobalConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": false}}
+			}`,
+			wantThemeConfig:   setupThemeConfig,
+			wantGlobalOutcome: ConfigUpdated,
+			wantThemeOutcome:  ConfigUnchanged,
+		},
+		{
+			name:         "a typed model replaces the model",
+			globalConfig: setupGlobalConfig,
+			themeConfig:  setupThemeConfig,
+			changes:      common.Answers{config.DrudgerModelKey: "sonnet"},
+			wantGlobalConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "model": "sonnet", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": false}}
+			}`,
+			wantThemeConfig:   setupThemeConfig,
+			wantGlobalOutcome: ConfigUpdated,
+			wantThemeOutcome:  ConfigUnchanged,
+		},
+		{
+			name:         "pull requests off keep the provider and the draft setting",
+			globalConfig: setupGlobalConfig,
+			themeConfig:  setupThemeConfig,
+			changes:      common.Answers{config.PullRequestsEnabledKey: common.AnswerNo},
+			wantGlobalConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "model": "opus", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": false, "isDraft": false}}
+			}`,
+			wantThemeConfig:   setupThemeConfig,
+			wantGlobalOutcome: ConfigUpdated,
+			wantThemeOutcome:  ConfigUnchanged,
+		},
+		{
+			name:         "pull requests on add the provider and the draft setting",
+			globalConfig: `{"drudger": {"harness": "claude-code"}}`,
+			changes:      common.Answers{config.PullRequestsEnabledKey: common.AnswerYes, config.PullRequestsDraftKey: common.AnswerYes},
+			wantGlobalConfig: `{
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}
+			}`,
+			wantThemeConfig:   `{"$schema": "./schema/theme.json", "theme": "system", "overrides": {}}`,
+			wantGlobalOutcome: ConfigUpdated,
+			wantThemeOutcome:  ConfigCreated,
+		},
 	}
 
-	result, err := service.Setup(common.Answers{theme.ThemeKey: "monokai"})
-	if err != nil {
-		t.Fatalf("Setup: %v", err)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
+			service := NewSetupService(home)
+			before, err := common.ReadFile(common.GlobalConfigPath(home))
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+
+			result, err := service.Setup(pressEnter(t, service, testCase.changes))
+			if err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+
+			assertJSONFile(t, common.GlobalConfigPath(home), testCase.wantGlobalConfig)
+			assertJSONFile(t, themeConfigPath(home), testCase.wantThemeConfig)
+			if result.GlobalConfig.Outcome != testCase.wantGlobalOutcome {
+				t.Errorf("GlobalConfig.Outcome = %q, want %q", result.GlobalConfig.Outcome, testCase.wantGlobalOutcome)
+			}
+			if result.ThemeConfig.Outcome != testCase.wantThemeOutcome {
+				t.Errorf("ThemeConfig.Outcome = %q, want %q", result.ThemeConfig.Outcome, testCase.wantThemeOutcome)
+			}
+			after, err := common.ReadFile(common.GlobalConfigPath(home))
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if isRewritten := after != before; isRewritten != (testCase.wantGlobalOutcome == ConfigUpdated) {
+				t.Errorf("global config rewritten: %v, want outcome %q", isRewritten, testCase.wantGlobalOutcome)
+			}
+			if _, err := config.Load(); err != nil {
+				t.Errorf("config.Load: %v", err)
+			}
+		})
+	}
+}
+
+func TestSetup_DefaultsLeaveExistingFiles(t *testing.T) {
+	const globalConfig = `{"drudger":   {"harness": "opencode", "model": "opus"},
+  "custom": 1}`
+	const themeConfig = `{"theme": "nord"}`
+	testCases := []struct {
+		name              string
+		globalConfig      string
+		themeConfig       string
+		wantGlobalOutcome ConfigOutcome
+		wantThemeOutcome  ConfigOutcome
+		wantSkill         bool
+	}{
+		{name: "both files exist", globalConfig: globalConfig, themeConfig: themeConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigUnchanged, wantSkill: false},
+		{name: "a missing theme config is created", globalConfig: globalConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigCreated, wantSkill: false},
+		{name: "a missing global config is created", themeConfig: themeConfig, wantGlobalOutcome: ConfigCreated, wantThemeOutcome: ConfigUnchanged, wantSkill: true},
 	}
 
-	after, err := common.ReadFile(themeConfigPath(home))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
+
+			result, err := NewSetupService(home).Setup(nil)
+			if err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+
+			files := []struct {
+				got         ConfigFile
+				before      string
+				wantOutcome ConfigOutcome
+			}{
+				{result.GlobalConfig, testCase.globalConfig, testCase.wantGlobalOutcome},
+				{result.ThemeConfig, testCase.themeConfig, testCase.wantThemeOutcome},
+			}
+			for _, file := range files {
+				if file.got.Outcome != file.wantOutcome {
+					t.Errorf("Outcome of %s = %q, want %q", file.got.Path, file.got.Outcome, file.wantOutcome)
+				}
+				if file.wantOutcome != ConfigUnchanged {
+					continue
+				}
+				after, err := common.ReadFile(file.got.Path)
+				if err != nil {
+					t.Fatalf("ReadFile: %v", err)
+				}
+				if after != file.before {
+					t.Errorf("%s = %q, want it left as %q", file.got.Path, after, file.before)
+				}
+			}
+			if hasSkill := result.SkillPath != ""; hasSkill != testCase.wantSkill {
+				t.Errorf("SkillPath = %q, want a skill: %v", result.SkillPath, testCase.wantSkill)
+			}
+		})
 	}
-	if after != before {
-		t.Errorf("theme config = %s, want it left as %s", after, before)
+}
+
+func TestSetup_BrokenConfigWritesNothing(t *testing.T) {
+	testCases := []struct {
+		name         string
+		globalConfig string
+		themeConfig  string
+		wantErr      string
+	}{
+		{name: "a global config that is not JSON", globalConfig: `{"drudger": `, wantErr: "could not parse global config"},
+		{name: "a value the config loader refuses", globalConfig: `{"drudger": {"maxConcurrentDrudgers": -1}}`, wantErr: "it must be a positive number"},
+		{name: "a value the question refuses", globalConfig: `{"drudger": {"harness": "vim"}}`, wantErr: `has drudger.harness = "vim"`},
+		{name: "a theme config that is not JSON", themeConfig: `{"theme": `, wantErr: "could not parse theme config"},
+		{name: "an unknown theme", themeConfig: `{"theme": "solarized"}`, wantErr: `unknown theme "solarized"`},
 	}
-	if !result.ThemeConfig.HasExisted {
-		t.Errorf("ThemeConfig.HasExisted = false, want true")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
+			service := NewSetupService(home)
+
+			if _, err := service.Questions(); err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+				t.Errorf("Questions error = %v, want it to contain %q", err, testCase.wantErr)
+			}
+			_, err := service.Setup(common.Answers{config.DrudgerHarnessKey: string(config.HarnessClaudeCode), theme.ThemeKey: "dracula"})
+			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+				t.Errorf("Setup error = %v, want it to contain %q", err, testCase.wantErr)
+			}
+
+			entries, err := os.ReadDir(common.DrudgeDir(home))
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			var gotNames []string
+			for _, entry := range entries {
+				gotNames = append(gotNames, entry.Name())
+			}
+			var wantNames []string
+			for _, file := range []struct{ name, content string }{
+				{common.GloablConfigName, testCase.globalConfig},
+				{common.ThemeConfigName, testCase.themeConfig},
+			} {
+				if file.content != "" {
+					wantNames = append(wantNames, file.name)
+				}
+			}
+			slices.Sort(wantNames)
+			if !slices.Equal(gotNames, wantNames) {
+				t.Errorf("drudge home holds %v, want only %v", gotNames, wantNames)
+			}
+			for _, file := range []struct{ path, content string }{
+				{common.GlobalConfigPath(home), testCase.globalConfig},
+				{themeConfigPath(home), testCase.themeConfig},
+			} {
+				if file.content == "" {
+					continue
+				}
+				after, err := common.ReadFile(file.path)
+				if err != nil {
+					t.Fatalf("ReadFile: %v", err)
+				}
+				if after != file.content {
+					t.Errorf("%s = %q, want it left as %q", file.path, after, file.content)
+				}
+			}
+		})
 	}
 }
 

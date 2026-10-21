@@ -11,11 +11,20 @@ type SetupResult struct {
 	ThemeConfig  ConfigFile
 }
 
-// ConfigFile is a config file setup writes only when it is missing.
+// ConfigFile is a config file setup asks about, with what setup did to it.
 type ConfigFile struct {
-	Path       string
-	HasExisted bool // Setup left the file as it was
+	Path    string
+	Outcome ConfigOutcome
 }
+
+// ConfigOutcome is what setup did to a config file.
+type ConfigOutcome string
+
+const (
+	ConfigCreated   ConfigOutcome = "created"
+	ConfigUpdated   ConfigOutcome = "updated"
+	ConfigUnchanged ConfigOutcome = "unchanged"
+)
 
 // CleanupResult is the outcome of one cleanup.
 type CleanupResult struct {

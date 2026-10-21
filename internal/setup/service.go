@@ -1,7 +1,9 @@
 package setup
 
 import (
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -31,6 +33,7 @@ const (
 	environmentLabel  = "Environment"
 	harnessLabel      = "Harness"
 	modelLabel        = "Model the harness runs"
+	modelClearLabel   = "Model the harness runs, - for the harness default"
 	modelDefaultLabel = "harness default"
 	concurrencyLabel  = "Drudgers that may work on one project at once"
 	taskStatusLabel   = "Status of a new task"
@@ -40,34 +43,112 @@ const (
 	themeLabel        = "Color theme"
 )
 
+// modelClearAnswer is the answer to the model question that removes the model
+// from the global config.
+const modelClearAnswer = "-"
+
+// configFile is a config file setup asks about, with the questions about it.
+type configFile struct {
+	path      string
+	document  map[string]any // Nil when the file is missing
+	questions []common.Question
+}
+
 // Questions returns the questions setup asks before it writes the configs, in
 // the order they are asked. The global config questions come first and the
-// theme question last. A config that exists has its questions left out.
+// theme question last. A question about an existing config starts on the
+// value the file holds, and on its default when the file does not have the
+// key. It refuses a config file that does not load.
 func (s *SetupService) Questions() ([]common.Question, error) {
-	var questions []common.Question
-	hasGlobalConfig, err := common.Exists(common.GlobalConfigPath(s.home))
+	globalConfig, themeConfig, err := s.readConfigFiles()
 	if err != nil {
 		return nil, err
 	}
-	if !hasGlobalConfig {
-		globalQuestions, err := globalConfigQuestions()
-		if err != nil {
-			return nil, err
-		}
-		questions = append(questions, globalQuestions...)
-	}
-	hasThemeConfig, err := common.Exists(common.ThemeConfigPath(s.home))
-	if err != nil {
-		return nil, err
-	}
-	if !hasThemeConfig {
-		themeQuestion, err := newThemeQuestion()
-		if err != nil {
-			return nil, err
-		}
-		questions = append(questions, themeQuestion)
-	}
+	questions := slices.Concat(globalConfig.questions, themeConfig.questions)
 	return slices.DeleteFunc(questions, func(question common.Question) bool { return !question.IsAsked() }), nil
+}
+
+// readConfigFiles reads the global config and the theme config and builds the
+// questions about them, preselected from the files. It refuses a file its
+// loader refuses.
+func (s *SetupService) readConfigFiles() (globalConfig configFile, themeConfig configFile, err error) {
+	globalConfig, err = readConfigFile(common.GlobalConfigPath(s.home), func(path string) error {
+		_, err := config.LoadFile(path)
+		return err
+	})
+	if err != nil {
+		return configFile{}, configFile{}, err
+	}
+	if globalConfig.questions, err = globalConfigQuestions(); err != nil {
+		return configFile{}, configFile{}, err
+	}
+	if err := globalConfig.preselect(); err != nil {
+		return configFile{}, configFile{}, err
+	}
+	for index, question := range globalConfig.questions {
+		if question.Key == config.DrudgerModelKey && question.Default != "" {
+			globalConfig.questions[index].Label = modelClearLabel
+		}
+	}
+
+	themeConfig, err = readConfigFile(common.ThemeConfigPath(s.home), func(path string) error {
+		_, err := theme.LoadFile(path)
+		return err
+	})
+	if err != nil {
+		return configFile{}, configFile{}, err
+	}
+	themeQuestion, err := newThemeQuestion()
+	if err != nil {
+		return configFile{}, configFile{}, err
+	}
+	themeConfig.questions = []common.Question{themeQuestion}
+	if err := themeConfig.preselect(); err != nil {
+		return configFile{}, configFile{}, err
+	}
+	return globalConfig, themeConfig, nil
+}
+
+// readConfigFile reads the config file at path once load accepts it. A
+// missing file reads as no document.
+func readConfigFile(path string, load func(path string) error) (configFile, error) {
+	isPresent, err := common.Exists(path)
+	if err != nil || !isPresent {
+		return configFile{path: path}, err
+	}
+	if err := load(path); err != nil {
+		return configFile{}, err
+	}
+	var document map[string]any
+	if err := common.ReadJSON(path, &document); err != nil {
+		return configFile{}, err
+	}
+	if document == nil {
+		return configFile{}, fmt.Errorf("%s holds null, it must hold a JSON object", path)
+	}
+	return configFile{path: path, document: document}, nil
+}
+
+// preselect sets the default of every question to the value the file holds
+// for its key. It refuses a value the question does not take.
+func (file *configFile) preselect() error {
+	for index := range file.questions {
+		question := &file.questions[index]
+		answer, ok := currentAnswer(file.document, question.Key)
+		if !ok {
+			continue
+		}
+		if question.Validate != nil {
+			if err := question.Validate(answer); err != nil {
+				return fmt.Errorf("%s has %s = %q, %w", file.path, question.Key, answer, err)
+			}
+		}
+		question.Default = answer
+		if answer != "" {
+			question.DefaultLabel = ""
+		}
+	}
+	return nil
 }
 
 // globalConfigQuestions returns every question about the global config, the
@@ -154,24 +235,37 @@ func newGlobalConfigDocument(answers common.Answers) (config.DefaultDocument, er
 
 // Setup creates the drudge home directory, writes the schema files and
 // installs the skill for the harness. The schemas and the skill are
-// overwritten on every run. The global config and the theme config are
-// written only when they are missing. A missing config gets the answers to
-// the setup questions, and an unanswered question takes its default. Setup
-// refuses an invalid answer before it writes anything.
+// overwritten on every run. A missing config is created from the answers to
+// the setup questions, and an unanswered question takes its default. An
+// existing config with no answer in answers is left as it is. Otherwise the
+// answered keys are merged into it and every other key stays as it is. Setup
+// refuses an invalid answer and a config file that does not load before it
+// writes anything.
 func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
-	questions, err := globalConfigQuestions()
+	globalConfig, themeConfig, err := s.readConfigFiles()
 	if err != nil {
 		return nil, err
 	}
-	themeQuestion, err := newThemeQuestion()
+	globalAnswers, err := common.ResolveAnswers(globalConfig.questions, answers)
 	if err != nil {
 		return nil, err
 	}
-	answers, err = common.ResolveAnswers(append(questions, themeQuestion), answers)
+	if globalAnswers[config.DrudgerModelKey] == modelClearAnswer {
+		globalAnswers[config.DrudgerModelKey] = ""
+	}
+	globalDocument, err := newGlobalConfigDocument(globalAnswers)
 	if err != nil {
 		return nil, err
 	}
-	document, err := newGlobalConfigDocument(answers)
+	globalWrite, err := globalConfig.plan(answers, globalAnswers, globalDocument)
+	if err != nil {
+		return nil, err
+	}
+	themeAnswers, err := common.ResolveAnswers(themeConfig.questions, answers)
+	if err != nil {
+		return nil, err
+	}
+	themeWrite, err := themeConfig.plan(answers, themeAnswers, theme.NewDocument(themeAnswers[theme.ThemeKey]))
 	if err != nil {
 		return nil, err
 	}
@@ -203,11 +297,7 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 		result.SchemaPaths = append(result.SchemaPaths, path)
 	}
 
-	harness, err := s.harness(document)
-	if err != nil {
-		return nil, err
-	}
-	skillPath, didInstall, err := skill.InstallDrudge(s.home, harness)
+	skillPath, didInstall, err := skill.InstallDrudge(s.home, globalDocument.Drudger.Harness)
 	if err != nil {
 		return nil, err
 	}
@@ -215,32 +305,74 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 		result.SkillPath = skillPath
 	}
 
-	result.GlobalConfig, err = writeConfigFile(common.GlobalConfigPath(s.home), document)
-	if err != nil {
+	if result.GlobalConfig, err = globalWrite.write(); err != nil {
 		return nil, err
 	}
-	result.ThemeConfig, err = writeConfigFile(common.ThemeConfigPath(s.home), theme.NewDocument(answers[theme.ThemeKey]))
-	if err != nil {
+	if result.ThemeConfig, err = themeWrite.write(); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-// harness returns the harness of the global config, or the harness of
-// document when there is no global config yet.
-func (s *SetupService) harness(document config.DefaultDocument) (config.Harness, error) {
-	hasGlobalConfig, err := common.Exists(common.GlobalConfigPath(s.home))
+// configWrite is what setup writes to one config file.
+type configWrite struct {
+	path    string
+	content any // Nil when the file is left as it is
+	outcome ConfigOutcome
+}
+
+// plan returns what setup writes to the file. A missing file gets document.
+// An existing file is left as it is when answers has no answer for it.
+// Otherwise every key of resolved takes its value in document, and a key
+// document leaves out is removed from the file.
+func (file *configFile) plan(answers common.Answers, resolved common.Answers, document any) (configWrite, error) {
+	if file.document == nil {
+		return configWrite{path: file.path, content: document, outcome: ConfigCreated}, nil
+	}
+	unchanged := configWrite{path: file.path, outcome: ConfigUnchanged}
+	if !hasAnswerFor(answers, resolved) {
+		return unchanged, nil
+	}
+	answered, err := toJSONObject(document)
 	if err != nil {
-		return "", err
+		return configWrite{}, err
 	}
-	if !hasGlobalConfig {
-		return document.Drudger.Harness, nil
-	}
-	globalConfig, err := config.Load()
+	merged, err := toJSONObject(file.document)
 	if err != nil {
-		return "", err
+		return configWrite{}, err
 	}
-	return globalConfig.Drudger.Harness, nil
+	for key := range resolved {
+		value, ok := lookupKey(answered, key)
+		if !ok {
+			deleteKey(merged, key)
+			continue
+		}
+		if err := setKey(merged, key, value); err != nil {
+			return configWrite{}, fmt.Errorf("%s %w", file.path, err)
+		}
+	}
+	if reflect.DeepEqual(merged, file.document) {
+		return unchanged, nil
+	}
+	return configWrite{path: file.path, content: merged, outcome: ConfigUpdated}, nil
+}
+
+func hasAnswerFor(answers common.Answers, resolved common.Answers) bool {
+	for key := range resolved {
+		if _, ok := answers[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (write configWrite) write() (ConfigFile, error) {
+	if write.content != nil {
+		if err := common.WriteJSON(write.path, write.content); err != nil {
+			return ConfigFile{}, err
+		}
+	}
+	return ConfigFile{Path: write.path, Outcome: write.outcome}, nil
 }
 
 // IsInstalled reports whether the drudge home directory exists.
@@ -262,12 +394,4 @@ func (s *SetupService) Cleanup() (*CleanupResult, error) {
 		return nil, err
 	}
 	return &CleanupResult{DrudgeDir: drudgeDir, HasRemoved: true}, nil
-}
-
-func writeConfigFile(path string, document any) (ConfigFile, error) {
-	didWrite, err := common.WriteJSONIfNotExists(path, document)
-	if err != nil {
-		return ConfigFile{}, err
-	}
-	return ConfigFile{Path: path, HasExisted: !didWrite}, nil
 }

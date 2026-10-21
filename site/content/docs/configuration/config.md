@@ -3,17 +3,19 @@ title: Global config
 weight: 1
 ---
 
-The global config file is `~/.drudge/config.json`. `drg setup` writes it when it is missing, with the answers to its questions. After that the file is yours to edit. `drg setup` leaves an existing file alone.
+The global config file is `~/.drudge/config.json`. `drg setup` writes it when it is missing, with the answers to its questions. After that the file is yours to edit, and running `drg setup` again is the way to change the answers.
 
 In a terminal, `drg setup` asks these questions before it writes the file:
 
 - `drudger.harness`, the harness the Drudgers run.
-- `drudger.model`, the model the harness runs. Enter leaves the key out, so the harness picks its own model.
+- `drudger.model`, the model the harness runs. With no model set, Enter leaves the key out, so the harness picks its own model. With a model set, Enter keeps it and `-` removes the key.
 - `drudger.maxConcurrentDrudgers`, how many Drudgers may work on one project at once.
 - `task.defaultStatus`, the status of a new task.
 - `remote.pullRequests.isEnabled`, whether a Drudger opens pull requests. Yes also sets `remote.provider` to `github` and asks `remote.pullRequests.isDraft`.
 
 Every asked key is written to the file, defaults included. `--defaults`, or `-y`, skips the questions and writes the defaults. Input that is not a terminal skips them too.
+
+When the file exists, `drg setup` asks again with the values of the file preselected. A key the file does not have starts on its default. The answers are merged into the file, and every key it does not ask about stays as it is, unknown keys and `$schema` included. Turning pull requests off keeps `remote.provider` and `remote.pullRequests.isDraft`. A file whose answers match what it holds is left as it was. `--defaults` and input that is not a terminal leave an existing file alone. A file that does not load stops `drg setup` with the error before any question is asked.
 
 ## Schema
 

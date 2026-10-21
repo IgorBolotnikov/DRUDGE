@@ -3,7 +3,9 @@ title: Theme
 weight: 3
 ---
 
-The theme file is `~/.drudge/theme.json`. `drg setup` writes it when it is missing, with the theme it asks you for and no overrides. `drg setup -y` and input that is not a terminal take the `system` theme. After that the file is yours to edit. `drg setup` leaves an existing file alone.
+The theme file is `~/.drudge/theme.json`. `drg setup` writes it when it is missing, with the theme it asks you for and no overrides. `drg setup -y` and input that is not a terminal take the `system` theme. After that the file is yours to edit.
+
+When the file exists, `drg setup` asks again with the theme of the file preselected and writes the answer back into it. `overrides`, `$schema` and every other key stay as they are. `drg setup -y` and input that is not a terminal leave an existing file alone. A file that does not load, like broken JSON or an unknown theme name, stops `drg setup` with the error before any question is asked.
 
 ## Schema
 

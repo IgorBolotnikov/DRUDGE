@@ -10,7 +10,7 @@ generated: true
 usage: drg setup [options]
 ```
 
-Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config and the color theme. With --defaults or input that is not a terminal it asks nothing and takes the defaults.
+Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config and the color theme. An existing file preselects the answers, and the answers are merged into it. With --defaults or input that is not a terminal it asks nothing, takes the defaults for a missing file and leaves an existing file alone.
 
 ## Options
 

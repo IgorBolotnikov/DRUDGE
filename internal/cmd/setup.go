@@ -19,7 +19,8 @@ var SetupCmd = &Cmd{
 	Name: "setup",
 	Desc: "Setup DRUDGE in this computer",
 	Help: "Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config and the color theme. " +
-		"With --defaults or input that is not a terminal it asks nothing and takes the defaults.",
+		"An existing file preselects the answers, and the answers are merged into it. " +
+		"With --defaults or input that is not a terminal it asks nothing, takes the defaults for a missing file and leaves an existing file alone.",
 	Setup: func(fs *flag.FlagSet) func(args []string) error {
 		shouldTakeDefaults := fs.Bool(defaultsFlagName, false, "Skip the questions and take the default answers")
 		alias(fs, defaultsFlagShortName, defaultsFlagName)
@@ -61,10 +62,13 @@ func runSetup(shouldTakeDefaults bool) error {
 		out.Done("Created %s", result.SkillPath)
 	}
 	for _, configFile := range []setup.ConfigFile{result.GlobalConfig, result.ThemeConfig} {
-		if configFile.HasExisted {
-			out.Skip("%s already exists", configFile.Path)
-		} else {
+		switch configFile.Outcome {
+		case setup.ConfigCreated:
 			out.Done("Created %s", configFile.Path)
+		case setup.ConfigUpdated:
+			out.Done("Updated %s", configFile.Path)
+		case setup.ConfigUnchanged:
+			out.Skip("Left %s as it was", configFile.Path)
 		}
 	}
 	out.Result("DRUDGE is set up, run drg project init <name> in a project directory")

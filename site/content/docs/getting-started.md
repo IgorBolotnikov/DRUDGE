@@ -88,7 +88,7 @@ It then creates `~/.drudge/` and writes:
 
 With the `claude-code` harness it also installs the DRUDGE skill for Claude Code at `~/.claude/skills/DRUDGE/SKILL.md`. The skill lets a planning agent write DRUDGE Tasks for you.
 
-The schemas and the skill are rewritten on every run. The config files are written only when they are missing, so running `drg setup` again keeps your settings.
+The schemas and the skill are rewritten on every run. Running `drg setup` again in a terminal asks the same questions, starting on the values of your config files, and writes the answers back into them. Every key it does not ask about stays as it is. `drg setup -y` leaves existing config files alone.
 
 ## First project
 
