@@ -54,6 +54,8 @@ func (cfg *LocalConfig) setAnswer(key string, answer string) error {
 			return fmt.Errorf("answer for %s: %w", key, err)
 		}
 		cfg.MaxConcurrentDrudgers = value
+	case branchFormatKey:
+		cfg.Task.BranchFormat = answer
 	case remoteProviderKey:
 		cfg.Remote.Provider = remote.Provider(answer)
 	case PullRequestsEnabledKey:

@@ -9,6 +9,9 @@ import (
 	"unicode"
 )
 
+// BranchFormatKey is the config key of the branch name format.
+const BranchFormatKey = "task.branchFormat"
+
 // Placeholders a branch name format may carry.
 const (
 	BranchPlaceholderShortID  = "{{taskShortID}}"

@@ -39,6 +39,8 @@ func (reader *GlobalSettingsReader) ResolvedAnswers(keys []string) (common.Answe
 		switch key {
 		case maxConcurrentDrudgersKey:
 			answers[key] = strconv.Itoa(ResolveMaxConcurrentDrudgers(&LocalConfig{}, global))
+		case branchFormatKey:
+			answers[key] = ResolveBranchFormat(&LocalConfig{}, global)
 		case remoteProviderKey:
 			answers[key] = string(global.Remote.Provider)
 		case PullRequestsEnabledKey:

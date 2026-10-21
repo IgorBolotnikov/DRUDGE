@@ -70,7 +70,7 @@ const (
 	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
 	gitCommandTimeoutKey     = "gitTimeouts.commandSeconds"
-	branchFormatKey          = "task.branchFormat"
+	branchFormatKey          = task.BranchFormatKey
 	// DefaultTaskStatusKey is exported so the task commands can name it in their help.
 	DefaultTaskStatusKey = "task.defaultStatus"
 	// ProjectPageSizeKey is exported so the project commands can name it in their help.

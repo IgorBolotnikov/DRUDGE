@@ -83,7 +83,7 @@ func NewSelectQuestion(schema []byte, key string, label string) (Question, error
 		}
 		question.Options = append(question.Options, QuestionOption{Value: value, Label: value})
 	}
-	question.Validate = question.validateOption
+	question.Validate = question.ValidateOption
 	if len(node.Default) > 0 {
 		if err := json.Unmarshal(node.Default, &question.Default); err != nil {
 			return Question{}, fmt.Errorf("default of key %q is %s, want a string: %w", key, node.Default, err)
@@ -120,7 +120,7 @@ func NewBoolQuestion(schema []byte, key string, label string) (Question, error) 
 		}
 		question.Default = FormatBoolAnswer(isOn)
 	}
-	question.Validate = question.validateOption
+	question.Validate = question.ValidateOption
 	return question, nil
 }
 
@@ -211,7 +211,8 @@ func (q Question) IsAsked() bool {
 	return q.Kind != QuestionSelect || len(q.Options) != 1
 }
 
-func (q Question) validateOption(answer string) error {
+// ValidateOption refuses an answer that is not the value of one of the options.
+func (q Question) ValidateOption(answer string) error {
 	values := make([]string, 0, len(q.Options))
 	for _, option := range q.Options {
 		if option.Value == answer {

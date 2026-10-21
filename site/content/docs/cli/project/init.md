@@ -18,7 +18,7 @@ Otherwise every subdirectory that is a git repository becomes one, and a directo
 
 It writes the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.
 
-In a terminal it asks how many Drudgers may work on the project at once and whether to open pull requests, each question starting on the value of the global config.
+In a terminal it asks how many Drudgers may work on the project at once, which branch format its tasks use and whether to open pull requests, each question starting on the value of the global config.
 
 It writes into the local config only the answers that differ from the global config. Pull requests turned on with no remote.provider in the global config write remote.provider too.
 

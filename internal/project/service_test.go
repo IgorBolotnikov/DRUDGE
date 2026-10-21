@@ -2,12 +2,14 @@ package project
 
 import (
 	"errors"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // fakeProjectRepo holds projects in memory.
@@ -87,6 +89,12 @@ const testLocalSchema = `{
   "type": "object",
   "properties": {
     "maxConcurrentDrudgers": {"type": "integer", "minimum": 1, "default": 3},
+    "task": {
+      "type": "object",
+      "properties": {
+        "branchFormat": {"type": "string", "default": "drudge/{{taskShortID}}-{{taskSlug}}"}
+      }
+    },
     "remote": {
       "type": "object",
       "properties": {
@@ -126,9 +134,18 @@ func (globals *fakeGlobalSettings) ResolvedAnswers(keys []string) (common.Answer
 func defaultGlobalAnswers() common.Answers {
 	return common.Answers{
 		MaxConcurrentDrudgersKey:      "3",
+		task.BranchFormatKey:          task.DefaultBranchFormat,
 		remote.PullRequestsEnabledKey: common.AnswerNo,
 		remote.PullRequestsDraftKey:   common.AnswerNo,
 	}
+}
+
+// withGlobalAnswers returns the default global answers with answers set over
+// them.
+func withGlobalAnswers(answers common.Answers) common.Answers {
+	merged := defaultGlobalAnswers()
+	maps.Copy(merged, answers)
+	return merged
 }
 
 func TestProjectService_PrepareInit(t *testing.T) {
@@ -156,6 +173,8 @@ func TestProjectService_PrepareInit(t *testing.T) {
 			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
 			wantDefaults: map[string]string{
 				MaxConcurrentDrudgersKey:      "3",
+				task.BranchFormatKey:          task.DefaultBranchFormat,
+				customBranchFormatKey:         task.DefaultBranchFormat,
 				remote.PullRequestsEnabledKey: common.AnswerNo,
 				remote.PullRequestsDraftKey:   common.AnswerNo,
 			},
@@ -169,6 +188,8 @@ func TestProjectService_PrepareInit(t *testing.T) {
 			wantRepositories: []Repository{{Path: "api", Setup: []string{}, Copy: []string{}}, {Path: "ui", Setup: []string{}, Copy: []string{}}},
 			wantDefaults: map[string]string{
 				MaxConcurrentDrudgersKey:      "3",
+				task.BranchFormatKey:          task.DefaultBranchFormat,
+				customBranchFormatKey:         task.DefaultBranchFormat,
 				remote.PullRequestsEnabledKey: common.AnswerNo,
 				remote.PullRequestsDraftKey:   common.AnswerNo,
 			},
@@ -179,6 +200,7 @@ func TestProjectService_PrepareInit(t *testing.T) {
 			roots:       []string{"."},
 			globalAnswers: common.Answers{
 				MaxConcurrentDrudgersKey:      "5",
+				task.BranchFormatKey:          "{{ticketID}}-{{taskSlug}}",
 				remote.PullRequestsEnabledKey: common.AnswerYes,
 				remote.PullRequestsDraftKey:   common.AnswerYes,
 				remote.ProviderKey:            string(remote.ProviderGitHub),
@@ -186,8 +208,24 @@ func TestProjectService_PrepareInit(t *testing.T) {
 			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
 			wantDefaults: map[string]string{
 				MaxConcurrentDrudgersKey:      "5",
+				task.BranchFormatKey:          "{{ticketID}}-{{taskSlug}}",
+				customBranchFormatKey:         "{{ticketID}}-{{taskSlug}}",
 				remote.PullRequestsEnabledKey: common.AnswerYes,
 				remote.PullRequestsDraftKey:   common.AnswerYes,
+			},
+		},
+		{
+			name:             "a global branch format outside the presets",
+			projectName:      "Test Project",
+			roots:            []string{"."},
+			globalAnswers:    withGlobalAnswers(common.Answers{task.BranchFormatKey: "fix/{{taskSlug}}"}),
+			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
+			wantDefaults: map[string]string{
+				MaxConcurrentDrudgersKey:      "3",
+				task.BranchFormatKey:          customBranchFormatAnswer,
+				customBranchFormatKey:         "fix/{{taskSlug}}",
+				remote.PullRequestsEnabledKey: common.AnswerNo,
+				remote.PullRequestsDraftKey:   common.AnswerNo,
 			},
 		},
 		{
@@ -300,24 +338,50 @@ func TestProjectService_InitProject(t *testing.T) {
 			},
 		},
 		{
+			name:          "a branch format preset that differs from the global config",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{task.BranchFormatKey: "feat/{{ticketID}}/{{taskSlug}}"},
+			wantOverrides: common.Answers{task.BranchFormatKey: "feat/{{ticketID}}/{{taskSlug}}"},
+		},
+		{
+			name:          "a branch format preset equal to the global config",
+			globalAnswers: withGlobalAnswers(common.Answers{task.BranchFormatKey: "{{ticketID}}-{{taskSlug}}"}),
+			answers:       common.Answers{task.BranchFormatKey: "{{ticketID}}-{{taskSlug}}"},
+			wantOverrides: common.Answers{},
+		},
+		{
+			name:          "a custom branch format",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{task.BranchFormatKey: customBranchFormatAnswer, customBranchFormatKey: "fix/{{taskShortID}}"},
+			wantOverrides: common.Answers{task.BranchFormatKey: "fix/{{taskShortID}}"},
+		},
+		{
+			name:          "a custom branch format equal to the global config",
+			globalAnswers: withGlobalAnswers(common.Answers{task.BranchFormatKey: "fix/{{taskSlug}}"}),
+			answers:       common.Answers{},
+			wantOverrides: common.Answers{},
+		},
+		{
+			name:          "a custom branch format the config loader refuses",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{task.BranchFormatKey: customBranchFormatAnswer, customBranchFormatKey: "fix/{{ticketID}}"},
+			wantErrText:   task.ValidateBranchFormat("fix/{{ticketID}}").Error(),
+		},
+		{
 			name: "pull requests turned on with a global provider",
-			globalAnswers: common.Answers{
-				MaxConcurrentDrudgersKey:      "3",
-				remote.PullRequestsEnabledKey: common.AnswerNo,
-				remote.PullRequestsDraftKey:   common.AnswerNo,
-				remote.ProviderKey:            string(remote.ProviderGitHub),
-			},
+			globalAnswers: withGlobalAnswers(common.Answers{
+				remote.ProviderKey: string(remote.ProviderGitHub),
+			}),
 			answers:       common.Answers{remote.PullRequestsEnabledKey: common.AnswerYes},
 			wantOverrides: common.Answers{remote.PullRequestsEnabledKey: common.AnswerYes},
 		},
 		{
 			name: "pull requests turned off that the global config turns on",
-			globalAnswers: common.Answers{
-				MaxConcurrentDrudgersKey:      "3",
+			globalAnswers: withGlobalAnswers(common.Answers{
 				remote.PullRequestsEnabledKey: common.AnswerYes,
 				remote.PullRequestsDraftKey:   common.AnswerYes,
 				remote.ProviderKey:            string(remote.ProviderGitHub),
-			},
+			}),
 			answers:       common.Answers{remote.PullRequestsEnabledKey: common.AnswerNo},
 			wantOverrides: common.Answers{remote.PullRequestsEnabledKey: common.AnswerNo},
 		},

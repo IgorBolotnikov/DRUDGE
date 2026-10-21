@@ -5,6 +5,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // MaxConcurrentDrudgersKey is the local config key of the Drudger limit of a
@@ -13,15 +14,32 @@ const MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
 
 // Labels of the init questions.
 const (
-	concurrencyLabel  = "Drudgers that may work on this project at once"
-	pullRequestsLabel = "Open pull requests"
-	draftLabel        = "Open pull requests as drafts"
+	concurrencyLabel        = "Drudgers that may work on this project at once"
+	branchFormatLabel       = "Branch format of tasks"
+	customBranchFormatLabel = "Custom branch format"
+	pullRequestsLabel       = "Open pull requests"
+	draftLabel              = "Open pull requests as drafts"
 )
+
+// Custom branch formats are asked for by a typed question that follows the
+// select of presets.
+const (
+	customBranchFormatKey    = task.BranchFormatKey + ".custom"
+	customBranchFormatAnswer = "custom"
+	customBranchFormatOption = "Custom…"
+)
+
+// branchFormatPresets are the branch formats init offers to pick from.
+var branchFormatPresets = []string{
+	task.DefaultBranchFormat,
+	task.BranchPlaceholderTicketID + "-" + task.BranchPlaceholderSlug,
+	"feat/" + task.BranchPlaceholderTicketID + "/" + task.BranchPlaceholderSlug,
+}
 
 // initKeys are the local config keys init reads from the global config. The
 // provider is never asked. InitProject writes it when pull requests are
 // turned on with no provider in the global config.
-var initKeys = []string{MaxConcurrentDrudgersKey, remote.PullRequestsEnabledKey, remote.PullRequestsDraftKey, remote.ProviderKey}
+var initKeys = []string{MaxConcurrentDrudgersKey, task.BranchFormatKey, remote.PullRequestsEnabledKey, remote.PullRequestsDraftKey, remote.ProviderKey}
 
 // PreparedInit is a project init with the repositories found and their setup
 // detected, and the questions to ask before InitProject writes anything.
@@ -71,12 +89,9 @@ func (p *ProjectService) PrepareInit(name string, projectDir string) (*PreparedI
 	if err != nil {
 		return nil, err
 	}
-	questions, err := initQuestions(p.globals.LocalSchema())
+	questions, err := initQuestions(p.globals.LocalSchema(), globalAnswers)
 	if err != nil {
 		return nil, err
-	}
-	for index := range questions {
-		questions[index].Default = globalAnswers[questions[index].Key]
 	}
 	return &PreparedInit{
 		Name:          name,
@@ -92,7 +107,8 @@ func (p *ProjectService) PrepareInit(name string, projectDir string) (*PreparedI
 // repositories, their setup and copy paths and the environment variable names
 // they need. A question missing from answers takes its default. Only an
 // answer that differs from the value the global config resolves to is
-// written into the local config. Pull requests turned on with no provider in
+// written into the local config. A custom branch format is written as the
+// branch format. Pull requests turned on with no provider in
 // the global config write the provider too. It refuses an invalid answer
 // before it writes anything.
 func (p *ProjectService) InitProject(prepared *PreparedInit, answers common.Answers) (*Project, error) {
@@ -100,6 +116,10 @@ func (p *ProjectService) InitProject(prepared *PreparedInit, answers common.Answ
 	if err != nil {
 		return nil, err
 	}
+	if resolved[task.BranchFormatKey] == customBranchFormatAnswer {
+		resolved[task.BranchFormatKey] = resolved[customBranchFormatKey]
+	}
+	delete(resolved, customBranchFormatKey)
 	overrides := common.Answers{}
 	for key, answer := range resolved {
 		if answer != prepared.globalAnswers[key] {
@@ -121,9 +141,15 @@ func (p *ProjectService) InitProject(prepared *PreparedInit, answers common.Answ
 }
 
 // initQuestions returns the questions init asks, built from the local config
-// schema. The draft question is asked only when pull requests are on.
-func initQuestions(schema []byte) ([]common.Question, error) {
+// schema and starting on the global answers. The draft question is asked only
+// when pull requests are on.
+func initQuestions(schema []byte, globalAnswers common.Answers) ([]common.Question, error) {
 	concurrency, err := common.NewNumberQuestion(schema, MaxConcurrentDrudgersKey, concurrencyLabel, ValidateMaxConcurrentDrudgers)
+	if err != nil {
+		return nil, err
+	}
+	concurrency.Default = globalAnswers[MaxConcurrentDrudgersKey]
+	branchFormat, customBranchFormat, err := branchFormatQuestions(schema, globalAnswers[task.BranchFormatKey])
 	if err != nil {
 		return nil, err
 	}
@@ -131,10 +157,39 @@ func initQuestions(schema []byte) ([]common.Question, error) {
 	if err != nil {
 		return nil, err
 	}
+	pullRequests.Default = globalAnswers[remote.PullRequestsEnabledKey]
 	draft, err := common.NewBoolQuestion(schema, remote.PullRequestsDraftKey, draftLabel)
 	if err != nil {
 		return nil, err
 	}
+	draft.Default = globalAnswers[remote.PullRequestsDraftKey]
 	draft.Condition = &common.QuestionCondition{Key: remote.PullRequestsEnabledKey, Answer: common.AnswerYes}
-	return []common.Question{concurrency, pullRequests, draft}, nil
+	return []common.Question{concurrency, branchFormat, customBranchFormat, pullRequests, draft}, nil
+}
+
+// branchFormatQuestions returns the select of the branch format presets and
+// the typed question a pick of the custom option asks. The select starts on
+// the preset equal to globalFormat, and on the custom option when no preset
+// is. The typed question starts on globalFormat and refuses a format the
+// config loader refuses.
+func branchFormatQuestions(schema []byte, globalFormat string) (common.Question, common.Question, error) {
+	custom, err := common.NewTextQuestion(schema, task.BranchFormatKey, customBranchFormatLabel, "")
+	if err != nil {
+		return common.Question{}, common.Question{}, err
+	}
+	custom.Key = customBranchFormatKey
+	custom.Default = globalFormat
+	custom.Condition = &common.QuestionCondition{Key: task.BranchFormatKey, Answer: customBranchFormatAnswer}
+	custom.Validate = task.ValidateBranchFormat
+
+	presets := common.Question{Key: task.BranchFormatKey, Label: branchFormatLabel, Kind: common.QuestionSelect, Default: customBranchFormatAnswer}
+	for _, format := range branchFormatPresets {
+		presets.Options = append(presets.Options, common.QuestionOption{Value: format, Label: format})
+		if format == globalFormat {
+			presets.Default = format
+		}
+	}
+	presets.Options = append(presets.Options, common.QuestionOption{Value: customBranchFormatAnswer, Label: customBranchFormatOption})
+	presets.Validate = presets.ValidateOption
+	return presets, custom, nil
 }

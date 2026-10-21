@@ -30,7 +30,7 @@ var ProjectCmd = &Cmd{
 				"A directory that is a git repository becomes the one repository of the project.\n" +
 				"Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.\n" +
 				"It writes the setup commands, copy paths and environment variable names it detects for each repository, like drg project detect does.\n" +
-				"In a terminal it asks how many Drudgers may work on the project at once and whether to open pull requests, each question starting on the value of the global config.\n" +
+				"In a terminal it asks how many Drudgers may work on the project at once, which branch format its tasks use and whether to open pull requests, each question starting on the value of the global config.\n" +
 				"It writes into the local config only the answers that differ from the global config. Pull requests turned on with no " + config.RemoteProviderKey + " in the global config write " + config.RemoteProviderKey + " too.\n" +
 				"With --defaults or input that is not a terminal it asks nothing and every setting falls back to the global config.\n" +
 				"It prints each repository with the default branch that task branches are cut from.",

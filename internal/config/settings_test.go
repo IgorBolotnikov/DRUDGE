@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 func TestGlobalSettingsReader_ResolvedAnswers(t *testing.T) {
-	keys := []string{maxConcurrentDrudgersKey, PullRequestsEnabledKey, PullRequestsDraftKey, RemoteProviderKey}
+	keys := []string{maxConcurrentDrudgersKey, branchFormatKey, PullRequestsEnabledKey, PullRequestsDraftKey, RemoteProviderKey}
 	tests := []struct {
 		name string
 		// raw is the global config file. Empty leaves the file missing.
@@ -23,6 +24,7 @@ func TestGlobalSettingsReader_ResolvedAnswers(t *testing.T) {
 			keys: keys,
 			wantAnswers: common.Answers{
 				maxConcurrentDrudgersKey: "3",
+				branchFormatKey:          task.DefaultBranchFormat,
 				PullRequestsEnabledKey:   common.AnswerNo,
 				PullRequestsDraftKey:     common.AnswerNo,
 				RemoteProviderKey:        "",
@@ -30,10 +32,11 @@ func TestGlobalSettingsReader_ResolvedAnswers(t *testing.T) {
 		},
 		{
 			name: "a global config with its own values",
-			raw:  `{"drudger": {"maxConcurrentDrudgers": 5}, "remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}}`,
+			raw:  `{"drudger": {"maxConcurrentDrudgers": 5}, "task": {"branchFormat": "fix/{{taskSlug}}"}, "remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}}`,
 			keys: keys,
 			wantAnswers: common.Answers{
 				maxConcurrentDrudgersKey: "5",
+				branchFormatKey:          "fix/{{taskSlug}}",
 				PullRequestsEnabledKey:   common.AnswerYes,
 				PullRequestsDraftKey:     common.AnswerYes,
 				RemoteProviderKey:        "github",

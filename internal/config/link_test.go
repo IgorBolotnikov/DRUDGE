@@ -17,8 +17,9 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 		repositories []project.Repository
 		envNames     []string
 		overrides    common.Answers
-		// wantMaxConcurrent and wantRemote are what overrides sets.
+		// wantMaxConcurrent, wantTask and wantRemote are what overrides sets.
 		wantMaxConcurrent int
+		wantTask          TaskConfig
 		wantRemote        RemoteConfig
 		wantErr           bool
 	}{
@@ -44,11 +45,13 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			repositories: []project.Repository{{Path: "."}},
 			overrides: common.Answers{
 				maxConcurrentDrudgersKey: "5",
+				branchFormatKey:          "fix/{{taskSlug}}",
 				RemoteProviderKey:        "github",
 				PullRequestsEnabledKey:   common.AnswerYes,
 				PullRequestsDraftKey:     common.AnswerNo,
 			},
 			wantMaxConcurrent: 5,
+			wantTask:          TaskConfig{BranchFormat: "fix/{{taskSlug}}"},
 			wantRemote: RemoteConfig{
 				Provider:     remote.ProviderGitHub,
 				PullRequests: PullRequestsConfig{IsEnabled: new(true), IsDraft: new(false)},
@@ -91,6 +94,7 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 				ProjectSlug:           test.slug,
 				MaxConcurrentDrudgers: test.wantMaxConcurrent,
 				Drudger:               LocalDrudgerConfig{Env: test.envNames},
+				Task:                  test.wantTask,
 				Remote:                test.wantRemote,
 				Repositories:          test.repositories,
 			}
