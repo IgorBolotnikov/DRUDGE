@@ -15,6 +15,7 @@ type ProjectService struct {
 	setups   SetupRecorder
 	gitOps   git.Operations
 	files    RepositoryFiles
+	globals  GlobalSettings
 	progress common.Progress
 }
 
@@ -41,20 +42,12 @@ type ProjectAlreadyGone struct {
 	Slug string
 }
 
-func NewProjectService(repo ProjectRepository, linker DirectoryLinker, setups SetupRecorder, gitOps git.Operations, files RepositoryFiles, progress common.Progress) *ProjectService {
-	return &ProjectService{repo: repo, linker: linker, setups: setups, gitOps: gitOps, files: files, progress: progress}
+func NewProjectService(repo ProjectRepository, linker DirectoryLinker, setups SetupRecorder, gitOps git.Operations, files RepositoryFiles, globals GlobalSettings, progress common.Progress) *ProjectService {
+	return &ProjectService{repo: repo, linker: linker, setups: setups, gitOps: gitOps, files: files, globals: globals, progress: progress}
 }
 
 func (p *ProjectService) CreateProject(name string) (*Project, error) {
-	if name == "" {
-		return nil, fmt.Errorf("project name is required")
-	}
-
-	projects, err := p.repo.ListProjects()
-	if err != nil {
-		return nil, err
-	}
-	if err := refuseTakenName(projects, name, ""); err != nil {
+	if err := p.refuseNewName(name); err != nil {
 		return nil, err
 	}
 
@@ -73,37 +66,6 @@ func (p *ProjectService) CreateProject(name string) (*Project, error) {
 
 	p.progress.Report(ProjectCreated{Project: proj})
 	return proj, nil
-}
-
-// InitProject creates a project for projectDir and links the current directory
-// to it through the DirectoryLinker, together with the repositories of
-// projectDir, the setup and copy paths detected for each of them and the
-// environment variable names they need. A directory holding no repository is
-// refused before the project is created.
-func (p *ProjectService) InitProject(name string, projectDir string) (*Project, []Repository, []SetupDetection, error) {
-	repositories, err := p.DiscoverRepositories(projectDir)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	detections, setups, err := p.proposeSetups(projectDir, repositories, nil, false)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	for index, repository := range repositories {
-		repositories[index].Setup = setups[repository.Path].Setup
-		repositories[index].Copy = setups[repository.Path].Copy
-	}
-
-	created, err := p.CreateProject(name)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	if err := p.linker.LinkDirectory(created.Slug, repositories, addedEnvNames(detections)); err != nil {
-		return nil, nil, nil, err
-	}
-	return created, repositories, detections, nil
 }
 
 // ListProjects returns the page numbered page of the projects, with size
@@ -182,6 +144,19 @@ func findProject(projects []*Project, slugOrName string) (*Project, error) {
 		}
 	}
 	return nil, fmt.Errorf("project %q not found", slugOrName)
+}
+
+// refuseNewName refuses an empty name and a name refuseTakenName refuses for a
+// new project.
+func (p *ProjectService) refuseNewName(name string) error {
+	if name == "" {
+		return fmt.Errorf("project name is required")
+	}
+	projects, err := p.repo.ListProjects()
+	if err != nil {
+		return err
+	}
+	return refuseTakenName(projects, name, "")
 }
 
 // refuseTakenName refuses a name whose slug form is the slug or the slug form

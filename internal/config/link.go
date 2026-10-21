@@ -1,10 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 )
 
 // LocalConfigLinker implements project.DirectoryLinker and
@@ -20,9 +22,10 @@ func NewLocalConfigLinker(home string) *LocalConfigLinker {
 }
 
 // LinkDirectory writes a local config file holding the schema reference, the
-// slug, the repositories and the Drudger env. It replaces a local config file
-// that is already there.
-func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []project.Repository, envNames []string) error {
+// slug, the repositories, the Drudger env and the keys overrides sets. It
+// replaces a local config file that is already there. It refuses an override
+// of a key it cannot set and writes nothing then.
+func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []project.Repository, envNames []string, overrides common.Answers) error {
 	localCfg := LocalConfig{
 		Schema:       LocalSchemaRef(linker.home),
 		ProjectSlug:  slug,
@@ -34,7 +37,33 @@ func (linker *LocalConfigLinker) LinkDirectory(slug string, repositories []proje
 			localCfg.Drudger.Env = append(localCfg.Drudger.Env, name)
 		}
 	}
+	for key, answer := range overrides {
+		if err := localCfg.setAnswer(key, answer); err != nil {
+			return err
+		}
+	}
 	return localCfg.Save()
+}
+
+// setAnswer sets key of the local config to the value of answer.
+func (cfg *LocalConfig) setAnswer(key string, answer string) error {
+	switch key {
+	case maxConcurrentDrudgersKey:
+		value, err := common.ParseNumberAnswer(answer)
+		if err != nil {
+			return fmt.Errorf("answer for %s: %w", key, err)
+		}
+		cfg.MaxConcurrentDrudgers = value
+	case remoteProviderKey:
+		cfg.Remote.Provider = remote.Provider(answer)
+	case PullRequestsEnabledKey:
+		cfg.Remote.PullRequests.IsEnabled = new(answer == common.AnswerYes)
+	case PullRequestsDraftKey:
+		cfg.Remote.PullRequests.IsDraft = new(answer == common.AnswerYes)
+	default:
+		return fmt.Errorf("the local config cannot take an answer for %s", key)
+	}
+	return nil
 }
 
 // LinkedSlug reads the project slug out of the local config file. A directory

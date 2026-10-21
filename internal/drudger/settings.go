@@ -24,7 +24,7 @@ const (
 // JSON keys of the config files, named in error messages so they match what a
 // user writes there.
 const (
-	MaxConcurrentDrudgersKey = "maxConcurrentDrudgers"
+	MaxConcurrentDrudgersKey = project.MaxConcurrentDrudgersKey
 	CreateTimeoutKey         = "sandboxTimeouts.createSeconds"
 	SetupTimeoutKey          = "sandboxTimeouts.setupSeconds"
 	EnvKey                   = "drudger.env"

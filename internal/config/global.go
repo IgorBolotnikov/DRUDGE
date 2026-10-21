@@ -9,6 +9,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -60,7 +61,7 @@ const (
 const (
 	projectSlugKey           = "projectSlug"
 	promptFileKey            = "promptFile"
-	maxConcurrentDrudgersKey = drudger.MaxConcurrentDrudgersKey
+	maxConcurrentDrudgersKey = project.MaxConcurrentDrudgersKey
 	listTimeoutKey           = "sandboxTimeouts.listSeconds"
 	createTimeoutKey         = drudger.CreateTimeoutKey
 	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
@@ -382,16 +383,8 @@ func validateMaxConcurrentDrudgers(value int, path string) error {
 	if value == 0 {
 		return nil
 	}
-	if err := ValidateMaxConcurrentDrudgers(value); err != nil {
+	if err := project.ValidateMaxConcurrentDrudgers(value); err != nil {
 		return fmt.Errorf("%s has %w", path, err)
-	}
-	return nil
-}
-
-// ValidateMaxConcurrentDrudgers rejects a Drudger limit below 1.
-func ValidateMaxConcurrentDrudgers(value int) error {
-	if value < 1 {
-		return fmt.Errorf("%s = %d, it must be a positive number", maxConcurrentDrudgersKey, value)
 	}
 	return nil
 }

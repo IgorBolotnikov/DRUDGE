@@ -5,6 +5,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 )
 
 // fakeProjectRepo holds projects in memory.
@@ -62,6 +65,7 @@ type fakeLinker struct {
 	slug         string
 	repositories []Repository
 	envNames     []string
+	overrides    common.Answers
 	linkedSlug   string
 }
 
@@ -69,42 +73,122 @@ func (linker *fakeLinker) LinkedSlug() (string, bool, error) {
 	return linker.linkedSlug, linker.linkedSlug != "", nil
 }
 
-func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository, envNames []string) error {
+func (linker *fakeLinker) LinkDirectory(slug string, repositories []Repository, envNames []string, overrides common.Answers) error {
 	linker.wasCalled = true
 	linker.slug = slug
 	linker.repositories = repositories
 	linker.envNames = envNames
+	linker.overrides = overrides
 	return nil
 }
 
-func TestProjectService_InitProject(t *testing.T) {
+// testLocalSchema holds the local config keys init asks about.
+const testLocalSchema = `{
+  "type": "object",
+  "properties": {
+    "maxConcurrentDrudgers": {"type": "integer", "minimum": 1, "default": 3},
+    "remote": {
+      "type": "object",
+      "properties": {
+        "provider": {"type": "string", "enum": ["github"]},
+        "pullRequests": {
+          "type": "object",
+          "properties": {
+            "isEnabled": {"type": "boolean", "default": false},
+            "isDraft": {"type": "boolean", "default": false}
+          }
+        }
+      }
+    }
+  }
+}`
+
+// fakeGlobalSettings resolves every key to its answer in answers, and to an
+// empty answer when answers has none.
+type fakeGlobalSettings struct {
+	answers common.Answers
+}
+
+func (globals *fakeGlobalSettings) LocalSchema() []byte {
+	return []byte(testLocalSchema)
+}
+
+func (globals *fakeGlobalSettings) ResolvedAnswers(keys []string) (common.Answers, error) {
+	resolved := common.Answers{}
+	for _, key := range keys {
+		resolved[key] = globals.answers[key]
+	}
+	return resolved, nil
+}
+
+// defaultGlobalAnswers are the answers of a global config holding only the
+// built-in defaults.
+func defaultGlobalAnswers() common.Answers {
+	return common.Answers{
+		MaxConcurrentDrudgersKey:      "3",
+		remote.PullRequestsEnabledKey: common.AnswerNo,
+		remote.PullRequestsDraftKey:   common.AnswerNo,
+	}
+}
+
+func TestProjectService_PrepareInit(t *testing.T) {
 	tests := []struct {
-		name     string
-		existing []*Project
-		subdirs  []string
-		roots    []string
+		name          string
+		existing      []*Project
+		subdirs       []string
+		roots         []string
+		globalAnswers common.Answers
 		// projectName is what the user names the project.
 		projectName      string
-		wantSlug         string
 		wantRepositories []Repository
+		// wantDefaults maps the key of every question to the answer it starts
+		// on.
+		wantDefaults map[string]string
 		// wantErrText is a fragment a refusal must carry. A case without it
-		// expects the project to be made.
+		// expects the init to be prepared.
 		wantErrText string
 	}{
 		{
 			name:             "a directory that is a repository",
 			projectName:      "Test Project",
 			roots:            []string{"."},
-			wantSlug:         "test-project",
+			globalAnswers:    defaultGlobalAnswers(),
 			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
+			wantDefaults: map[string]string{
+				MaxConcurrentDrudgersKey:      "3",
+				remote.PullRequestsEnabledKey: common.AnswerNo,
+				remote.PullRequestsDraftKey:   common.AnswerNo,
+			},
 		},
 		{
 			name:             "a directory holding repositories",
 			projectName:      "My Cool App",
 			subdirs:          []string{"api", "docs", "ui"},
 			roots:            []string{"api", "ui"},
-			wantSlug:         "my-cool-app",
+			globalAnswers:    defaultGlobalAnswers(),
 			wantRepositories: []Repository{{Path: "api", Setup: []string{}, Copy: []string{}}, {Path: "ui", Setup: []string{}, Copy: []string{}}},
+			wantDefaults: map[string]string{
+				MaxConcurrentDrudgersKey:      "3",
+				remote.PullRequestsEnabledKey: common.AnswerNo,
+				remote.PullRequestsDraftKey:   common.AnswerNo,
+			},
+		},
+		{
+			name:        "a global config with its own values",
+			projectName: "Test Project",
+			roots:       []string{"."},
+			globalAnswers: common.Answers{
+				MaxConcurrentDrudgersKey:      "5",
+				remote.PullRequestsEnabledKey: common.AnswerYes,
+				remote.PullRequestsDraftKey:   common.AnswerYes,
+				remote.ProviderKey:            string(remote.ProviderGitHub),
+			},
+			wantRepositories: []Repository{{Path: ".", Setup: []string{}, Copy: []string{}}},
+			wantDefaults: map[string]string{
+				MaxConcurrentDrudgersKey:      "5",
+				remote.PullRequestsEnabledKey: common.AnswerYes,
+				remote.PullRequestsDraftKey:   common.AnswerYes,
+			},
 		},
 		{
 			name:        "a directory holding no repository",
@@ -135,49 +219,151 @@ func TestProjectService_InitProject(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
 			projectDir := testProjectDir
-
 			repo := &fakeProjectRepo{projects: test.existing}
 			linker := &fakeLinker{}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, linker, nil, newFakeGit(projectDir, test.roots, nil), dirsOf(test.subdirs), progress)
+			globals := &fakeGlobalSettings{answers: test.globalAnswers}
+			service := NewProjectService(repo, linker, nil, newFakeGit(projectDir, test.roots, nil), dirsOf(test.subdirs), globals, progress)
 
-			created, repositories, _, err := service.InitProject(test.projectName, projectDir)
+			prepared, err := service.PrepareInit(test.projectName, projectDir)
 
+			if len(repo.projects) != len(test.existing) {
+				t.Errorf("expected nothing written before the answers arrive, got %d projects", len(repo.projects))
+			}
+			if linker.wasCalled {
+				t.Errorf("expected nothing linked before the answers arrive, got a link to %q", linker.slug)
+			}
+			if len(progress.events) != 0 {
+				t.Errorf("expected nothing reported before the answers arrive, got %+v", progress.events)
+			}
 			if test.wantErrText != "" {
-				if err == nil {
-					t.Fatal("expected the project to be refused")
-				}
-				if !strings.Contains(err.Error(), test.wantErrText) {
-					t.Errorf("expected the error to carry %q, got %q", test.wantErrText, err)
-				}
-				if len(repo.projects) != len(test.existing) {
-					t.Errorf("expected a refused project to be left unwritten, got %d projects", len(repo.projects))
-				}
-				if linker.wasCalled {
-					t.Errorf("expected a refused project to be left unlinked, got a link to %q", linker.slug)
-				}
-				if len(progress.events) != 0 {
-					t.Errorf("expected a refused project to report nothing, got %+v", progress.events)
+				if err == nil || !strings.Contains(err.Error(), test.wantErrText) {
+					t.Fatalf("error = %v, want it to carry %q", err, test.wantErrText)
 				}
 				return
 			}
-
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if created.Slug != test.wantSlug {
-				t.Errorf("expected the slug %q, got %q", test.wantSlug, created.Slug)
+			if !reflect.DeepEqual(prepared.Repositories, test.wantRepositories) {
+				t.Errorf("repositories = %+v, want %+v", prepared.Repositories, test.wantRepositories)
 			}
-			if !reflect.DeepEqual(repositories, test.wantRepositories) {
-				t.Errorf("expected the repositories %+v, got %+v", test.wantRepositories, repositories)
+			gotDefaults := map[string]string{}
+			for _, question := range prepared.Questions {
+				gotDefaults[question.Key] = question.Default
 			}
-			if linker.slug != test.wantSlug {
-				t.Errorf("expected the directory to be linked to %q, got %q", test.wantSlug, linker.slug)
+			if !reflect.DeepEqual(gotDefaults, test.wantDefaults) {
+				t.Errorf("question defaults = %v, want %v", gotDefaults, test.wantDefaults)
 			}
-			if !reflect.DeepEqual(linker.repositories, test.wantRepositories) {
-				t.Errorf("expected the link to record %+v, got %+v", test.wantRepositories, linker.repositories)
+		})
+	}
+}
+
+func TestProjectService_InitProject(t *testing.T) {
+	tests := []struct {
+		name          string
+		globalAnswers common.Answers
+		answers       common.Answers
+		// wantOverrides are the keys written into the local config.
+		wantOverrides common.Answers
+		// wantErrText is a fragment a refusal must carry. A case without it
+		// expects the project to be made.
+		wantErrText string
+	}{
+		{
+			name:          "the defaults",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{},
+			wantOverrides: common.Answers{},
+		},
+		{
+			name:          "a concurrency that differs from the global config",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{MaxConcurrentDrudgersKey: "5"},
+			wantOverrides: common.Answers{MaxConcurrentDrudgersKey: "5"},
+		},
+		{
+			name:          "answers equal to the global config",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{MaxConcurrentDrudgersKey: "3", remote.PullRequestsEnabledKey: common.AnswerNo},
+			wantOverrides: common.Answers{},
+		},
+		{
+			name:          "pull requests turned on with no global provider",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{remote.PullRequestsEnabledKey: common.AnswerYes, remote.PullRequestsDraftKey: common.AnswerYes},
+			wantOverrides: common.Answers{
+				remote.PullRequestsEnabledKey: common.AnswerYes,
+				remote.PullRequestsDraftKey:   common.AnswerYes,
+				remote.ProviderKey:            string(remote.ProviderGitHub),
+			},
+		},
+		{
+			name: "pull requests turned on with a global provider",
+			globalAnswers: common.Answers{
+				MaxConcurrentDrudgersKey:      "3",
+				remote.PullRequestsEnabledKey: common.AnswerNo,
+				remote.PullRequestsDraftKey:   common.AnswerNo,
+				remote.ProviderKey:            string(remote.ProviderGitHub),
+			},
+			answers:       common.Answers{remote.PullRequestsEnabledKey: common.AnswerYes},
+			wantOverrides: common.Answers{remote.PullRequestsEnabledKey: common.AnswerYes},
+		},
+		{
+			name: "pull requests turned off that the global config turns on",
+			globalAnswers: common.Answers{
+				MaxConcurrentDrudgersKey:      "3",
+				remote.PullRequestsEnabledKey: common.AnswerYes,
+				remote.PullRequestsDraftKey:   common.AnswerYes,
+				remote.ProviderKey:            string(remote.ProviderGitHub),
+			},
+			answers:       common.Answers{remote.PullRequestsEnabledKey: common.AnswerNo},
+			wantOverrides: common.Answers{remote.PullRequestsEnabledKey: common.AnswerNo},
+		},
+		{
+			name:          "a concurrency below 1",
+			globalAnswers: defaultGlobalAnswers(),
+			answers:       common.Answers{MaxConcurrentDrudgersKey: "0"},
+			wantErrText:   "it must be a positive number",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			projectDir := testProjectDir
+			repo := &fakeProjectRepo{}
+			linker := &fakeLinker{}
+			progress := &fakeProgress{}
+			globals := &fakeGlobalSettings{answers: test.globalAnswers}
+			service := NewProjectService(repo, linker, nil, newFakeGit(projectDir, []string{"."}, nil), dirsOf(nil), globals, progress)
+			prepared, err := service.PrepareInit("Test Project", projectDir)
+			if err != nil {
+				t.Fatalf("PrepareInit: %v", err)
+			}
+
+			created, err := service.InitProject(prepared, test.answers)
+
+			if test.wantErrText != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErrText) {
+					t.Fatalf("error = %v, want it to carry %q", err, test.wantErrText)
+				}
+				if len(repo.projects) != 0 || linker.wasCalled {
+					t.Errorf("expected a refused answer to write nothing, got %d projects and a link to %q", len(repo.projects), linker.slug)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if created.Slug != "test-project" || linker.slug != created.Slug {
+				t.Errorf("expected the directory to be linked to test-project, got project %q and link %q", created.Slug, linker.slug)
+			}
+			if !reflect.DeepEqual(linker.repositories, prepared.Repositories) {
+				t.Errorf("expected the link to record %+v, got %+v", prepared.Repositories, linker.repositories)
+			}
+			if !reflect.DeepEqual(linker.overrides, test.wantOverrides) {
+				t.Errorf("overrides = %v, want %v", linker.overrides, test.wantOverrides)
 			}
 			wantEvents := []any{ProjectCreated{Project: created}}
 			if !reflect.DeepEqual(progress.events, wantEvents) {
@@ -210,7 +396,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, &fakeProgress{})
+			service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, nil, &fakeProgress{})
 
 			found, err := service.LookupProject(testCase.slugOrName)
 			if err != nil {
@@ -224,7 +410,7 @@ func TestProjectService_LookupProject(t *testing.T) {
 }
 
 func TestProjectService_LookupProject_RefusesAnUnknownProject(t *testing.T) {
-	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, &fakeProgress{})
+	service := NewProjectService(&fakeProjectRepo{projects: renamedProjects()}, nil, nil, nil, nil, nil, &fakeProgress{})
 
 	_, err := service.LookupProject("wiki")
 	if err == nil || !strings.Contains(err.Error(), `project "wiki" not found`) {
@@ -303,7 +489,7 @@ func TestProjectService_RenameProject(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects()}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, nil, nil, nil, nil, progress)
+			service := NewProjectService(repo, nil, nil, nil, nil, nil, progress)
 
 			err := service.RenameProject(testCase.slugOrName, testCase.newName)
 
@@ -370,7 +556,7 @@ func TestProjectService_DeleteProject(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeProjectRepo{projects: renamedProjects(), deleteErr: testCase.deleteErr}
 			progress := &fakeProgress{}
-			service := NewProjectService(repo, nil, nil, nil, nil, progress)
+			service := NewProjectService(repo, nil, nil, nil, nil, nil, progress)
 
 			err := service.DeleteProject(testCase.project)
 
@@ -418,7 +604,7 @@ func TestProjectService_ListProjects(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, nil, nil, &fakeProgress{})
+			service := NewProjectService(&fakeProjectRepo{projects: projects}, nil, nil, nil, nil, nil, &fakeProgress{})
 
 			listed, err := service.ListProjects(test.page, test.size)
 			if test.wantErr != "" {

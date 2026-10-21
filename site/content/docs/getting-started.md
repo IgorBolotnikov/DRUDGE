@@ -101,6 +101,17 @@ drg project init uploader
 
 A directory that is a git repository becomes the one repository of the project. Otherwise every subdirectory that is a git repository becomes one, and a directory holding none is refused.
 
+In a terminal it then asks how many Drudgers may work on this project at once and whether to open pull requests for it. Every question starts on the value of your global config, so Enter keeps the global value:
+
+```
+Drudgers that may work on this project at once [3]:
+Open pull requests
+› no (default)
+  yes
+```
+
+Turning pull requests on asks whether to open them as drafts. Only the answers that differ from the global config go into the project config. `drg project init uploader -y`, short for `--defaults`, skips the questions and keeps the global values. See [Project config]({{< relref "/docs/configuration/project-config" >}}) for the keys.
+
 `drg project init` writes `.drudge/config.json` in that directory. Task commands run there work on that project. It prints each repository with the default branch that task branches are cut from. The default branch is read from `origin/HEAD`. When it shows as `unresolved`, run `git remote set-head origin -a` in the repository, or set `defaultBranch` for it in `.drudge/config.json`.
 
 ## First task

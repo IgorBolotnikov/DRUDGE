@@ -8,6 +8,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/skill"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -172,7 +173,7 @@ func globalConfigQuestions() ([]common.Question, error) {
 			return common.NewTextQuestion(schema, config.DrudgerModelKey, modelLabel, modelDefaultLabel)
 		}},
 		{build: func() (common.Question, error) {
-			return common.NewNumberQuestion(schema, config.DrudgerMaxConcurrentKey, concurrencyLabel, config.ValidateMaxConcurrentDrudgers)
+			return common.NewNumberQuestion(schema, config.DrudgerMaxConcurrentKey, concurrencyLabel, project.ValidateMaxConcurrentDrudgers)
 		}},
 		{build: func() (common.Question, error) {
 			return common.NewSelectQuestion(schema, config.DefaultTaskStatusKey, taskStatusLabel)

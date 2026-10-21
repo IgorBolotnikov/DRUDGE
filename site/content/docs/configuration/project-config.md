@@ -13,6 +13,8 @@ The file starts with a `$schema` key holding the absolute path of `~/.drudge/sch
 
 A key set here overrides the same key of the [global config](../config/). `promptFile` and `maxConcurrentDrudgers` override `drudger.promptFile` and `drudger.maxConcurrentDrudgers`. A key left out falls back to the global config, then to the default in the table below. A value DRUDGE does not accept stops the command with an error that names the file and the key.
 
+In a terminal `drg project init` asks for `maxConcurrentDrudgers` and `remote.pullRequests.isEnabled`, and for `remote.pullRequests.isDraft` when pull requests are on. Every question starts on the value the global config resolves to. Init writes only the answers that differ from it, so a later change to the global config still reaches every key the project leaves out. Pull requests turned on with no `remote.provider` in the global config write `remote.provider: "github"` too.
+
 A `promptFile`, `remote.pullRequests.templateFile` or `remote.pullRequests.stepsFile` set here is a file name under `.drudge/prompts/` of the project directory.
 
 ## Setup

@@ -103,9 +103,8 @@ func TestProjectInit(t *testing.T) {
 			wantEnv:          []string{"NPM_TOKEN"},
 		},
 		{
-			name:       "a directory that holds no repository",
-			wantStdout: "Initializing project demo in .drudge\n",
-			wantErr:    "is not a git repository and holds none",
+			name:    "a directory that holds no repository",
+			wantErr: "is not a git repository and holds none",
 		},
 	}
 
@@ -544,7 +543,7 @@ func TestProjectList(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range testCase.projects {
 					if _, err := service.CreateProject(name); err != nil {
@@ -624,7 +623,7 @@ func TestProjectList_WarnsAboutTheThemeOnce(t *testing.T) {
 			if err := os.WriteFile(common.ThemeConfigPath(home), []byte(testCase.themeFile), common.DefaultFilePerm); err != nil {
 				t.Fatal(err)
 			}
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				for _, name := range []string{"alpha", "bravo"} {
 					if _, err := service.CreateProject(name); err != nil {

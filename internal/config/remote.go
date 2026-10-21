@@ -21,9 +21,9 @@ const (
 
 // Keys exported so drg setup can ask for them.
 const (
-	RemoteProviderKey      = "remote.provider"
+	RemoteProviderKey      = remote.ProviderKey
 	PullRequestsEnabledKey = remote.PullRequestsEnabledKey
-	PullRequestsDraftKey   = "remote.pullRequests.isDraft"
+	PullRequestsDraftKey   = remote.PullRequestsDraftKey
 )
 
 // defaultTitleFormat is what the agent is told to write as the title of a

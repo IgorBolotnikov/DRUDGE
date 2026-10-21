@@ -52,7 +52,7 @@ func TestProjectService_ResolveProject(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			service := NewProjectService(&fakeProjectRepo{projects: existing}, &fakeLinker{linkedSlug: testCase.linkedSlug}, nil, nil, nil, &fakeProgress{})
+			service := NewProjectService(&fakeProjectRepo{projects: existing}, &fakeLinker{linkedSlug: testCase.linkedSlug}, nil, nil, nil, nil, &fakeProgress{})
 
 			resolved, err := service.ResolveProject(testCase.explicitSlug)
 

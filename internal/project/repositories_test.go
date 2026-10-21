@@ -131,7 +131,7 @@ func newFakeGit(projectDir string, roots []string, branches map[string]string) *
 }
 
 func newTestService(gitOps git.Operations, files RepositoryFiles) *ProjectService {
-	return NewProjectService(nil, nil, nil, gitOps, files, &fakeProgress{})
+	return NewProjectService(nil, nil, nil, gitOps, files, nil, &fakeProgress{})
 }
 
 const testProjectDir = "/project"

@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 )
 
 func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
@@ -14,6 +16,11 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 		slug         string
 		repositories []project.Repository
 		envNames     []string
+		overrides    common.Answers
+		// wantMaxConcurrent and wantRemote are what overrides sets.
+		wantMaxConcurrent int
+		wantRemote        RemoteConfig
+		wantErr           bool
 	}{
 		{
 			name:         "a directory that is a repository",
@@ -31,6 +38,29 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			repositories: []project.Repository{{Path: "."}},
 			envNames:     []string{"NPM_TOKEN"},
 		},
+		{
+			name:         "answers that override the global config",
+			slug:         "test-project",
+			repositories: []project.Repository{{Path: "."}},
+			overrides: common.Answers{
+				maxConcurrentDrudgersKey: "5",
+				RemoteProviderKey:        "github",
+				PullRequestsEnabledKey:   common.AnswerYes,
+				PullRequestsDraftKey:     common.AnswerNo,
+			},
+			wantMaxConcurrent: 5,
+			wantRemote: RemoteConfig{
+				Provider:     remote.ProviderGitHub,
+				PullRequests: PullRequestsConfig{IsEnabled: new(true), IsDraft: new(false)},
+			},
+		},
+		{
+			name:         "an answer for a key the local config cannot take",
+			slug:         "test-project",
+			repositories: []project.Repository{{Path: "."}},
+			overrides:    common.Answers{DrudgerHarnessKey: "opencode"},
+			wantErr:      true,
+		},
 	}
 
 	for _, test := range tests {
@@ -38,7 +68,17 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 			setupLocalDir(t)
 			home := "/home/user"
 
-			if err := NewLocalConfigLinker(home).LinkDirectory(test.slug, test.repositories, test.envNames); err != nil {
+			err := NewLocalConfigLinker(home).LinkDirectory(test.slug, test.repositories, test.envNames, test.overrides)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected LinkDirectory to refuse the answers")
+				}
+				if isPresent, _ := common.Exists(common.LocalConfigPath()); isPresent {
+					t.Error("expected a refused link to write no local config")
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("LinkDirectory: %v", err)
 			}
 
@@ -47,10 +87,12 @@ func TestLocalConfigLinker_LinkDirectory(t *testing.T) {
 				t.Fatalf("LoadLocal: %v", err)
 			}
 			want := LocalConfig{
-				Schema:       filepath.Join(home, ".drudge", "schema", "local-config.json"),
-				ProjectSlug:  test.slug,
-				Drudger:      LocalDrudgerConfig{Env: test.envNames},
-				Repositories: test.repositories,
+				Schema:                filepath.Join(home, ".drudge", "schema", "local-config.json"),
+				ProjectSlug:           test.slug,
+				MaxConcurrentDrudgers: test.wantMaxConcurrent,
+				Drudger:               LocalDrudgerConfig{Env: test.envNames},
+				Remote:                test.wantRemote,
+				Repositories:          test.repositories,
 			}
 			if !reflect.DeepEqual(*loaded, want) {
 				t.Errorf("loaded = %+v, want %+v", *loaded, want)
@@ -198,7 +240,7 @@ func TestLocalConfigLinker_RecordSetup(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			setupLocalDir(t)
 			linker := NewLocalConfigLinker("/home/user")
-			if err := linker.LinkDirectory("demo", test.repositories, test.listedEnv); err != nil {
+			if err := linker.LinkDirectory("demo", test.repositories, test.listedEnv, nil); err != nil {
 				t.Fatalf("LinkDirectory: %v", err)
 			}
 

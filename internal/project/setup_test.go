@@ -239,7 +239,7 @@ func TestDetectSetup_Rules(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := &fakeSetupRecorder{repositories: []Repository{{Path: "."}}}
-			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), nil, &fakeProgress{})
 
 			got, err := service.DetectSetup(testProjectDir, DetectSetupOptions{})
 			if err != nil {
@@ -329,7 +329,7 @@ func TestDetectSetup_Options(t *testing.T) {
 				lockfiles[filepath.Join(repository.Path, "package-lock.json")] = "{}"
 			}
 			recorder := &fakeSetupRecorder{repositories: test.repositories}
-			service := NewProjectService(nil, nil, recorder, nil, filesOf(lockfiles), &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(lockfiles), nil, &fakeProgress{})
 
 			got, err := service.DetectSetup(testProjectDir, test.options)
 			if err != nil {
@@ -350,7 +350,7 @@ func TestDetectSetup_Options(t *testing.T) {
 }
 
 func TestDetectSetup_RefusesAProjectWithNoRepositories(t *testing.T) {
-	service := NewProjectService(nil, nil, &fakeSetupRecorder{}, nil, filesOf(nil), &fakeProgress{})
+	service := NewProjectService(nil, nil, &fakeSetupRecorder{}, nil, filesOf(nil), nil, &fakeProgress{})
 
 	_, err := service.DetectSetup(testProjectDir, DetectSetupOptions{})
 
@@ -437,7 +437,7 @@ func TestDetectSetup_CopyPaths(t *testing.T) {
 			}
 			recorder := &fakeSetupRecorder{repositories: []Repository{{Path: "."}}}
 			gitOps := gitcli.New(exec.NewCommandRunner(), git.Timeouts{Command: 30 * time.Second})
-			service := NewProjectService(nil, nil, recorder, gitOps, filesystem.NewRepositoryFiles(), &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, gitOps, filesystem.NewRepositoryFiles(), nil, &fakeProgress{})
 
 			got, err := service.DetectSetup(projectDir, DetectSetupOptions{})
 			if err != nil {
@@ -527,7 +527,7 @@ func TestDetectSetup_EnvNames(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := &fakeSetupRecorder{repositories: test.repositories, listedEnv: test.listed}
-			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), &fakeProgress{})
+			service := NewProjectService(nil, nil, recorder, nil, filesOf(test.files), nil, &fakeProgress{})
 
 			got, err := service.DetectSetup(testProjectDir, DetectSetupOptions{})
 			if err != nil {

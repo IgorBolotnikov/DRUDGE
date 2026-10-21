@@ -41,7 +41,7 @@ func TestTaskImport(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("NO_COLOR", "1")
 			t.Chdir(t.TempDir())
-			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, newTestCLIProgress())
+			service := project.NewProjectService(persistence.NewFileProjectRepository(""), nil, nil, nil, nil, nil, newTestCLIProgress())
 			captureOutput(func() {
 				if _, err := service.CreateProject("demo"); err != nil {
 					t.Fatal(err)

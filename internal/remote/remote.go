@@ -16,7 +16,9 @@ var Providers = []Provider{ProviderGitHub}
 // Config keys, named in error messages so they match what a user writes in a
 // config file.
 const (
+	ProviderKey            = "remote.provider"
 	PullRequestsEnabledKey = "remote.pullRequests.isEnabled"
+	PullRequestsDraftKey   = "remote.pullRequests.isDraft"
 	TimeoutKey             = "remote.timeoutSeconds"
 )
 
