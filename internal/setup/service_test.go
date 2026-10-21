@@ -1,9 +1,11 @@
 package setup
 
 import (
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -109,7 +111,18 @@ func TestQuestions(t *testing.T) {
 		hasGlobalConfig bool
 		wantKeys        []string
 	}{
-		{name: "a fresh home asks for the harness only", hasGlobalConfig: false, wantKeys: []string{config.DrudgerHarnessKey}},
+		{
+			name:            "a fresh home asks every question but the ones with one option",
+			hasGlobalConfig: false,
+			wantKeys: []string{
+				config.DrudgerHarnessKey,
+				config.DrudgerModelKey,
+				config.DrudgerMaxConcurrentKey,
+				config.DefaultTaskStatusKey,
+				config.PullRequestsEnabledKey,
+				config.PullRequestsDraftKey,
+			},
+		},
 		{name: "an existing global config asks nothing", hasGlobalConfig: true, wantKeys: nil},
 	}
 
@@ -138,40 +151,177 @@ func TestQuestions(t *testing.T) {
 	}
 }
 
-func TestQuestions_Harness(t *testing.T) {
+func TestQuestions_Shape(t *testing.T) {
+	selectOptions := func(values ...string) []common.QuestionOption {
+		var options []common.QuestionOption
+		for _, value := range values {
+			options = append(options, common.QuestionOption{Value: value, Label: value})
+		}
+		return options
+	}
+	testCases := []struct {
+		key         string
+		wantKind    common.QuestionKind
+		wantOptions []common.QuestionOption
+		wantDefault string
+	}{
+		{key: config.DrudgerHarnessKey, wantKind: common.QuestionSelect, wantOptions: selectOptions(string(config.HarnessClaudeCode), string(config.HarnessOpencode)), wantDefault: string(config.HarnessClaudeCode)},
+		{key: config.DrudgerModelKey, wantKind: common.QuestionText, wantDefault: ""},
+		{key: config.DrudgerMaxConcurrentKey, wantKind: common.QuestionNumber, wantDefault: "3"},
+		{key: config.DefaultTaskStatusKey, wantKind: common.QuestionSelect, wantOptions: selectOptions("todo", "draft"), wantDefault: "todo"},
+		{key: config.PullRequestsEnabledKey, wantKind: common.QuestionSelect, wantOptions: selectOptions(common.AnswerNo, common.AnswerYes), wantDefault: common.AnswerNo},
+		{key: config.PullRequestsDraftKey, wantKind: common.QuestionSelect, wantOptions: selectOptions(common.AnswerNo, common.AnswerYes), wantDefault: common.AnswerNo},
+	}
+
 	questions, err := NewSetupService(tempHome(t)).Questions()
 	if err != nil {
 		t.Fatalf("Questions: %v", err)
 	}
-	if len(questions) != 1 {
-		t.Fatalf("got %d questions, want 1", len(questions))
+	for _, testCase := range testCases {
+		t.Run(testCase.key, func(t *testing.T) {
+			index := slices.IndexFunc(questions, func(question common.Question) bool { return question.Key == testCase.key })
+			if index < 0 {
+				t.Fatalf("no question for %s", testCase.key)
+			}
+			question := questions[index]
+			if question.Kind != testCase.wantKind {
+				t.Errorf("Kind = %q, want %q", question.Kind, testCase.wantKind)
+			}
+			if !slices.Equal(question.Options, testCase.wantOptions) {
+				t.Errorf("Options = %v, want %v", question.Options, testCase.wantOptions)
+			}
+			if question.Default != testCase.wantDefault {
+				t.Errorf("Default = %q, want %q", question.Default, testCase.wantDefault)
+			}
+		})
 	}
-	harness := questions[0]
-	wantOptions := []common.QuestionOption{
-		{Value: string(config.HarnessClaudeCode), Label: string(config.HarnessClaudeCode)},
-		{Value: string(config.HarnessOpencode), Label: string(config.HarnessOpencode)},
+}
+
+func TestQuestions_DraftOnlyAfterPullRequests(t *testing.T) {
+	testCases := []struct {
+		name               string
+		pullRequestsAnswer string
+		wantIsAsked        bool
+	}{
+		{name: "asked after yes", pullRequestsAnswer: common.AnswerYes, wantIsAsked: true},
+		{name: "skipped after no", pullRequestsAnswer: common.AnswerNo, wantIsAsked: false},
 	}
-	if harness.Kind != common.QuestionSelect {
-		t.Errorf("Kind = %q, want %q", harness.Kind, common.QuestionSelect)
+
+	questions, err := NewSetupService(tempHome(t)).Questions()
+	if err != nil {
+		t.Fatalf("Questions: %v", err)
 	}
-	if !slices.Equal(harness.Options, wantOptions) {
-		t.Errorf("Options = %v, want %v", harness.Options, wantOptions)
+	index := slices.IndexFunc(questions, func(question common.Question) bool { return question.Key == config.PullRequestsDraftKey })
+	if index < 0 {
+		t.Fatalf("no question for %s", config.PullRequestsDraftKey)
 	}
-	if harness.Default != string(config.HarnessClaudeCode) {
-		t.Errorf("Default = %q, want %q", harness.Default, config.HarnessClaudeCode)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			answers := common.Answers{config.PullRequestsEnabledKey: testCase.pullRequestsAnswer}
+			if got := questions[index].IsAskedAfter(answers); got != testCase.wantIsAsked {
+				t.Errorf("IsAskedAfter(%v) = %v, want %v", answers, got, testCase.wantIsAsked)
+			}
+		})
+	}
+}
+
+func TestQuestions_ConcurrencyRefusal(t *testing.T) {
+	testCases := []struct {
+		answer  string
+		wantErr string
+	}{
+		{answer: "0", wantErr: "maxConcurrentDrudgers = 0, it must be a positive number"},
+		{answer: "-2", wantErr: "maxConcurrentDrudgers = -2, it must be a positive number"},
+		{answer: "many", wantErr: `"many" is not a whole number`},
+	}
+
+	questions, err := NewSetupService(tempHome(t)).Questions()
+	if err != nil {
+		t.Fatalf("Questions: %v", err)
+	}
+	index := slices.IndexFunc(questions, func(question common.Question) bool { return question.Key == config.DrudgerMaxConcurrentKey })
+	if index < 0 {
+		t.Fatalf("no question for %s", config.DrudgerMaxConcurrentKey)
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.answer, func(t *testing.T) {
+			err := questions[index].Validate(testCase.answer)
+			if err == nil || err.Error() != testCase.wantErr {
+				t.Errorf("Validate(%q) = %v, want %q", testCase.answer, err, testCase.wantErr)
+			}
+		})
 	}
 }
 
 func TestSetup_Answers(t *testing.T) {
 	testCases := []struct {
-		name        string
-		answers     common.Answers
-		wantHarness config.Harness
-		wantSkill   bool
+		name       string
+		answers    common.Answers
+		wantConfig string
+		wantSkill  bool
 	}{
-		{name: "no answers take the defaults", answers: nil, wantHarness: config.HarnessClaudeCode, wantSkill: true},
-		{name: "claude code gets the skill", answers: common.Answers{config.DrudgerHarnessKey: string(config.HarnessClaudeCode)}, wantHarness: config.HarnessClaudeCode, wantSkill: true},
-		{name: "opencode gets no skill", answers: common.Answers{config.DrudgerHarnessKey: string(config.HarnessOpencode)}, wantHarness: config.HarnessOpencode, wantSkill: false},
+		{
+			name:    "no answers take the defaults",
+			answers: nil,
+			wantConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"pullRequests": {"isEnabled": false}}
+			}`,
+			wantSkill: true,
+		},
+		{
+			name: "every answer changed",
+			answers: common.Answers{
+				config.DrudgerHarnessKey:       string(config.HarnessOpencode),
+				config.DrudgerModelKey:         "opus",
+				config.DrudgerMaxConcurrentKey: "5",
+				config.DefaultTaskStatusKey:    "draft",
+				config.PullRequestsEnabledKey:  common.AnswerYes,
+				config.PullRequestsDraftKey:    common.AnswerYes,
+			},
+			wantConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "opencode", "model": "opus", "maxConcurrentDrudgers": 5},
+				"task": {"defaultStatus": "draft"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}
+			}`,
+			wantSkill: false,
+		},
+		{
+			name:    "pull requests on take the provider and the draft default",
+			answers: common.Answers{config.PullRequestsEnabledKey: common.AnswerYes},
+			wantConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": false}}
+			}`,
+			wantSkill: true,
+		},
+		{
+			name:    "pull requests off drop the draft answer",
+			answers: common.Answers{config.PullRequestsEnabledKey: common.AnswerNo, config.PullRequestsDraftKey: common.AnswerYes},
+			wantConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"pullRequests": {"isEnabled": false}}
+			}`,
+			wantSkill: true,
+		},
+		{
+			name:    "an empty model is left out",
+			answers: common.Answers{config.DrudgerModelKey: ""},
+			wantConfig: `{
+				"$schema": "./schema/config.json",
+				"drudger": {"environment": "docker-sbx", "harness": "claude-code", "maxConcurrentDrudgers": 3},
+				"task": {"defaultStatus": "todo"},
+				"remote": {"pullRequests": {"isEnabled": false}}
+			}`,
+			wantSkill: true,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -183,12 +333,18 @@ func TestSetup_Answers(t *testing.T) {
 				t.Fatalf("Setup: %v", err)
 			}
 
-			var document config.DefaultDocument
-			if err := common.ReadJSON(result.GlobalConfig.Path, &document); err != nil {
+			var got, want any
+			if err := common.ReadJSON(result.GlobalConfig.Path, &got); err != nil {
 				t.Fatalf("ReadJSON: %v", err)
 			}
-			if want := config.NewDocument(config.EnvDockerSbx, testCase.wantHarness); document != want {
-				t.Errorf("global config = %+v, want %+v", document, want)
+			if err := json.Unmarshal([]byte(testCase.wantConfig), &want); err != nil {
+				t.Fatalf("json.Unmarshal: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("global config = %v, want %v", got, want)
+			}
+			if _, err := config.Load(); err != nil {
+				t.Errorf("config.Load: %v", err)
 			}
 			if hasSkill := result.SkillPath != ""; hasSkill != testCase.wantSkill {
 				t.Errorf("SkillPath = %q, want a skill: %v", result.SkillPath, testCase.wantSkill)
@@ -198,18 +354,32 @@ func TestSetup_Answers(t *testing.T) {
 }
 
 func TestSetup_InvalidAnswerWritesNothing(t *testing.T) {
-	home := tempHome(t)
+	testCases := []struct {
+		name    string
+		answers common.Answers
+	}{
+		{name: "an unknown harness", answers: common.Answers{config.DrudgerHarnessKey: "vim"}},
+		{name: "a concurrency limit of zero", answers: common.Answers{config.DrudgerMaxConcurrentKey: "0"}},
+		{name: "a concurrency limit that is not a number", answers: common.Answers{config.DrudgerMaxConcurrentKey: "many"}},
+		{name: "an unknown task status", answers: common.Answers{config.DefaultTaskStatusKey: "done"}},
+	}
 
-	_, err := NewSetupService(home).Setup(common.Answers{config.DrudgerHarnessKey: "vim"})
-	if err == nil {
-		t.Fatal("Setup succeeded, want an error for an unknown harness")
-	}
-	isPresent, err := common.Exists(common.DrudgeDir(home))
-	if err != nil {
-		t.Fatalf("Exists: %v", err)
-	}
-	if isPresent {
-		t.Errorf("%s exists after a refused answer", common.DrudgeDir(home))
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := tempHome(t)
+
+			_, err := NewSetupService(home).Setup(testCase.answers)
+			if err == nil {
+				t.Fatal("Setup succeeded, want an error")
+			}
+			isPresent, err := common.Exists(common.DrudgeDir(home))
+			if err != nil {
+				t.Fatalf("Exists: %v", err)
+			}
+			if isPresent {
+				t.Errorf("%s exists after a refused answer", common.DrudgeDir(home))
+			}
+		})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -81,6 +82,10 @@ const (
 	DrudgerEnvironmentKey = "drudger.environment"
 	// DrudgerHarnessKey is exported so drg setup can ask for it.
 	DrudgerHarnessKey = "drudger.harness"
+	// DrudgerModelKey is exported so drg setup can ask for it.
+	DrudgerModelKey = "drudger.model"
+	// DrudgerMaxConcurrentKey is exported so drg setup can ask for it.
+	DrudgerMaxConcurrentKey = "drudger." + maxConcurrentDrudgersKey
 )
 
 // defaultTaskStatuses are the statuses a config may give a new task.
@@ -98,21 +103,34 @@ func SchemaRef() string {
 type DefaultDocument struct {
 	Schema  string                 `json:"$schema"`
 	Drudger DefaultDrudgerDocument `json:"drudger"`
+	Task    DefaultTaskDocument    `json:"task"`
+	Remote  DefaultRemoteDocument  `json:"remote"`
 }
 
 // DefaultDrudgerDocument is the drudger section of DefaultDocument.
 type DefaultDrudgerDocument struct {
-	Env     Env     `json:"environment"`
-	Harness Harness `json:"harness"`
+	Env                   Env     `json:"environment"`
+	Harness               Harness `json:"harness"`
+	Model                 string  `json:"model,omitempty"` // Empty leaves the model to the harness
+	MaxConcurrentDrudgers int     `json:"maxConcurrentDrudgers"`
 }
 
-// NewDocument returns the global config file with the environment and the
-// harness set.
-func NewDocument(env Env, harness Harness) DefaultDocument {
-	return DefaultDocument{
-		Schema:  schemaRef,
-		Drudger: DefaultDrudgerDocument{Env: env, Harness: harness},
-	}
+// DefaultTaskDocument is the task section of DefaultDocument.
+type DefaultTaskDocument struct {
+	DefaultStatus task.TaskStatus `json:"defaultStatus"`
+}
+
+// DefaultRemoteDocument is the remote section of DefaultDocument.
+type DefaultRemoteDocument struct {
+	Provider     remote.Provider             `json:"provider,omitempty"` // Empty when pull requests are off
+	PullRequests DefaultPullRequestsDocument `json:"pullRequests"`
+}
+
+// DefaultPullRequestsDocument is the pull requests section of
+// DefaultRemoteDocument.
+type DefaultPullRequestsDocument struct {
+	IsEnabled bool  `json:"isEnabled"`
+	IsDraft   *bool `json:"isDraft,omitempty"` // Nil when pull requests are off
 }
 
 type GlobalConfig struct {
@@ -359,8 +377,19 @@ func validateBranchFormat(value string, path string) error {
 
 // validateMaxConcurrentDrudgers rejects a negative Drudger limit. Zero passes, since that is what an absent key unmarshals to.
 func validateMaxConcurrentDrudgers(value int, path string) error {
-	if value < 0 {
-		return fmt.Errorf("%s has %s = %d, it must be a positive number", path, maxConcurrentDrudgersKey, value)
+	if value == 0 {
+		return nil
+	}
+	if err := ValidateMaxConcurrentDrudgers(value); err != nil {
+		return fmt.Errorf("%s has %w", path, err)
+	}
+	return nil
+}
+
+// ValidateMaxConcurrentDrudgers rejects a Drudger limit below 1.
+func ValidateMaxConcurrentDrudgers(value int) error {
+	if value < 1 {
+		return fmt.Errorf("%s = %d, it must be a positive number", maxConcurrentDrudgersKey, value)
 	}
 	return nil
 }

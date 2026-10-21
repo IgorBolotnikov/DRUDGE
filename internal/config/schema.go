@@ -113,7 +113,7 @@ const schemaJSON = `{
         "defaultStatus": {
           "description": "Status of a new task created without --status. A draft task waits for review, a todo task is ready to run.",
           "type": "string",
-          "enum": ["draft", "todo"],
+          "enum": ["todo", "draft"],
           "default": "todo"
         },
         "branchFormat": {
@@ -232,7 +232,7 @@ const localSchemaJSON = `{
         "defaultStatus": {
           "description": "Status of a new task created without --status. A draft task waits for review, a todo task is ready to run.",
           "type": "string",
-          "enum": ["draft", "todo"],
+          "enum": ["todo", "draft"],
           "default": "todo"
         },
         "branchFormat": {

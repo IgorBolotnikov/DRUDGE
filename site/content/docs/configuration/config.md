@@ -3,9 +3,17 @@ title: Global config
 weight: 1
 ---
 
-The global config file is `~/.drudge/config.json`. `drg setup` writes it when it is missing, with the Drudger environment and harness set. After that the file is yours to edit. `drg setup` leaves an existing file alone.
+The global config file is `~/.drudge/config.json`. `drg setup` writes it when it is missing, with the answers to its questions. After that the file is yours to edit. `drg setup` leaves an existing file alone.
 
-In a terminal, `drg setup` asks which harness the Drudgers run before it writes the file. `--defaults`, or `-y`, skips the questions and writes the defaults. Input that is not a terminal skips them too.
+In a terminal, `drg setup` asks these questions before it writes the file:
+
+- `drudger.harness`, the harness the Drudgers run.
+- `drudger.model`, the model the harness runs. Enter leaves the key out, so the harness picks its own model.
+- `drudger.maxConcurrentDrudgers`, how many Drudgers may work on one project at once.
+- `task.defaultStatus`, the status of a new task.
+- `remote.pullRequests.isEnabled`, whether a Drudger opens pull requests. Yes also sets `remote.provider` to `github` and asks `remote.pullRequests.isDraft`.
+
+Every asked key is written to the file, defaults included. `--defaults`, or `-y`, skips the questions and writes the defaults. Input that is not a terminal skips them too.
 
 ## Schema
 
@@ -41,7 +49,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.gitTimeouts.worktreeSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a worktree, which is a full checkout. |
 | `drudger.gitTimeouts.commandSeconds` | integer | `60` | minimum 1 | Seconds allowed for every other git command. |
 | `task` | object |  |  | Settings for tasks. A project config may override each of them. |
-| `task.defaultStatus` | string | `"todo"` | `"draft"`, `"todo"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
+| `task.defaultStatus` | string | `"todo"` | `"todo"`, `"draft"` | Status of a new task created without --status. A draft task waits for review, a todo task is ready to run. |
 | `task.branchFormat` | string | `"drudge/{{taskShortID}}-{{taskSlug}}"` |  | Format of the names of the branches DRUDGE makes for tasks. Literal text mixes with the placeholders {{taskShortID}}, the leading characters of the task id, {{taskSlug}}, the task title folded to lowercase words joined by -, and {{ticketID}}, the ticket id of the task with its case kept and every character git refuses in a ref, / included, replaced by -. A format needs {{taskShortID}} or {{taskSlug}}. Once the placeholders are filled in, repeated / collapse into one, -, _, . and / are trimmed from both ends of every segment and empty segments are dropped. A changed format applies from the next run. Branches made before stay as they are. |
 | `task.pageSize` | integer | `20` | minimum 0 | How many tasks drg task list shows on one page. 0 shows every task on one page. |
 | `project` | object |  |  | Settings for projects. |

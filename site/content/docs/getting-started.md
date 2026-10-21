@@ -46,7 +46,27 @@ Harness
   opencode
 ```
 
-The list turns into one line with your answer, like `Harness: claude-code`. `drg setup -y`, short for `--defaults`, skips the questions and takes the defaults. A run whose input is not a terminal asks nothing either.
+The list turns into one line with your answer, like `Harness: claude-code`.
+
+Then it asks for the model the harness runs and for how many Drudgers may work on one project at once. Type an answer and press Enter, or press Enter alone to take the default in brackets. An answer DRUDGE refuses prints the reason and asks again:
+
+```
+Model the harness runs [harness default]:
+Drudgers that may work on one project at once [3]:
+```
+
+Last come three selects. The status of a new task is `todo` or `draft`. Pull requests are off by default, and turning them on asks whether to open them as drafts:
+
+```
+Status of a new task
+› todo (default)
+  draft
+Open pull requests
+› no (default)
+  yes
+```
+
+`drg setup -y`, short for `--defaults`, skips the questions and takes the defaults. A run whose input is not a terminal asks nothing either. See [Global config]({{< relref "/docs/configuration/config" >}}) for the keys the answers set.
 
 It then creates `~/.drudge/` and writes:
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -56,9 +57,13 @@ const (
 	cursorUpFormat    = "\x1b[%dA"
 	clearToScreenEnd  = "\x1b[J"
 	selectorLineBreak = "\r\n"
+	// lineBreak ends a line in cooked mode, where the terminal adds the
+	// carriage return.
+	lineBreak = "\n"
 )
 
 const (
+	warningGlyph        = "!"
 	currentOptionMarker = "› "
 	otherOptionMarker   = "  "
 	defaultOptionTag    = "(default)"
@@ -85,25 +90,53 @@ func isInteractive() bool {
 	return common.IsTerminal(os.Stdin) && common.IsTerminal(os.Stdout)
 }
 
-// askQuestions asks every question on output, reads the keys from input and
-// returns the answers. The terminal of input is in raw mode while it asks.
+// askQuestions asks every question whose condition holds on output, reads
+// the answers from input and returns them. The terminal of input is in raw
+// mode while a select waits for its pick, and in cooked mode while a typed
+// question waits for its line.
 func askQuestions(input io.Reader, output io.Writer, palette *theme.Theme, questions []common.Question) (common.Answers, error) {
-	answers := make(common.Answers, len(questions))
-	if len(questions) == 0 {
-		return answers, nil
-	}
-	restore, err := makeRaw(input)
-	if err != nil {
-		return nil, err
-	}
-	defer restore()
+	return newPrompter(input, output, palette).ask(questions)
+}
 
-	keys := &keyReader{input: input}
+// prompter asks questions on a terminal.
+type prompter struct {
+	input   io.Reader
+	reader  *bufio.Reader
+	keys    *keyReader // Reads from reader
+	output  io.Writer
+	palette *theme.Theme
+	// interrupts returns the channel Ctrl-C arrives on while a typed question
+	// waits for its line, and the function that stops it.
+	interrupts func() (<-chan os.Signal, func())
+}
+
+func newPrompter(input io.Reader, output io.Writer, palette *theme.Theme) *prompter {
+	reader := bufio.NewReader(input)
+	return &prompter{input: input, reader: reader, keys: &keyReader{input: reader}, output: output, palette: palette, interrupts: notifyInterrupts}
+}
+
+func notifyInterrupts() (<-chan os.Signal, func()) {
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	return interrupts, func() { signal.Stop(interrupts) }
+}
+
+func (p *prompter) ask(questions []common.Question) (common.Answers, error) {
+	answers := make(common.Answers, len(questions))
 	for _, question := range questions {
-		if question.Kind != common.QuestionSelect {
-			return nil, fmt.Errorf("cannot ask for %s, the terminal only asks %s questions", question.Key, common.QuestionSelect)
+		if !question.IsAskedAfter(answers) {
+			continue
 		}
-		answer, err := askSelect(keys, output, palette, question)
+		var answer string
+		var err error
+		switch question.Kind {
+		case common.QuestionSelect:
+			answer, err = p.askSelect(question)
+		case common.QuestionNumber, common.QuestionText:
+			answer, err = p.askTyped(question)
+		default:
+			return nil, fmt.Errorf("cannot ask for %s, the terminal does not ask %s questions", question.Key, question.Kind)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +184,14 @@ func makeRaw(input io.Reader) (restore func(), err error) {
 // askSelect draws the options of question and moves the current one with the
 // keys until one is picked. It then replaces the list with one line holding
 // the label and the picked value.
-func askSelect(keys *keyReader, output io.Writer, palette *theme.Theme, question common.Question) (string, error) {
+func (p *prompter) askSelect(question common.Question) (string, error) {
+	restore, err := makeRaw(p.input)
+	if err != nil {
+		return "", err
+	}
+	defer restore()
+
+	keys, output, palette := p.keys, p.output, p.palette
 	current := 0
 	for index, option := range question.Options {
 		if option.Value == question.Default {
@@ -180,8 +220,7 @@ func askSelect(keys *keyReader, output io.Writer, palette *theme.Theme, question
 			next = min(current+1, len(question.Options)-1)
 		case keyPick:
 			picked := question.Options[current].Value
-			collapsed := palette.Paint(theme.Stdout, theme.RoleHeading, question.Label+":") + " " + picked + selectorLineBreak
-			if _, err := io.WriteString(output, eraseLines(lineCount)+collapsed); err != nil {
+			if _, err := io.WriteString(output, eraseLines(lineCount)+renderAnswer(palette, question.Label, picked, selectorLineBreak)); err != nil {
 				return "", err
 			}
 			return picked, nil
@@ -199,6 +238,91 @@ func askSelect(keys *keyReader, output io.Writer, palette *theme.Theme, question
 			return "", err
 		}
 	}
+}
+
+// askTyped reads one line as the answer to question until question validates
+// it. An empty line takes the default. A refused answer prints the error
+// under the line and asks again. It then replaces the lines it printed with
+// one line holding the label and the answer.
+func (p *prompter) askTyped(question common.Question) (string, error) {
+	interrupts, stop := p.interrupts()
+	defer stop()
+
+	shownDefault := question.DefaultLabel
+	if shownDefault == "" {
+		shownDefault = question.Default
+	}
+	prompt := p.palette.Paint(theme.Stdout, theme.RoleHeading, question.Label) + " " +
+		p.palette.Paint(theme.Stdout, theme.RoleMuted, "["+shownDefault+"]") + ": "
+	// Every refused answer leaves its prompt line and its error line.
+	refusalCount := 0
+	for {
+		if _, err := io.WriteString(p.output, prompt); err != nil {
+			return "", err
+		}
+		line, err := p.readLine(interrupts)
+		if errors.Is(err, errCancelled) {
+			if _, err := io.WriteString(p.output, lineBreak+eraseLines(refusalCount*2+1)); err != nil {
+				return "", err
+			}
+			return "", err
+		}
+		if err == io.EOF {
+			return "", fmt.Errorf("input ended before an answer for %s was given", question.Key)
+		}
+		if err != nil {
+			return "", fmt.Errorf("could not read the answer for %s: %w", question.Key, err)
+		}
+
+		answer := strings.TrimSpace(line)
+		if answer == "" {
+			answer = question.Default
+		}
+		if question.Validate != nil {
+			if err := question.Validate(answer); err != nil {
+				refusal := p.palette.Paint(theme.Stdout, theme.RoleWarning, warningGlyph) + " " + err.Error() + lineBreak
+				if _, err := io.WriteString(p.output, refusal); err != nil {
+					return "", err
+				}
+				refusalCount++
+				continue
+			}
+		}
+		shownAnswer := answer
+		if shownAnswer == "" {
+			shownAnswer = shownDefault
+		}
+		if _, err := io.WriteString(p.output, eraseLines(refusalCount*2+1)+renderAnswer(p.palette, question.Label, shownAnswer, lineBreak)); err != nil {
+			return "", err
+		}
+		return answer, nil
+	}
+}
+
+// readLine returns the next line of input, or the cancelled error when Ctrl-C
+// arrives on interrupts first. A cancelled read leaves its goroutine blocked
+// on input, and drg exits right after a cancelled question.
+func (p *prompter) readLine(interrupts <-chan os.Signal) (string, error) {
+	type readResult struct {
+		line string
+		err  error
+	}
+	results := make(chan readResult, 1)
+	go func() {
+		line, err := p.reader.ReadString(lineFeed)
+		results <- readResult{line: line, err: err}
+	}()
+	select {
+	case result := <-results:
+		return result.line, result.err
+	case <-interrupts:
+		return "", errCancelled
+	}
+}
+
+// renderAnswer renders the line a question leaves once it is answered.
+func renderAnswer(palette *theme.Theme, label string, answer string, lineEnd string) string {
+	return palette.Paint(theme.Stdout, theme.RoleHeading, label+":") + " " + answer + lineEnd
 }
 
 // renderSelect renders the label and the options of question, one per line,

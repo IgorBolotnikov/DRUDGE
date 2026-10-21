@@ -12,11 +12,18 @@ import (
 const defaultRemoteTimeoutSeconds = 60
 
 const (
-	remoteProviderKey = "remote.provider"
+	remoteProviderKey = RemoteProviderKey
 	remoteTimeoutKey  = remote.TimeoutKey
 	pullRequestsKey   = remote.PullRequestsEnabledKey
 	templateFileKey   = "remote.pullRequests.templateFile"
 	stepsFileKey      = "remote.pullRequests.stepsFile"
+)
+
+// Keys exported so drg setup can ask for them.
+const (
+	RemoteProviderKey      = "remote.provider"
+	PullRequestsEnabledKey = remote.PullRequestsEnabledKey
+	PullRequestsDraftKey   = "remote.pullRequests.isDraft"
 )
 
 // defaultTitleFormat is what the agent is told to write as the title of a

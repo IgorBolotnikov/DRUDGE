@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -96,6 +98,126 @@ func TestAskQuestions_DrawsTheList(t *testing.T) {
 		"  aider\r\n"
 	if !strings.HasPrefix(output.String(), wantList) {
 		t.Errorf("output = %q, want it to start with %q", output.String(), wantList)
+	}
+}
+
+func concurrencyQuestion() common.Question {
+	return common.Question{
+		Key:     "drudger.maxConcurrentDrudgers",
+		Label:   "Drudgers",
+		Kind:    common.QuestionNumber,
+		Default: "3",
+		Validate: func(answer string) error {
+			if answer == "0" {
+				return errors.New("must be positive")
+			}
+			return nil
+		},
+	}
+}
+
+func modelQuestion() common.Question {
+	return common.Question{Key: "drudger.model", Label: "Model", Kind: common.QuestionText, DefaultLabel: "harness default"}
+}
+
+func TestAskQuestions_Typed(t *testing.T) {
+	cases := []struct {
+		name           string
+		question       common.Question
+		input          string
+		want           string
+		wantLine       string
+		wantRefusals   int
+		wantEndOfInput bool
+	}{
+		{name: "enter takes the default", question: concurrencyQuestion(), input: "\n", want: "3", wantLine: "Drudgers: 3\n"},
+		{name: "a typed value is returned", question: concurrencyQuestion(), input: "5\n", want: "5", wantLine: "Drudgers: 5\n"},
+		{name: "spaces around the value are dropped", question: modelQuestion(), input: "  opus \n", want: "opus", wantLine: "Model: opus\n"},
+		{name: "enter on an empty default shows the default label", question: modelQuestion(), input: "\n", want: "", wantLine: "Model: harness default\n"},
+		{name: "a refused value asks again", question: concurrencyQuestion(), input: "0\n0\n4\n", want: "4", wantLine: "Drudgers: 4\n", wantRefusals: 2},
+		{name: "input that ends asks for an answer", question: concurrencyQuestion(), input: "5", wantEndOfInput: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			var output bytes.Buffer
+
+			answers, err := askQuestions(strings.NewReader(testCase.input), &output, theme.NewTheme(theme.DefaultTheme()), []common.Question{testCase.question})
+
+			if testCase.wantEndOfInput {
+				if err == nil || errors.Is(err, errCancelled) {
+					t.Fatalf("err = %v, want an error about the input ending", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("askQuestions: %v", err)
+			}
+			if got := answers[testCase.question.Key]; got != testCase.want {
+				t.Errorf("answer = %q, want %q", got, testCase.want)
+			}
+			if !strings.HasSuffix(output.String(), testCase.wantLine) {
+				t.Errorf("output = %q, want it to end with %q", output.String(), testCase.wantLine)
+			}
+			if got := strings.Count(output.String(), "! must be positive\n"); got != testCase.wantRefusals {
+				t.Errorf("output = %q, want %d refusals", output.String(), testCase.wantRefusals)
+			}
+		})
+	}
+}
+
+func TestAskQuestions_TypedPrompt(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+
+	if _, err := askQuestions(strings.NewReader("\n"), &output, theme.NewTheme(theme.DefaultTheme()), []common.Question{modelQuestion()}); err != nil {
+		t.Fatalf("askQuestions: %v", err)
+	}
+
+	if wantPrompt := "Model [harness default]: "; !strings.HasPrefix(output.String(), wantPrompt) {
+		t.Errorf("output = %q, want it to start with %q", output.String(), wantPrompt)
+	}
+}
+
+func TestAskQuestions_TypedCtrlCCancels(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	input, inputWriter := io.Pipe()
+	defer inputWriter.Close()
+	var output bytes.Buffer
+	asker := newPrompter(input, &output, theme.NewTheme(theme.DefaultTheme()))
+	asker.interrupts = func() (<-chan os.Signal, func()) {
+		interrupts := make(chan os.Signal, 1)
+		interrupts <- os.Interrupt
+		return interrupts, func() {}
+	}
+
+	_, err := asker.ask([]common.Question{concurrencyQuestion()})
+
+	if !errors.Is(err, errCancelled) {
+		t.Fatalf("err = %v, want it to be cancelled", err)
+	}
+	if code := ExitCode(err); code != cancelledExitCode {
+		t.Errorf("ExitCode = %d, want %d", code, cancelledExitCode)
+	}
+	if strings.Contains(output.String(), "Drudgers:") {
+		t.Errorf("output = %q, want no answer line", output.String())
+	}
+}
+
+func TestAskQuestions_SkipsAQuestionWhoseConditionFails(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	conditional := modelQuestion()
+	conditional.Condition = &common.QuestionCondition{Key: "drudger.maxConcurrentDrudgers", Answer: "5"}
+	var output bytes.Buffer
+
+	answers, err := askQuestions(strings.NewReader("4\nopus\n"), &output, theme.NewTheme(theme.DefaultTheme()), []common.Question{concurrencyQuestion(), conditional})
+	if err != nil {
+		t.Fatalf("askQuestions: %v", err)
+	}
+
+	if _, ok := answers[conditional.Key]; ok {
+		t.Errorf("answers = %v, want no answer for %s", answers, conditional.Key)
 	}
 }
 

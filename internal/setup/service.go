@@ -6,7 +6,9 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/skill"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
 
@@ -26,8 +28,15 @@ func (s *SetupService) DrudgeDir() string {
 
 // Labels of the setup questions.
 const (
-	environmentLabel = "Environment"
-	harnessLabel     = "Harness"
+	environmentLabel  = "Environment"
+	harnessLabel      = "Harness"
+	modelLabel        = "Model the harness runs"
+	modelDefaultLabel = "harness default"
+	concurrencyLabel  = "Drudgers that may work on one project at once"
+	taskStatusLabel   = "Status of a new task"
+	providerLabel     = "Provider"
+	pullRequestsLabel = "Open pull requests"
+	draftLabel        = "Open pull requests as drafts"
 )
 
 // Questions returns the questions setup asks before it writes the global
@@ -46,24 +55,79 @@ func (s *SetupService) Questions() ([]common.Question, error) {
 }
 
 // globalConfigQuestions returns every question about the global config, the
-// ones that are not asked included.
+// ones that are not asked included. The provider is asked only when pull
+// requests are on, and the schema offers one provider, so it is taken
+// without asking.
 func globalConfigQuestions() ([]common.Question, error) {
-	settings := []struct {
-		key   string
-		label string
+	schema := config.Schema()
+	pullRequestsOn := &common.QuestionCondition{Key: config.PullRequestsEnabledKey, Answer: common.AnswerYes}
+	builders := []struct {
+		build     func() (common.Question, error)
+		condition *common.QuestionCondition
 	}{
-		{config.DrudgerEnvironmentKey, environmentLabel},
-		{config.DrudgerHarnessKey, harnessLabel},
+		{build: func() (common.Question, error) {
+			return common.NewSelectQuestion(schema, config.DrudgerEnvironmentKey, environmentLabel)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewSelectQuestion(schema, config.DrudgerHarnessKey, harnessLabel)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewTextQuestion(schema, config.DrudgerModelKey, modelLabel, modelDefaultLabel)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewNumberQuestion(schema, config.DrudgerMaxConcurrentKey, concurrencyLabel, config.ValidateMaxConcurrentDrudgers)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewSelectQuestion(schema, config.DefaultTaskStatusKey, taskStatusLabel)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewBoolQuestion(schema, config.PullRequestsEnabledKey, pullRequestsLabel)
+		}},
+		{build: func() (common.Question, error) {
+			return common.NewSelectQuestion(schema, config.RemoteProviderKey, providerLabel)
+		}, condition: pullRequestsOn},
+		{build: func() (common.Question, error) {
+			return common.NewBoolQuestion(schema, config.PullRequestsDraftKey, draftLabel)
+		}, condition: pullRequestsOn},
 	}
-	questions := make([]common.Question, 0, len(settings))
-	for _, setting := range settings {
-		question, err := common.NewSelectQuestion(config.Schema(), setting.key, setting.label)
+	questions := make([]common.Question, 0, len(builders))
+	for _, builder := range builders {
+		question, err := builder.build()
 		if err != nil {
 			return nil, err
 		}
+		question.Condition = builder.condition
 		questions = append(questions, question)
 	}
 	return questions, nil
+}
+
+// newGlobalConfigDocument returns the global config file that holds the
+// resolved answers. An empty model is left out, and the provider and the
+// draft setting are left out when pull requests are off.
+func newGlobalConfigDocument(answers common.Answers) (config.DefaultDocument, error) {
+	maxConcurrentDrudgers, err := common.ParseNumberAnswer(answers[config.DrudgerMaxConcurrentKey])
+	if err != nil {
+		return config.DefaultDocument{}, err
+	}
+	document := config.DefaultDocument{
+		Schema: config.SchemaRef(),
+		Drudger: config.DefaultDrudgerDocument{
+			Env:                   config.Env(answers[config.DrudgerEnvironmentKey]),
+			Harness:               config.Harness(answers[config.DrudgerHarnessKey]),
+			Model:                 answers[config.DrudgerModelKey],
+			MaxConcurrentDrudgers: maxConcurrentDrudgers,
+		},
+		Task: config.DefaultTaskDocument{DefaultStatus: task.TaskStatus(answers[config.DefaultTaskStatusKey])},
+		Remote: config.DefaultRemoteDocument{
+			Provider:     remote.Provider(answers[config.RemoteProviderKey]),
+			PullRequests: config.DefaultPullRequestsDocument{IsEnabled: answers[config.PullRequestsEnabledKey] == common.AnswerYes},
+		},
+	}
+	if draftAnswer, ok := answers[config.PullRequestsDraftKey]; ok {
+		document.Remote.PullRequests.IsDraft = new(draftAnswer == common.AnswerYes)
+	}
+	return document, nil
 }
 
 // Setup creates the drudge home directory, writes the schema files and
@@ -81,7 +145,10 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	document := config.NewDocument(config.Env(answers[config.DrudgerEnvironmentKey]), config.Harness(answers[config.DrudgerHarnessKey]))
+	document, err := newGlobalConfigDocument(answers)
+	if err != nil {
+		return nil, err
+	}
 
 	drudgeDir := s.DrudgeDir()
 	result := &SetupResult{DrudgeDir: drudgeDir}
