@@ -285,8 +285,8 @@ func TestCLIProgress_Report(t *testing.T) {
 		},
 		{
 			name:  "an agent launch started",
-			event: drudger.AgentLaunchStarted{Sandbox: "drudge-claude-demo-3", GracePeriod: 10 * time.Second},
-			want:  "› Starting the agent, waiting up to 10s for its first output…\n",
+			event: drudger.AgentLaunchStarted{Sandbox: "drudge-claude-demo-3", GracePeriod: 60 * time.Second},
+			want:  "› Starting the agent, waiting up to 1m0s for its first output…\n",
 		},
 		{
 			name: "an agent launched",

@@ -24,9 +24,10 @@ import (
 const sbxDaemonRetryDelay = 2 * time.Second
 
 // launchGracePeriod is how long a launch waits for the agent to write its
-// first stream event. An agent writes that event a second or two after it
-// starts, and a launch blocks for this whole period when none arrives.
-const launchGracePeriod = 10 * time.Second
+// first stream event. The first event can take longer than 10 seconds on a
+// sandbox that has just booted, and a launch blocks for this whole period when
+// none arrives.
+const launchGracePeriod = 60 * time.Second
 
 // launchPollInterval is how often a launch checks the stream while it waits
 // out the grace period.
