@@ -109,11 +109,11 @@ func TestQuestions(t *testing.T) {
 	testCases := []struct {
 		name            string
 		hasGlobalConfig bool
+		hasThemeConfig  bool
 		wantKeys        []string
 	}{
 		{
-			name:            "a fresh home asks every question but the ones with one option",
-			hasGlobalConfig: false,
+			name: "a fresh home asks every question but the ones with one option",
 			wantKeys: []string{
 				config.DrudgerHarnessKey,
 				config.DrudgerModelKey,
@@ -121,9 +121,11 @@ func TestQuestions(t *testing.T) {
 				config.DefaultTaskStatusKey,
 				config.PullRequestsEnabledKey,
 				config.PullRequestsDraftKey,
+				theme.ThemeKey,
 			},
 		},
-		{name: "an existing global config asks nothing", hasGlobalConfig: true, wantKeys: nil},
+		{name: "an existing global config asks for the theme", hasGlobalConfig: true, wantKeys: []string{theme.ThemeKey}},
+		{name: "existing configs ask nothing", hasGlobalConfig: true, hasThemeConfig: true, wantKeys: nil},
 	}
 
 	for _, testCase := range testCases {
@@ -133,6 +135,11 @@ func TestQuestions(t *testing.T) {
 			if testCase.hasGlobalConfig {
 				if _, err := service.Setup(nil); err != nil {
 					t.Fatalf("Setup: %v", err)
+				}
+			}
+			if testCase.hasGlobalConfig && !testCase.hasThemeConfig {
+				if err := os.Remove(themeConfigPath(home)); err != nil {
+					t.Fatalf("Remove: %v", err)
 				}
 			}
 
@@ -171,6 +178,7 @@ func TestQuestions_Shape(t *testing.T) {
 		{key: config.DefaultTaskStatusKey, wantKind: common.QuestionSelect, wantOptions: selectOptions("todo", "draft"), wantDefault: "todo"},
 		{key: config.PullRequestsEnabledKey, wantKind: common.QuestionSelect, wantOptions: selectOptions(common.AnswerNo, common.AnswerYes), wantDefault: common.AnswerNo},
 		{key: config.PullRequestsDraftKey, wantKind: common.QuestionSelect, wantOptions: selectOptions(common.AnswerNo, common.AnswerYes), wantDefault: common.AnswerNo},
+		{key: theme.ThemeKey, wantKind: common.QuestionSelect, wantOptions: selectOptions("system", "nord", "monokai", "catppuccin-mocha", "dracula"), wantDefault: "system"},
 	}
 
 	questions, err := NewSetupService(tempHome(t)).Questions()
@@ -362,6 +370,7 @@ func TestSetup_InvalidAnswerWritesNothing(t *testing.T) {
 		{name: "a concurrency limit of zero", answers: common.Answers{config.DrudgerMaxConcurrentKey: "0"}},
 		{name: "a concurrency limit that is not a number", answers: common.Answers{config.DrudgerMaxConcurrentKey: "many"}},
 		{name: "an unknown task status", answers: common.Answers{config.DefaultTaskStatusKey: "done"}},
+		{name: "an unknown theme", answers: common.Answers{theme.ThemeKey: "solarized"}},
 	}
 
 	for _, testCase := range testCases {
@@ -414,6 +423,73 @@ func TestSetup_ExistingGlobalConfigIsLeftAlone(t *testing.T) {
 	}
 }
 
+func TestSetup_ThemeAnswer(t *testing.T) {
+	testCases := []struct {
+		name       string
+		answers    common.Answers
+		wantConfig string
+	}{
+		{
+			name:       "no answer takes the system theme",
+			answers:    nil,
+			wantConfig: `{"$schema": "./schema/theme.json", "theme": "system", "overrides": {}}`,
+		},
+		{
+			name:       "a picked palette",
+			answers:    common.Answers{theme.ThemeKey: "dracula"},
+			wantConfig: `{"$schema": "./schema/theme.json", "theme": "dracula", "overrides": {}}`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, err := NewSetupService(tempHome(t)).Setup(testCase.answers)
+			if err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+
+			var got, want any
+			if err := common.ReadJSON(result.ThemeConfig.Path, &got); err != nil {
+				t.Fatalf("ReadJSON: %v", err)
+			}
+			if err := json.Unmarshal([]byte(testCase.wantConfig), &want); err != nil {
+				t.Fatalf("json.Unmarshal: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("theme config = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestSetup_ExistingThemeConfigIsLeftAlone(t *testing.T) {
+	home := tempHome(t)
+	service := NewSetupService(home)
+	if _, err := service.Setup(common.Answers{theme.ThemeKey: "nord"}); err != nil {
+		t.Fatalf("Setup before: %v", err)
+	}
+	before, err := common.ReadFile(themeConfigPath(home))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	result, err := service.Setup(common.Answers{theme.ThemeKey: "monokai"})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	after, err := common.ReadFile(themeConfigPath(home))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if after != before {
+		t.Errorf("theme config = %s, want it left as %s", after, before)
+	}
+	if !result.ThemeConfig.HasExisted {
+		t.Errorf("ThemeConfig.HasExisted = false, want true")
+	}
+}
+
 func TestSetup_DefaultConfigsLoad(t *testing.T) {
 	home := tempHome(t)
 	if _, err := NewSetupService(home).Setup(nil); err != nil {
@@ -441,8 +517,7 @@ func TestSetup_ThemeConfigSharesLoadPath(t *testing.T) {
 	}
 
 	const wantTheme = "monokai"
-	document := theme.NewDefaultDocument()
-	document.Theme = wantTheme
+	document := theme.NewDocument(wantTheme)
 	if err := common.WriteJSON(result.ThemeConfig.Path, document); err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}

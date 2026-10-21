@@ -14,7 +14,7 @@ const schemaJSON = `{
     "theme": {
       "description": "The color theme to use.",
       "type": "string",
-      "enum": ["nord", "monokai", "catppuccin-mocha", "dracula", "system"],
+      "enum": ["system", "nord", "monokai", "catppuccin-mocha", "dracula"],
       "default": "system"
     },
     "overrides": {

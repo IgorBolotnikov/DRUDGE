@@ -18,7 +18,7 @@ const (
 var SetupCmd = &Cmd{
 	Name: "setup",
 	Desc: "Setup DRUDGE in this computer",
-	Help: "Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config. " +
+	Help: "Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config and the color theme. " +
 		"With --defaults or input that is not a terminal it asks nothing and takes the defaults.",
 	Setup: func(fs *flag.FlagSet) func(args []string) error {
 		shouldTakeDefaults := fs.Bool(defaultsFlagName, false, "Skip the questions and take the default answers")

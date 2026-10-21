@@ -37,19 +37,35 @@ const (
 	providerLabel     = "Provider"
 	pullRequestsLabel = "Open pull requests"
 	draftLabel        = "Open pull requests as drafts"
+	themeLabel        = "Color theme"
 )
 
-// Questions returns the questions setup asks before it writes the global
-// config, in the order they are asked. It returns none when the global config
-// exists.
+// Questions returns the questions setup asks before it writes the configs, in
+// the order they are asked. The global config questions come first and the
+// theme question last. A config that exists has its questions left out.
 func (s *SetupService) Questions() ([]common.Question, error) {
+	var questions []common.Question
 	hasGlobalConfig, err := common.Exists(common.GlobalConfigPath(s.home))
-	if err != nil || hasGlobalConfig {
-		return nil, err
-	}
-	questions, err := globalConfigQuestions()
 	if err != nil {
 		return nil, err
+	}
+	if !hasGlobalConfig {
+		globalQuestions, err := globalConfigQuestions()
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, globalQuestions...)
+	}
+	hasThemeConfig, err := common.Exists(common.ThemeConfigPath(s.home))
+	if err != nil {
+		return nil, err
+	}
+	if !hasThemeConfig {
+		themeQuestion, err := newThemeQuestion()
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, themeQuestion)
 	}
 	return slices.DeleteFunc(questions, func(question common.Question) bool { return !question.IsAsked() }), nil
 }
@@ -102,6 +118,12 @@ func globalConfigQuestions() ([]common.Question, error) {
 	return questions, nil
 }
 
+// newThemeQuestion returns the question about the palette of the theme config,
+// with the palettes of the theme schema as its options.
+func newThemeQuestion() (common.Question, error) {
+	return common.NewSelectQuestion(theme.Schema(), theme.ThemeKey, themeLabel)
+}
+
 // newGlobalConfigDocument returns the global config file that holds the
 // resolved answers. An empty model is left out, and the provider and the
 // draft setting are left out when pull requests are off.
@@ -133,15 +155,19 @@ func newGlobalConfigDocument(answers common.Answers) (config.DefaultDocument, er
 // Setup creates the drudge home directory, writes the schema files and
 // installs the skill for the harness. The schemas and the skill are
 // overwritten on every run. The global config and the theme config are
-// written only when they are missing. A missing global config gets the
-// answers to the setup questions, and an unanswered question takes its
-// default. Setup refuses an invalid answer before it writes anything.
+// written only when they are missing. A missing config gets the answers to
+// the setup questions, and an unanswered question takes its default. Setup
+// refuses an invalid answer before it writes anything.
 func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	questions, err := globalConfigQuestions()
 	if err != nil {
 		return nil, err
 	}
-	answers, err = common.ResolveAnswers(questions, answers)
+	themeQuestion, err := newThemeQuestion()
+	if err != nil {
+		return nil, err
+	}
+	answers, err = common.ResolveAnswers(append(questions, themeQuestion), answers)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +219,7 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	result.ThemeConfig, err = writeConfigFile(common.ThemeConfigPath(s.home), theme.NewDefaultDocument())
+	result.ThemeConfig, err = writeConfigFile(common.ThemeConfigPath(s.home), theme.NewDocument(answers[theme.ThemeKey]))
 	if err != nil {
 		return nil, err
 	}

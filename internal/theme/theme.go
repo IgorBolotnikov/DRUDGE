@@ -211,6 +211,10 @@ func (t *Theme) Colors() map[string]string {
 // themeSchemaRef is the $schema reference path in theme.json.
 const themeSchemaRef = "./schema/theme.json"
 
+// ThemeKey is the key of the palette name in the theme config file. It is
+// exported so drg setup can ask for it.
+const ThemeKey = "theme"
+
 // validHex checks whether s is a valid 24-bit hex color (#rrggbb).
 var hexPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
@@ -227,9 +231,10 @@ type DefaultDocument struct {
 	Overrides map[string]string `json:"overrides"`
 }
 
-// NewDefaultDocument returns the default theme config file.
-func NewDefaultDocument() DefaultDocument {
-	return DefaultDocument{Schema: themeSchemaRef, Theme: defaultTheme, Overrides: map[string]string{}}
+// NewDocument returns the theme config file with the palette name and no
+// overrides.
+func NewDocument(name string) DefaultDocument {
+	return DefaultDocument{Schema: themeSchemaRef, Theme: name, Overrides: map[string]string{}}
 }
 
 func validHex(s string) bool {

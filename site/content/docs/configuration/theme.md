@@ -3,7 +3,7 @@ title: Theme
 weight: 3
 ---
 
-The theme file is `~/.drudge/theme.json`. `drg setup` writes it when it is missing, with the `system` theme and no overrides. After that the file is yours to edit. `drg setup` leaves an existing file alone.
+The theme file is `~/.drudge/theme.json`. `drg setup` writes it when it is missing, with the theme it asks you for and no overrides. `drg setup -y` and input that is not a terminal take the `system` theme. After that the file is yours to edit. `drg setup` leaves an existing file alone.
 
 ## Schema
 
@@ -41,7 +41,7 @@ An override that is not a `#rrggbb` color is skipped. Every command prints a war
 | Key | Type | Default | Allowed | Description |
 | --- | --- | --- | --- | --- |
 | `$schema` | string |  |  | JSON schema reference for configuration validation |
-| `theme` | string | `"system"` | `"nord"`, `"monokai"`, `"catppuccin-mocha"`, `"dracula"`, `"system"` | The color theme to use. |
+| `theme` | string | `"system"` | `"system"`, `"nord"`, `"monokai"`, `"catppuccin-mocha"`, `"dracula"` | The color theme to use. |
 | `overrides` | object |  |  | Optional per-role color overrides. Each value must be a 24-bit hex color in "#rrggbb" format. Unknown roles are silently ignored. |
 | `overrides.primary` | string |  | matches `^#[0-9a-fA-F]{6}$` | Default text / main content color. |
 | `overrides.heading` | string |  | matches `^#[0-9a-fA-F]{6}$` | Heading text color. |
