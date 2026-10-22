@@ -55,8 +55,7 @@ const (
 	// safety check for that.
 	sbxForceFlag = "--force"
 
-	sbxHarnessClaude = "claude"
-	// This harness is to be implemented later
+	sbxHarnessClaude   = "claude"
 	sbxHarnessOpencode = "opencode"
 
 	// sbxStatusRunning is the sandbox status that means a process can be
@@ -77,6 +76,13 @@ const (
 	claudePermissionFlag    = "--permission-mode"
 	claudeBypassPermissions = "bypassPermissions"
 	claudeModelFlag         = "--model"
+
+	opencodeBinary        = "opencode"
+	opencodeRunSubcommand = "run"
+	opencodeFormatFlag    = "--format"
+	opencodeJSONFormat    = "json"
+	opencodeAutoFlag      = "--auto"
+	opencodeModelFlag     = "-m"
 )
 
 // What setup leaves for later setup commands and for the agent. Both paths
@@ -128,12 +134,14 @@ const (
 // sbxAgentNames maps a harness to the agent sbx creates its sandbox for.
 var sbxAgentNames = map[Harness]string{
 	HarnessClaudeCode: sbxHarnessClaude,
+	HarnessOpencode:   sbxHarnessOpencode,
 }
 
 // agentCommands maps a harness to the renderer of the command line that runs
 // its agent on the prompt of a run with an optional model.
 var agentCommands = map[Harness]func(runDir, model string) string{
 	HarnessClaudeCode: formatClaudeCommand,
+	HarnessOpencode:   formatOpencodeCommand,
 }
 
 // sandboxCommand is a sandbox command and how long it may run before DRUDGE
@@ -463,6 +471,24 @@ func formatClaudeCommand(runDir, model string) string {
 	if model != "" {
 		agentArgs = append(agentArgs, claudeModelFlag, shellQuote(model))
 	}
+	return strings.Join(agentArgs, " ")
+}
+
+// formatOpencodeCommand renders the command that runs opencode on the prompt
+// of a run directory. The auto flag approves every permission the user config
+// does not explicitly deny. The sandbox is the security boundary here.
+//
+// An empty model leaves the choice of model to the harness.
+func formatOpencodeCommand(runDir, model string) string {
+	agentArgs := []string{
+		opencodeBinary, opencodeRunSubcommand,
+		opencodeFormatFlag, opencodeJSONFormat,
+		opencodeAutoFlag,
+	}
+	if model != "" {
+		agentArgs = append(agentArgs, opencodeModelFlag, shellQuote(model))
+	}
+	agentArgs = append(agentArgs, catPrompt(runDir))
 	return strings.Join(agentArgs, " ")
 }
 

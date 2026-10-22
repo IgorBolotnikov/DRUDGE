@@ -32,7 +32,7 @@ const schemaJSON = `{
           "type": "string"
         },
         "model": {
-          "description": "The model the harness runs, passed to it as is. For Claude Code it is an alias like opus or sonnet, or a full model name like claude-opus-5-5. Omit to leave the choice to the harness.",
+          "description": "The model the harness runs, passed to it as is. Claude Code takes an alias like opus or sonnet, or a full model name like claude-opus-5-5. opencode takes provider/model, like ollama/qwen3-coder. DRUDGE does not check the format. Omit to leave the choice to the harness.",
           "type": "string"
         },
         "maxConcurrentDrudgers": {

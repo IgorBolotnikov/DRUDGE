@@ -1,6 +1,7 @@
 package drudger
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +60,6 @@ func TestDrudgerService_RunTask_UnsupportedDrudgerSettings(t *testing.T) {
 		harness         Harness
 		wantErrContains string
 	}{
-		{name: "opencode is not wired up yet", env: EnvDockerSbx, harness: HarnessOpencode, wantErrContains: "opencode"},
 		{name: "unknown harness", env: EnvDockerSbx, harness: Harness("codex"), wantErrContains: "codex"},
 		{name: "unknown environment", env: Env("bare-metal"), harness: HarnessClaudeCode, wantErrContains: "bare-metal"},
 		{name: "empty Drudger settings", wantErrContains: "Drudger settings"},
@@ -317,6 +317,61 @@ func TestDrudgerService_RunTask_LauncherPassesTheModel(t *testing.T) {
 			launcher := start[len(start)-1]
 			if !strings.Contains(launcher, testCase.wantCommand) {
 				t.Errorf("expected the launcher to contain %q, got %q", testCase.wantCommand, launcher)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_IssuesTheOpencodeCommands(t *testing.T) {
+	const opencodeSandbox = "drudge-opencode-test-project-1"
+
+	cases := []struct {
+		name        string
+		model       string
+		wantCommand string
+	}{
+		{
+			name:        "no model leaves the choice to the harness",
+			wantCommand: `opencode run --format json --auto "$(cat '%s/prompt.txt')" > `,
+		},
+		{
+			name:        "a provider and a model",
+			model:       "ollama/qwen3-coder",
+			wantCommand: `opencode run --format json --auto -m 'ollama/qwen3-coder' "$(cat '%s/prompt.txt')" > `,
+		},
+		{
+			name:        "a model with a single quote",
+			model:       "it's",
+			wantCommand: `opencode run --format json --auto -m 'it'\''s' "$(cat '%s/prompt.txt')" > `,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			settings := testSettings()
+			settings.Harness = HarnessOpencode
+			settings.Model = testCase.model
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWith(settings, commands, taskToRun)
+			service.streams = map[Harness]StreamReader{HarnessOpencode: fakeStreamReader{}}
+
+			if err := service.RunTask(settings.ProjectSlug, taskToRun.ID, false); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			wantCreate := append([]string{"sbx", "create", "opencode"}, slotMounts(projectDir, 1)...)
+			wantCreate = append(wantCreate, "--name", opencodeSandbox)
+			if got := commands.call(sbxCreateSubcommand); !slices.Equal(got, wantCreate) {
+				t.Errorf("expected create %v, got %v", wantCreate, got)
+			}
+
+			start := commands.started[0]
+			launcher := start[len(start)-1]
+			wantCommand := fmt.Sprintf(testCase.wantCommand, common.RunDir(projectDir, "task-1"))
+			if !strings.Contains(launcher, wantCommand) {
+				t.Errorf("expected the launcher to contain %q, got %q", wantCommand, launcher)
 			}
 		})
 	}

@@ -111,6 +111,7 @@ func newTaskService(projectSlug string, localCfg *config.LocalConfig, globalCfg 
 func streamReaders() map[drudger.Harness]drudger.StreamReader {
 	return map[drudger.Harness]drudger.StreamReader{
 		drudger.HarnessClaudeCode: streams.NewClaudeCodeReader(),
+		drudger.HarnessOpencode:   streams.NewOpencodeReader(),
 	}
 }
 

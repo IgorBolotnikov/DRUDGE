@@ -85,12 +85,12 @@ func sessionResultOf(terminal streamLine) *drudger.SessionResult {
 // half-written. A line that does not parse is skipped. A line past the size
 // limit is an error, so a broken read is never mistaken for an agent that has
 // not started yet.
-func scanStream(stream []byte, visit func(streamLine) bool) error {
+func scanStream[Event any](stream []byte, visit func(Event) bool) error {
 	scanner := bufio.NewScanner(bytes.NewReader(stream))
 	scanner.Buffer(make([]byte, 0, streamLineBufferSize), streamLineMaxSize)
 
 	for scanner.Scan() {
-		var parsed streamLine
+		var parsed Event
 		if err := json.Unmarshal(scanner.Bytes(), &parsed); err != nil {
 			continue
 		}

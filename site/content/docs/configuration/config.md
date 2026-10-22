@@ -38,7 +38,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.environment` | string | `"docker-sbx"` | `"docker-sbx"` | The environment tasks run in. |
 | `drudger.harness` | string | `"claude-code"` | `"claude-code"`, `"opencode"` | The agent harness used to run tasks. |
 | `drudger.promptFile` | string |  |  | File name of the prompt handed to an agent, resolved under ~/.drudge/prompts/. Omit to use the built-in default prompt. |
-| `drudger.model` | string |  |  | The model the harness runs, passed to it as is. For Claude Code it is an alias like opus or sonnet, or a full model name like claude-opus-5-5. Omit to leave the choice to the harness. |
+| `drudger.model` | string |  |  | The model the harness runs, passed to it as is. Claude Code takes an alias like opus or sonnet, or a full model name like claude-opus-5-5. opencode takes provider/model, like ollama/qwen3-coder. DRUDGE does not check the format. Omit to leave the choice to the harness. |
 | `drudger.maxConcurrentDrudgers` | integer | `3` | minimum 1 | How many Drudgers may work on one project at once. |
 | `drudger.pageSize` | integer | `20` | minimum 0 | How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page. |
 | `drudger.sandboxTimeouts` | object |  |  | How long DRUDGE waits for a sandbox command before it kills it. A command that needs longer than its timeout is killed and reported. |

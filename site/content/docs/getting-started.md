@@ -145,6 +145,18 @@ Once the [Session]({{< relref "/docs/concepts/sessions" >}}) has ended, `drg tas
 
 [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) shows what each Drudger of the project is doing.
 
+## opencode
+
+With `drudger.harness` set to `opencode`, a Drudger runs [opencode](https://opencode.ai) in an `sbx create opencode` sandbox. The agent approves every permission your opencode config does not explicitly deny. The sandbox is the security boundary.
+
+DRUDGE manages no opencode config. Pass yours into the sandbox in `OPENCODE_CONFIG_CONTENT`. List it in `drudger.env` of the [project config]({{< relref "/docs/configuration/project-config" >}}) and export it in the shell you run `drg` in:
+
+```sh
+export OPENCODE_CONFIG_CONTENT='{"provider":{"ollama":{"npm":"@ai-sdk/openai-compatible","options":{"baseURL":"http://192.168.1.20:11434/v1"},"models":{"qwen3-coder":{}}}}}'
+```
+
+The provider base URL must be reachable from inside the sandbox. `127.0.0.1` inside the sandbox is the sandbox itself, so a provider on `127.0.0.1` of the host does not work. Set `drudger.model` to `provider/model`, like `ollama/qwen3-coder`.
+
 ## Update and uninstall
 
 ```sh
