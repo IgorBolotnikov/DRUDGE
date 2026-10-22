@@ -1,6 +1,8 @@
 package streams
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
@@ -8,9 +10,26 @@ import (
 
 // Event types the opencode harness writes with its JSON format.
 const (
+	opencodeEventStepStart  = "step_start"
 	opencodeEventStepFinish = "step_finish"
 	opencodeEventText       = "text"
+	opencodeEventToolUse    = "tool_use"
 	opencodeEventError      = "error"
+)
+
+// opencodeToolStatusError is the status of a tool call that failed.
+const opencodeToolStatusError = "error"
+
+// Tool names of the opencode harness the compact view knows how to summarize.
+const (
+	opencodeToolBash  = "bash"
+	opencodeToolRead  = "read"
+	opencodeToolEdit  = "edit"
+	opencodeToolWrite = "write"
+	opencodeToolGrep  = "grep"
+	opencodeToolGlob  = "glob"
+	opencodeToolSkill = "skill"
+	opencodeToolTask  = "task"
 )
 
 // opencodeReasonStop is the reason of the step that ends a run the agent
@@ -37,6 +56,12 @@ type opencodeLine struct {
 		Reason string  `json:"reason"`
 		Cost   float64 `json:"cost"`
 		Text   string  `json:"text"`
+		Tool   string  `json:"tool"`
+		State  struct {
+			Status string          `json:"status"`
+			Input  json.RawMessage `json:"input"`
+			Error  string          `json:"error"`
+		} `json:"state"`
 	} `json:"part"`
 	Error struct {
 		Name string `json:"name"`
@@ -46,10 +71,76 @@ type opencodeLine struct {
 	} `json:"error"`
 }
 
-// Decode turns every line into one unrecognized Step holding the line as it
-// is.
+// opencodeToolInput is the subset of a tool call's input the compact view
+// summarizes.
+type opencodeToolInput struct {
+	Command     string `json:"command"`
+	FilePath    string `json:"filePath"`
+	Pattern     string `json:"pattern"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// Decode turns one line of an opencode event stream into the Steps it holds.
+// Every Step has depth 0, since a subagent writes its steps outside the
+// stream. A line that is not valid JSON, or whose event type is none of the
+// ones below, decodes to one unrecognized Step holding the line as it is.
 func (*OpencodeReader) Decode(line string) []drudger.Step {
-	return unrecognizedStep(line)
+	var parsed opencodeLine
+	if err := json.Unmarshal([]byte(line), &parsed); err != nil {
+		return unrecognizedStep(line)
+	}
+
+	switch parsed.Type {
+	case opencodeEventText:
+		return []drudger.Step{{Kind: drudger.StepAgentText, Summary: parsed.Part.Text, Raw: line}}
+	case opencodeEventToolUse:
+		return opencodeToolSteps(parsed, line)
+	case opencodeEventError:
+		summary := fmt.Sprintf("%s · %s: %s", drudger.StatusFuckedUp, parsed.Error.Name, parsed.Error.Data.Message)
+		return []drudger.Step{{Kind: drudger.StepFinalResult, Summary: summary, Raw: line}}
+	case opencodeEventStepStart, opencodeEventStepFinish:
+		return nil
+	default:
+		return unrecognizedStep(line)
+	}
+}
+
+// opencodeToolSteps summarizes a tool call by the argument that matters for
+// the tool it names, and adds a tool error Step when the call failed.
+func opencodeToolSteps(parsed opencodeLine, line string) []drudger.Step {
+	var input opencodeToolInput
+	// Input that does not parse leaves every field empty, which reads the same
+	// as a tool call with nothing worth summarizing.
+	_ = json.Unmarshal(parsed.Part.State.Input, &input)
+
+	steps := []drudger.Step{{
+		Kind:    drudger.StepToolCall,
+		Tool:    parsed.Part.Tool,
+		Summary: capSummary(opencodeToolSummary(parsed.Part.Tool, input)),
+		Raw:     line,
+	}}
+	if parsed.Part.State.Status == opencodeToolStatusError {
+		steps = append(steps, drudger.Step{Kind: drudger.StepToolError, Summary: capSummary(parsed.Part.State.Error), Raw: line})
+	}
+	return steps
+}
+
+func opencodeToolSummary(tool string, input opencodeToolInput) string {
+	switch tool {
+	case opencodeToolBash:
+		return input.Command
+	case opencodeToolRead, opencodeToolEdit, opencodeToolWrite:
+		return input.FilePath
+	case opencodeToolGrep, opencodeToolGlob:
+		return input.Pattern
+	case opencodeToolSkill:
+		return input.Name
+	case opencodeToolTask:
+		return input.Description
+	default:
+		return ""
+	}
 }
 
 // SessionID reads the session id off the first event that carries one. Every

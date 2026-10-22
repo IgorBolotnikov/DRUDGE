@@ -96,14 +96,131 @@ func TestOpencodeReader_Outcome(t *testing.T) {
 	}
 }
 
-func TestOpencodeReader_DecodeLeavesEveryLineUnrecognized(t *testing.T) {
-	lines := []string{opencodeStepStartEvent, opencodeTextEvent, opencodeErrorEvent, "not json"}
+// Tool call lines in the shape of a real opencode run, used to build the table
+// of TestOpencodeReader_Decode.
+const (
+	opencodeReadEvent  = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"read","callID":"call_read","state":{"status":"completed","input":{"filePath":"/workspace/internal/cmd/task.go"},"output":"package cmd"}}}`
+	opencodeEditEvent  = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"edit","callID":"call_edit","state":{"status":"completed","input":{"filePath":"/workspace/internal/cmd/task.go","oldString":"a","newString":"b"},"output":""}}}`
+	opencodeWriteEvent = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"write","callID":"call_write","state":{"status":"completed","input":{"filePath":"/workspace/DONE.md","content":"done"},"output":""}}}`
+	opencodeGrepEvent  = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"grep","callID":"call_grep","state":{"status":"completed","input":{"pattern":"StreamReader","path":"internal"},"output":""}}}`
+	opencodeGlobEvent  = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"glob","callID":"call_glob","state":{"status":"completed","input":{"pattern":"internal/**/*.go"},"output":""}}}`
+	opencodeSkillEvent = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"skill","callID":"call_skill","state":{"status":"completed","input":{"name":"code-style"},"output":""}}}`
+	opencodeTaskEvent  = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"task","callID":"call_task","state":{"status":"completed","input":{"description":"Find runlog files","prompt":"Find them","subagent_type":"explore"},"output":""}}}`
 
-	for _, line := range lines {
-		got := NewOpencodeReader().Decode(line)
-		want := []drudger.Step{{Kind: drudger.StepUnrecognized, Raw: line}}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("expected %+v, got %+v", want, got)
-		}
+	opencodeUnknownToolEvent   = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"webfetch","callID":"call_webfetch","state":{"status":"completed","input":{"url":"https://opencode.ai"},"output":""}}}`
+	opencodeMultiLineBashEvent = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"bash","callID":"call_bash","state":{"status":"completed","input":{"command":"go build ./...\ngo test ./..."},"output":""}}}`
+	opencodeFailedToolUseEvent = `{"type":"tool_use","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"tool","tool":"read","callID":"call_failed","state":{"status":"error","input":{"filePath":"/workspace/missing.go"},"error":"File not found: /workspace/missing.go\nDid you mean missing_test.go?"}}}`
+	opencodeUnknownEvent       = `{"type":"reasoning","timestamp":1792691374935,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"type":"reasoning","text":"Thinking"}}`
+	opencodeMalformedEvent     = `{"type":"text","timestamp":1792691376218,"part":{"text":"Hal`
+)
+
+func TestOpencodeReader_Decode(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want []drudger.Step
+	}{
+		{
+			name: "agent text",
+			line: opencodeTextEvent,
+			want: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "hello", Raw: opencodeTextEvent}},
+		},
+		{
+			name: "a bash call",
+			line: opencodeToolUseEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "bash", Summary: "ls", Raw: opencodeToolUseEvent}},
+		},
+		{
+			name: "a read call",
+			line: opencodeReadEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "read", Summary: "/workspace/internal/cmd/task.go", Raw: opencodeReadEvent}},
+		},
+		{
+			name: "an edit call shows only its path",
+			line: opencodeEditEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "edit", Summary: "/workspace/internal/cmd/task.go", Raw: opencodeEditEvent}},
+		},
+		{
+			name: "a write call shows only its path",
+			line: opencodeWriteEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "write", Summary: "/workspace/DONE.md", Raw: opencodeWriteEvent}},
+		},
+		{
+			name: "a grep call",
+			line: opencodeGrepEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "grep", Summary: "StreamReader", Raw: opencodeGrepEvent}},
+		},
+		{
+			name: "a glob call",
+			line: opencodeGlobEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "glob", Summary: "internal/**/*.go", Raw: opencodeGlobEvent}},
+		},
+		{
+			name: "a skill call",
+			line: opencodeSkillEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "skill", Summary: "code-style", Raw: opencodeSkillEvent}},
+		},
+		{
+			name: "a task call",
+			line: opencodeTaskEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "task", Summary: "Find runlog files", Raw: opencodeTaskEvent}},
+		},
+		{
+			name: "an unknown tool shows its name alone",
+			line: opencodeUnknownToolEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "webfetch", Raw: opencodeUnknownToolEvent}},
+		},
+		{
+			name: "a multi-line command is cut at its first line",
+			line: opencodeMultiLineBashEvent,
+			want: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "bash", Summary: "go build ./...…", Raw: opencodeMultiLineBashEvent}},
+		},
+		{
+			name: "a failed tool call",
+			line: opencodeFailedToolUseEvent,
+			want: []drudger.Step{
+				{Kind: drudger.StepToolCall, Tool: "read", Summary: "/workspace/missing.go", Raw: opencodeFailedToolUseEvent},
+				{Kind: drudger.StepToolError, Summary: "File not found: /workspace/missing.go…", Raw: opencodeFailedToolUseEvent},
+			},
+		},
+		{
+			name: "a step start",
+			line: opencodeStepStartEvent,
+			want: nil,
+		},
+		{
+			name: "a step finish",
+			line: opencodeStopStepEndEvent,
+			want: nil,
+		},
+		{
+			name: "an error",
+			line: opencodeErrorEvent,
+			want: []drudger.Step{{Kind: drudger.StepFinalResult, Summary: "fucked up · UnknownError: Unexpected server error. Check server logs for details.", Raw: opencodeErrorEvent}},
+		},
+		{
+			name: "an unknown event type",
+			line: opencodeUnknownEvent,
+			want: []drudger.Step{{Kind: drudger.StepUnrecognized, Raw: opencodeUnknownEvent}},
+		},
+		{
+			name: "a half-written line",
+			line: opencodeMalformedEvent,
+			want: []drudger.Step{{Kind: drudger.StepUnrecognized, Raw: opencodeMalformedEvent}},
+		},
+		{
+			name: "a line that is not JSON at all",
+			line: "Starting opencode",
+			want: []drudger.Step{{Kind: drudger.StepUnrecognized, Raw: "Starting opencode"}},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := NewOpencodeReader().Decode(testCase.line)
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("expected %+v, got %+v", testCase.want, got)
+			}
+		})
 	}
 }
