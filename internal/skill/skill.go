@@ -11,14 +11,21 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 )
 
-// Where Claude Code looks for a personal skill: a directory named after the
-// skill, under the skills directory of its home directory.
+// A harness looks for a personal skill in a directory named after the skill,
+// under a skills directory at a fixed path in the home directory.
 const (
-	claudeDirName   = ".claude"
 	skillsDirName   = "skills"
 	skillFileName   = "SKILL.md"
 	drudgeSkillName = "DRUDGE"
 )
+
+// harnessSkillsParents holds the directory each harness keeps its skills
+// directory in, relative to the home directory. The opencode path ignores
+// XDG_CONFIG_HOME.
+var harnessSkillsParents = map[config.Harness]string{
+	config.HarnessClaudeCode: ".claude",
+	config.HarnessOpencode:   filepath.Join(".config", "opencode"),
+}
 
 //go:embed drudge/SKILL.md
 var drudgeSkill []byte
@@ -32,11 +39,12 @@ func Drudge() []byte {
 // path it wrote. An existing skill file is overwritten. A harness with no
 // skill support gets nothing and a false.
 func InstallDrudge(home string, harness config.Harness) (string, bool, error) {
-	if harness != config.HarnessClaudeCode {
+	skillsParent, ok := harnessSkillsParents[harness]
+	if !ok {
 		return "", false, nil
 	}
 
-	skillDir := filepath.Join(home, claudeDirName, skillsDirName, drudgeSkillName)
+	skillDir := filepath.Join(home, skillsParent, skillsDirName, drudgeSkillName)
 	if err := common.EnsureDir(skillDir); err != nil {
 		return "", false, err
 	}

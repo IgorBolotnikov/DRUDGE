@@ -86,7 +86,12 @@ It then creates `~/.drudge/` and writes:
 - `~/.drudge/schema/`, the JSON schemas both config files and the project config point at
 - `~/.drudge/projects/`, where the projects and their Tasks live
 
-With the `claude-code` harness it also installs the DRUDGE skill for Claude Code at `~/.claude/skills/DRUDGE/SKILL.md`. The skill lets a planning agent write DRUDGE Tasks for you.
+It also installs the DRUDGE skill for the configured harness. The skill lets a planning agent write DRUDGE Tasks for you. Only the configured harness gets it:
+
+- `claude-code` at `~/.claude/skills/DRUDGE/SKILL.md`
+- `opencode` at `~/.config/opencode/skills/DRUDGE/SKILL.md`. This path does not follow `XDG_CONFIG_HOME`.
+
+A harness switch leaves the skill of the old harness in place.
 
 The schemas and the skill are rewritten on every run. Running `drg setup` again in a terminal asks the same questions, starting on the values of your config files, and writes the answers back into them. Every key it does not ask about stays as it is. `drg setup -y` leaves existing config files alone.
 
@@ -169,4 +174,4 @@ drg update
 drg cleanup
 ```
 
-[`drg cleanup`]({{< relref "/docs/cli/cleanup" >}}) asks before it removes `~/.drudge/` with every project and Task in it. `--force` skips the question. It leaves the `drg` binary, the skill under `~/.claude/skills/`, the `.drudge/` directories of your projects and the sbx sandboxes in place. Remove the sandboxes first with [`drg drudger nuke <slot>`]({{< relref "/docs/cli/drudger/nuke" >}}) in each project, then delete the binary.
+[`drg cleanup`]({{< relref "/docs/cli/cleanup" >}}) asks before it removes `~/.drudge/` with every project and Task in it. `--force` skips the question. It leaves the `drg` binary, the skill under `~/.claude/skills/` or `~/.config/opencode/skills/`, the `.drudge/` directories of your projects and the sbx sandboxes in place. Remove the sandboxes first with [`drg drudger nuke <slot>`]({{< relref "/docs/cli/drudger/nuke" >}}) in each project, then delete the binary.

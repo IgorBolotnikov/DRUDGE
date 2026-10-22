@@ -350,12 +350,18 @@ func TestQuestions_ConcurrencyRefusal(t *testing.T) {
 	}
 }
 
+// The skill paths of each harness, relative to the home directory.
+var (
+	claudeCodeSkillPath = filepath.Join(".claude", "skills", "DRUDGE", "SKILL.md")
+	opencodeSkillPath   = filepath.Join(".config", "opencode", "skills", "DRUDGE", "SKILL.md")
+)
+
 func TestSetup_Answers(t *testing.T) {
 	testCases := []struct {
-		name       string
-		answers    common.Answers
-		wantConfig string
-		wantSkill  bool
+		name          string
+		answers       common.Answers
+		wantConfig    string
+		wantSkillPath string
 	}{
 		{
 			name:    "no answers take the defaults",
@@ -366,7 +372,7 @@ func TestSetup_Answers(t *testing.T) {
 				"task": {"defaultStatus": "todo"},
 				"remote": {"pullRequests": {"isEnabled": false}}
 			}`,
-			wantSkill: true,
+			wantSkillPath: claudeCodeSkillPath,
 		},
 		{
 			name: "every answer changed",
@@ -384,7 +390,7 @@ func TestSetup_Answers(t *testing.T) {
 				"task": {"defaultStatus": "draft"},
 				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": true}}
 			}`,
-			wantSkill: false,
+			wantSkillPath: opencodeSkillPath,
 		},
 		{
 			name:    "pull requests on take the provider and the draft default",
@@ -395,7 +401,7 @@ func TestSetup_Answers(t *testing.T) {
 				"task": {"defaultStatus": "todo"},
 				"remote": {"provider": "github", "pullRequests": {"isEnabled": true, "isDraft": false}}
 			}`,
-			wantSkill: true,
+			wantSkillPath: claudeCodeSkillPath,
 		},
 		{
 			name:    "pull requests off drop the draft answer",
@@ -406,7 +412,7 @@ func TestSetup_Answers(t *testing.T) {
 				"task": {"defaultStatus": "todo"},
 				"remote": {"pullRequests": {"isEnabled": false}}
 			}`,
-			wantSkill: true,
+			wantSkillPath: claudeCodeSkillPath,
 		},
 		{
 			name:    "an empty model is left out",
@@ -417,7 +423,7 @@ func TestSetup_Answers(t *testing.T) {
 				"task": {"defaultStatus": "todo"},
 				"remote": {"pullRequests": {"isEnabled": false}}
 			}`,
-			wantSkill: true,
+			wantSkillPath: claudeCodeSkillPath,
 		},
 	}
 
@@ -443,8 +449,11 @@ func TestSetup_Answers(t *testing.T) {
 			if _, err := config.Load(); err != nil {
 				t.Errorf("config.Load: %v", err)
 			}
-			if hasSkill := result.SkillPath != ""; hasSkill != testCase.wantSkill {
-				t.Errorf("SkillPath = %q, want a skill: %v", result.SkillPath, testCase.wantSkill)
+			if wantSkillPath := filepath.Join(home, testCase.wantSkillPath); result.SkillPath != wantSkillPath {
+				t.Errorf("SkillPath = %q, want %q", result.SkillPath, wantSkillPath)
+			}
+			if _, err := os.Stat(result.SkillPath); err != nil {
+				t.Errorf("Stat(%s): %v", result.SkillPath, err)
 			}
 		})
 	}
@@ -692,11 +701,11 @@ func TestSetup_DefaultsLeaveExistingFiles(t *testing.T) {
 		themeConfig       string
 		wantGlobalOutcome ConfigOutcome
 		wantThemeOutcome  ConfigOutcome
-		wantSkill         bool
+		wantSkillPath     string
 	}{
-		{name: "both files exist", globalConfig: globalConfig, themeConfig: themeConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigUnchanged, wantSkill: false},
-		{name: "a missing theme config is created", globalConfig: globalConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigCreated, wantSkill: false},
-		{name: "a missing global config is created", themeConfig: themeConfig, wantGlobalOutcome: ConfigCreated, wantThemeOutcome: ConfigUnchanged, wantSkill: true},
+		{name: "both files exist", globalConfig: globalConfig, themeConfig: themeConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigUnchanged, wantSkillPath: opencodeSkillPath},
+		{name: "a missing theme config is created", globalConfig: globalConfig, wantGlobalOutcome: ConfigUnchanged, wantThemeOutcome: ConfigCreated, wantSkillPath: opencodeSkillPath},
+		{name: "a missing global config is created", themeConfig: themeConfig, wantGlobalOutcome: ConfigCreated, wantThemeOutcome: ConfigUnchanged, wantSkillPath: claudeCodeSkillPath},
 	}
 
 	for _, testCase := range testCases {
@@ -732,8 +741,8 @@ func TestSetup_DefaultsLeaveExistingFiles(t *testing.T) {
 					t.Errorf("%s = %q, want it left as %q", file.got.Path, after, file.before)
 				}
 			}
-			if hasSkill := result.SkillPath != ""; hasSkill != testCase.wantSkill {
-				t.Errorf("SkillPath = %q, want a skill: %v", result.SkillPath, testCase.wantSkill)
+			if wantSkillPath := filepath.Join(home, testCase.wantSkillPath); result.SkillPath != wantSkillPath {
+				t.Errorf("SkillPath = %q, want %q", result.SkillPath, wantSkillPath)
 			}
 		})
 	}

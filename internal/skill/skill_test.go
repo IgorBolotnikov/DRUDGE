@@ -26,30 +26,46 @@ func TestDrudge_StartsWithFrontMatterNamingDrudge(t *testing.T) {
 }
 
 func TestInstallDrudge(t *testing.T) {
-	skillPath := func(home string) string {
-		return filepath.Join(home, ".claude", "skills", "DRUDGE", "SKILL.md")
-	}
+	claudeCodeSkillPath := filepath.Join(".claude", "skills", "DRUDGE", "SKILL.md")
+	opencodeSkillPath := filepath.Join(".config", "opencode", "skills", "DRUDGE", "SKILL.md")
 
 	tests := []struct {
 		name            string
 		harness         config.Harness
+		skillPath       string
 		existingContent string
 		wantInstalled   bool
 	}{
 		{
 			name:          "claude-code gets the skill",
 			harness:       config.HarnessClaudeCode,
+			skillPath:     claudeCodeSkillPath,
 			wantInstalled: true,
 		},
 		{
 			name:            "claude-code overwrites an existing skill",
 			harness:         config.HarnessClaudeCode,
+			skillPath:       claudeCodeSkillPath,
 			existingContent: "an older skill",
 			wantInstalled:   true,
 		},
 		{
-			name:          "opencode gets nothing",
+			name:          "opencode gets the skill",
 			harness:       config.HarnessOpencode,
+			skillPath:     opencodeSkillPath,
+			wantInstalled: true,
+		},
+		{
+			name:            "opencode overwrites an existing skill",
+			harness:         config.HarnessOpencode,
+			skillPath:       opencodeSkillPath,
+			existingContent: "an older skill",
+			wantInstalled:   true,
+		},
+		{
+			name:          "an unknown harness gets nothing",
+			harness:       config.Harness("vim"),
+			skillPath:     claudeCodeSkillPath,
 			wantInstalled: false,
 		},
 	}
@@ -57,11 +73,13 @@ func TestInstallDrudge(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			skillPath := filepath.Join(home, test.skillPath)
 			if test.existingContent != "" {
-				if err := os.MkdirAll(filepath.Dir(skillPath(home)), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(skillPath(home), []byte(test.existingContent), 0o644); err != nil {
+				if err := os.WriteFile(skillPath, []byte(test.existingContent), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -74,7 +92,7 @@ func TestInstallDrudge(t *testing.T) {
 				t.Fatalf("expected installed %v, got %v", test.wantInstalled, didInstall)
 			}
 
-			written, readErr := os.ReadFile(skillPath(home))
+			written, readErr := os.ReadFile(skillPath)
 			if !test.wantInstalled {
 				if path != "" {
 					t.Errorf("expected no path, got %q", path)
@@ -84,8 +102,8 @@ func TestInstallDrudge(t *testing.T) {
 				}
 				return
 			}
-			if path != skillPath(home) {
-				t.Errorf("expected path %q, got %q", skillPath(home), path)
+			if path != skillPath {
+				t.Errorf("expected path %q, got %q", skillPath, path)
 			}
 			if readErr != nil {
 				t.Fatalf("could not read the skill: %v", readErr)
