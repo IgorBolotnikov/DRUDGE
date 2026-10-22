@@ -20,7 +20,7 @@ func TestNewDrudgerSettings(t *testing.T) {
 	customGlobal.Drudger.Env = config.Env("bare-metal")
 	customGlobal.Drudger.Harness = config.HarnessOpencode
 	customGlobal.Drudger.MaxConcurrentDrudgers = 5
-	customGlobal.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7, SetupSeconds: 300}
+	customGlobal.Drudger.SandboxTimeouts = config.SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7, SetupSeconds: 300, FirstOutputSeconds: 180}
 
 	cases := []struct {
 		name         string
@@ -41,10 +41,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				MaxConcurrentDrudgers: 3,
 				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   30 * time.Second,
-					Create: 10 * time.Minute,
-					Remove: 2 * time.Minute,
-					Setup:  15 * time.Minute,
+					List:        30 * time.Second,
+					Create:      10 * time.Minute,
+					Remove:      2 * time.Minute,
+					Setup:       15 * time.Minute,
+					FirstOutput: time.Minute,
 				},
 			},
 		},
@@ -60,10 +61,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				MaxConcurrentDrudgers: 5,
 				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   5 * time.Second,
-					Create: time.Minute,
-					Remove: 7 * time.Second,
-					Setup:  5 * time.Minute,
+					List:        5 * time.Second,
+					Create:      time.Minute,
+					Remove:      7 * time.Second,
+					Setup:       5 * time.Minute,
+					FirstOutput: 3 * time.Minute,
 				},
 			},
 		},
@@ -79,10 +81,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				MaxConcurrentDrudgers: 2,
 				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   5 * time.Second,
-					Create: time.Minute,
-					Remove: 7 * time.Second,
-					Setup:  5 * time.Minute,
+					List:        5 * time.Second,
+					Create:      time.Minute,
+					Remove:      7 * time.Second,
+					Setup:       5 * time.Minute,
+					FirstOutput: 3 * time.Minute,
 				},
 			},
 		},
@@ -98,10 +101,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				MaxConcurrentDrudgers: 3,
 				BranchFormat:          "feat/{{taskSlug}}",
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   30 * time.Second,
-					Create: 10 * time.Minute,
-					Remove: 2 * time.Minute,
-					Setup:  15 * time.Minute,
+					List:        30 * time.Second,
+					Create:      10 * time.Minute,
+					Remove:      2 * time.Minute,
+					Setup:       15 * time.Minute,
+					FirstOutput: time.Minute,
 				},
 			},
 		},
@@ -118,10 +122,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				EnvNames:              []string{"NODE_AUTH_TOKEN"},
 				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   30 * time.Second,
-					Create: 10 * time.Minute,
-					Remove: 2 * time.Minute,
-					Setup:  15 * time.Minute,
+					List:        30 * time.Second,
+					Create:      10 * time.Minute,
+					Remove:      2 * time.Minute,
+					Setup:       15 * time.Minute,
+					FirstOutput: time.Minute,
 				},
 			},
 		},
@@ -144,10 +149,11 @@ func TestNewDrudgerSettings(t *testing.T) {
 				MaxConcurrentDrudgers: 3,
 				BranchFormat:          task.DefaultBranchFormat,
 				SandboxTimeouts: drudger.SandboxTimeouts{
-					List:   30 * time.Second,
-					Create: 10 * time.Minute,
-					Remove: 2 * time.Minute,
-					Setup:  15 * time.Minute,
+					List:        30 * time.Second,
+					Create:      10 * time.Minute,
+					Remove:      2 * time.Minute,
+					Setup:       15 * time.Minute,
+					FirstOutput: time.Minute,
 				},
 				PullRequests: drudger.PullRequestSettings{
 					IsDraft:      true,

@@ -45,6 +45,9 @@ const (
 	defaultCreateTimeoutSeconds = 600
 	defaultRemoveTimeoutSeconds = 120
 	defaultSetupTimeoutSeconds  = 900
+	// The first event of an agent can take longer than 10 seconds on a
+	// sandbox that has just booted.
+	defaultFirstOutputTimeoutSeconds = 60
 )
 
 // How long a git command may run before DRUDGE kills it, in seconds. Creating
@@ -66,6 +69,7 @@ const (
 	createTimeoutKey         = drudger.CreateTimeoutKey
 	removeTimeoutKey         = "sandboxTimeouts.removeSeconds"
 	setupTimeoutKey          = drudger.SetupTimeoutKey
+	firstOutputTimeoutKey    = drudger.FirstOutputTimeoutKey
 	drudgerEnvKey            = drudger.EnvKey
 	fetchTimeoutKey          = "gitTimeouts.fetchSeconds"
 	worktreeTimeoutKey       = "gitTimeouts.worktreeSeconds"
@@ -169,10 +173,11 @@ type DrudgerConfig struct {
 // A command that outruns its cap is killed. Every field is a whole number of
 // seconds and zero means unset.
 type SandboxTimeouts struct {
-	ListSeconds   int `json:"listSeconds,omitempty"`
-	CreateSeconds int `json:"createSeconds,omitempty"`
-	RemoveSeconds int `json:"removeSeconds,omitempty"`
-	SetupSeconds  int `json:"setupSeconds,omitempty"`
+	ListSeconds        int `json:"listSeconds,omitempty"`
+	CreateSeconds      int `json:"createSeconds,omitempty"`
+	RemoveSeconds      int `json:"removeSeconds,omitempty"`
+	SetupSeconds       int `json:"setupSeconds,omitempty"`
+	FirstOutputSeconds int `json:"firstOutputSeconds,omitempty"`
 }
 
 // List returns how long listing the sandboxes may take.
@@ -193,6 +198,11 @@ func (timeouts SandboxTimeouts) Remove() time.Duration {
 // Setup returns how long each setup command of a repository may take.
 func (timeouts SandboxTimeouts) Setup() time.Duration {
 	return time.Duration(timeouts.SetupSeconds) * time.Second
+}
+
+// FirstOutput returns how long a launch waits for the first output of the agent.
+func (timeouts SandboxTimeouts) FirstOutput() time.Duration {
+	return time.Duration(timeouts.FirstOutputSeconds) * time.Second
 }
 
 // GitTimeouts caps how long DRUDGE waits for each git command it runs. A
@@ -285,10 +295,11 @@ func DefaultConfig() *GlobalConfig {
 			Harness:               defaultHarness,
 			MaxConcurrentDrudgers: defaultMaxConcurrentDrudgers,
 			SandboxTimeouts: SandboxTimeouts{
-				ListSeconds:   defaultListTimeoutSeconds,
-				CreateSeconds: defaultCreateTimeoutSeconds,
-				RemoveSeconds: defaultRemoveTimeoutSeconds,
-				SetupSeconds:  defaultSetupTimeoutSeconds,
+				ListSeconds:        defaultListTimeoutSeconds,
+				CreateSeconds:      defaultCreateTimeoutSeconds,
+				RemoveSeconds:      defaultRemoveTimeoutSeconds,
+				SetupSeconds:       defaultSetupTimeoutSeconds,
+				FirstOutputSeconds: defaultFirstOutputTimeoutSeconds,
 			},
 			GitTimeouts: GitTimeouts{
 				FetchSeconds:    defaultFetchTimeoutSeconds,
@@ -321,6 +332,9 @@ func mergeConfigs(defaultCfg *GlobalConfig, loadedCfg *GlobalConfig) *GlobalConf
 	}
 	if loadedCfg.Drudger.SandboxTimeouts.SetupSeconds == 0 {
 		loadedCfg.Drudger.SandboxTimeouts.SetupSeconds = defaultCfg.Drudger.SandboxTimeouts.SetupSeconds
+	}
+	if loadedCfg.Drudger.SandboxTimeouts.FirstOutputSeconds == 0 {
+		loadedCfg.Drudger.SandboxTimeouts.FirstOutputSeconds = defaultCfg.Drudger.SandboxTimeouts.FirstOutputSeconds
 	}
 	if loadedCfg.Drudger.GitTimeouts.FetchSeconds == 0 {
 		loadedCfg.Drudger.GitTimeouts.FetchSeconds = defaultCfg.Drudger.GitTimeouts.FetchSeconds
@@ -400,6 +414,7 @@ func validateSandboxTimeouts(timeouts SandboxTimeouts, path string) error {
 		{key: createTimeoutKey, value: timeouts.CreateSeconds},
 		{key: removeTimeoutKey, value: timeouts.RemoveSeconds},
 		{key: setupTimeoutKey, value: timeouts.SetupSeconds},
+		{key: firstOutputTimeoutKey, value: timeouts.FirstOutputSeconds},
 	}
 	for _, timeout := range seconds {
 		if timeout.value < 0 {

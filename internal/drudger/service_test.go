@@ -1034,10 +1034,9 @@ func newTestServiceWithPool(settings Settings, commands CommandRunner, pool []*D
 	}
 	progress := &fakeProgress{}
 	service := New(progress, settings, task.NewTaskService(taskRepo, noopTaskProgress{}, task.StatusDraft, nil), drudgers, runs, commands, gitOps, nil, testStreamReaders())
-	// Tests check what a retry and a grace period do. Sitting through the real
-	// durations adds nothing.
+	// Tests check what a retry does. Sitting through the real delay adds
+	// nothing.
 	service.daemonRetryDelay = 0
-	service.launchGrace = 0
 	return &testService{
 		DrudgerService: service,
 		drudgers:       drudgers,
@@ -1705,6 +1704,34 @@ func TestDrudgerService_RunTask_SilentAgentIsKilledAndItsSandboxStopped(t *testi
 		SandboxStopStarted{Sandbox: testSandbox, Timeout: service.settings.SandboxTimeouts.Remove},
 	}) {
 		t.Errorf("expected the kill and the stop to be reported in order, got %+v", service.progress.events)
+	}
+}
+
+func TestDrudgerService_RunTask_SilentAgentGetsTheConfiguredFirstOutputPeriod(t *testing.T) {
+	const firstOutput = 50 * time.Millisecond
+
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{
+		projectDir:    projectDir,
+		outputs:       []string{sandboxListingWith(testSandbox)},
+		isAgentSilent: true,
+	}
+	settings := testSettings()
+	settings.SandboxTimeouts.FirstOutput = firstOutput
+	service := newTestServiceWith(settings, commands, taskToRun)
+
+	err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+	if err == nil {
+		t.Fatal("expected the silent agent to fail the launch")
+	}
+	for _, want := range []string{firstOutput.String(), FirstOutputTimeoutKey} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected the error to contain %q, got %q", want, err)
+		}
+	}
+	if !reportedInOrder(service.progress, []any{AgentLaunchStarted{Sandbox: testSandbox, GracePeriod: firstOutput}}) {
+		t.Errorf("expected the launch to report a wait of %s, got %+v", firstOutput, service.progress.events)
 	}
 }
 
@@ -3056,7 +3083,9 @@ func TestDrudgerService_ReclaimDrudgers(t *testing.T) {
 
 			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{testCase.listing}}
 			pool := []*Drudger{claimed, idleDrudger(2)}
-			service := newTestServiceWithPool(testSettings(), commands, pool)
+			settings := testSettings()
+			settings.SandboxTimeouts.FirstOutput = time.Minute
+			service := newTestServiceWithPool(settings, commands, pool)
 			if !testCase.hasNoRunDir {
 				service.runs.writeStream(claimed.TaskID, testCase.stream...)
 				if testCase.exit != noExitFile {

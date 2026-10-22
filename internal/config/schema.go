@@ -74,6 +74,12 @@ const schemaJSON = `{
               "type": "integer",
               "minimum": 1,
               "default": 900
+            },
+            "firstOutputSeconds": {
+              "description": "Seconds a launch waits for the agent to write its first output before it kills the agent. Raise it for a model that takes longer to load. It applies to every harness.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 60
             }
           },
           "additionalProperties": false

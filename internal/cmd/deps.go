@@ -142,10 +142,11 @@ func newDrudgerSettings(localCfg *config.LocalConfig, globalCfg *config.GlobalCo
 		EnvNames:              localCfg.Drudger.Env,
 		BranchFormat:          config.ResolveBranchFormat(localCfg, globalCfg),
 		SandboxTimeouts: drudger.SandboxTimeouts{
-			List:   timeouts.List(),
-			Create: timeouts.Create(),
-			Remove: timeouts.Remove(),
-			Setup:  timeouts.Setup(),
+			List:        timeouts.List(),
+			Create:      timeouts.Create(),
+			Remove:      timeouts.Remove(),
+			Setup:       timeouts.Setup(),
+			FirstOutput: timeouts.FirstOutput(),
 		},
 		PullRequests: drudger.PullRequestSettings{
 			IsDraft:      pullRequests.IsDraft,

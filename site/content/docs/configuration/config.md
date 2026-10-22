@@ -46,6 +46,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.sandboxTimeouts.createSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a sandbox. A first creation pulls an image, which is why this one is generous. |
 | `drudger.sandboxTimeouts.removeSeconds` | integer | `120` | minimum 1 | Seconds allowed for removing a sandbox, and for killing the agent in it and stopping it after a failed launch. |
 | `drudger.sandboxTimeouts.setupSeconds` | integer | `900` | minimum 1 | Seconds allowed for each setup command of a repository, run in the sandbox before the agent starts. |
+| `drudger.sandboxTimeouts.firstOutputSeconds` | integer | `60` | minimum 1 | Seconds a launch waits for the agent to write its first output before it kills the agent. Raise it for a model that takes longer to load. It applies to every harness. |
 | `drudger.gitTimeouts` | object |  |  | How long DRUDGE waits for a git command before it kills it. Git has no timeout of its own. |
 | `drudger.gitTimeouts.fetchSeconds` | integer | `15` | minimum 1 | Seconds allowed for fetching from a remote. Kept short so an unreachable remote costs seconds. |
 | `drudger.gitTimeouts.worktreeSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a worktree, which is a full checkout. |

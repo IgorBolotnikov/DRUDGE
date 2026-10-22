@@ -27,6 +27,7 @@ const (
 	MaxConcurrentDrudgersKey = project.MaxConcurrentDrudgersKey
 	CreateTimeoutKey         = "sandboxTimeouts.createSeconds"
 	SetupTimeoutKey          = "sandboxTimeouts.setupSeconds"
+	FirstOutputTimeoutKey    = "sandboxTimeouts.firstOutputSeconds"
 	EnvKey                   = "drudger.env"
 )
 
@@ -77,4 +78,7 @@ type SandboxTimeouts struct {
 	Create time.Duration
 	Remove time.Duration
 	Setup  time.Duration
+	// FirstOutput is how long a launch waits for the agent to write its first
+	// stream event before it kills the agent.
+	FirstOutput time.Duration
 }

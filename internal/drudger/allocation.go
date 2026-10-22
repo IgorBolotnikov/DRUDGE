@@ -310,7 +310,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 		if err := reclaimFinished(drudgers, service.runReader(), layout, now); err != nil {
 			return nil, err
 		}
-		stuck, err := freeStuckSlots(drudgers, service.runs, running, now)
+		stuck, err := freeStuckSlots(drudgers, service.runs, running, service.settings.SandboxTimeouts.FirstOutput, now)
 		if err != nil {
 			return nil, err
 		}
@@ -328,7 +328,7 @@ func (service *DrudgerService) ReclaimDrudgers(projectSlug string) ([]FreedSlot,
 
 // freeStuckSlots clears the claim of every Drudger that stuckClaimReason
 // finds without an agent, and returns what it cleared.
-func freeStuckSlots(drudgers []*Drudger, runs RunRepository, running map[string]bool, now time.Time) ([]FreedSlot, error) {
+func freeStuckSlots(drudgers []*Drudger, runs RunRepository, running map[string]bool, gracePeriod time.Duration, now time.Time) ([]FreedSlot, error) {
 	var freed []FreedSlot
 
 	for _, candidate := range drudgers {
@@ -336,7 +336,7 @@ func freeStuckSlots(drudgers []*Drudger, runs RunRepository, running map[string]
 			continue
 		}
 
-		reason, err := stuckClaimReason(candidate, runs, running, now)
+		reason, err := stuckClaimReason(candidate, runs, running, gracePeriod, now)
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +363,7 @@ func freeStuckSlots(drudgers []*Drudger, runs RunRepository, running map[string]
 // A stale stream is no proof of a dead agent. One tool call can run for
 // minutes, which is what needs babysitting reports. The sandbox status is the
 // proof, because a sandbox that is not running holds no process.
-func stuckClaimReason(claimed *Drudger, runs RunRepository, running map[string]bool, now time.Time) (string, error) {
+func stuckClaimReason(claimed *Drudger, runs RunRepository, running map[string]bool, gracePeriod time.Duration, now time.Time) (string, error) {
 	hasRun, err := runs.HasRun(claimed.TaskID)
 	if err != nil {
 		return "", err
@@ -371,7 +371,7 @@ func stuckClaimReason(claimed *Drudger, runs RunRepository, running map[string]b
 	if !hasRun {
 		// A launch creates the run directory right after it claims the slot,
 		// so a claim older than the grace period has no launch behind it.
-		if now.Sub(claimed.LastChecked) <= launchGracePeriod {
+		if now.Sub(claimed.LastChecked) <= gracePeriod {
 			return "", nil
 		}
 		return stuckNoRunDirectory, nil

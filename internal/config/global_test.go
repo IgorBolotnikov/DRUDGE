@@ -324,13 +324,16 @@ func TestLoad_MissingSandboxTimeouts_FallBackToDefaults(t *testing.T) {
 	if timeouts.SetupSeconds != defaultSetupTimeoutSeconds {
 		t.Errorf("SetupSeconds = %d, want default %d", timeouts.SetupSeconds, defaultSetupTimeoutSeconds)
 	}
+	if timeouts.FirstOutputSeconds != defaultFirstOutputTimeoutSeconds {
+		t.Errorf("FirstOutputSeconds = %d, want default %d", timeouts.FirstOutputSeconds, defaultFirstOutputTimeoutSeconds)
+	}
 }
 
 func TestLoad_SandboxTimeoutOverrides_ReturnLoadedValues(t *testing.T) {
 	home := setupHome(t)
 	writeConfig(t, home, GlobalConfig{
 		Drudger: DrudgerConfig{
-			SandboxTimeouts: SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7, SetupSeconds: 300},
+			SandboxTimeouts: SandboxTimeouts{ListSeconds: 5, CreateSeconds: 60, RemoveSeconds: 7, SetupSeconds: 300, FirstOutputSeconds: 180},
 		},
 	})
 
@@ -352,6 +355,9 @@ func TestLoad_SandboxTimeoutOverrides_ReturnLoadedValues(t *testing.T) {
 	if timeouts.Setup() != 5*time.Minute {
 		t.Errorf("Setup() = %s, want %s", timeouts.Setup(), 5*time.Minute)
 	}
+	if timeouts.FirstOutput() != 3*time.Minute {
+		t.Errorf("FirstOutput() = %s, want %s", timeouts.FirstOutput(), 3*time.Minute)
+	}
 }
 
 func TestLoad_NegativeSandboxTimeout_ReturnsError(t *testing.T) {
@@ -363,6 +369,7 @@ func TestLoad_NegativeSandboxTimeout_ReturnsError(t *testing.T) {
 		{name: "create", raw: `{"drudger": {"sandboxTimeouts": {"createSeconds": -1}}}`},
 		{name: "remove", raw: `{"drudger": {"sandboxTimeouts": {"removeSeconds": -1}}}`},
 		{name: "setup", raw: `{"drudger": {"sandboxTimeouts": {"setupSeconds": -1}}}`},
+		{name: "first output", raw: `{"drudger": {"sandboxTimeouts": {"firstOutputSeconds": -1}}}`},
 	}
 
 	for _, test := range tests {

@@ -23,12 +23,6 @@ import (
 // second chance to come up.
 const sbxDaemonRetryDelay = 2 * time.Second
 
-// launchGracePeriod is how long a launch waits for the agent to write its
-// first stream event. The first event can take longer than 10 seconds on a
-// sandbox that has just booted, and a launch blocks for this whole period when
-// none arrives.
-const launchGracePeriod = 60 * time.Second
-
 // launchPollInterval is how often a launch checks the stream while it waits
 // out the grace period.
 const launchPollInterval = 100 * time.Millisecond
@@ -67,10 +61,9 @@ type DrudgerService struct {
 	// streams holds the stream reader of every harness drudge knows how to
 	// read the event stream of.
 	streams map[Harness]StreamReader
-	// daemonRetryDelay and launchGrace default to the constants above. A test
-	// sets them to zero to skip the waits.
+	// daemonRetryDelay defaults to the constant above. A test sets it to zero
+	// to skip the wait.
 	daemonRetryDelay time.Duration
-	launchGrace      time.Duration
 	// resolvedLayout is what layout worked out, kept from the first call on.
 	resolvedLayout *projectLayout
 	// Some of the service methods live in other files of this package.
@@ -88,7 +81,6 @@ func New(progress common.Progress, settings Settings, tasks *task.TaskService, d
 		remote:           remoteOps,
 		streams:          streams,
 		daemonRetryDelay: sbxDaemonRetryDelay,
-		launchGrace:      launchGracePeriod,
 	}
 }
 
@@ -460,7 +452,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	service.progress.Report(AgentLaunchStarted{Sandbox: claimed.Sandbox, GracePeriod: service.launchGrace})
+	service.progress.Report(AgentLaunchStarted{Sandbox: claimed.Sandbox, GracePeriod: service.settings.SandboxTimeouts.FirstOutput})
 	if err := service.commands.Start(plan.start); err != nil {
 		return fmt.Errorf("could not start Drudger %s for task %s: %w", claimed.Sandbox, taskID, err)
 	}
@@ -595,7 +587,8 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 // drudge never learns its exit status, so an sbx exec that starts and exits is
 // otherwise indistinguishable from a working agent.
 func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, taskID task.TaskID) error {
-	deadline := time.Now().Add(service.launchGrace)
+	gracePeriod := service.settings.SandboxTimeouts.FirstOutput
+	deadline := time.Now().Add(gracePeriod)
 
 	for {
 		hasStarted, err := agentStarted(service.runs, taskID)
@@ -607,8 +600,8 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf(
-				"Drudger %s produced no output within %s of being started on task %s, so its agent did not start, check that the sandbox works and look in %s",
-				sandboxName, service.launchGrace, taskID, runDir,
+				"Drudger %s produced no output within %s of being started on task %s, so its agent did not start, check that the sandbox works and look in %s, or raise %q in the global config if the agent needs longer",
+				sandboxName, gracePeriod, taskID, runDir, FirstOutputTimeoutKey,
 			)
 		}
 		time.Sleep(launchPollInterval)
