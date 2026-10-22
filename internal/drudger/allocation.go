@@ -152,6 +152,7 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 			created := &Drudger{
 				Slot:        slot,
 				Sandbox:     formatDrudgerName(projectSlug, slot, service.settings.Harness),
+				Harness:     service.settings.Harness,
 				Workspace:   layout.WorkspaceRoot(slot),
 				TaskID:      taskID,
 				LastChecked: now,
@@ -159,6 +160,9 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 			return created, append(drudgers, created), nil
 		}
 		if existing.Idle() {
+			if err := service.refuseOtherHarness(existing); err != nil {
+				return nil, nil, err
+			}
 			// A Drudger recorded before drudge gave Drudgers a workspace has
 			// none stored, and no directory on disk yet for a stored value to
 			// protect.
@@ -172,6 +176,16 @@ func (service *DrudgerService) pickDrudger(drudgers []*Drudger, projectSlug stri
 	}
 
 	return nil, nil, fmt.Errorf("all %d Drudgers of project %s are busy, wait for one to finish, run %s to free the slots whose agent is gone, or raise %s in the config", limit, projectSlug, reclaimCommand, MaxConcurrentDrudgersKey)
+}
+
+// refuseOtherHarness refuses a Drudger whose sandbox was made for another
+// harness than the configured one. The sandbox lacks the configured harness.
+func (service *DrudgerService) refuseOtherHarness(candidate *Drudger) error {
+	configured := service.settings.Harness
+	if candidate.Harness == configured {
+		return nil
+	}
+	return fmt.Errorf("Drudger %d (%s) was made for harness %q, but %s in the config is %q. Run %s %d to delete it, and the next launch makes a new one for %q", candidate.Slot, candidate.Sandbox, candidate.Harness, HarnessKey, configured, NukeCommand, candidate.Slot, configured)
 }
 
 // DrudgersAboveLimit reports the Drudgers of a project whose slot is above the

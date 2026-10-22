@@ -327,7 +327,7 @@ func TestDrudgerService_ListDrudgers_RunsNoGitCommands(t *testing.T) {
 
 // idleDrudgerAt is an idle Drudger with a workspace of its own.
 func idleDrudgerAt(projectDir string, slot int) *Drudger {
-	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot), Workspace: slotRoot(projectDir, slot)}
+	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot), Harness: HarnessClaudeCode, Workspace: slotRoot(projectDir, slot)}
 }
 
 // slotWorktree is where the Drudger of a slot checks the single repository of

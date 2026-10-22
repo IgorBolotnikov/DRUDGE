@@ -45,53 +45,59 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 		{
 			name: "an idle Drudger",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentReady, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentReady, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger whose sandbox is broken",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxGone, LastChecked: lastChecked},
-				{Slot: 2, Sandbox: "drudge-claude-test-project-2", SandboxHealth: drudger.SandboxMisplaced, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxGone, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxMisplaced, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger whose agent the vendor refused",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentRefused, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxUsable, AgentHealth: drudger.AgentRefused, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger whose workspace is broken",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", WorkspaceHealth: drudger.WorkspaceGone, LastChecked: lastChecked},
-				{Slot: 2, Sandbox: "drudge-claude-test-project-2", WorkspaceHealth: drudger.WorkspaceMisplaced, LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, WorkspaceHealth: drudger.WorkspaceGone, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", Harness: drudger.HarnessClaudeCode, WorkspaceHealth: drudger.WorkspaceMisplaced, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger with a workspace",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Workspace: "/home/igor/app/.drudge/worktrees/slot-1", LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, Workspace: "/home/igor/app/.drudge/worktrees/slot-1", LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a Drudger nobody has looked at yet",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1"},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode},
 			},
 		},
 		{
 			name: "an occupied Drudger",
 			pool: []*drudger.Drudger{
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", TaskID: "task-1", LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, TaskID: "task-1", LastChecked: lastChecked},
+			},
+		},
+		{
+			name: "a Drudger made for another harness",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-opencode-test-project-1", Harness: drudger.HarnessOpencode, LastChecked: lastChecked},
 			},
 		},
 		{
 			name: "a pool of several, out of order",
 			pool: []*drudger.Drudger{
-				{Slot: 3, Sandbox: "drudge-claude-test-project-3", TaskID: "task-3", LastChecked: lastChecked},
-				{Slot: 1, Sandbox: "drudge-claude-test-project-1", LastChecked: lastChecked},
-				{Slot: 2, Sandbox: "drudge-claude-test-project-2", TaskID: "task-2", LastChecked: lastChecked},
+				{Slot: 3, Sandbox: "drudge-claude-test-project-3", Harness: drudger.HarnessClaudeCode, TaskID: "task-3", LastChecked: lastChecked},
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode, LastChecked: lastChecked},
+				{Slot: 2, Sandbox: "drudge-claude-test-project-2", Harness: drudger.HarnessClaudeCode, TaskID: "task-2", LastChecked: lastChecked},
 			},
 		},
 	}
@@ -119,6 +125,9 @@ func TestFileDrudgerRepository_RoundTrip(t *testing.T) {
 				}
 				if got.Sandbox != want.Sandbox {
 					t.Errorf("expected sandbox %q, got %q", want.Sandbox, got.Sandbox)
+				}
+				if got.Harness != want.Harness {
+					t.Errorf("expected harness %q, got %q", want.Harness, got.Harness)
 				}
 				if got.Workspace != want.Workspace {
 					t.Errorf("expected workspace %q, got %q", want.Workspace, got.Workspace)
@@ -161,6 +170,27 @@ func TestFileDrudgerRepository_ListDrudgers_AbsentFileIsAnEmptyPool(t *testing.T
 	}
 	if len(drudgers) != 0 {
 		t.Errorf("expected an empty pool, got %v", drudgers)
+	}
+}
+
+func TestFileDrudgerRepository_ListDrudgers_EntryWithoutHarnessIsClaudeCode(t *testing.T) {
+	repo, path := setupDrudgerRepo(t)
+	if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+		t.Fatalf("could not create the project directory: %v", err)
+	}
+	if err := common.WriteFile(path, `{"drudgers": [{"slot": 1, "sandbox": "drudge-claude-test-project-1"}]}`); err != nil {
+		t.Fatalf("could not write the Drudgers file: %v", err)
+	}
+
+	read, err := repo.ListDrudgers(drudgerTestProject)
+	if err != nil {
+		t.Fatalf("ListDrudgers: %v", err)
+	}
+	if len(read) != 1 {
+		t.Fatalf("expected 1 Drudger, got %d", len(read))
+	}
+	if read[0].Harness != drudger.HarnessClaudeCode {
+		t.Errorf("expected harness %q, got %q", drudger.HarnessClaudeCode, read[0].Harness)
 	}
 }
 
@@ -209,7 +239,7 @@ func TestFileDrudgerRepository_MalformedFileNamesThePath(t *testing.T) {
 
 func TestFileDrudgerRepository_UpdateDrudgers_ChangeErrorStoresNothing(t *testing.T) {
 	repo, _ := setupDrudgerRepo(t)
-	storeDrudgers(t, repo, []*drudger.Drudger{{Slot: 1, Sandbox: "drudge-claude-test-project-1"}})
+	storeDrudgers(t, repo, []*drudger.Drudger{{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode}})
 
 	err := repo.UpdateDrudgers(drudgerTestProject, func(drudgers []*drudger.Drudger) ([]*drudger.Drudger, error) {
 		drudgers[0].TaskID = "task-1"

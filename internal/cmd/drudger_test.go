@@ -59,6 +59,18 @@ func TestPrintDrudgers(t *testing.T) {
 			wantAbsent: []string{occupiedTaskID},
 		},
 		{
+			name: "the harness of each Drudger",
+			pool: []*drudger.Drudger{
+				{Slot: 1, Sandbox: "drudge-claude-test-project-1", Harness: drudger.HarnessClaudeCode},
+				{Slot: 2, Sandbox: "drudge-opencode-test-project-2", Harness: drudger.HarnessOpencode},
+			},
+			wantLines: []string{
+				"HARNESS",
+				"1", "drudge-claude-test-project-1", "claude-code",
+				"2", "drudge-opencode-test-project-2", "opencode",
+			},
+		},
+		{
 			name: "a broken sandbox stands out",
 			pool: []*drudger.Drudger{
 				{
@@ -197,20 +209,20 @@ func TestPrintDrudgers(t *testing.T) {
 
 func TestPrintDrudgersColors(t *testing.T) {
 	pool := []*drudger.Drudger{
-		{Slot: 1, Sandbox: testSandboxName(1), SandboxHealth: drudger.SandboxUsable, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
-		{Slot: 2, Sandbox: testSandboxName(2)},
-		{Slot: 3, Sandbox: testSandboxName(3), SandboxHealth: drudger.SandboxGone, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
-		{Slot: 4, Sandbox: testSandboxName(4), WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentRefused},
-		{Slot: 5, Sandbox: testSandboxName(5), SandboxHealth: "hand-edited", WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+		{Slot: 1, Sandbox: testSandboxName(1), Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxUsable, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+		{Slot: 2, Sandbox: testSandboxName(2), Harness: drudger.HarnessClaudeCode},
+		{Slot: 3, Sandbox: testSandboxName(3), Harness: drudger.HarnessClaudeCode, SandboxHealth: drudger.SandboxGone, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
+		{Slot: 4, Sandbox: testSandboxName(4), Harness: drudger.HarnessClaudeCode, WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentRefused},
+		{Slot: 5, Sandbox: testSandboxName(5), Harness: drudger.HarnessClaudeCode, SandboxHealth: "hand-edited", WorkspaceHealth: drudger.WorkspaceUsable, AgentHealth: drudger.AgentReady},
 	}
 	// plainHealths are the health cells of the Drudgers above, without color.
 	plainHealths := []string{"ok", "unchecked", "SANDBOX GONE", "sandbox unchecked, AGENT REFUSED", "hand-edited"}
 
 	header := fmt.Sprintf("Drudgers (%d):\n", len(pool)) +
-		fmt.Sprintf("  SLOT  %-40s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", healthColumnWidth, "HEALTH") +
-		fmt.Sprintf("  ----  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", healthColumnWidth))
+		fmt.Sprintf("  SLOT  %-40s  %-*s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", harnessColumnWidth, "HARNESS", healthColumnWidth, "HEALTH") +
+		fmt.Sprintf("  ----  %s  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", harnessColumnWidth), strings.Repeat("-", healthColumnWidth))
 	rowLine := func(slot int, healthCell string) string {
-		return fmt.Sprintf("  %-4d  %-40s  %-8s  %s  never\n", slot, testSandboxName(slot), idleLabel, healthCell)
+		return fmt.Sprintf("  %-4d  %-40s  %-*s  %-8s  %s  never\n", slot, testSandboxName(slot), harnessColumnWidth, drudger.HarnessClaudeCode, idleLabel, healthCell)
 	}
 	plainRows := func() string {
 		var lines strings.Builder
@@ -334,10 +346,10 @@ func TestPrintReclaimed(t *testing.T) {
 }
 
 func TestDrudgerList(t *testing.T) {
-	header := fmt.Sprintf("  SLOT  %-40s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", healthColumnWidth, "HEALTH") +
-		fmt.Sprintf("  ----  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", healthColumnWidth))
+	header := fmt.Sprintf("  SLOT  %-40s  %-*s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", harnessColumnWidth, "HARNESS", healthColumnWidth, "HEALTH") +
+		fmt.Sprintf("  ----  %s  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", harnessColumnWidth), strings.Repeat("-", healthColumnWidth))
 	row := func(slot int) string {
-		return fmt.Sprintf("  %-4d  %-40s  %-8s  %-*s  never\n", slot, testSandboxName(slot), idleLabel, healthColumnWidth, healthUncheckedLabel)
+		return fmt.Sprintf("  %-4d  %-40s  %-*s  %-8s  %-*s  never\n", slot, testSandboxName(slot), harnessColumnWidth, drudger.HarnessClaudeCode, idleLabel, healthColumnWidth, healthUncheckedLabel)
 	}
 
 	cases := []struct {

@@ -90,6 +90,9 @@ const (
 	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
 )
 
+// harnessColumnWidth fits the longest harness name.
+const harnessColumnWidth = len(drudger.HarnessClaudeCode)
+
 // healthLabelRoles maps a health label to the theme role it prints in.
 var healthLabelRoles = map[string]string{
 	healthOkLabel: theme.RoleSuccess,
@@ -149,6 +152,7 @@ func printDrudgers(out *printer.Printer, projectSlug string, listed common.Page[
 	columns := []column{
 		{Title: "SLOT", Width: 4},
 		{Title: "DRUDGER", Width: 40},
+		{Title: "HARNESS", Width: harnessColumnWidth},
 		{Title: "TASK", Width: task.ShortIDLength},
 		{Title: "HEALTH", Width: healthColumnWidth, Color: healthColor(out.Theme())},
 		{Title: "LAST CHECKED"},
@@ -158,6 +162,7 @@ func printDrudgers(out *printer.Printer, projectSlug string, listed common.Page[
 		rows = append(rows, []string{
 			strconv.Itoa(entry.Slot),
 			entry.Sandbox,
+			string(entry.Harness),
 			occupyingTask(entry),
 			formatHealth(entry),
 			formatAgo(entry.LastChecked, now),

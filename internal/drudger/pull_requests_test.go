@@ -524,7 +524,7 @@ func TestDrudgerService_RetryPullRequests_Refuses(t *testing.T) {
 			setup: func(service *testService, finished *task.Task) {
 				service.runs.writeStream(finished.ID, initEvent)
 				delete(service.runs.runs[finished.ID].files, common.RunExitName)
-				service.drudgers.drudgers = []*Drudger{{Slot: 1, Sandbox: testSandbox, TaskID: finished.ID}}
+				service.drudgers.drudgers = []*Drudger{{Slot: 1, Sandbox: testSandbox, Harness: HarnessClaudeCode, TaskID: finished.ID}}
 			},
 			wantErrText: []string{"still working", testSandbox, NukeCommand},
 		},

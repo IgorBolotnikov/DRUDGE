@@ -29,6 +29,7 @@ const (
 	SetupTimeoutKey          = "sandboxTimeouts.setupSeconds"
 	FirstOutputTimeoutKey    = "sandboxTimeouts.firstOutputSeconds"
 	EnvKey                   = "drudger.env"
+	HarnessKey               = "drudger.harness"
 )
 
 // Settings is what a DrudgerService reads from the configs.

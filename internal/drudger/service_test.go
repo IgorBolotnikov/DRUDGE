@@ -1085,12 +1085,13 @@ func busyDrudger(slot int) *Drudger {
 	return &Drudger{
 		Slot:    slot,
 		Sandbox: testSandboxOfSlot(slot),
+		Harness: HarnessClaudeCode,
 		TaskID:  busyTaskID(slot),
 	}
 }
 
 func idleDrudger(slot int) *Drudger {
-	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot)}
+	return &Drudger{Slot: slot, Sandbox: testSandboxOfSlot(slot), Harness: HarnessClaudeCode}
 }
 
 func busyTaskID(slot int) task.TaskID {
@@ -2142,7 +2143,7 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	service := newTestServiceWithPool(
 		testSettings(),
 		commands,
-		[]*Drudger{{Slot: 1, Sandbox: namedByAnEarlierHarness}},
+		[]*Drudger{{Slot: 1, Sandbox: namedByAnEarlierHarness, Harness: HarnessClaudeCode}},
 		taskToRun,
 	)
 
@@ -2159,6 +2160,66 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 	}
 	if claimed := service.drudgers.atSlot(1); claimed.Sandbox != namedByAnEarlierHarness {
 		t.Errorf("expected the stored sandbox name to survive the run, got %q", claimed.Sandbox)
+	}
+}
+
+func TestDrudgerService_RunTask_ChecksTheHarnessOfTheDrudger(t *testing.T) {
+	otherHarness := &Drudger{Slot: 1, Sandbox: "drudge-opencode-test-project-1", Harness: HarnessOpencode}
+
+	cases := []struct {
+		name         string
+		pool         []*Drudger
+		wantErrParts []string
+	}{
+		{name: "a new Drudger records the configured harness"},
+		{name: "a Drudger of the configured harness launches", pool: []*Drudger{idleDrudger(1)}},
+		{
+			name:         "a Drudger of another harness is refused",
+			pool:         []*Drudger{otherHarness},
+			wantErrParts: []string{"Drudger 1", otherHarness.Sandbox, string(HarnessOpencode), string(HarnessClaudeCode), HarnessKey, NukeCommand + " 1"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: []string{sandboxListingWith()}}
+			service := newTestServiceWithPool(testSettings(), commands, testCase.pool, taskToRun)
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+
+			if len(testCase.wantErrParts) > 0 {
+				if err == nil {
+					t.Fatal("expected the launch to be refused")
+				}
+				for _, part := range testCase.wantErrParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("expected the error to name %q, got %q", part, err)
+					}
+				}
+				if got := commands.subcommands(); len(got) != 0 {
+					t.Errorf("expected no sandbox command, got %v", got)
+				}
+				if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+					t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)
+				}
+				if taskToRun.Status != task.StatusTodo {
+					t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			claimed := service.drudgers.holderOf(taskToRun.ID)
+			if claimed == nil {
+				t.Fatalf("expected a Drudger to hold the task, got pool %v", service.drudgers.drudgers)
+			}
+			if claimed.Harness != HarnessClaudeCode {
+				t.Errorf("expected harness %q, got %q", HarnessClaudeCode, claimed.Harness)
+			}
+		})
 	}
 }
 
@@ -2793,7 +2854,7 @@ func TestDrudgerService_RecordsBothPartsOfADrudger(t *testing.T) {
 		},
 		{
 			name:        "a sandbox gone under a refused agent reads as both",
-			pool:        []*Drudger{{Slot: 1, Sandbox: testSandbox, SandboxHealth: SandboxUsable, AgentHealth: AgentRefused}},
+			pool:        []*Drudger{{Slot: 1, Sandbox: testSandbox, Harness: HarnessClaudeCode, SandboxHealth: SandboxUsable, AgentHealth: AgentRefused}},
 			listing:     sandboxListingWith(),
 			createErr:   sbxErr,
 			wantSandbox: SandboxGone,

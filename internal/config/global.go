@@ -86,7 +86,7 @@ const (
 	// DrudgerEnvironmentKey is exported so drg setup can ask for it.
 	DrudgerEnvironmentKey = "drudger.environment"
 	// DrudgerHarnessKey is exported so drg setup can ask for it.
-	DrudgerHarnessKey = "drudger.harness"
+	DrudgerHarnessKey = drudger.HarnessKey
 	// DrudgerModelKey is exported so drg setup can ask for it.
 	DrudgerModelKey = "drudger.model"
 	// DrudgerMaxConcurrentKey is exported so drg setup can ask for it.

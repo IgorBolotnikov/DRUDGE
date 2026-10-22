@@ -390,7 +390,7 @@ func handedOverTask(repositories ...string) *task.Task {
 
 // holdingDrudger is the Drudger of slot 1 with a task on it.
 func holdingDrudger(projectDir string, taskID task.TaskID) *Drudger {
-	return &Drudger{Slot: 1, Sandbox: testSandbox, Workspace: slotRoot(projectDir, 1), TaskID: taskID}
+	return &Drudger{Slot: 1, Sandbox: testSandbox, Harness: HarnessClaudeCode, Workspace: slotRoot(projectDir, 1), TaskID: taskID}
 }
 
 // worktreesOf maps each repository of a project to the worktree slot 1 checks

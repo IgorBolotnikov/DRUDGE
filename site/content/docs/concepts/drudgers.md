@@ -13,7 +13,11 @@ The workspace is `.drudge/worktrees/slot-<n>/` in the project directory. It hold
 
 The sandbox is a Docker sandbox made with `sbx` over the workspace. It mounts the workspace, the `.git` directory of every repository and the run directory of the project.
 
-The pool lives in `~/.drudge/projects/<slug>/drudgers.json`. Each entry records the slot, the sandbox, the workspace, the Task occupying it and what DRUDGE last saw of the sandbox, the workspace and the agent. [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) shows it.
+The pool lives in `~/.drudge/projects/<slug>/drudgers.json`. Each entry records the slot, the sandbox, the harness the sandbox was made for, the workspace, the Task occupying it and what DRUDGE last saw of the sandbox, the workspace and the agent. [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) shows it.
+
+## Switching the harness
+
+A sandbox is made for one harness, the `drudger.harness` of the [global config]({{< relref "/docs/configuration/config" >}}) at the time the Drudger is made. An entry without a harness was made for `claude-code`. After you switch `drudger.harness`, `drg task run` refuses to launch onto a Drudger made for the old harness and names it. Nuke each such Drudger with [`drg drudger nuke <slot>`]({{< relref "/docs/cli/drudger/nuke" >}}). The next launch makes a new Drudger for the configured harness in that slot.
 
 ## Occupied or idle
 

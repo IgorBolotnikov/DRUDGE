@@ -33,6 +33,7 @@ type drudgersFile struct {
 type storedDrudger struct {
 	Slot            int       `json:"slot"`
 	Sandbox         string    `json:"sandbox"`
+	Harness         string    `json:"harness"`
 	Workspace       string    `json:"workspace,omitempty"`
 	Task            string    `json:"task,omitempty"`
 	SandboxHealth   string    `json:"sandboxHealth,omitempty"`
@@ -136,6 +137,7 @@ func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 		drudgers = append(drudgers, &drudger.Drudger{
 			Slot:            entry.Slot,
 			Sandbox:         entry.Sandbox,
+			Harness:         storedHarness(entry.Harness),
 			Workspace:       entry.Workspace,
 			TaskID:          task.TaskID(entry.Task),
 			SandboxHealth:   drudger.SandboxHealth(entry.SandboxHealth),
@@ -147,6 +149,15 @@ func readDrudgersFile(path string) ([]*drudger.Drudger, error) {
 	return drudgers, nil
 }
 
+// storedHarness reads the harness of an entry. An entry without one was made
+// when Claude Code was the only harness.
+func storedHarness(harness string) drudger.Harness {
+	if harness == "" {
+		return drudger.HarnessClaudeCode
+	}
+	return drudger.Harness(harness)
+}
+
 // writeDrudgersFile stores the Drudgers, always sorted by slot from lowest
 // to highest.
 func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
@@ -155,6 +166,7 @@ func writeDrudgersFile(path string, drudgers []*drudger.Drudger) error {
 		stored.Drudgers = append(stored.Drudgers, storedDrudger{
 			Slot:            entry.Slot,
 			Sandbox:         entry.Sandbox,
+			Harness:         string(entry.Harness),
 			Workspace:       entry.Workspace,
 			Task:            string(entry.TaskID),
 			SandboxHealth:   string(entry.SandboxHealth),
