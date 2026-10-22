@@ -9,6 +9,8 @@ A Session is a single run of work on a Task by one Drudger. A Drudger hosts at m
 
 [`drg task run`]({{< relref "/docs/cli/task/run" >}}) claims a [Drudger]({{< relref "drudgers" >}}), puts its workspace on the branch of the Task, starts the agent in its sandbox and waits for the first output of the agent. Then it returns, and the agent works on its own. `--dry-run` prints the prompt the agent would get and starts nothing.
 
+The agent has 60 seconds to write its first output. When it writes nothing in that time, or the launch fails after the agent started, `drg task run` sends SIGTERM to the agent, stops the sandbox and frees the Drudger. The Task stays `todo`. When the kill or the stop fails, the Drudger stays claimed and the error says the agent may still be running. Run [`drg drudger nuke`]({{< relref "/docs/cli/drudger/nuke" >}}) on the slot then.
+
 The prompt is the description of the Task wrapped in a template. A prompt file named in the [config]({{< relref "/docs/configuration" >}}) swaps in your own template.
 
 The agent writes a Session id on its first event. The agent harness resumes a Session by that id, and DRUDGE records it on the Task.

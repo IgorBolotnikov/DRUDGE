@@ -174,6 +174,10 @@ func (p *cliProgress) reportDrudger(event any) {
 		p.out.Detail("%s", event.Line)
 	case drudger.AgentLaunchStarted:
 		p.out.Step("Starting the agent, waiting up to %s for its first output", event.GracePeriod)
+	case drudger.AgentKillStarted:
+		p.out.Step("Killing the agent in %s, up to %s", event.Sandbox, event.Timeout)
+	case drudger.SandboxStopStarted:
+		p.out.Step("Stopping sandbox %s, up to %s", event.Sandbox, event.Timeout)
 	case drudger.AgentLaunched:
 		p.out.Result("Drudger %s is working on task %s", event.Sandbox, p.out.Task(event.Task))
 		p.out.Field("Branch", event.Branch)

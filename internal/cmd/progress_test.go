@@ -289,6 +289,16 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "› Starting the agent, waiting up to 1m0s for its first output…\n",
 		},
 		{
+			name:  "an agent kill started",
+			event: drudger.AgentKillStarted{Sandbox: "drudge-claude-demo-3", Timeout: 2 * time.Minute},
+			want:  "› Killing the agent in drudge-claude-demo-3, up to 2m0s…\n",
+		},
+		{
+			name:  "a sandbox stop started",
+			event: drudger.SandboxStopStarted{Sandbox: "drudge-claude-demo-3", Timeout: 2 * time.Minute},
+			want:  "› Stopping sandbox drudge-claude-demo-3, up to 2m0s…\n",
+		},
+		{
 			name: "an agent launched",
 			event: drudger.AgentLaunched{
 				Task:    sampleTask,

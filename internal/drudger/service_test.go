@@ -1614,7 +1614,7 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			name:          "the agent never comes up",
 			outputs:       []string{sandboxListingWith(testSandbox)},
 			isAgentSilent: true,
-			wantRuns:      3,
+			wantRuns:      5,
 		},
 	}
 
@@ -1655,6 +1655,111 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 				t.Error("expected the run directory of the claimed slot to be there")
 			}
 		})
+	}
+}
+
+func TestDrudgerService_RunTask_SilentAgentIsKilledAndItsSandboxStopped(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{
+		projectDir:    projectDir,
+		outputs:       []string{sandboxListingWith(testSandbox)},
+		isAgentSilent: true,
+	}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
+		t.Fatal("expected the silent agent to fail the launch")
+	}
+
+	wantSubcommands := []string{"ls", "exec", "exec", "exec", "stop"}
+	if got := commands.subcommands(); !slices.Equal(got, wantSubcommands) {
+		t.Fatalf("expected sbx calls %v, got %v", wantSubcommands, got)
+	}
+	kill := commands.calls[3]
+	if script := kill[len(kill)-1]; !strings.Contains(script, common.RunPidPath(common.RunDir(projectDir, string(taskToRun.ID)))) {
+		t.Errorf("expected the kill to read the pid file, got %q", script)
+	}
+	if stop := commands.calls[4]; !slices.Equal(stop, []string{"sbx", "stop", testSandbox}) {
+		t.Errorf("expected sbx stop of the sandbox, got %v", stop)
+	}
+	if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+		t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
+	}
+	if taskToRun.Status != task.StatusTodo {
+		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+	}
+	if !reportedInOrder(service.progress, []any{
+		AgentLaunchStarted{Sandbox: testSandbox},
+		AgentKillStarted{Sandbox: testSandbox, Timeout: service.settings.SandboxTimeouts.Remove},
+		SandboxStopStarted{Sandbox: testSandbox, Timeout: service.settings.SandboxTimeouts.Remove},
+	}) {
+		t.Errorf("expected the kill and the stop to be reported in order, got %+v", service.progress.events)
+	}
+}
+
+func TestDrudgerService_RunTask_AgentThatCannotBeTakenDownKeepsTheSlotClaimed(t *testing.T) {
+	spawnErr := fmt.Errorf("sbx: boom")
+
+	cases := []struct {
+		name string
+		errs []error
+	}{
+		{name: "the kill fails", errs: []error{nil, nil, nil, spawnErr}},
+		{name: "the stop fails", errs: []error{nil, nil, nil, nil, spawnErr}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{
+				projectDir:    projectDir,
+				outputs:       []string{sandboxListingWith(testSandbox)},
+				errs:          testCase.errs,
+				isAgentSilent: true,
+			}
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+			if err == nil {
+				t.Fatal("expected the failure to surface")
+			}
+
+			for _, want := range []string{"may still be running", testSandbox, nukeCommand + " 1"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected the error to contain %q, got %q", want, err)
+				}
+			}
+			if held := service.drudgers.holderOf(taskToRun.ID); held == nil {
+				t.Error("expected the slot to stay claimed")
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_FailureBeforeStartRunsNeitherKillNorStop(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{
+		projectDir: projectDir,
+		outputs:    []string{sandboxListingWith(testSandbox)},
+		errs:       []error{nil, fmt.Errorf("sbx: boom")},
+	}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
+		t.Fatal("expected the failure to surface")
+	}
+
+	if got := commands.callCount("stop"); got != 0 {
+		t.Errorf("expected no sbx stop, got %d", got)
+	}
+	if got := commands.callCount("exec"); got != 1 {
+		t.Errorf("expected only the reset exec, got %d", got)
 	}
 }
 

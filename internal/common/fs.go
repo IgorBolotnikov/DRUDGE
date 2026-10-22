@@ -44,7 +44,7 @@ var frontMatterEscaper = strings.NewReplacer(
 
 // Files of a task's run directory. The agent writes all of them but the
 // prompt, the harness and the setup log, which drudge writes before the agent
-// starts.
+// starts. The launcher writes the pid file.
 const (
 	RunPromptName   = "prompt.txt"
 	RunHarnessName  = "harness"
@@ -52,6 +52,7 @@ const (
 	RunStreamName   = "stream.jsonl"
 	RunStderrName   = "stderr.log"
 	RunExitName     = "exit"
+	RunPidName      = "pid"
 )
 
 // Pull request descriptions of a run directory. Close-out moves each one there
@@ -485,6 +486,12 @@ func RunPullRequestPath(runDir string, repository string) string {
 // exists only once the agent has finished.
 func RunExitPath(runDir string) string {
 	return filepath.Join(runDir, RunExitName)
+}
+
+// RunPidPath returns the path to the file holding the process id of the agent
+// of a run directory.
+func RunPidPath(runDir string) string {
+	return filepath.Join(runDir, RunPidName)
 }
 
 // LocalConfigPath returns the path to the local drudge config file.

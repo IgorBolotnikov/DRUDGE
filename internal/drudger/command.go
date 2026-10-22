@@ -41,6 +41,7 @@ const (
 	sbxCreateSubcommand = "create"
 	sbxExecSubcommand   = "exec"
 	sbxRmSubcommand     = "rm"
+	sbxStopSubcommand   = "stop"
 	sbxJSONFlag         = "--json"
 	sbxNameFlag         = "--name"
 	sbxDetachedFlag     = "-d"
@@ -309,6 +310,46 @@ func sbxExecCommand(invocation sbxExec) []string {
 	return append(argv, invocation.sandbox, shellBinary, shellCommandFlag, invocation.script)
 }
 
+// pickKillCommand builds the command that sends SIGTERM to the agent of a run
+// inside a sandbox.
+func (service *DrudgerService) pickKillCommand(sandboxName string, runDir string) (sandboxCommand, error) {
+	env := service.settings.Env
+
+	if env == EnvDockerSbx {
+		return sandboxCommand{
+			argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, script: formatKillScript(runDir)}),
+			timeout: service.settings.SandboxTimeouts.Remove,
+		}, nil
+	}
+
+	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to kill an agent in environment %q, check the Drudger settings in the config", env)
+}
+
+// pickStopCommand builds the command that stops a Drudger's sandbox.
+func (service *DrudgerService) pickStopCommand(sandboxName string) (sandboxCommand, error) {
+	env := service.settings.Env
+
+	if env == EnvDockerSbx {
+		return sandboxCommand{
+			argv:    []string{sbxBinary, sbxStopSubcommand, sandboxName},
+			timeout: service.settings.SandboxTimeouts.Remove,
+		}, nil
+	}
+
+	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to stop a sandbox in environment %q, check the Drudger settings in the config", env)
+}
+
+// formatKillScript renders the shell script that sends SIGTERM to the process
+// the pid file of a run names and to nothing else. A missing or empty pid file
+// and a process that is gone both count as killed. The launcher outlives the
+// agent, so the run still ends with an exit file.
+func formatKillScript(runDir string) string {
+	return fmt.Sprintf(
+		"drudge_pid=$(cat %s 2>/dev/null)\n[ -n \"$drudge_pid\" ] || exit 0\nkill -0 \"$drudge_pid\" 2>/dev/null || exit 0\nkill -TERM \"$drudge_pid\"\n",
+		shellQuote(common.RunPidPath(runDir)),
+	)
+}
+
 // pickRemoveCommand builds the command that deletes a Drudger's sandbox.
 func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCommand, error) {
 	env := service.settings.Env
@@ -336,6 +377,9 @@ func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCom
 //
 // The agent gets the directories the path file lists on PATH.
 //
+// The agent runs in the background so the launcher can write its process id to
+// the pid file, then the launcher waits for it.
+//
 // The exit file is written last and is the only marker of a finished run.
 func formatLauncher(workspace, runDir, model string) string {
 	agentArgs := []string{
@@ -351,12 +395,13 @@ func formatLauncher(workspace, runDir, model string) string {
 	agentCommand := strings.Join(agentArgs, " ")
 
 	return fmt.Sprintf(
-		"%scd %s || exit 1\n%s > %s 2> %s\necho $? > %s\n",
+		"%scd %s || exit 1\n%s > %s 2> %s &\necho $! > %s\nwait $!\necho $? > %s\n",
 		formatPathPreamble(),
 		shellQuote(workspace),
 		agentCommand,
 		shellQuote(common.RunStreamPath(runDir)),
 		shellQuote(common.RunStderrPath(runDir)),
+		shellQuote(common.RunPidPath(runDir)),
 		shellQuote(common.RunExitPath(runDir)),
 	)
 }

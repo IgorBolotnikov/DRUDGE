@@ -64,7 +64,7 @@ const schemaJSON = `{
               "default": 600
             },
             "removeSeconds": {
-              "description": "Seconds allowed for removing a sandbox.",
+              "description": "Seconds allowed for removing a sandbox, and for killing the agent in it and stopping it after a failed launch.",
               "type": "integer",
               "minimum": 1,
               "default": 120

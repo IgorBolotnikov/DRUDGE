@@ -138,6 +138,53 @@ func TestDrudgerService_RunTask_LauncherRunsTheAgentOverTheRunDirectory(t *testi
 	}
 }
 
+func TestDrudgerService_RunTask_LauncherWritesThePidFileBeforeWaitingAndTheExitFileLast(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	commands := runTaskFor(t, testSettings(), projectDir, sandboxListingWith(testSandbox))
+
+	start := commands.started[0]
+	launcher := start[len(start)-1]
+	runDir := common.RunDir(projectDir, "task-1")
+
+	agentIndex := strings.Index(launcher, "claude -p")
+	pidIndex := strings.Index(launcher, "echo $! > '"+runDir+"/pid'")
+	waitIndex := strings.Index(launcher, "wait $!")
+	exitIndex := strings.Index(launcher, "echo $? > '"+runDir+"/exit'")
+	if !(0 < agentIndex && agentIndex < pidIndex && pidIndex < waitIndex && waitIndex < exitIndex) {
+		t.Errorf("expected the agent, the pid file, the wait and the exit file in that order, got %q", launcher)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(launcher), "/exit'") {
+		t.Errorf("expected the exit file to be written last, got %q", launcher)
+	}
+}
+
+func TestDrudgerService_RunTask_KillScriptReadsThePidFileAndMatchesNoCommandLine(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{
+		projectDir:    projectDir,
+		outputs:       []string{sandboxListingWith(testSandbox)},
+		isAgentSilent: true,
+	}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
+		t.Fatal("expected the silent agent to fail the launch")
+	}
+
+	kill := commands.calls[3]
+	script := kill[len(kill)-1]
+	runDir := common.RunDir(projectDir, string(taskToRun.ID))
+
+	if !strings.Contains(script, "cat '"+runDir+"/pid'") {
+		t.Errorf("expected the kill script to read the pid file, got %q", script)
+	}
+	for _, banned := range []string{"pkill", "killall", "-f"} {
+		if strings.Contains(script, banned) {
+			t.Errorf("expected the kill script to hold no %q, got %q", banned, script)
+		}
+	}
+}
+
 func TestDrudgerService_RunTask_LauncherPutsTheListedDirectoriesOnPath(t *testing.T) {
 	cases := []struct {
 		name string

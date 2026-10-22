@@ -387,10 +387,10 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	}
 	service.progress.Report(DrudgerClaimed{Task: taskToRun, Slot: claimed.Slot, Sandbox: claimed.Sandbox})
 
-	isLaunched := false
+	shouldRelease := true
 	defer func() {
 		// Manually release the drudger in case it failed to start.
-		if !isLaunched {
+		if shouldRelease {
 			e := service.releaseDrudger(projectSlug, claimed.Slot, taskID)
 			if e != nil {
 				service.progress.Report(DrudgerReleaseFailed{ProjectSlug: projectSlug, Slot: claimed.Slot, Err: e})
@@ -458,9 +458,13 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 	}
 
 	if err := service.confirmLaunch(runDir, claimed.Sandbox, taskID); err != nil {
+		if abortErr := service.abortLaunch(claimed, runDir); abortErr != nil {
+			shouldRelease = false
+			return fmt.Errorf("%w, and then %w", err, abortErr)
+		}
 		return err
 	}
-	isLaunched = true
+	shouldRelease = false
 
 	taskToRun.StartRun(time.Now().UTC(), service.launchedSessionID(taskID))
 	for _, repository := range prepared.Repositories {
@@ -592,6 +596,50 @@ func (service *DrudgerService) confirmLaunch(runDir string, sandboxName string, 
 		}
 		time.Sleep(launchPollInterval)
 	}
+}
+
+// AgentKillStarted reports a failed launch killing the agent it started. It
+// waits up to Timeout for sbx to finish.
+type AgentKillStarted struct {
+	Sandbox string
+	Timeout time.Duration
+}
+
+// SandboxStopStarted reports a failed launch stopping the sandbox of the agent
+// it killed. It waits up to Timeout for sbx to finish.
+type SandboxStopStarted struct {
+	Sandbox string
+	Timeout time.Duration
+}
+
+// abortLaunch kills the agent a failed launch started and stops its sandbox.
+// A failure of either step leaves the agent possibly running, so the error
+// names the sandbox and the command that deletes it.
+func (service *DrudgerService) abortLaunch(claimed *Drudger, runDir string) error {
+	kill, err := service.pickKillCommand(claimed.Sandbox, runDir)
+	if err != nil {
+		return service.stuckAgentError(claimed, err)
+	}
+	stop, err := service.pickStopCommand(claimed.Sandbox)
+	if err != nil {
+		return service.stuckAgentError(claimed, err)
+	}
+
+	service.progress.Report(AgentKillStarted{Sandbox: claimed.Sandbox, Timeout: kill.timeout})
+	if _, _, err := service.runSbx(kill); err != nil {
+		return service.stuckAgentError(claimed, fmt.Errorf("could not kill it: %w", err))
+	}
+
+	service.progress.Report(SandboxStopStarted{Sandbox: claimed.Sandbox, Timeout: stop.timeout})
+	if _, _, err := service.runSbx(stop); err != nil {
+		return service.stuckAgentError(claimed, fmt.Errorf("could not stop sandbox %s: %w", claimed.Sandbox, err))
+	}
+	return nil
+}
+
+// stuckAgentError says where a launch left an agent it could not take down.
+func (service *DrudgerService) stuckAgentError(claimed *Drudger, cause error) error {
+	return fmt.Errorf("%w, so the agent may still be running in sandbox %s and Drudger %d stays claimed, run %s %d to kill it", cause, claimed.Sandbox, claimed.Slot, nukeCommand, claimed.Slot)
 }
 
 // SessionIDReadFailed reports a launched task whose session id could not be
