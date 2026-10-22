@@ -125,6 +125,17 @@ const (
 // All the sandbox code here is relared to a sigle environment: `docker sbx`.
 // TODO: move it to its own package
 
+// sbxAgentNames maps a harness to the agent sbx creates its sandbox for.
+var sbxAgentNames = map[Harness]string{
+	HarnessClaudeCode: sbxHarnessClaude,
+}
+
+// agentCommands maps a harness to the renderer of the command line that runs
+// its agent on the prompt of a run with an optional model.
+var agentCommands = map[Harness]func(runDir, model string) string{
+	HarnessClaudeCode: formatClaudeCommand,
+}
+
 // sandboxCommand is a sandbox command and how long it may run before DRUDGE
 // kills it.
 type sandboxCommand struct {
@@ -190,8 +201,10 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 	harness := service.settings.Harness
 
 	// TODO: at some point need to move concrete implementations to adapters
-	if env == EnvDockerSbx && harness == HarnessClaudeCode {
-		create := []string{sbxBinary, sbxCreateSubcommand, sbxHarnessClaude}
+	agentName, isKnownAgent := sbxAgentNames[harness]
+	agentCommand, isKnownCommand := agentCommands[harness]
+	if env == EnvDockerSbx && isKnownAgent && isKnownCommand {
+		create := []string{sbxBinary, sbxCreateSubcommand, agentName}
 		create = append(create, mounts...)
 		create = append(create, sbxNameFlag, sandboxName)
 
@@ -209,7 +222,7 @@ func (service *DrudgerService) pickDrudgerCommand(sandboxName string, workspaceR
 			start: sbxExecCommand(sbxExec{
 				sandbox:    sandboxName,
 				env:        service.settings.EnvNames,
-				script:     formatLauncher(workspaceRoot, runDir, service.settings.Model),
+				script:     formatLauncher(workspaceRoot, runDir, agentCommand(runDir, service.settings.Model)),
 				isDetached: true,
 			}),
 		}, nil
@@ -407,16 +420,9 @@ func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCom
 	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to remove a sandbox in environment %q, check the Drudger settings in the config", env)
 }
 
-// formatLauncher renders the shell script that runs the agent in a sandbox.
-// The agent works in the workspace and its output lands in the run directory,
-// so every path in it is absolute. The prompt is read from a file to keep an
-// arbitrarily long, arbitrarily quoted prompt out of the command line.
-//
-// Permission prompts are explicitly bypassed so that an agent does not stall
-// because it waits for a tool call approval. The sandbox is the security
-// boundary here.
-//
-// An empty model leaves the choice of model to the harness.
+// formatLauncher renders the shell script that runs an agent command in a
+// sandbox. The agent works in the workspace and its output lands in the run
+// directory, so every path in it is absolute.
 //
 // The agent gets the directories the path file lists on PATH.
 //
@@ -424,19 +430,7 @@ func (service *DrudgerService) pickRemoveCommand(sandboxName string) (sandboxCom
 // the pid file, then the launcher waits for it.
 //
 // The exit file is written last and is the only marker of a finished run.
-func formatLauncher(workspace, runDir, model string) string {
-	agentArgs := []string{
-		claudeBinary,
-		claudePromptFlag, catPrompt(runDir),
-		claudeOutputFormatFlag, claudeStreamJSONFormat,
-		claudeVerboseFlag,
-		claudePermissionFlag, claudeBypassPermissions,
-	}
-	if model != "" {
-		agentArgs = append(agentArgs, claudeModelFlag, shellQuote(model))
-	}
-	agentCommand := strings.Join(agentArgs, " ")
-
+func formatLauncher(workspace, runDir, agentCommand string) string {
 	return fmt.Sprintf(
 		"%scd %s || exit 1\n%s > %s 2> %s &\necho $! > %s\nwait $!\necho $? > %s\n",
 		formatPathPreamble(),
@@ -447,6 +441,29 @@ func formatLauncher(workspace, runDir, model string) string {
 		shellQuote(common.RunPidPath(runDir)),
 		shellQuote(common.RunExitPath(runDir)),
 	)
+}
+
+// formatClaudeCommand renders the Claude Code command line that works on the
+// prompt of a run. The prompt is read from a file to keep an arbitrarily long,
+// arbitrarily quoted prompt out of the command line.
+//
+// Permission prompts are explicitly bypassed so that an agent does not stall
+// because it waits for a tool call approval. The sandbox is the security
+// boundary here.
+//
+// An empty model leaves the choice of model to the harness.
+func formatClaudeCommand(runDir, model string) string {
+	agentArgs := []string{
+		claudeBinary,
+		claudePromptFlag, catPrompt(runDir),
+		claudeOutputFormatFlag, claudeStreamJSONFormat,
+		claudeVerboseFlag,
+		claudePermissionFlag, claudeBypassPermissions,
+	}
+	if model != "" {
+		agentArgs = append(agentArgs, claudeModelFlag, shellQuote(model))
+	}
+	return strings.Join(agentArgs, " ")
 }
 
 // catPrompts returns a cat command reading a quoted and escaped prompt.
