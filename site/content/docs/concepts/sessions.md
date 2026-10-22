@@ -47,6 +47,6 @@ Once the Session has ended, `drg task status` records the outcome on the Task: w
 
 ## When the vendor turns the agent away
 
-A vendor can refuse an agent before it does any work: a rate limit, an outage or an expired login. A Session that the vendor turned away never got going. The agent was refused before it could work, so the Task is not at fault and goes back to `todo`. The Task records what the vendor said and which kind of refusal it was. The Drudger goes idle and records its agent as refused.
+A vendor can refuse an agent before it does any work: a rate limit, an outage or an expired login. With the opencode harness, a provider opencode cannot reach, like a stopped local model server, refuses the agent too. A Session that the vendor turned away never got going. The agent was refused before it could work, so the Task is not at fault and goes back to `todo`. The Task records what the vendor said and which kind of refusal it was. The Drudger goes idle and records its agent as refused.
 
 Fix whatever the vendor named, like logging in again for an expired login, and run the Task again.

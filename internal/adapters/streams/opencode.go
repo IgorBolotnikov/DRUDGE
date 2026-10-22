@@ -36,6 +36,30 @@ const (
 // finished.
 const opencodeReasonStop = "stop"
 
+// Names of the opencode errors that say the provider turned the run away.
+const (
+	opencodeErrorAPI          = "APIError"
+	opencodeErrorProviderAuth = "ProviderAuthError"
+)
+
+// HTTP statuses of an API error that say which kind of refusal it was.
+const (
+	opencodeStatusUnauthorized = 401
+	opencodeStatusForbidden    = 403
+	opencodeStatusRateLimited  = 429
+	opencodeStatusUnavailable  = 503
+	opencodeStatusOverloaded   = 529
+)
+
+// Error codes a provider refusal reads as. They hold the fragments the vendor
+// error classes match.
+const (
+	opencodeCodeAuth      = "authentication_error"
+	opencodeCodeRateLimit = "rate_limit_error"
+	opencodeCodeOutage    = "overloaded_error"
+	opencodeCodeUnknown   = "api_error"
+)
+
 // OpencodeReader reads the JSON event stream the opencode harness writes.
 type OpencodeReader struct{}
 
@@ -67,6 +91,8 @@ type opencodeLine struct {
 		Name string `json:"name"`
 		Data struct {
 			Message string `json:"message"`
+			// StatusCode is zero when the provider could not be reached.
+			StatusCode int `json:"statusCode"`
 		} `json:"data"`
 	} `json:"error"`
 }
@@ -157,9 +183,10 @@ func (*OpencodeReader) SessionID(stream []byte) (string, error) {
 
 // Outcome adds up the steps of a run. The stream has no terminal event, so the
 // result exists once a step ends with the stop reason or an error event
-// appears.
+// appears. An API error or a provider auth error is a vendor refusal.
 func (*OpencodeReader) Outcome(stream []byte) (drudger.StreamOutcome, error) {
 	var (
+		outcome        drudger.StreamOutcome
 		result         drudger.SessionResult
 		hasEnded       bool
 		hasTimestamp   bool
@@ -194,6 +221,7 @@ func (*OpencodeReader) Outcome(stream []byte) (drudger.StreamOutcome, error) {
 			result.HasSucceeded = false
 			lastErrorName = parsed.Error.Name
 			lastError = parsed.Error.Data.Message
+			outcome.ErrorCode, outcome.IsVendorRefusal = opencodeRefusalCode(parsed.Error.Name, parsed.Error.Data.StatusCode)
 			hasEnded = true
 		}
 		return true
@@ -209,5 +237,29 @@ func (*OpencodeReader) Outcome(stream []byte) (drudger.StreamOutcome, error) {
 		result.Text = lastError
 	}
 	result.Duration = time.Duration(lastTimestamp-firstTimestamp) * time.Millisecond
-	return drudger.StreamOutcome{Result: &result}, nil
+	outcome.Result = &result
+	return outcome, nil
+}
+
+// opencodeRefusalCode reads the error code of an opencode error and whether
+// the provider refused the run. An API error without a status is a connection
+// failure.
+func opencodeRefusalCode(name string, statusCode int) (string, bool) {
+	if name == opencodeErrorProviderAuth {
+		return opencodeCodeAuth, true
+	}
+	if name != opencodeErrorAPI {
+		return "", false
+	}
+
+	switch statusCode {
+	case opencodeStatusUnauthorized, opencodeStatusForbidden:
+		return opencodeCodeAuth, true
+	case opencodeStatusRateLimited:
+		return opencodeCodeRateLimit, true
+	case opencodeStatusUnavailable, opencodeStatusOverloaded:
+		return opencodeCodeOutage, true
+	default:
+		return opencodeCodeUnknown, true
+	}
 }

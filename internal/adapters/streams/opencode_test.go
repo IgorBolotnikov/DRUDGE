@@ -17,6 +17,8 @@ const (
 	opencodeStopStepEndEvent = `{"type":"step_finish","timestamp":1792691376219,"sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","part":{"id":"prt_164bb904e0014xRaSUS4RXK6kp","reason":"stop","messageID":"msg_164bb8b87001X6PSzvDnFQoIl2","sessionID":"ses_e9b44b965ffeO2DLNgYKWU4JQ3","type":"step-finish","tokens":{"total":11780,"input":77,"output":31,"reasoning":0,"cache":{"write":0,"read":11672}},"cost":0.000098625}}`
 	opencodeErrorEvent       = `{"type":"error","timestamp":1792691381364,"sessionID":"ses_e9b445d02ffeWYRRGzwTctfG4Y","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_f903945e"}}}`
 
+	opencodeUnreachableEvent = `{"type":"error","timestamp":1792691450884,"sessionID":"ses_e9b444620ffeoxYhCaOwZEJuHV","error":{"name":"APIError","data":{"message":"Cannot connect to API: Unable to connect. Is the computer able to access the url?","isRetryable":true,"metadata":{"url":"http://127.0.0.1:9/v1/chat/completions"}}}}`
+
 	opencodeSessionID      = "ses_e9b44b965ffeO2DLNgYKWU4JQ3"
 	opencodeErrorSessionID = "ses_e9b445d02ffeWYRRGzwTctfG4Y"
 )
@@ -81,6 +83,17 @@ func TestOpencodeReader_Outcome(t *testing.T) {
 				IsError: true, Subtype: "UnknownError", NumTurns: 1, Duration: 8922 * time.Millisecond, CostUSD: 0.000098625, Text: "Unexpected server error. Check server logs for details.",
 			}},
 		},
+		{
+			name:  "a provider that could not be reached",
+			lines: []string{opencodeUnreachableEvent},
+			want: drudger.StreamOutcome{
+				Result: &drudger.SessionResult{
+					IsError: true, Subtype: "APIError", Text: "Cannot connect to API: Unable to connect. Is the computer able to access the url?",
+				},
+				IsVendorRefusal: true,
+				ErrorCode:       "api_error",
+			},
+		},
 	}
 
 	for _, testCase := range cases {
@@ -91,6 +104,47 @@ func TestOpencodeReader_Outcome(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Errorf("expected outcome %+v, got %+v", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestOpencodeReader_Outcome_providerErrors(t *testing.T) {
+	cases := []struct {
+		name          string
+		errorJSON     string
+		wantIsRefusal bool
+		wantErrorCode string
+	}{
+		{name: "a key that could not be loaded", errorJSON: `{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"no key"}}`, wantIsRefusal: true, wantErrorCode: "authentication_error"},
+		{name: "an unauthorized request", errorJSON: `{"name":"APIError","data":{"message":"unauthorized","statusCode":401}}`, wantIsRefusal: true, wantErrorCode: "authentication_error"},
+		{name: "a forbidden request", errorJSON: `{"name":"APIError","data":{"message":"forbidden","statusCode":403}}`, wantIsRefusal: true, wantErrorCode: "authentication_error"},
+		{name: "a rate limit", errorJSON: `{"name":"APIError","data":{"message":"slow down","statusCode":429}}`, wantIsRefusal: true, wantErrorCode: "rate_limit_error"},
+		{name: "an unavailable provider", errorJSON: `{"name":"APIError","data":{"message":"unavailable","statusCode":503}}`, wantIsRefusal: true, wantErrorCode: "overloaded_error"},
+		{name: "an overloaded provider", errorJSON: `{"name":"APIError","data":{"message":"overloaded","statusCode":529}}`, wantIsRefusal: true, wantErrorCode: "overloaded_error"},
+		{name: "another status", errorJSON: `{"name":"APIError","data":{"message":"bad gateway","statusCode":502}}`, wantIsRefusal: true, wantErrorCode: "api_error"},
+		{name: "a connection failure", errorJSON: `{"name":"APIError","data":{"message":"Cannot connect to API","isRetryable":true}}`, wantIsRefusal: true, wantErrorCode: "api_error"},
+		{name: "an unknown error", errorJSON: `{"name":"UnknownError","data":{"message":"boom"}}`},
+		{name: "an output too long", errorJSON: `{"name":"MessageOutputLengthError","data":{}}`},
+		{name: "an aborted message", errorJSON: `{"name":"MessageAbortedError","data":{"message":"aborted"}}`},
+		{name: "a context overflow", errorJSON: `{"name":"ContextOverflowError","data":{"message":"too long"}}`},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			line := `{"type":"error","timestamp":1792691450884,"sessionID":"ses_e9b444620ffeoxYhCaOwZEJuHV","error":` + testCase.errorJSON + `}`
+			got, err := NewOpencodeReader().Outcome(joinLines([]string{line}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Result == nil || !got.Result.IsError {
+				t.Fatalf("expected an errored result, got %+v", got.Result)
+			}
+			if got.IsVendorRefusal != testCase.wantIsRefusal {
+				t.Errorf("expected vendor refusal %t, got %t", testCase.wantIsRefusal, got.IsVendorRefusal)
+			}
+			if got.ErrorCode != testCase.wantErrorCode {
+				t.Errorf("expected error code %q, got %q", testCase.wantErrorCode, got.ErrorCode)
 			}
 		})
 	}
