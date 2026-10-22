@@ -171,17 +171,47 @@ func TestDrudgerService_RunTask_KillScriptReadsThePidFileAndMatchesNoCommandLine
 		t.Fatal("expected the silent agent to fail the launch")
 	}
 
-	kill := commands.calls[3]
+	kill := commands.calls[4]
 	script := kill[len(kill)-1]
 	runDir := common.RunDir(projectDir, string(taskToRun.ID))
 
-	if !strings.Contains(script, "cat '"+runDir+"/pid'") {
+	if !strings.Contains(script, "'"+runDir+"/pid'") {
 		t.Errorf("expected the kill script to read the pid file, got %q", script)
 	}
 	for _, banned := range []string{"pkill", "killall", "-f"} {
 		if strings.Contains(script, banned) {
 			t.Errorf("expected the kill script to hold no %q, got %q", banned, script)
 		}
+	}
+}
+
+func TestDrudgerService_RunTask_AgentCheckAndKillMatchTheAgentAlike(t *testing.T) {
+	projectDir := setupProjectDir(t)
+	taskToRun := todoTask()
+	commands := &fakeCommandRunner{
+		projectDir:    projectDir,
+		outputs:       []string{sandboxListingWith(testSandbox)},
+		isAgentSilent: true,
+	}
+	service := newTestServiceWith(testSettings(), commands, taskToRun)
+	if err := service.RunTask(testProjectSlug, taskToRun.ID, false); err == nil {
+		t.Fatal("expected the silent agent to fail the launch")
+	}
+
+	check := commands.calls[1]
+	checkScript := check[len(check)-1]
+	kill := commands.calls[4]
+	killScript := kill[len(kill)-1]
+	match := formatAgentMatch(slotRoot(projectDir, 1))
+
+	for name, script := range map[string]string{"check": checkScript, "kill": killScript} {
+		if !strings.HasPrefix(script, match) {
+			t.Errorf("expected the %s script to start with the agent match %q, got %q", name, match, script)
+		}
+	}
+	runsGlob := "'" + common.RunsDir(projectDir) + "'/*/pid"
+	if !strings.Contains(checkScript, runsGlob) {
+		t.Errorf("expected the check script to read every pid file under %s, got %q", runsGlob, checkScript)
 	}
 }
 
@@ -391,8 +421,8 @@ func TestDrudgerService_RunTask_DryRunPreviewsEverythingAndWritesNothing(t *test
 		t.Errorf("expected the start command to hold the argument %q, got %v", sbxDetachedFlag, start)
 	}
 
-	if commands.calls != nil {
-		t.Errorf("expected a dry run not to run anything, got %v", commands.subcommands())
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+		t.Errorf("expected nothing to run past the listing, got %v", got)
 	}
 	if len(service.runs.runs) != 0 {
 		t.Errorf("expected a dry run not to write a run directory, got %v", service.runs.runs)

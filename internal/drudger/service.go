@@ -33,10 +33,10 @@ const launchGracePeriod = 60 * time.Second
 // out the grace period.
 const launchPollInterval = 100 * time.Millisecond
 
-// nukeCommand is what a user runs to kill a Drudger and the agent inside it.
+// NukeCommand is what a user runs to kill a Drudger and the agent inside it.
 // This package uses it only as an informative value, not a source of any
 // decisions.
-const nukeCommand = "drg drudger nuke"
+const NukeCommand = "drg drudger nuke"
 
 // reclaimCommand is what a user runs to free the Drudger slots whose agent is
 // gone.
@@ -223,7 +223,7 @@ func (service *DrudgerService) acceptRerunnable(projectSlug string, layout proje
 	if working != nil {
 		return fmt.Errorf(
 			"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then start the task over",
-			working.Slot, working.Sandbox, taskToRerun.ID, nukeCommand, working.Slot,
+			working.Slot, working.Sandbox, taskToRerun.ID, NukeCommand, working.Slot,
 		)
 	}
 	return service.refuseBlocked(projectSlug, taskToRerun)
@@ -247,7 +247,7 @@ func (service *DrudgerService) RefuseWhileWorking(projectSlug string, taskToChan
 	}
 	return fmt.Errorf(
 		"Drudger %d (%s) is still working on task %s, wait for that Session to finish or run %s %d to kill it, then try again",
-		working.Slot, working.Sandbox, taskToChange.ID, nukeCommand, working.Slot,
+		working.Slot, working.Sandbox, taskToChange.ID, NukeCommand, working.Slot,
 	)
 }
 
@@ -398,6 +398,14 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		}
 	}()
 
+	listing, err := service.lookUpSandbox(claimed)
+	if err != nil {
+		return err
+	}
+	if err := service.refuseLiveAgent(claimed, listing, layout.RunsDir()); err != nil {
+		return err
+	}
+
 	space, err := service.resolveWorkspace(layout, claimed)
 	if err != nil {
 		return err
@@ -444,7 +452,7 @@ func (service *DrudgerService) startAgent(projectSlug string, taskToRun *task.Ta
 		return err
 	}
 
-	if err := service.ensureSandbox(projectSlug, claimed, plan, mounts); err != nil {
+	if err := service.ensureSandbox(projectSlug, claimed, listing, plan, mounts); err != nil {
 		return err
 	}
 
@@ -501,8 +509,10 @@ func (service *DrudgerService) renderTaskPrompt(taskToRun *task.Task, space slot
 // where it came from, the environment variables the sandbox is passed, the
 // paths copied into the worktrees and the argv of every command in the order
 // they run. UnsetEnvNames are the variables a launch would stop on.
-// UndecidedSetups are the repositories with no setup key. With pull
-// requests on it also names the provider they would be opened on.
+// UndecidedSetups are the repositories with no setup key. HasLiveAgent says the
+// sandbox runs an agent a launch would stop on, and AgentCheckErr says why
+// that could not be looked at. With pull requests on it also names the
+// provider they would be opened on.
 type RunDescribed struct {
 	Task                *task.Task
 	Slot                int
@@ -512,6 +522,8 @@ type RunDescribed struct {
 	EnvNames            []string
 	UnsetEnvNames       []string
 	UndecidedSetups     []string
+	HasLiveAgent        bool
+	AgentCheckErr       error
 	Copies              []LocalCopy
 	Commands            [][]string
 	PullRequestProvider remote.Provider
@@ -566,6 +578,11 @@ func (service *DrudgerService) describeRun(projectSlug string, taskToRun *task.T
 		Copies:          localCopies(listed.Repositories),
 		Commands:        commands,
 	}
+	listing, err := service.listSandboxes(plan.inspect)
+	if err == nil {
+		described.HasLiveAgent, err = service.hasLiveAgent(wouldUse, listing, layout.RunsDir())
+	}
+	described.AgentCheckErr = err
 	if service.remote != nil {
 		described.PullRequestProvider = service.remote.Provider()
 	}
@@ -616,7 +633,7 @@ type SandboxStopStarted struct {
 // A failure of either step leaves the agent possibly running, so the error
 // names the sandbox and the command that deletes it.
 func (service *DrudgerService) abortLaunch(claimed *Drudger, runDir string) error {
-	kill, err := service.pickKillCommand(claimed.Sandbox, runDir)
+	kill, err := service.pickKillCommand(claimed.Sandbox, claimed.Workspace, runDir)
 	if err != nil {
 		return service.stuckAgentError(claimed, err)
 	}
@@ -639,7 +656,7 @@ func (service *DrudgerService) abortLaunch(claimed *Drudger, runDir string) erro
 
 // stuckAgentError says where a launch left an agent it could not take down.
 func (service *DrudgerService) stuckAgentError(claimed *Drudger, cause error) error {
-	return fmt.Errorf("%w, so the agent may still be running in sandbox %s and Drudger %d stays claimed, run %s %d to kill it", cause, claimed.Sandbox, claimed.Slot, nukeCommand, claimed.Slot)
+	return fmt.Errorf("%w, so the agent may still be running in sandbox %s and Drudger %d stays claimed, run %s %d to kill it", cause, claimed.Sandbox, claimed.Slot, NukeCommand, claimed.Slot)
 }
 
 // SessionIDReadFailed reports a launched task whose session id could not be
@@ -678,19 +695,65 @@ type SandboxReused struct {
 	Sandbox string
 }
 
-// ensureSandbox creates the Drudger's sandbox unless it already exists.
+// lookUpSandbox lists the sandboxes of the configured environment for a
+// launch on the claimed Drudger.
+func (service *DrudgerService) lookUpSandbox(claimed *Drudger) (string, error) {
+	inspect, err := service.pickInspectCommand()
+	if err != nil {
+		return "", err
+	}
+
+	service.progress.Report(SandboxLookupStarted{Sandbox: claimed.Sandbox})
+	listing, err := service.listSandboxes(inspect)
+	if err != nil {
+		return "", fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
+	}
+	return listing, nil
+}
+
+// refuseLiveAgent stops a launch on a Drudger whose sandbox runs an agent. A
+// free slot can still have an agent of an earlier launch working in it.
+func (service *DrudgerService) refuseLiveAgent(claimed *Drudger, listing string, runsDir string) error {
+	hasAgent, err := service.hasLiveAgent(claimed, listing, runsDir)
+	if err != nil {
+		return err
+	}
+	if hasAgent {
+		return fmt.Errorf("Drudger %d has an agent running in sandbox %s, run %s %d to kill it and run this again", claimed.Slot, claimed.Sandbox, NukeCommand, claimed.Slot)
+	}
+	return nil
+}
+
+// hasLiveAgent tells whether an agent runs in the sandbox of a Drudger. A
+// sandbox the listing shows as stopped or does not hold runs no agent, and
+// nothing is run in it.
+func (service *DrudgerService) hasLiveAgent(drudger *Drudger, listing string, runsDir string) (bool, error) {
+	running, err := readRunningSandboxes(listing)
+	if err != nil {
+		return false, err
+	}
+	if !running[drudger.Sandbox] {
+		return false, nil
+	}
+
+	check, err := service.pickAgentCheckCommand(drudger.Sandbox, drudger.Workspace, runsDir)
+	if err != nil {
+		return false, err
+	}
+	pids, _, err := service.runSbx(check)
+	if err != nil {
+		return false, fmt.Errorf("could not look for a running agent in sandbox %s: %w", drudger.Sandbox, err)
+	}
+	return strings.TrimSpace(pids) != "", nil
+}
+
+// ensureSandbox creates the Drudger's sandbox unless the listing holds it.
 // Creating one that is already there fails, so the listing decides there.
 // An existing sandbox is only reused when it holds every mount of this run.
 //
 // What the listing says about the sandbox is recorded as the Drudger's
 // sandbox health.
-func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, plan sandboxPlan, mounts []string) error {
-	service.progress.Report(SandboxLookupStarted{Sandbox: claimed.Sandbox})
-	listing, err := service.listSandboxes(plan.inspect)
-	if err != nil {
-		return fmt.Errorf("%w, so DRUDGE cannot tell whether sandbox %s is there", err, claimed.Sandbox)
-	}
-
+func (service *DrudgerService) ensureSandbox(projectSlug string, claimed *Drudger, listing string, plan sandboxPlan, mounts []string) error {
 	existing, err := findSandbox(listing, claimed.Sandbox)
 	if err != nil {
 		return err

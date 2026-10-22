@@ -52,7 +52,7 @@ const schemaJSON = `{
           "type": "object",
           "properties": {
             "listSeconds": {
-              "description": "Seconds allowed for listing the sandboxes.",
+              "description": "Seconds allowed for listing the sandboxes, and for looking for a running agent in one before a launch.",
               "type": "integer",
               "minimum": 1,
               "default": 30

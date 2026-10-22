@@ -411,6 +411,50 @@ func TestCLIProgress_Report(t *testing.T) {
 				"  ! Repository ui has no setup in the local config, run drg project detect to detect it\n",
 		},
 		{
+			name: "a run described with an agent running in the sandbox",
+			event: drudger.RunDescribed{
+				Task:         sampleTask,
+				Slot:         3,
+				Sandbox:      "drudge-claude-demo-3",
+				PromptSource: "~/.drudge/prompt.md",
+				Prompt:       "Fix login\n",
+				HasLiveAgent: true,
+				Commands:     [][]string{{"sbx", "ls", "--json"}},
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
+			wantStderr: "  ! Sandbox drudge-claude-demo-3 has an agent running, a launch stops on it. Run drg drudger nuke 3 to kill it\n",
+		},
+		{
+			name: "a run described with a sandbox that could not be looked into",
+			event: drudger.RunDescribed{
+				Task:          sampleTask,
+				Slot:          3,
+				Sandbox:       "drudge-claude-demo-3",
+				PromptSource:  "~/.drudge/prompt.md",
+				Prompt:        "Fix login\n",
+				AgentCheckErr: errors.New("could not list the sandboxes: exit status 1"),
+				Commands:      [][]string{{"sbx", "ls", "--json"}},
+			},
+			want: "Dry run of task 006684e3  Fix login on Drudger 3 (drudge-claude-demo-3)\n" +
+				"      Prompt from  ~/.drudge/prompt.md\n" +
+				"\n" +
+				"      Fix login\n" +
+				"\n" +
+				"      Commands\n" +
+				"\n" +
+				`      "sbx" "ls" "--json"` + "\n" +
+				"· Nothing ran, it was a dry run\n",
+			wantStderr: "  ! Could not look for a running agent in sandbox drudge-claude-demo-3: could not list the sandboxes: exit status 1\n",
+		},
+		{
 			name: "a run described with copies",
 			event: drudger.RunDescribed{
 				Task:         sampleTask,

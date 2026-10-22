@@ -195,8 +195,8 @@ func TestDrudgerService_RunTask_WorkspaceFailureLeavesTheTaskAlone(t *testing.T)
 			t.Errorf("expected the error to name %q, got %q", want, err)
 		}
 	}
-	if commands.calls != nil {
-		t.Errorf("expected no sandbox command to run, got %v", commands.subcommands())
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+		t.Errorf("expected nothing to run past the listing, got %v", got)
 	}
 	if taskToRun.Status != task.StatusTodo {
 		t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
@@ -255,13 +255,13 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 			name:         "a worktree with no directory left stops the run",
 			isRegistered: true,
 			wantHealth:   WorkspaceGone,
-			wantInErr:    []string{testRepositoryName, nukeCommand + " 1"},
+			wantInErr:    []string{testRepositoryName, NukeCommand + " 1"},
 		},
 		{
 			name:       "a directory the repository does not know stops the run",
 			isPresent:  true,
 			wantHealth: WorkspaceMisplaced,
-			wantInErr:  []string{testRepositoryName, nukeCommand + " 1"},
+			wantInErr:  []string{testRepositoryName, NukeCommand + " 1"},
 		},
 	}
 
@@ -305,8 +305,8 @@ func TestDrudgerService_RunTask_ChecksTheWorkspaceAtHandover(t *testing.T) {
 					t.Errorf("expected the error to name %q, got %q", want, err)
 				}
 			}
-			if commands.calls != nil {
-				t.Errorf("expected no sandbox command to run, got %v", commands.subcommands())
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+				t.Errorf("expected nothing to run past the listing, got %v", got)
 			}
 			if len(service.git.addedWorktrees) != 0 {
 				t.Errorf("expected the worktree to be left alone, got %v", service.git.addedWorktrees)

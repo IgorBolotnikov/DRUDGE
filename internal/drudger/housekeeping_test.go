@@ -298,8 +298,8 @@ func TestDrudgerService_RunTask_HousekeepingFailureStopsTheRun(t *testing.T) {
 			if !strings.Contains(err.Error(), testCase.wantInErr) {
 				t.Errorf("expected the error to name the step %q, got %q", testCase.wantInErr, err)
 			}
-			if commands.calls != nil {
-				t.Errorf("expected no sandbox command to run, got %v", commands.subcommands())
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+				t.Errorf("expected nothing to run past the listing, got %v", got)
 			}
 			if taskToRun.Status != task.StatusTodo {
 				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)

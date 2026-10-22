@@ -387,5 +387,5 @@ func refuseWorkspace(slot int, repository repositoryWorktree, health WorkspaceHe
 	if health == WorkspaceGone {
 		saw = fmt.Sprintf("the worktree of repository %s is gone from %s", repository.Name, repository.Worktree)
 	}
-	return fmt.Errorf("%s, so Drudger %d cannot work, run %s %d to rebuild it", saw, slot, nukeCommand, slot)
+	return fmt.Errorf("%s, so Drudger %d cannot work, run %s %d to rebuild it", saw, slot, NukeCommand, slot)
 }

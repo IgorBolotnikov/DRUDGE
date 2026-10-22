@@ -42,7 +42,7 @@ The `task` and `remote` keys, `drudger.pageSize`, `drudger.promptFile` and `drud
 | `drudger.maxConcurrentDrudgers` | integer | `3` | minimum 1 | How many Drudgers may work on one project at once. |
 | `drudger.pageSize` | integer | `20` | minimum 0 | How many Drudgers drg drudger list shows on one page. 0 shows every Drudger on one page. |
 | `drudger.sandboxTimeouts` | object |  |  | How long DRUDGE waits for a sandbox command before it kills it. A command that needs longer than its timeout is killed and reported. |
-| `drudger.sandboxTimeouts.listSeconds` | integer | `30` | minimum 1 | Seconds allowed for listing the sandboxes. |
+| `drudger.sandboxTimeouts.listSeconds` | integer | `30` | minimum 1 | Seconds allowed for listing the sandboxes, and for looking for a running agent in one before a launch. |
 | `drudger.sandboxTimeouts.createSeconds` | integer | `600` | minimum 1 | Seconds allowed for creating a sandbox. A first creation pulls an image, which is why this one is generous. |
 | `drudger.sandboxTimeouts.removeSeconds` | integer | `120` | minimum 1 | Seconds allowed for removing a sandbox, and for killing the agent in it and stopping it after a failed launch. |
 | `drudger.sandboxTimeouts.setupSeconds` | integer | `900` | minimum 1 | Seconds allowed for each setup command of a repository, run in the sandbox before the agent starts. |

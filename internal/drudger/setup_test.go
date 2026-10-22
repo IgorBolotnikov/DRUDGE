@@ -292,8 +292,8 @@ func TestDrudgerService_RunTask_DryRunListsTheSetupCommands(t *testing.T) {
 	if got, want := described.Commands[3], setupCall(projectDir, "ui", ".drudge/hooks/ui", "pnpm install"); !slices.Equal(got, want) {
 		t.Errorf("expected the setup command %q, got %q", want, got)
 	}
-	if commands.calls != nil {
-		t.Errorf("expected nothing to run, got %q", commands.calls)
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+		t.Errorf("expected nothing to run past the listing, got %v", got)
 	}
 }
 
@@ -535,8 +535,8 @@ func TestDrudgerService_RunTask_DryRunReportsTheEnv(t *testing.T) {
 			if !slices.Equal(described.UnsetEnvNames, testCase.wantUnset) {
 				t.Errorf("expected the unset variables %q, got %q", testCase.wantUnset, described.UnsetEnvNames)
 			}
-			if commands.calls != nil {
-				t.Errorf("expected nothing to run, got %q", commands.calls)
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+				t.Errorf("expected nothing to run past the listing, got %v", got)
 			}
 		})
 	}

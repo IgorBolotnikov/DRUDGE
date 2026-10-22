@@ -76,7 +76,7 @@ func TestDrudgerService_RefuseWhileWorking(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected a task with a working agent to be refused")
 			}
-			for _, want := range []string{testSandbox, string(taskToEdit.ID), nukeCommand} {
+			for _, want := range []string{testSandbox, string(taskToEdit.ID), NukeCommand} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("expected the error to name %q, got %q", want, err)
 				}

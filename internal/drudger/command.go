@@ -312,17 +312,32 @@ func sbxExecCommand(invocation sbxExec) []string {
 
 // pickKillCommand builds the command that sends SIGTERM to the agent of a run
 // inside a sandbox.
-func (service *DrudgerService) pickKillCommand(sandboxName string, runDir string) (sandboxCommand, error) {
+func (service *DrudgerService) pickKillCommand(sandboxName string, workspace string, runDir string) (sandboxCommand, error) {
 	env := service.settings.Env
 
 	if env == EnvDockerSbx {
 		return sandboxCommand{
-			argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, script: formatKillScript(runDir)}),
+			argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, script: formatKillScript(workspace, runDir)}),
 			timeout: service.settings.SandboxTimeouts.Remove,
 		}, nil
 	}
 
 	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to kill an agent in environment %q, check the Drudger settings in the config", env)
+}
+
+// pickAgentCheckCommand builds the command that prints the process id of every
+// agent running in a sandbox.
+func (service *DrudgerService) pickAgentCheckCommand(sandboxName string, workspace string, runsDir string) (sandboxCommand, error) {
+	env := service.settings.Env
+
+	if env == EnvDockerSbx {
+		return sandboxCommand{
+			argv:    sbxExecCommand(sbxExec{sandbox: sandboxName, script: formatAgentCheckScript(workspace, runsDir)}),
+			timeout: service.settings.SandboxTimeouts.List,
+		}, nil
+	}
+
+	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to look for an agent in environment %q, check the Drudger settings in the config", env)
 }
 
 // pickStopCommand builds the command that stops a Drudger's sandbox.
@@ -339,14 +354,42 @@ func (service *DrudgerService) pickStopCommand(sandboxName string) (sandboxComma
 	return sandboxCommand{}, fmt.Errorf("DRUDGE does not know how to stop a sandbox in environment %q, check the Drudger settings in the config", env)
 }
 
+// formatAgentMatch renders a shell function that passes when the pid file it
+// is given names a live process working in workspace, and leaves that process
+// id in a variable. The kill and the check for a live agent both use it.
+//
+// Every sandbox mounts the same runs directory and has its own process ids, so
+// a pid file of another sandbox can name an unrelated process here. The working
+// directory tells them apart, because every Drudger has its own workspace. It
+// is compared with symlinks resolved, the way the process table reports it.
+func formatAgentMatch(workspace string) string {
+	return fmt.Sprintf(
+		"drudge_agent_alive() {\n  drudge_pid=$(cat \"$1\" 2>/dev/null)\n  [ -n \"$drudge_pid\" ] || return 1\n  kill -0 \"$drudge_pid\" 2>/dev/null || return 1\n  [ \"$(readlink /proc/\"$drudge_pid\"/cwd)\" = \"$(cd %s && pwd -P)\" ]\n}\n",
+		shellQuote(workspace),
+	)
+}
+
 // formatKillScript renders the shell script that sends SIGTERM to the process
 // the pid file of a run names and to nothing else. A missing or empty pid file
 // and a process that is gone both count as killed. The launcher outlives the
 // agent, so the run still ends with an exit file.
-func formatKillScript(runDir string) string {
+func formatKillScript(workspace string, runDir string) string {
 	return fmt.Sprintf(
-		"drudge_pid=$(cat %s 2>/dev/null)\n[ -n \"$drudge_pid\" ] || exit 0\nkill -0 \"$drudge_pid\" 2>/dev/null || exit 0\nkill -TERM \"$drudge_pid\"\n",
+		"%sdrudge_agent_alive %s || exit 0\nkill -TERM \"$drudge_pid\"\n",
+		formatAgentMatch(workspace),
 		shellQuote(common.RunPidPath(runDir)),
+	)
+}
+
+// formatAgentCheckScript renders the shell script that prints the process id
+// of every live agent the pid files of the runs directory name. It prints
+// nothing when no agent runs.
+func formatAgentCheckScript(workspace string, runsDir string) string {
+	return fmt.Sprintf(
+		"%sfor drudge_pid_file in %s/*/%s; do\n  if drudge_agent_alive \"$drudge_pid_file\"; then echo \"$drudge_pid\"; fi\ndone\n",
+		formatAgentMatch(workspace),
+		shellQuote(runsDir),
+		common.RunPidName,
 	)
 }
 
@@ -473,7 +516,7 @@ func checkSandboxWorkspace(existing *sandbox, mounts []string, slot int) error {
 
 	return fmt.Errorf(
 		"sandbox %s is mounted on %s and does not hold %s, run %s %d to delete it so DRUDGE can recreate it over this workspace",
-		existing.Name, formatMounts(existing.Workspaces), strings.Join(missing, ", "), nukeCommand, slot,
+		existing.Name, formatMounts(existing.Workspaces), strings.Join(missing, ", "), NukeCommand, slot,
 	)
 }
 

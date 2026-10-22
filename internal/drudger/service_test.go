@@ -1287,7 +1287,7 @@ func TestDrudgerService_RunTask_RecordsTheSessionIDTheAgentHasWritten(t *testing
 func TestDrudgerService_RunTask_CreatesTheSandboxOnlyWhenItIsMissing(t *testing.T) {
 	// The first exec resets the setup, the second one starts the agent.
 	createThenStart := []string{sbxLsSubcommand, sbxCreateSubcommand, sbxExecSubcommand, sbxExecSubcommand}
-	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand}
+	startOnly := []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand, sbxExecSubcommand}
 
 	cases := []struct {
 		name    string
@@ -1338,8 +1338,8 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 			name:    "a missing sandbox is created with sbx output echoed",
 			outputs: []string{sandboxListingWith(), pullProgress},
 			wantEvents: []any{
-				BranchCheckoutStarted{Branch: testTaskBranch},
 				SandboxLookupStarted{Sandbox: testSandbox},
+				BranchCheckoutStarted{Branch: testTaskBranch},
 				SandboxCreationStarted{Sandbox: testSandbox, Timeout: testSettings().SandboxTimeouts.Create},
 				SbxOutput{Binary: sbxBinary, Line: pullProgress},
 				AgentLaunchStarted{Sandbox: testSandbox},
@@ -1349,8 +1349,8 @@ func TestDrudgerService_RunTask_ReportsEachLaunchStep(t *testing.T) {
 			name:    "an existing sandbox is reused",
 			outputs: []string{sandboxListingWith(testSandbox)},
 			wantEvents: []any{
-				BranchCheckoutStarted{Branch: testTaskBranch},
 				SandboxLookupStarted{Sandbox: testSandbox},
+				BranchCheckoutStarted{Branch: testTaskBranch},
 				SandboxReused{Sandbox: testSandbox},
 				AgentLaunchStarted{Sandbox: testSandbox},
 			},
@@ -1444,15 +1444,15 @@ func TestDrudgerService_RunTask_RefusesASandboxMissingAMount(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected the missing mount to surface")
 			}
-			named := append([]string{testSandbox, nukeCommand}, testCase.mounts...)
+			named := append([]string{testSandbox, NukeCommand}, testCase.mounts...)
 			for _, want := range append(named, testCase.wantMissing...) {
 				inDir := inProjectDir(want, projectDir)
 				if !strings.Contains(err.Error(), inDir) {
 					t.Errorf("expected the error to name %q, got %q", inDir, err)
 				}
 			}
-			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
-				t.Errorf("expected nothing to run past the listing, got %v", got)
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand}) {
+				t.Errorf("expected nothing to run past the listing and the agent check, got %v", got)
 			}
 			if taskToRun.Status != task.StatusTodo {
 				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
@@ -1581,6 +1581,8 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 		// starting an agent.
 		isAgentSilent bool
 		wantRuns      int
+		// wantRunDir says the launch got as far as creating the run directory.
+		wantRunDir bool
 	}{
 		{
 			name:     "the listing fails",
@@ -1593,28 +1595,38 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 			wantRuns: 1,
 		},
 		{
-			name:     "creating the sandbox fails",
-			outputs:  []string{sandboxListingWith()},
-			errs:     []error{nil, spawnErr},
-			wantRuns: 2,
-		},
-		{
-			name:     "emptying the path file fails",
+			name:     "looking for a running agent fails",
 			outputs:  []string{sandboxListingWith(testSandbox)},
 			errs:     []error{nil, spawnErr},
 			wantRuns: 2,
 		},
 		{
-			name:     "starting the agent fails",
-			outputs:  []string{sandboxListingWith(testSandbox)},
-			errs:     []error{nil, nil, spawnErr},
-			wantRuns: 3,
+			name:       "creating the sandbox fails",
+			outputs:    []string{sandboxListingWith()},
+			errs:       []error{nil, spawnErr},
+			wantRuns:   2,
+			wantRunDir: true,
+		},
+		{
+			name:       "emptying the path file fails",
+			outputs:    []string{sandboxListingWith(testSandbox)},
+			errs:       []error{nil, nil, spawnErr},
+			wantRuns:   3,
+			wantRunDir: true,
+		},
+		{
+			name:       "starting the agent fails",
+			outputs:    []string{sandboxListingWith(testSandbox)},
+			errs:       []error{nil, nil, nil, spawnErr},
+			wantRuns:   4,
+			wantRunDir: true,
 		},
 		{
 			name:          "the agent never comes up",
 			outputs:       []string{sandboxListingWith(testSandbox)},
 			isAgentSilent: true,
-			wantRuns:      5,
+			wantRuns:      6,
+			wantRunDir:    true,
 		},
 	}
 
@@ -1645,14 +1657,12 @@ func TestDrudgerService_RunTask_StepFailureLeavesTheTaskAlone(t *testing.T) {
 				t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
 			}
 
-			// A launch creates the run directory before the sandbox steps, so
-			// it is there whatever fails afterwards.
 			isPresent, err := service.runs.HasRun(taskToRun.ID)
 			if err != nil {
 				t.Fatalf("could not check the run directory: %v", err)
 			}
-			if !isPresent {
-				t.Error("expected the run directory of the claimed slot to be there")
+			if isPresent != testCase.wantRunDir {
+				t.Errorf("expected the run directory to be there to be %v, got %v", testCase.wantRunDir, isPresent)
 			}
 		})
 	}
@@ -1672,15 +1682,15 @@ func TestDrudgerService_RunTask_SilentAgentIsKilledAndItsSandboxStopped(t *testi
 		t.Fatal("expected the silent agent to fail the launch")
 	}
 
-	wantSubcommands := []string{"ls", "exec", "exec", "exec", "stop"}
+	wantSubcommands := []string{"ls", "exec", "exec", "exec", "exec", "stop"}
 	if got := commands.subcommands(); !slices.Equal(got, wantSubcommands) {
 		t.Fatalf("expected sbx calls %v, got %v", wantSubcommands, got)
 	}
-	kill := commands.calls[3]
+	kill := commands.calls[4]
 	if script := kill[len(kill)-1]; !strings.Contains(script, common.RunPidPath(common.RunDir(projectDir, string(taskToRun.ID)))) {
 		t.Errorf("expected the kill to read the pid file, got %q", script)
 	}
-	if stop := commands.calls[4]; !slices.Equal(stop, []string{"sbx", "stop", testSandbox}) {
+	if stop := commands.calls[5]; !slices.Equal(stop, []string{"sbx", "stop", testSandbox}) {
 		t.Errorf("expected sbx stop of the sandbox, got %v", stop)
 	}
 	if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
@@ -1705,8 +1715,8 @@ func TestDrudgerService_RunTask_AgentThatCannotBeTakenDownKeepsTheSlotClaimed(t 
 		name string
 		errs []error
 	}{
-		{name: "the kill fails", errs: []error{nil, nil, nil, spawnErr}},
-		{name: "the stop fails", errs: []error{nil, nil, nil, nil, spawnErr}},
+		{name: "the kill fails", errs: []error{nil, nil, nil, nil, spawnErr}},
+		{name: "the stop fails", errs: []error{nil, nil, nil, nil, nil, spawnErr}},
 	}
 
 	for _, testCase := range cases {
@@ -1726,7 +1736,7 @@ func TestDrudgerService_RunTask_AgentThatCannotBeTakenDownKeepsTheSlotClaimed(t 
 				t.Fatal("expected the failure to surface")
 			}
 
-			for _, want := range []string{"may still be running", testSandbox, nukeCommand + " 1"} {
+			for _, want := range []string{"may still be running", testSandbox, NukeCommand + " 1"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("expected the error to contain %q, got %q", want, err)
 				}
@@ -1747,7 +1757,7 @@ func TestDrudgerService_RunTask_FailureBeforeStartRunsNeitherKillNorStop(t *test
 	commands := &fakeCommandRunner{
 		projectDir: projectDir,
 		outputs:    []string{sandboxListingWith(testSandbox)},
-		errs:       []error{nil, fmt.Errorf("sbx: boom")},
+		errs:       []error{nil, nil, fmt.Errorf("sbx: boom")},
 	}
 	service := newTestServiceWith(testSettings(), commands, taskToRun)
 
@@ -1758,8 +1768,159 @@ func TestDrudgerService_RunTask_FailureBeforeStartRunsNeitherKillNorStop(t *test
 	if got := commands.callCount("stop"); got != 0 {
 		t.Errorf("expected no sbx stop, got %d", got)
 	}
-	if got := commands.callCount("exec"); got != 1 {
-		t.Errorf("expected only the reset exec, got %d", got)
+	if got := commands.callCount("exec"); got != 2 {
+		t.Errorf("expected only the agent check and the reset exec, got %d", got)
+	}
+}
+
+// agentChecks returns the calls that looked for a running agent.
+func (runner *fakeCommandRunner) agentChecks() [][]string {
+	var checks [][]string
+	for _, argv := range runner.calls {
+		if strings.Contains(argv[len(argv)-1], "/*/pid") {
+			checks = append(checks, argv)
+		}
+	}
+	return checks
+}
+
+func TestDrudgerService_RunTask_ChecksTheSandboxForARunningAgent(t *testing.T) {
+	cases := []struct {
+		name            string
+		outputs         []string
+		wantAgentChecks int
+		wantRefused     bool
+	}{
+		{
+			name:            "a running sandbox with an agent is refused",
+			outputs:         []string{sandboxListingWith(testSandbox), "4242\n"},
+			wantAgentChecks: 1,
+			wantRefused:     true,
+		},
+		{
+			name:            "a running sandbox with no agent launches",
+			outputs:         []string{sandboxListingWith(testSandbox), ""},
+			wantAgentChecks: 1,
+		},
+		{
+			name:    "a stopped sandbox launches without a look inside",
+			outputs: []string{sandboxListingStopped(testSandbox)},
+		},
+		{
+			name:    "a missing sandbox launches without a look inside",
+			outputs: []string{sandboxListingWith()},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: testCase.outputs}
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+			err := service.RunTask(testProjectSlug, taskToRun.ID, false)
+
+			if got := len(commands.agentChecks()); got != testCase.wantAgentChecks {
+				t.Errorf("expected %d looks for a running agent, got %d in %v", testCase.wantAgentChecks, got, commands.subcommands())
+			}
+			if !testCase.wantRefused {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if taskToRun.Status != task.StatusInProgress {
+					t.Errorf("expected the task to be %q, got %q", task.StatusInProgress, taskToRun.Status)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Fatal("expected the running agent to stop the launch")
+			}
+			for _, want := range []string{"Drudger 1", testSandbox, NukeCommand + " 1"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected the error to contain %q, got %q", want, err)
+				}
+			}
+			if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand}) {
+				t.Errorf("expected nothing to run past the agent check, got %v", got)
+			}
+			isPresent, err := service.runs.HasRun(taskToRun.ID)
+			if err != nil {
+				t.Fatalf("could not check the run directory: %v", err)
+			}
+			if isPresent {
+				t.Error("expected no run directory to be prepared")
+			}
+			if len(service.git.fetched) != 0 || len(service.git.addedWorktrees) != 0 {
+				t.Errorf("expected the workspace to be left alone, got fetches %v and worktrees %v", service.git.fetched, service.git.addedWorktrees)
+			}
+			if taskToRun.Status != task.StatusTodo {
+				t.Errorf("expected the task to stay %q, got %q", task.StatusTodo, taskToRun.Status)
+			}
+			if held := service.drudgers.holderOf(taskToRun.ID); held != nil {
+				t.Errorf("expected the claim to be released, got Drudger %d", held.Slot)
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunTask_DryRunWarnsAboutARunningAgent(t *testing.T) {
+	cases := []struct {
+		name            string
+		outputs         []string
+		errs            []error
+		wantLiveAgent   bool
+		wantCheckErr    bool
+		wantAgentChecks int
+	}{
+		{
+			name:            "an agent running in the sandbox",
+			outputs:         []string{sandboxListingWith(testSandbox), "4242\n"},
+			wantLiveAgent:   true,
+			wantAgentChecks: 1,
+		},
+		{
+			name:            "a running sandbox with no agent",
+			outputs:         []string{sandboxListingWith(testSandbox), ""},
+			wantAgentChecks: 1,
+		},
+		{
+			name:    "a stopped sandbox",
+			outputs: []string{sandboxListingStopped(testSandbox)},
+		},
+		{
+			name:         "a listing that fails",
+			errs:         []error{fmt.Errorf("sbx: boom")},
+			wantCheckErr: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectDir := setupProjectDir(t)
+			taskToRun := todoTask()
+			commands := &fakeCommandRunner{projectDir: projectDir, outputs: testCase.outputs, errs: testCase.errs}
+			service := newTestServiceWith(testSettings(), commands, taskToRun)
+
+			if err := service.RunTask(testProjectSlug, taskToRun.ID, true); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			described := singleEvent[RunDescribed](t, service.progress)
+			if described.HasLiveAgent != testCase.wantLiveAgent {
+				t.Errorf("expected a live agent to be %v, got %v", testCase.wantLiveAgent, described.HasLiveAgent)
+			}
+			if hasCheckErr := described.AgentCheckErr != nil; hasCheckErr != testCase.wantCheckErr {
+				t.Errorf("expected a check error to be %v, got %v", testCase.wantCheckErr, described.AgentCheckErr)
+			}
+			if got := len(commands.agentChecks()); got != testCase.wantAgentChecks {
+				t.Errorf("expected %d looks for a running agent, got %d", testCase.wantAgentChecks, got)
+			}
+			if len(commands.started) != 0 {
+				t.Errorf("expected a dry run to start nothing, got %v", commands.started)
+			}
+		})
 	}
 }
 
@@ -1963,7 +2124,7 @@ func TestDrudgerService_RunTask_LaunchesIntoTheStoredSandboxName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand}) {
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand, sbxExecSubcommand, sbxExecSubcommand, sbxExecSubcommand}) {
 		t.Errorf("expected the stored sandbox to be reused, got %v", got)
 	}
 	if start := commands.started[0]; !slices.Contains(start, namedByAnEarlierHarness) {
@@ -2024,8 +2185,8 @@ func TestDrudgerService_RunTask_DryRunClaimsNothing(t *testing.T) {
 	if recorded := service.drudgers.atSlot(1); recorded.SandboxHealth != SandboxUnchecked {
 		t.Errorf("expected a dry run to record no sandbox health, got %q", recorded.SandboxHealth)
 	}
-	if len(commands.calls) != 0 {
-		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+		t.Errorf("expected nothing to run past the listing, got %v", got)
 	}
 }
 
@@ -2391,7 +2552,7 @@ func TestDrudgerService_RerunTask_RefusesATaskWhoseAgentIsStillWorking(t *testin
 	if err == nil {
 		t.Fatal("expected a rerun of a task with a working agent to be refused")
 	}
-	for _, want := range []string{testSandbox, string(taskToRerun.ID), nukeCommand} {
+	for _, want := range []string{testSandbox, string(taskToRerun.ID), NukeCommand} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected the error to name %q, got %q", want, err)
 		}
@@ -2532,8 +2693,8 @@ func TestDrudgerService_RerunTask_DryRunLeavesThePreviousRunAlone(t *testing.T) 
 	if described := singleEvent[RunDescribed](t, service.progress); described.Slot != 2 || described.Sandbox != testSandboxSlot2 {
 		t.Errorf("expected the dry run to name Drudger 2 (%s), got %+v", testSandboxSlot2, described)
 	}
-	if len(commands.calls) != 0 {
-		t.Errorf("expected a dry run to run nothing, got %v", commands.subcommands())
+	if got := commands.subcommands(); !slices.Equal(got, []string{sbxLsSubcommand}) {
+		t.Errorf("expected nothing to run past the listing, got %v", got)
 	}
 	if held := service.drudgers.holderOf(taskToRerun.ID); held != nil {
 		t.Errorf("expected no Drudger to hold the task, got Drudger %d", held.Slot)

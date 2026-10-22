@@ -204,6 +204,12 @@ func (p *cliProgress) reportDrudger(event any) {
 		for _, repository := range event.UndecidedSetups {
 			warnSetupUndecided(p.out, repository)
 		}
+		if event.HasLiveAgent {
+			p.out.Warn("Sandbox %s has an agent running, a launch stops on it. Run %s %d to kill it", event.Sandbox, drudger.NukeCommand, event.Slot)
+		}
+		if event.AgentCheckErr != nil {
+			p.out.Warn("Could not look for a running agent in sandbox %s: %v", event.Sandbox, event.AgentCheckErr)
+		}
 		p.out.Block(event.Prompt)
 		if len(event.Copies) > 0 {
 			copies := make([]string, 0, len(event.Copies))
