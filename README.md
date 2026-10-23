@@ -18,7 +18,7 @@ They're not coworkers. They're not digital employees. They're tools.
 - Tasks grouped by ticket (external ID) and by parent task
 - A pool of reusable drudgers, each with its own git worktree per repository
 - Several drudgers working in parallel, you configure how many
-- Claude Code as the agent vendor (others TBD)
+- Claude Code or opencode as the agent harness
 - A full record of every run: the prompt, the event stream, the logs, the cost and the time it took to work on a task
 - Tasks go back to the queue when the vendor turns an agent away, whether by rate limit, outage or expired login
 - Commands to reclaim a stuck sandbox or nuke a broken one

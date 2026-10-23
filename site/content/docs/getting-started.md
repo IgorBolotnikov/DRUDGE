@@ -10,7 +10,9 @@ This page takes you from nothing to a first [Task]({{< relref "/docs/concepts/ta
 - Linux or macOS. On Windows, run DRUDGE inside WSL.
 - git.
 - [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) with the `sbx` CLI. Every Drudger runs its agent in an `sbx` sandbox.
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with a login. sbx keeps its own copy of the token, and a host login does not refresh it. When the token inside sbx expires, log in again and re-seed the credentials inside sbx.
+- One harness for the agents:
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with a login. sbx keeps its own copy of the token, and a host login does not refresh it. When the token inside sbx expires, log in again and re-seed the credentials inside sbx.
+  - [opencode](https://opencode.ai) with a provider the sandbox can reach. See [opencode](#opencode) below.
 
 ## Install
 
