@@ -167,21 +167,16 @@ func (t *Theme) Reset() string {
 	return ansiReset
 }
 
-const (
-	errorLabel = "Error:"
-	warnLabel  = "!"
-)
-
 // ErrorLabel returns the label of an error printed to stderr, in the color of
 // the error role.
 func (t *Theme) ErrorLabel() string {
-	return t.Paint(Stderr, RoleError, errorLabel)
+	return t.Paint(Stderr, RoleError, common.PlainErrorLabel)
 }
 
 // WarnLabel returns the label of a warning printed to stderr, in the color of
 // the warning role.
 func (t *Theme) WarnLabel() string {
-	return t.Paint(Stderr, RoleWarning, warnLabel)
+	return t.Paint(Stderr, RoleWarning, common.PlainWarnLabel)
 }
 
 // SkippedOverrides returns the overrides Load skipped because their value is

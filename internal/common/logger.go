@@ -26,18 +26,18 @@ type Labels struct {
 const (
 	// TODO: remove this label duplication here and in the logger
 	// Only one place should define it
-	plainErrorLabel = "Error:"
-	plainWarnLabel  = "!"
+	PlainErrorLabel = "Error:"
+	PlainWarnLabel  = "!"
 )
 
 // NewLogger creates a logger with an optional prefix printed before each
 // message. An empty label falls back to a plain one.
 func NewLogger(prefix string, labels Labels) *Logger {
 	if labels.Error == "" {
-		labels.Error = plainErrorLabel
+		labels.Error = PlainErrorLabel
 	}
 	if labels.Warn == "" {
-		labels.Warn = plainWarnLabel
+		labels.Warn = PlainWarnLabel
 	}
 	return &Logger{prefix: prefix, labels: labels}
 }
