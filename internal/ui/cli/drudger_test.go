@@ -15,6 +15,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
 const (
@@ -235,21 +236,21 @@ func TestPrintDrudgersColors(t *testing.T) {
 	// healthRoles repeats the roles of the health labels on purpose. A test
 	// that reads them from the production map passes whatever roles it holds.
 	healthRoles := map[string]string{
-		healthOkLabel:           theme.RoleSuccess,
-		healthUncheckedLabel:    theme.RoleMuted,
-		sandboxUncheckedLabel:   theme.RoleMuted,
-		workspaceUncheckedLabel: theme.RoleMuted,
-		agentUncheckedLabel:     theme.RoleMuted,
-		sandboxGoneLabel:        theme.RoleError,
-		sandboxMisplacedLabel:   theme.RoleError,
-		workspaceGoneLabel:      theme.RoleError,
-		workspaceMisplacedLabel: theme.RoleError,
-		agentRefusedLabel:       theme.RoleError,
+		style.HealthOkLabel:           theme.RoleSuccess,
+		style.HealthUncheckedLabel:    theme.RoleMuted,
+		style.SandboxUncheckedLabel:   theme.RoleMuted,
+		style.WorkspaceUncheckedLabel: theme.RoleMuted,
+		style.AgentUncheckedLabel:     theme.RoleMuted,
+		style.SandboxGoneLabel:        theme.RoleError,
+		style.SandboxMisplacedLabel:   theme.RoleError,
+		style.WorkspaceGoneLabel:      theme.RoleError,
+		style.WorkspaceMisplacedLabel: theme.RoleError,
+		style.AgentRefusedLabel:       theme.RoleError,
 	}
 	coloredRows := func(palette *theme.Theme) string {
 		var lines strings.Builder
 		for index, health := range plainHealths {
-			labels := strings.Split(health, healthPartSeparator)
+			labels := strings.Split(health, style.HealthPartSeparator)
 			for labelIndex, label := range labels {
 				role, ok := healthRoles[label]
 				if !ok {
@@ -258,7 +259,7 @@ func TestPrintDrudgersColors(t *testing.T) {
 				labels[labelIndex] = palette.Paint(theme.Stdout, role, label)
 			}
 			padding := strings.Repeat(" ", healthColumnWidth-len(health))
-			lines.WriteString(rowLine(index+1, strings.Join(labels, healthPartSeparator)+padding))
+			lines.WriteString(rowLine(index+1, strings.Join(labels, style.HealthPartSeparator)+padding))
 		}
 		return lines.String()
 	}
@@ -349,7 +350,7 @@ func TestDrudgerList(t *testing.T) {
 	header := fmt.Sprintf("  SLOT  %-40s  %-*s  TASK      %-*s  LAST CHECKED\n", "DRUDGER", harnessColumnWidth, "HARNESS", healthColumnWidth, "HEALTH") +
 		fmt.Sprintf("  ----  %s  %s  --------  %s  ------------\n", strings.Repeat("-", 40), strings.Repeat("-", harnessColumnWidth), strings.Repeat("-", healthColumnWidth))
 	row := func(slot int) string {
-		return fmt.Sprintf("  %-4d  %-40s  %-*s  %-8s  %-*s  never\n", slot, testSandboxName(slot), harnessColumnWidth, drudger.HarnessClaudeCode, idleLabel, healthColumnWidth, healthUncheckedLabel)
+		return fmt.Sprintf("  %-4d  %-40s  %-*s  %-8s  %-*s  never\n", slot, testSandboxName(slot), harnessColumnWidth, drudger.HarnessClaudeCode, idleLabel, healthColumnWidth, style.HealthUncheckedLabel)
 	}
 
 	cases := []struct {

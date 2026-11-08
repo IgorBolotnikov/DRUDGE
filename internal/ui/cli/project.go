@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
@@ -102,7 +103,7 @@ func projectInit(name string, shouldTakeDefaults bool) error {
 	}
 
 	out := newCommandPrinter()
-	svc, err := newProjectService(out)
+	svc, err := app.NewProjectService(newCLIProgress(out))
 	if err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func projectDetect(options project.DetectSetupOptions) error {
 	}
 
 	out := newCommandPrinter()
-	svc, err := newProjectService(out)
+	svc, err := app.NewProjectService(newCLIProgress(out))
 	if err != nil {
 		return err
 	}
@@ -263,7 +264,7 @@ func repositoryLines(resolved []project.ResolvedRepository) []string {
 
 func projectDelete(lookup string, isForced bool) error {
 	out := newCommandPrinter()
-	svc, err := newProjectService(out)
+	svc, err := app.NewProjectService(newCLIProgress(out))
 	if err != nil {
 		return err
 	}
@@ -295,7 +296,7 @@ func projectDelete(lookup string, isForced bool) error {
 func projectRename(args []string) error {
 	oldName, newName := args[0], args[1]
 
-	svc, err := newProjectService(newCommandPrinter())
+	svc, err := app.NewProjectService(newCLIProgress(newCommandPrinter()))
 	if err != nil {
 		return err
 	}
@@ -314,7 +315,7 @@ func projectList(flags pageFlags) error {
 	}
 
 	out := newCommandPrinter()
-	svc, err := newProjectService(out)
+	svc, err := app.NewProjectService(newCLIProgress(out))
 	if err != nil {
 		return err
 	}

@@ -30,6 +30,10 @@ DRUDGE is built to need as little maintenance and support as possible. This appl
 
 This codebase follows domain-driven design. `internal/ui` holds the user interfaces: `internal/ui/cli` is the thin CLI layer today, and `internal/ui/tui` comes next. An HTMX-based web frontend is planned on top of the same domain layer too. Business logic belongs in the domain packages (`internal/project`, `internal/task`, `internal/drudger`,their services) and never in `internal/ui`. A command handler should only parse args, call a service, and format output — if a handler is doing anything more than that, it's logic that another interface will need to duplicate, and it should move down into the domain layer instead.
 
+**Composition root.** `internal/app` is the composition root every interface shares. It loads the local and global config and builds the repositories, runners and services: the task service, the Drudger service with its settings, stream readers, git operations and pull request remote, and the project service. It takes the progress port (`common.Progress`) as a parameter, so it never builds a printer and never imports an interface. An interface builds its services through `internal/app` and keeps only what is specific to it. For the CLI that is the printer, the progress renderer and the confirmation prompts.
+
+**Shared presentation.** `internal/ui/style` holds the presentation pieces the interfaces share: the theme role of each task status, the Drudger health labels and the theme role of each health label. It depends on no terminal UI library.
+
 **Local-first and unix-only.** Sandboxes are local containers, workspaces are local directories and run artifacts live in local files. Concurrency means two CLI invocations on one machine. Use same-machine primitives like `flock` and local paths. Don't add networked storage, cross-machine coordination or distributed locking. Windows users run DRUDGE in WSL, so don't add Windows build tags or fallbacks.
 
 **CLI dispatch.** `cli.NewRoot` (`internal/ui/cli/cmd.go`) builds the tree of `*cli.Cmd` declarations and `main.go` calls `Validate` and `Execute` on it. A command declares its `Args` (the positionals it requires), `Desc`, `Help`, `Subcommands` and `Setup`. `Setup` declares the flags of the command on a per-command `flag.FlagSet` and returns its run function. `Execute` walks the tree and handles help, positional counts and flags interleaved with positionals, so a run function gets parsed flags and exactly the positionals it declared. `Validate` panics on a leaf without `Setup`. A command with non-trivial flags keeps them in a flag struct with a `declare(fs)` method and a method that turns the flags into the DTO of its service, like `taskNewFlags` in `internal/ui/cli/task.go`. Only the standard library is used. Never use the global `flag.CommandLine` and don't introduce a flags/cobra-style dependency.
@@ -41,7 +45,7 @@ This codebase follows domain-driven design. `internal/ui` holds the user interfa
 - `service.go` — a `XService` holding a `XRepository` + `common.Progress`, doing validation and orchestration
 - optionally, if a service is large enough, it is split among multiple files named after a facet they implement, like `internal/drudger` does
 
-`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectInit` in `internal/ui/cli`.
+`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. `internal/app` wires the adapters into the services directly, with no DI container.
 
 **Storage layout** (see `docs/DOMAIN_MODEL.md`), all under `~/.drudge/`:
 

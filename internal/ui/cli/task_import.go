@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -23,8 +24,8 @@ func (flags *taskImportFlags) declare(fs *flag.FlagSet) {
 
 // taskImport adds the tasks of a zip archive the project does not have yet.
 func taskImport(flags *taskImportFlags, path string) error {
-	out := newCommandPrinter()
-	projects, err := newProjectService(out)
+	progress := newCLIProgress(newCommandPrinter())
+	projects, err := app.NewProjectService(progress)
 	if err != nil {
 		return err
 	}
@@ -37,7 +38,7 @@ func taskImport(flags *taskImportFlags, path string) error {
 	if err != nil {
 		return err
 	}
-	tasks := newTaskService(importingProject.Slug, nil, globalCfg, out)
+	tasks := app.NewTaskService(importingProject.Slug, nil, globalCfg, progress)
 
 	return tasks.ImportTasks(task.ImportTasksDto{ProjectSlug: importingProject.Slug, Path: path, IsDryRun: flags.isDryRun})
 }

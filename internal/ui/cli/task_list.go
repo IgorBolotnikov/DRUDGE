@@ -4,12 +4,13 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
 // taskTitleWidth is how much room a listing gives a task title.
@@ -25,19 +26,9 @@ const blockedByTitle = "BLOCKED BY"
 // parent.
 const childRowIndent = "  "
 
-// statusRoles maps a task status to the theme role it prints in. A status
-// left out, like todo, prints plain.
-var statusRoles = map[task.TaskStatus]string{
-	task.StatusDraft:      theme.RoleMuted,
-	task.StatusInProgress: theme.RoleInfo,
-	task.StatusFuckedUp:   theme.RoleError,
-	task.StatusUnmerged:   theme.RoleWarning,
-	task.StatusDone:       theme.RoleSuccess,
-}
-
 // taskStatusColor returns what colors a task status in palette.
 func taskStatusColor(palette *theme.Theme) func(text string) string {
-	return roleColor(palette, statusRoles)
+	return roleColor(palette, style.StatusRoles)
 }
 
 // taskListFlags holds the filters and the page of drg task list. A filter
@@ -71,24 +62,19 @@ func (flags *taskListFlags) filter() (task.ListTasksFilter, error) {
 }
 
 func taskList(filter task.ListTasksFilter, page pageFlags) error {
-	cfg, err := config.LoadLocal()
+	configs, err := app.LoadConfigs()
 	if err != nil {
 		return err
 	}
-	globalCfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	size, err := page.pageSize(config.ResolveTaskPageSize(cfg, globalCfg))
+	size, err := page.pageSize(config.ResolveTaskPageSize(configs.Local, configs.Global))
 	if err != nil {
 		return err
 	}
 
 	out := newCommandPrinter()
-	repo := persistence.NewFileTaskRepository(cfg.ProjectSlug)
-	svc := task.NewTaskService(repo, newCLIProgress(out), config.ResolveDefaultTaskStatus(cfg, globalCfg), repositoryPaths(cfg))
+	svc := app.NewTaskService(configs.Local.ProjectSlug, configs.Local, configs.Global, newCLIProgress(out))
 
-	listed, err := svc.ListTasks(cfg.ProjectSlug, filter, page.number, size)
+	listed, err := svc.ListTasks(configs.Local.ProjectSlug, filter, page.number, size)
 	if err != nil {
 		return err
 	}

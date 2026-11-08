@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
@@ -36,7 +37,8 @@ func (flags *taskExportFlags) declare(fs *flag.FlagSet) {
 // taskExport writes every task of a project into a zip archive.
 func taskExport(flags *taskExportFlags) error {
 	out := newCommandPrinter()
-	projects, err := newProjectService(out)
+	progress := newCLIProgress(out)
+	projects, err := app.NewProjectService(progress)
 	if err != nil {
 		return err
 	}
@@ -49,7 +51,7 @@ func taskExport(flags *taskExportFlags) error {
 	if err != nil {
 		return err
 	}
-	tasks := newTaskService(exportedProject.Slug, nil, globalCfg, out)
+	tasks := app.NewTaskService(exportedProject.Slug, nil, globalCfg, progress)
 
 	exported, err := tasks.ExportTasks(task.ExportTasksDto{ProjectSlug: exportedProject.Slug, Path: flags.output})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
 var DrudgerCmd = &Cmd{
@@ -61,64 +62,24 @@ const (
 	neverLabel = "never"
 )
 
-// Labels for what drudge last saw of a Drudger. A Drudger is an agent in a
-// sandbox over a workspace, so the health column reports all three parts. A
-// part that is fine stays quiet. A part drudge has not looked at yet says so
-// plainly. A broken part is shouted, so it stands out in a listing of
-// otherwise fine Drudgers.
-const (
-	healthOkLabel        = "ok"
-	healthUncheckedLabel = "unchecked"
-
-	sandboxGoneLabel      = "SANDBOX GONE"
-	sandboxMisplacedLabel = "WRONG WORKSPACE"
-	sandboxUncheckedLabel = "sandbox unchecked"
-
-	workspaceGoneLabel      = "WORKSPACE GONE"
-	workspaceMisplacedLabel = "WRONG WORKTREE"
-	workspaceUncheckedLabel = "workspace unchecked"
-
-	agentRefusedLabel   = "AGENT REFUSED"
-	agentUncheckedLabel = "agent unchecked"
-
-	// healthPartSeparator joins the parts that have something to say.
-	healthPartSeparator = ", "
-
-	// healthColumnWidth fits the widest row a Drudger can show: two parts
-	// drudge has not looked at and one that is broken. Three unchecked parts
-	// read as one label.
-	healthColumnWidth = len(sandboxUncheckedLabel) + len(healthPartSeparator) + len(workspaceUncheckedLabel) + len(healthPartSeparator) + len(agentRefusedLabel)
-)
+// healthColumnWidth fits the widest row a Drudger can show: two parts drudge
+// has not looked at and one that is broken. Three unchecked parts read as one
+// label.
+const healthColumnWidth = len(style.SandboxUncheckedLabel) + len(style.HealthPartSeparator) + len(style.WorkspaceUncheckedLabel) + len(style.HealthPartSeparator) + len(style.AgentRefusedLabel)
 
 // harnessColumnWidth fits the longest harness name.
 const harnessColumnWidth = len(drudger.HarnessClaudeCode)
 
-// healthLabelRoles maps a health label to the theme role it prints in.
-var healthLabelRoles = map[string]string{
-	healthOkLabel: theme.RoleSuccess,
-
-	healthUncheckedLabel:    theme.RoleMuted,
-	sandboxUncheckedLabel:   theme.RoleMuted,
-	workspaceUncheckedLabel: theme.RoleMuted,
-	agentUncheckedLabel:     theme.RoleMuted,
-
-	sandboxGoneLabel:        theme.RoleError,
-	sandboxMisplacedLabel:   theme.RoleError,
-	workspaceGoneLabel:      theme.RoleError,
-	workspaceMisplacedLabel: theme.RoleError,
-	agentRefusedLabel:       theme.RoleError,
-}
-
 // healthColor returns a function that colors a health cell in palette. It
 // colors each label in the cell on its own and leaves the separator plain.
 func healthColor(palette *theme.Theme) func(text string) string {
-	labelColor := roleColor(palette, healthLabelRoles)
+	labelColor := roleColor(palette, style.HealthLabelRoles)
 	return func(text string) string {
-		labels := strings.Split(text, healthPartSeparator)
+		labels := strings.Split(text, style.HealthPartSeparator)
 		for index, label := range labels {
 			labels[index] = labelColor(label)
 		}
-		return strings.Join(labels, healthPartSeparator)
+		return strings.Join(labels, style.HealthPartSeparator)
 	}
 }
 
@@ -239,17 +200,17 @@ func occupyingTask(entry *drudger.Drudger) string {
 func formatHealth(entry *drudger.Drudger) string {
 	summary := entry.Health()
 	if summary.IsUnchecked {
-		return healthUncheckedLabel
+		return style.HealthUncheckedLabel
 	}
 	if summary.IsOk() {
-		return healthOkLabel
+		return style.HealthOkLabel
 	}
 
 	labels := make([]string, 0, len(summary.Faults))
 	for _, fault := range summary.Faults {
 		labels = append(labels, healthFaultLabel(fault))
 	}
-	return strings.Join(labels, healthPartSeparator)
+	return strings.Join(labels, style.HealthPartSeparator)
 }
 
 // healthFaultLabel names a part that is not fine. A state this build does not
@@ -259,27 +220,27 @@ func healthFaultLabel(fault drudger.HealthFault) string {
 	case drudger.SandboxPart:
 		switch drudger.SandboxHealth(fault.State) {
 		case drudger.SandboxGone:
-			return sandboxGoneLabel
+			return style.SandboxGoneLabel
 		case drudger.SandboxMisplaced:
-			return sandboxMisplacedLabel
+			return style.SandboxMisplacedLabel
 		case drudger.SandboxUnchecked:
-			return sandboxUncheckedLabel
+			return style.SandboxUncheckedLabel
 		}
 	case drudger.WorkspacePart:
 		switch drudger.WorkspaceHealth(fault.State) {
 		case drudger.WorkspaceGone:
-			return workspaceGoneLabel
+			return style.WorkspaceGoneLabel
 		case drudger.WorkspaceMisplaced:
-			return workspaceMisplacedLabel
+			return style.WorkspaceMisplacedLabel
 		case drudger.WorkspaceUnchecked:
-			return workspaceUncheckedLabel
+			return style.WorkspaceUncheckedLabel
 		}
 	case drudger.AgentPart:
 		switch drudger.AgentHealth(fault.State) {
 		case drudger.AgentRefused:
-			return agentRefusedLabel
+			return style.AgentRefusedLabel
 		case drudger.AgentUnchecked:
-			return agentUncheckedLabel
+			return style.AgentUncheckedLabel
 		}
 	}
 	return fault.State

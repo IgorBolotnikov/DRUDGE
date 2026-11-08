@@ -1,7 +1,8 @@
-package cli
+package app
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,23 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
+
+type silentProgress struct{}
+
+func (silentProgress) Report(any) {}
+
+func TestLoadConfigs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	_, err := LoadConfigs()
+	if err == nil {
+		t.Fatal("expected an error outside a project directory")
+	}
+	if !strings.Contains(err.Error(), "drg project init") {
+		t.Errorf("expected the error to point at drg project init, got %q", err)
+	}
+}
 
 func TestNewDrudgerSettings(t *testing.T) {
 	const projectSlug = "drudge"
@@ -196,18 +214,13 @@ func TestNewTaskService(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			t.Setenv("NO_COLOR", "1")
 			t.Chdir(t.TempDir())
 			if _, err := persistence.NewFileTaskRepository("other").CreateTask(task.CreateTaskDto{Title: "Other task", Status: task.StatusTodo, ProjectSlug: "other"}); err != nil {
 				t.Fatal(err)
 			}
 
-			service := newTaskService(projectSlug, nil, testCase.global, newCommandPrinter())
-			var created *task.Task
-			var err error
-			captureOutput(func() {
-				created, err = service.CreateTask(task.CreateTaskDto{Title: "Add retry to uploader", ProjectSlug: projectSlug})
-			})
+			service := NewTaskService(projectSlug, nil, testCase.global, silentProgress{})
+			created, err := service.CreateTask(task.CreateTaskDto{Title: "Add retry to uploader", ProjectSlug: projectSlug})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
