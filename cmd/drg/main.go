@@ -4,7 +4,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/cmd"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli"
 )
 
 // version is stamped by the release build with -ldflags "-X main.version=...".
@@ -12,12 +12,12 @@ var version = ""
 
 func main() {
 	version := resolveVersion()
-	root := cmd.NewRoot(version)
+	root := cli.NewRoot(version)
 	root.Validate()
 
 	if err := root.Execute(os.Args[1:]); err != nil {
-		cmd.NewLogger().Error("%v", err)
-		os.Exit(cmd.ExitCode(err))
+		cli.NewLogger().Error("%v", err)
+		os.Exit(cli.ExitCode(err))
 	}
 }
 

@@ -1,5 +1,5 @@
 ---
-# Generated from the drg command tree. Do not edit it, regenerate it with go test ./internal/cmd -run TestCLIReference -update
+# Generated from the drg command tree. Do not edit it, regenerate it with go test ./internal/ui/cli -run TestCLIReference -update
 title: drg task new
 linkTitle: new
 weight: 1

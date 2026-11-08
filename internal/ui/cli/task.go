@@ -1,0 +1,471 @@
+package cli
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+)
+
+var TaskCmd = &Cmd{
+	Name: "task",
+	Desc: "Task management commands",
+	Subcommands: []*Cmd{
+		{
+			Name: "new",
+			Desc: "Add a task to the project",
+			Help: "Add a task to the project linked to the current directory.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskNewFlags{}
+				flags.declare(fs)
+				return func([]string) error {
+					dto, err := flags.dto(os.Stdin)
+					if err != nil {
+						return err
+					}
+					return taskNew(dto)
+				}
+			},
+		},
+		{
+			Name: "list",
+			Desc: "List the tasks of the project",
+			Help: "List tasks in the current project, one page at a time. Tasks belonging to another task are listed under it.\n" +
+				"A filter lists the tasks it keeps without grouping them.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskListFlags{}
+				flags.declare(fs)
+				return func([]string) error {
+					filter, err := flags.filter()
+					if err != nil {
+						return err
+					}
+					return taskList(filter, flags.page)
+				}
+			},
+		},
+		{
+			Name:  "next",
+			Desc:  "Print the oldest todo task that is ready to run",
+			Help:  "Print the oldest todo task whose blockers are all done. It starts nothing.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskNext },
+		},
+		{
+			Name: "show",
+			Args: []string{taskIDArg},
+			Desc: "Print one task in full",
+			Help: "Print one task in full: its description, where it stands and what its last run left behind.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskShow },
+		},
+		{
+			Name: "edit",
+			Args: []string{taskIDArg},
+			Desc: "Change the fields of a task",
+			Help: "Change what a task asks for and where it stands. It takes at least one field.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskEditFlags{}
+				flags.declare(fs)
+				return func(args []string) error {
+					changes, err := flags.changes(os.Stdin)
+					if err != nil {
+						return err
+					}
+					return taskEdit(task.TaskID(args[0]), changes)
+				}
+			},
+		},
+		{
+			Name: "done",
+			Args: []string{taskIDArg},
+			Desc: "Mark an unmerged task done once its work is merged",
+			Help: "Mark an unmerged task done once its work is merged, and list the tasks that became runnable.\n" +
+				"A task in any other status is refused. Use drg task edit --status done to mark it done anyway.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskDone },
+		},
+		{
+			Name: "rm",
+			Args: []string{taskIDArg},
+			Desc: "Delete a task",
+			Help: "Delete a task and the run directory of its Sessions. It asks first.\n" +
+				"The branches of the task that hold no commits go with it, and the ones holding work stay.\n" +
+				"A task an agent is still working on is refused, so kill its Drudger before removing it.\n" +
+				"Tasks blocked by it are unblocked and tasks belonging to it are ungrouped. They stay where they are.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isForced := fs.Bool(forceFlagName, false, "Remove the task without asking")
+				alias(fs, forceFlagShortName, forceFlagName)
+				return func(args []string) error { return taskRemove(task.TaskID(args[0]), *isForced) }
+			},
+		},
+		{
+			Name: "run",
+			Args: []string{taskIDArg},
+			Desc: "Hand a task in todo status to a coding agent",
+			Help: "Hand a task in todo status to a coding agent.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isDryRun := fs.Bool(dryRunFlagName, false, dryRunUsage)
+				return func(args []string) error { return taskRun(task.TaskID(args[0]), *isDryRun) }
+			},
+		},
+		{
+			Name: "rerun",
+			Args: []string{taskIDArg},
+			Desc: "Start a task over from scratch",
+			Help: "Start a task over from scratch, clearing what its last run left behind.\n" +
+				"Only a task an agent has already had can be rerun, so in-progress, fucked-up and unmerged.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isDryRun := fs.Bool(dryRunFlagName, false, dryRunUsage)
+				return func(args []string) error { return taskRerun(task.TaskID(args[0]), *isDryRun) }
+			},
+		},
+		{
+			Name: "pr",
+			Args: []string{taskIDArg},
+			Desc: "Open the pull requests close-out left behind for a task",
+			Help: "Open the pull requests whose descriptions are still in the run directory of a task.\n" +
+				"It retries the ones that failed at close-out, and opens them for a task that finished before pull requests were turned on.\n" +
+				"Each branch is pushed to origin from the repository in the project directory, whatever task the Drudger holds now.\n" +
+				"A task an agent is still working on is refused.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskPullRequests },
+		},
+		{
+			Name: "status",
+			Args: []string{taskIDArg},
+			Desc: "Tell how the agent working on a task is doing",
+			Help: "Tell whether the agent on a task is working, needs babysitting, fucked up, got shit done or never got going.\n" +
+				"A finished run is recorded on the task.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(*flag.FlagSet) func(args []string) error { return taskSessionStatus },
+		},
+		{
+			Name: "runlog",
+			Args: []string{taskIDArg},
+			Desc: "Print the logs of the latest run of a task",
+			Help: "Print a compact view of the latest run of a task: its steps, one line each, and its stderr log when it has anything in it. A tool call that failed shows the first line of its error under it.\n" +
+				"The steps are decoded with the harness that launched the run, or with the configured harness for a run that did not record one. A harness DRUDGE has no decoder for prints its raw output under a note.\n" +
+				"The task ID may be the short one a listing prints, as long as it names a single task.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				isRaw := fs.Bool(rawFlagName, false, rawUsage)
+				return func(args []string) error { return taskRunlog(task.TaskID(args[0]), *isRaw) }
+			},
+		},
+		{
+			Name: "export",
+			Desc: "Write every task of a project into a zip archive",
+			Help: "Write every task file of a project, whatever its status, into a new zip archive along with a manifest.\n" +
+				"It reads every task file first and stops at the first one that does not parse, before it writes anything.\n" +
+				"A project with no tasks and an archive path that already exists are refused.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskExportFlags{}
+				flags.declare(fs)
+				return func([]string) error { return taskExport(flags) }
+			},
+		},
+		{
+			Name: "import",
+			Args: []string{archiveFileArg},
+			Desc: "Add the tasks of a zip archive and update the ones it holds newer copies of",
+			Help: "Add every task of an archive drg task export wrote that the project does not have yet, with its id, its timestamps and its run state as they are.\n" +
+				"A task whose id the project already has is replaced when the archived copy has a newer update time, and skipped otherwise. A task in progress here is always skipped. Tasks of another project are moved into this one.\n" +
+				"It reads the whole archive first and stops at an archive it cannot read, before it writes anything.\n" +
+				"An entry that is not a task file it can import is skipped with a warning. The other tasks are imported and the command fails at the end.\n" +
+				"With --dry-run it runs every check and comparison, prints the same lines and fails the same way, and writes nothing.",
+			Setup: func(fs *flag.FlagSet) func(args []string) error {
+				flags := &taskImportFlags{}
+				flags.declare(fs)
+				return func(args []string) error { return taskImport(flags, args[0]) }
+			},
+		},
+	},
+}
+
+const taskIDArg = "task-id"
+
+const (
+	dryRunFlagName = "dry-run"
+	dryRunUsage    = "Print the prompt the agent would get and stop"
+)
+
+const (
+	rawFlagName = "raw"
+	rawUsage    = "Print the files the agent wrote as it wrote them, with JSON lines indented"
+)
+
+// Flags a task command reads a value after.
+const (
+	titleFlagName           = "title"
+	descriptionFlagName     = "description"
+	descriptionFileFlagName = "description-file"
+	ticketFlagName          = "ticket"
+	statusFlagName          = "status"
+	blockedByFlagName       = "blocked-by"
+	blockFlagName           = "block"
+	unblockFlagName         = "unblock"
+	parentFlagName          = "parent"
+
+	pullRequestsFlagName      = "pull-requests"
+	addPullRequestFlagName    = "add-pull-request"
+	removePullRequestFlagName = "remove-pull-request"
+
+	reposFlagName      = "repos"
+	addRepoFlagName    = "add-repo"
+	removeRepoFlagName = "remove-repo"
+)
+
+// stdinPath is the description file path that reads stdin.
+const stdinPath = "-"
+
+var errTwoDescriptions = errors.New("--description and --description-file cannot be used together")
+
+// listSeparator splits a flag value holding several task ids, URLs or
+// repository paths.
+const listSeparator = ","
+
+// taskRerunCommand is what a user types to start a task over. Other commands
+// name it when starting a task over is the next step.
+const taskRerunCommand = "drg task rerun"
+
+// optionalOf converts the value of a flag that was given, and returns nil for
+// a flag that was not.
+func optionalOf[Value ~string](flagValue optionalString) *Value {
+	if flagValue.value == nil {
+		return nil
+	}
+	converted := Value(*flagValue.value)
+	return &converted
+}
+
+// optionalList reads the list of a flag that was given, and returns nil for a
+// flag that was not.
+func optionalList[Value ~string](flagValue optionalString) *[]Value {
+	if flagValue.value == nil {
+		return nil
+	}
+	values := parseList[Value](*flagValue.value)
+	return &values
+}
+
+// parseList reads the comma-separated list a flag was given. Blank entries are
+// dropped, so an empty value reads as an empty list.
+func parseList[Value ~string](value string) []Value {
+	values := []Value{}
+	for _, text := range strings.Split(value, listSeparator) {
+		if text = strings.TrimSpace(text); text != "" {
+			values = append(values, Value(text))
+		}
+	}
+	return values
+}
+
+// readDescriptionFile reads a description from the file at path, or from stdin
+// when path is stdinPath. It trims the one trailing newline a heredoc adds and
+// refuses content that is blank.
+func readDescriptionFile(path string, stdin io.Reader) (string, error) {
+	var content []byte
+	var err error
+	source := "stdin"
+	if path == stdinPath {
+		if content, err = io.ReadAll(stdin); err != nil {
+			return "", fmt.Errorf("cannot read the description from stdin: %w", err)
+		}
+	} else {
+		source = fmt.Sprintf("description file %q", path)
+		if content, err = os.ReadFile(path); err != nil {
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				err = pathErr.Err
+			}
+			return "", fmt.Errorf("cannot read the %s: %w", source, err)
+		}
+	}
+
+	description := strings.TrimSuffix(string(content), "\n")
+	if strings.TrimSpace(description) == "" {
+		return "", fmt.Errorf("%s holds no description", source)
+	}
+	return description, nil
+}
+
+// taskNewFlags holds the flags of drg task new.
+type taskNewFlags struct {
+	title           optionalString
+	description     optionalString
+	descriptionFile optionalString
+	ticket          optionalString
+	status          optionalString
+	blockedBy       optionalString
+	parent          optionalString
+	pullRequests    optionalString
+	repos           optionalString
+}
+
+func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
+	fs.Var(&flags.title, titleFlagName, "Task `title`")
+	fs.Var(&flags.description, descriptionFlagName, "Description, the `text` the agent is handed as its prompt")
+	fs.Var(&flags.descriptionFile, descriptionFileFlagName, "Read the description from the file at `path`, "+stdinPath+" to read stdin")
+	fs.Var(&flags.ticket, ticketFlagName, "The `ticket` the task came from")
+	fs.Var(&flags.status, statusFlagName, "Task `status` ("+task.FormatStatuses(task.Statuses)+"), "+
+		config.DefaultTaskStatusKey+" from the config when left out, "+string(task.StatusTodo)+" when that is unset")
+	fs.Var(&flags.blockedBy, blockedByFlagName, "Comma-separated `ids` of the tasks this task waits for")
+	fs.Var(&flags.parent, parentFlagName, "The `id` of the task this task belongs to")
+	fs.Var(&flags.pullRequests, pullRequestsFlagName, "Comma-separated `urls` of the pull requests opened for this task")
+	fs.Var(&flags.repos, reposFlagName, "Comma-separated `paths` of the repositories this task changes, as drg project init prints them, all of them when left out")
+}
+
+// dto returns the fields of a new task, reading a description file from disk
+// or from stdin. It leaves the project slug for the caller to fill in.
+func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
+	if flags.title.get() == "" {
+		return task.CreateTaskDto{}, errors.New("--title is required")
+	}
+
+	description := flags.description.get()
+	switch {
+	case flags.description.value != nil && flags.descriptionFile.value != nil:
+		return task.CreateTaskDto{}, errTwoDescriptions
+	case flags.descriptionFile.value != nil:
+		var err error
+		if description, err = readDescriptionFile(flags.descriptionFile.get(), stdin); err != nil {
+			return task.CreateTaskDto{}, err
+		}
+	case flags.description.value == nil:
+		return task.CreateTaskDto{}, errors.New("--description or --description-file is required")
+	}
+
+	var status task.TaskStatus
+	if flags.status.value != nil {
+		status = task.TaskStatus(flags.status.get())
+		if !task.KnownStatus(status) {
+			return task.CreateTaskDto{}, invalidStatusError(status)
+		}
+	}
+
+	return task.CreateTaskDto{
+		Title:        flags.title.get(),
+		Description:  description,
+		Status:       status,
+		TicketID:     flags.ticket.get(),
+		BlockedBy:    parseList[task.TaskID](flags.blockedBy.get()),
+		PullRequests: parseList[string](flags.pullRequests.get()),
+		Repositories: parseList[string](flags.repos.get()),
+		ParentTaskID: task.TaskID(flags.parent.get()),
+	}, nil
+}
+
+func taskNew(dto task.CreateTaskDto) error {
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	dto.ProjectSlug = deps.localCfg.ProjectSlug
+	_, err = deps.tasks.CreateTask(dto)
+	return err
+}
+
+// taskShow prints everything drudge knows about one task.
+func taskShow(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	found, err := deps.tasks.GetTask(deps.localCfg.ProjectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	blockers, err := deps.tasks.Blockers(deps.localCfg.ProjectSlug, found)
+	if err != nil {
+		return err
+	}
+
+	family, err := deps.tasks.Family(deps.localCfg.ProjectSlug, found)
+	if err != nil {
+		return err
+	}
+
+	printTask(deps.out, found, blockers, family, time.Now().UTC())
+	return nil
+}
+
+// taskDone marks an unmerged task done.
+func taskDone(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	_, err = deps.drudger.MarkDone(deps.localCfg.ProjectSlug, taskID)
+	return err
+}
+
+func taskRun(taskID task.TaskID, isDryRun bool) error {
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.RunTask(deps.localCfg.ProjectSlug, taskID, isDryRun)
+}
+
+// taskRerun hands a task back to a Drudger and starts it over.
+func taskRerun(taskID task.TaskID, isDryRun bool) error {
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.RerunTask(deps.localCfg.ProjectSlug, taskID, isDryRun)
+}
+
+// taskPullRequests opens the pull requests close-out left behind for a task.
+func taskPullRequests(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	return deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
+}
+
+// taskSessionStatus reports how the last Session of a task is going.
+func taskSessionStatus(args []string) error {
+	taskID := task.TaskID(args[0])
+
+	deps, err := newCommandDeps()
+	if err != nil {
+		return err
+	}
+
+	session, err := deps.drudger.SessionStatus(deps.localCfg.ProjectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	printSessionStatus(deps.out, session)
+	return nil
+}
+
+// invalidStatusError names a status drudge does not understand, and lists the
+// ones it does.
+func invalidStatusError(status task.TaskStatus) error {
+	return fmt.Errorf("invalid status %q, must be one of: %s", status, task.FormatStatuses(task.Statuses))
+}

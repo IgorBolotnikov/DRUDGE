@@ -12,7 +12,7 @@ go test ./...                           # run all tests
 go test ./internal/task/...             # run tests for one package
 go test ./internal/task/ -run TestName  # run a single test
 make site                               # serve the docs site with hugo server (needs Hugo extended)
-go test ./internal/cmd -run TestCLIReference -update  # regenerate the CLI reference in site/content/docs/cli/
+go test ./internal/ui/cli -run TestCLIReference -update  # regenerate the CLI reference in site/content/docs/cli/
 ```
 
 ## What this is
@@ -28,11 +28,11 @@ DRUDGE is built to need as little maintenance and support as possible. This appl
 
 ## Architecture
 
-This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer, and the CLI is only one of several planned interfaces — a TUI and an HTMX-based web frontend are planned on top of the same domain layer. Business logic belongs in the domain packages (`internal/project`, `internal/task`, `internal/drudger`,their services) and never in `internal/cmd`. A command handler should only parse args, call a service, and format output — if a handler is doing anything more than that, it's logic that another interface will need to duplicate, and it should move down into the domain layer instead.
+This codebase follows domain-driven design. `internal/ui` holds the user interfaces: `internal/ui/cli` is the thin CLI layer today, and `internal/ui/tui` comes next. An HTMX-based web frontend is planned on top of the same domain layer too. Business logic belongs in the domain packages (`internal/project`, `internal/task`, `internal/drudger`,their services) and never in `internal/ui`. A command handler should only parse args, call a service, and format output — if a handler is doing anything more than that, it's logic that another interface will need to duplicate, and it should move down into the domain layer instead.
 
 **Local-first and unix-only.** Sandboxes are local containers, workspaces are local directories and run artifacts live in local files. Concurrency means two CLI invocations on one machine. Use same-machine primitives like `flock` and local paths. Don't add networked storage, cross-machine coordination or distributed locking. Windows users run DRUDGE in WSL, so don't add Windows build tags or fallbacks.
 
-**CLI dispatch.** `cmd.NewRoot` (`internal/cmd/cmd.go`) builds the tree of `*cmd.Cmd` declarations and `main.go` calls `Validate` and `Execute` on it. A command declares its `Args` (the positionals it requires), `Desc`, `Help`, `Subcommands` and `Setup`. `Setup` declares the flags of the command on a per-command `flag.FlagSet` and returns its run function. `Execute` walks the tree and handles help, positional counts and flags interleaved with positionals, so a run function gets parsed flags and exactly the positionals it declared. `Validate` panics on a leaf without `Setup`. A command with non-trivial flags keeps them in a flag struct with a `declare(fs)` method and a method that turns the flags into the DTO of its service, like `taskNewFlags` in `internal/cmd/task.go`. Only the standard library is used. Never use the global `flag.CommandLine` and don't introduce a flags/cobra-style dependency.
+**CLI dispatch.** `cli.NewRoot` (`internal/ui/cli/cmd.go`) builds the tree of `*cli.Cmd` declarations and `main.go` calls `Validate` and `Execute` on it. A command declares its `Args` (the positionals it requires), `Desc`, `Help`, `Subcommands` and `Setup`. `Setup` declares the flags of the command on a per-command `flag.FlagSet` and returns its run function. `Execute` walks the tree and handles help, positional counts and flags interleaved with positionals, so a run function gets parsed flags and exactly the positionals it declared. `Validate` panics on a leaf without `Setup`. A command with non-trivial flags keeps them in a flag struct with a `declare(fs)` method and a method that turns the flags into the DTO of its service, like `taskNewFlags` in `internal/ui/cli/task.go`. Only the standard library is used. Never use the global `flag.CommandLine` and don't introduce a flags/cobra-style dependency.
 
 **Domain packages are ports-and-adapters.** `internal/project`, `internal/task` and `internal/drudger` each follow the same three-file shape:
 
@@ -41,7 +41,7 @@ This codebase follows domain-driven design. `internal/cmd` is the thin CLI layer
 - `service.go` — a `XService` holding a `XRepository` + `common.Progress`, doing validation and orchestration
 - optionally, if a service is large enough, it is split among multiple files named after a facet they implement, like `internal/drudger` does
 
-`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectInit` in `internal/cmd`.
+`internal/adapters/persistence` provides the filesystem-backed implementation of those repository interfaces. CLI commands wire a repo + logger into a service directly (no DI container) — see `taskNew`/`projectInit` in `internal/ui/cli`.
 
 **Storage layout** (see `docs/DOMAIN_MODEL.md`), all under `~/.drudge/`:
 
@@ -63,7 +63,7 @@ Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup
 
 **Docs site.** `site/` is the Hugo project published at `https://drgtools.dev/` by `.github/workflows/docs.yaml`. It has its own `go.mod`, so `go build ./...` and `go test ./...` skip it. The Hextra theme comes in as a Hugo module pinned in `site/go.mod`. `site/hugo.yaml` mounts the root `install.sh` and `assets/logo.svg`, so those files have one copy each. User docs live in `site/content/docs/`. The key tables of `site/content/docs/configuration/config.md`, `project-config.md` and `theme.md` are generated from the bundled JSON schemas and sit between the `BEGIN GENERATED` and `END GENERATED` markers. Everything outside the markers is hand-written. Regenerate the tables with `go test ./internal/config ./internal/theme -update`. `docs/` holds notes for contributors and agents and is never published.
 
-`site/content/docs/cli/` is the CLI reference, generated from the `drg` command tree by `TestCLIReference` in `internal/cmd`. Never edit it by hand. Regenerate it with `go test ./internal/cmd -run TestCLIReference -update` after changing a command. `site/layouts/_partials/toc.html` is a copy of the Hextra partial that leaves the edit link off generated pages, so update it along with the Hextra version.
+`site/content/docs/cli/` is the CLI reference, generated from the `drg` command tree by `TestCLIReference` in `internal/ui/cli`. Never edit it by hand. Regenerate it with `go test ./internal/ui/cli -run TestCLIReference -update` after changing a command. `site/layouts/_partials/toc.html` is a copy of the Hextra partial that leaves the edit link off generated pages, so update it along with the Hextra version.
 
 A change to user-facing behavior updates the matching page under `site/content/docs/` in the same commit.
 
@@ -85,4 +85,4 @@ The rules for writing code, comments, commit messages and branch names live in t
 
 ## Roadmap docs
 
-`docs/TASK_IMPLEMENTATION.md` and `TODO.md` describe planned behavior that isn't implemented yet (e.g. `drg task show`, automatic status transitions with timestamps, git branch setup per task). Check whether a feature actually exists in `internal/cmd`/`internal/task` before assuming these docs describe current behavior.
+`docs/TASK_IMPLEMENTATION.md` and `TODO.md` describe planned behavior that isn't implemented yet (e.g. `drg task show`, automatic status transitions with timestamps, git branch setup per task). Check whether a feature actually exists in `internal/ui/cli`/`internal/task` before assuming these docs describe current behavior.
