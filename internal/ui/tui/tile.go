@@ -23,22 +23,32 @@ const (
 // Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
 // with its title in the top edge and clips the View to the space inside.
 type Tile struct {
-	view      views.View
-	title     string
-	styles    *styles.Styles
-	weight    float64
-	isFocused bool
-	width     int
-	height    int
+	view          views.View
+	title         string
+	styles        *styles.Styles
+	weight        float64
+	isStatusShown bool
+	isFocused     bool
+	width         int
+	height        int
 }
 
 // NewTile places a View in a Tile. A Tile with an empty title shows the name
 // of its View. NewTab checks the weight.
-func NewTile(view views.View, title string, tileStyles *styles.Styles, weight float64) *Tile {
+func NewTile(view views.View, title string, tileStyles *styles.Styles, weight float64, isStatusShown bool) *Tile {
 	if title == "" {
 		title = view.Name()
 	}
-	return &Tile{view: view, title: title, styles: tileStyles, weight: weight}
+	return &Tile{view: view, title: title, styles: tileStyles, weight: weight, isStatusShown: isStatusShown}
+}
+
+// Status returns the status segment of the View, or an empty string when the
+// Tile hides it.
+func (tile *Tile) Status() string {
+	if !tile.isStatusShown {
+		return ""
+	}
+	return tile.view.Status()
 }
 
 func (tile *Tile) Weight() float64 {

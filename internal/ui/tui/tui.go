@@ -30,7 +30,7 @@ func (silentProgress) Report(any) {}
 func Run() error {
 	palette, warnings := loadTheme()
 	screenStyles := styles.New(palette)
-	tabs, err := loadTabs(screenStyles)
+	config, tabs, err := loadConfig(screenStyles)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func Run() error {
 	if !palette.IsColorOn(theme.Stdout) {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
-	model, err := NewModel(shownProject, tasks, screenStyles, tabs, warnings)
+	model, err := NewModel(shownProject, tasks, screenStyles, tabs, config.RefreshInterval(), warnings)
 	if err != nil {
 		return err
 	}
@@ -60,23 +60,23 @@ func Run() error {
 	return err
 }
 
-// loadTabs builds the Tabs of the TUI config file. An error starts with the
-// path of the file.
-func loadTabs(screenStyles *styles.Styles) ([]*Tab, error) {
+// loadConfig loads the TUI config file and builds its Tabs. An error starts
+// with the path of the file.
+func loadConfig(screenStyles *styles.Styles) (Config, []*Tab, error) {
 	home, err := common.HomeDir()
 	if err != nil {
-		return nil, err
+		return Config{}, nil, err
 	}
 	path := common.TuiConfigPath(home)
 	config, err := LoadConfig(path)
 	if err != nil {
-		return nil, err
+		return Config{}, nil, err
 	}
 	tabs, err := BuildTabs(config, screenStyles)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return Config{}, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return tabs, nil
+	return config, tabs, nil
 }
 
 // loadTheme loads the theme and returns the warnings about it. A theme that

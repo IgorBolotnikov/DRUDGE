@@ -20,4 +20,7 @@ type View interface {
 	// KeyHints are the keys the bottom bar shows while the Tile of the View
 	// has focus.
 	KeyHints() []key.Binding
+	// Status is a short plain-text segment the bottom bar shows for the Tile
+	// of the View. An empty string shows nothing.
+	Status() string
 }

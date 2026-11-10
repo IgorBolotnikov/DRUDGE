@@ -45,6 +45,18 @@ func (tab *Tab) Broadcast(msg tea.Msg) tea.Cmd {
 	return tea.Batch(commands...)
 }
 
+// Statuses returns the status segments of the Tiles in tree order. It leaves
+// out the empty ones.
+func (tab *Tab) Statuses() []string {
+	var statuses []string
+	for _, tile := range tab.tiles {
+		if status := tile.Status(); status != "" {
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses
+}
+
 // HasRoomForTiles reports whether every Tile got space for its View at the
 // size the Tab last got.
 func (tab *Tab) HasRoomForTiles() bool {

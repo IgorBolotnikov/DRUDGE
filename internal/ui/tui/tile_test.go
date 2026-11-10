@@ -37,7 +37,7 @@ func TestTile_RenderTitleStyle(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			screenStyles := tuitest.Styles()
 			titleOpening, _, _ := strings.Cut(screenStyles.TileTitle.Render("x"), "x")
-			tile := NewTile(&sizeView{name: "a"}, testCase.title, screenStyles, 1)
+			tile := NewTile(&sizeView{name: "a"}, testCase.title, screenStyles, 1, true)
 			tile.SetFocused(true)
 			tile.SetSize(testCase.width, 5)
 

@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -64,6 +65,12 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 			wantReason: "only a tile has a title",
 		},
 		{
+			name:       "split with a status setting",
+			config:     oneTabConfig(NodeConfig{Arrangement: Stacked, ShowStatus: new(false), Children: []NodeConfig{taskListNode(), taskListNode()}}),
+			wantPath:   "tabs[0].layout.showStatus: ",
+			wantReason: "only a tile has a status segment",
+		},
+		{
 			name:       "split with one child",
 			config:     oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{taskListNode()}}),
 			wantPath:   "tabs[0].layout.children: ",
@@ -99,6 +106,26 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), testCase.wantReason) {
 				t.Errorf("expected the error to contain %q, got %q", testCase.wantReason, err)
+			}
+		})
+	}
+}
+
+func TestConfig_RefreshInterval(t *testing.T) {
+	cases := []struct {
+		name               string
+		dataRefreshSeconds float64
+		want               time.Duration
+	}{
+		{name: "unset gives the default", want: 2 * time.Second},
+		{name: "whole seconds", dataRefreshSeconds: 5, want: 5 * time.Second},
+		{name: "a fraction", dataRefreshSeconds: 0.25, want: 250 * time.Millisecond},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := Config{DataRefreshSeconds: testCase.dataRefreshSeconds}
+			if got := config.RefreshInterval(); got != testCase.want {
+				t.Errorf("expected %s, got %s", testCase.want, got)
 			}
 		})
 	}
@@ -144,7 +171,7 @@ func TestBuildTabs_Screen(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
 			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
-			model.Update(model.Init()())
+			refreshNow(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
@@ -21,10 +22,28 @@ const tabsPath = "tabs"
 // viewNameSeparator joins the names of the known Views in an error.
 const viewNameSeparator = ", "
 
-// Config describes the Tabs of the TUI and the layout of each Tab. It holds
-// only plain values, so building it again gives fresh Tabs.
+// Seconds between two loads of the TUI data. A config may set a fraction.
+const (
+	defaultDataRefreshSeconds = 2
+	minDataRefreshSeconds     = 0.1
+)
+
+// Config describes the Tabs of the TUI, the layout of each Tab and how often
+// the TUI reloads its data. It holds only plain values, so building it again
+// gives fresh Tabs. A data refresh of 0 is the default data refresh.
 type Config struct {
-	Tabs []TabConfig
+	Tabs               []TabConfig
+	DataRefreshSeconds float64
+}
+
+// RefreshInterval returns how long the TUI waits between two loads of its
+// data.
+func (config Config) RefreshInterval() time.Duration {
+	seconds := config.DataRefreshSeconds
+	if seconds == 0 {
+		seconds = defaultDataRefreshSeconds
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // TabConfig describes one Tab.
@@ -34,14 +53,16 @@ type TabConfig struct {
 }
 
 // NodeConfig describes one node of a layout. A split sets Arrangement and
-// Children. A Tile sets View and may set Title. A weight of 0 is the default
-// weight.
+// Children. A Tile sets View and may set Title and ShowStatus. A weight of 0
+// is the default weight. A Tile with no status setting shows its status
+// segment.
 type NodeConfig struct {
 	Arrangement Arrangement
 	Children    []NodeConfig
 	View        string
 	Title       string
 	Weight      float64
+	ShowStatus  *bool
 }
 
 // defaultConfig returns the Tabs the TUI shows when there is no TUI config
@@ -103,8 +124,8 @@ func buildTab(tabConfig TabConfig, screenStyles *styles.Styles) (*Tab, error) {
 }
 
 // buildNode builds the Node a config describes. It refuses a node that is both
-// a split and a Tile or neither, a split with a title and a Tile with an
-// unknown View. NewTab checks the rest.
+// a split and a Tile or neither, a split with a title or a status setting and
+// a Tile with an unknown View. NewTab checks the rest.
 func buildNode(nodeConfig NodeConfig, path string, screenStyles *styles.Styles) (Node, error) {
 	weight := nodeConfig.Weight
 	if weight == 0 {
@@ -129,12 +150,16 @@ func buildTile(nodeConfig NodeConfig, weight float64, path string, screenStyles 
 	if !ok {
 		return nil, fmt.Errorf("%s.view: unknown view %q, use one of: %s", path, nodeConfig.View, strings.Join(viewKindNames(), viewNameSeparator))
 	}
-	return NewTile(kind.newView(screenStyles), nodeConfig.Title, screenStyles, weight), nil
+	isStatusShown := nodeConfig.ShowStatus == nil || *nodeConfig.ShowStatus
+	return NewTile(kind.newView(screenStyles), nodeConfig.Title, screenStyles, weight, isStatusShown), nil
 }
 
 func buildSplit(nodeConfig NodeConfig, weight float64, path string, screenStyles *styles.Styles) (*Split, error) {
 	if nodeConfig.Title != "" {
 		return nil, fmt.Errorf("%s.title: only a tile has a title, move it to a tile of the split", path)
+	}
+	if nodeConfig.ShowStatus != nil {
+		return nil, fmt.Errorf("%s.showStatus: only a tile has a status segment, move it to a tile of the split", path)
 	}
 	children := make([]Node, 0, len(nodeConfig.Children))
 	for index, childConfig := range nodeConfig.Children {

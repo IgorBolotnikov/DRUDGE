@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -38,9 +39,11 @@ func (view *sizeView) Render() string {
 
 func (view *sizeView) KeyHints() []key.Binding { return nil }
 
+func (view *sizeView) Status() string { return view.name }
+
 // sizeTile returns a Tile with a sizeView of the name.
 func sizeTile(name string, weight float64) *Tile {
-	return NewTile(&sizeView{name: name}, "", tuitest.Styles(), weight)
+	return NewTile(&sizeView{name: name}, "", tuitest.Styles(), weight, true)
 }
 
 func TestTab_Render(t *testing.T) {
@@ -178,8 +181,8 @@ func TestTab_BroadcastReachesEveryTile(t *testing.T) {
 	views := []*sizeView{{name: "a"}, {name: "b"}, {name: "c"}}
 	screenStyles := tuitest.Styles()
 	tab, err := NewTab("Tab", NewSplit(Stacked, 1,
-		NewSplit(SideBySide, 1, NewTile(views[0], "", screenStyles, 1), NewTile(views[1], "", screenStyles, 1)),
-		NewTile(views[2], "", screenStyles, 1),
+		NewSplit(SideBySide, 1, NewTile(views[0], "", screenStyles, 1, true), NewTile(views[1], "", screenStyles, 1, true)),
+		NewTile(views[2], "", screenStyles, 1, true),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -189,5 +192,35 @@ func TestTab_BroadcastReachesEveryTile(t *testing.T) {
 		if view.receivedCount != 1 {
 			t.Errorf("expected view %q to get the message once, got it %d times", view.name, view.receivedCount)
 		}
+	}
+}
+
+func TestTab_Statuses(t *testing.T) {
+	cases := []struct {
+		name          string
+		names         []string
+		hiddenIndexes []int
+		want          []string
+	}{
+		{name: "every tile in tree order", names: []string{"a", "b", "c"}, want: []string{"a", "b", "c"}},
+		{name: "a tile that hides its status", names: []string{"a", "b", "c"}, hiddenIndexes: []int{1}, want: []string{"a", "c"}},
+		{name: "an empty status", names: []string{"a", "", "c"}, want: []string{"a", "c"}},
+		{name: "every tile hides its status", names: []string{"a", "b", "c"}, hiddenIndexes: []int{0, 1, 2}, want: nil},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tiles := make([]*Tile, 0, len(testCase.names))
+			for index, name := range testCase.names {
+				isStatusShown := !slices.Contains(testCase.hiddenIndexes, index)
+				tiles = append(tiles, NewTile(&sizeView{name: name}, "", tuitest.Styles(), 1, isStatusShown))
+			}
+			tab, err := NewTab("Tab", NewSplit(Stacked, 1, NewSplit(SideBySide, 1, tiles[0], tiles[1]), tiles[2]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := tab.Statuses(); !slices.Equal(got, testCase.want) {
+				t.Errorf("expected statuses %q, got %q", testCase.want, got)
+			}
+		})
 	}
 }

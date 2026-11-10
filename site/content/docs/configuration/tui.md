@@ -15,7 +15,7 @@ Start the file with `"$schema": "./schema/tui.json"`, a path relative to the fil
 
 A layout is a tree of nodes. A node is a tile or a split.
 
-- A tile sets `view`, the thing it shows, and may set `title`.
+- A tile sets `view`, the thing it shows, and may set `title` and `showStatus`.
 - A split sets `arrangement` and two or more `children`. `side-by-side` places the children left to right and `stacked` places them top to bottom.
 
 A split divides its space between its children by `weight`. A child with weight 2 gets twice the space of a child with weight 1.
@@ -35,5 +35,7 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout.view` | string |  | `"task-list"` | What the tile shows. `task-list`: Lists the tasks of the project with the rows of drg task list. |
 | `tabs[].layout.title` | string |  |  | The title of the tile in its top border. Only a tile has a title. |
 | `tabs[].layout.weight` | number | `1` | above 0 | The share of the space of its split the node takes, relative to the other children of the split. It may be a fraction. |
+| `tabs[].layout.showStatus` | boolean | `true` |  | Whether the tile shows its status segment on the left of the bottom bar. Only a tile has a status segment. |
+| `dataRefreshSeconds` | number | `2` | minimum 0.1 | How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5. |
 
 <!-- END GENERATED -->

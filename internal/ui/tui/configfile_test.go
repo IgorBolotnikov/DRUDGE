@@ -46,6 +46,51 @@ func TestParseConfig(t *testing.T) {
 			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name}}}},
 		},
 		{
+			name: "a data refresh in whole seconds",
+			data: `{"dataRefreshSeconds": 5}`,
+			want: Config{DataRefreshSeconds: 5},
+		},
+		{
+			name: "a data refresh that is a fraction",
+			data: `{"dataRefreshSeconds": 0.5}`,
+			want: Config{DataRefreshSeconds: 0.5},
+		},
+		{
+			name: "a data refresh at the minimum",
+			data: `{"dataRefreshSeconds": 0.1}`,
+			want: Config{DataRefreshSeconds: 0.1},
+		},
+		{
+			name: "a tile that hides its status",
+			data: `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": false}}]}`,
+			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ShowStatus: new(false)}}}},
+		},
+		{
+			name: "a tile that shows its status",
+			data: `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": true}}]}`,
+			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ShowStatus: new(true)}}}},
+		},
+		{
+			name:    "a data refresh below the minimum",
+			data:    `{"dataRefreshSeconds": 0.05}`,
+			wantErr: "dataRefreshSeconds: 0.05 is below the minimum of 0.1, use 0.1 or more seconds",
+		},
+		{
+			name:    "a data refresh of 0",
+			data:    `{"dataRefreshSeconds": 0}`,
+			wantErr: "dataRefreshSeconds: 0 is below the minimum of 0.1, use 0.1 or more seconds",
+		},
+		{
+			name:    "a data refresh that is a string",
+			data:    `{"dataRefreshSeconds": "2"}`,
+			wantErr: "dataRefreshSeconds: expected a number, got a string",
+		},
+		{
+			name:    "a show status that is a string",
+			data:    `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": "no"}}]}`,
+			wantErr: "tabs[0].layout.showStatus: expected a boolean, got a string",
+		},
+		{
 			name: "an empty object",
 			data: `{}`,
 			want: Config{},
@@ -63,7 +108,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key at the top",
 			data:    `{"tab": []}`,
-			wantErr: "tab: unknown key, use one of: $schema, tabs",
+			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds",
 		},
 		{
 			name:    "an unknown key in a tab",
@@ -73,7 +118,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key deep in a layout",
 			data:    `{"tabs": [{"title": "Tasks", "layout": {"arrangement": "stacked", "children": [{"view": "task-list"}, {"view": "task-list", "colour": "red"}]}}]}`,
-			wantErr: "tabs[0].layout.children[1].colour: unknown key, use one of: arrangement, children, view, title, weight",
+			wantErr: "tabs[0].layout.children[1].colour: unknown key, use one of: arrangement, children, view, title, weight, showStatus",
 		},
 		{
 			name:    "an explicit weight of 0",

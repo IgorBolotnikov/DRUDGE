@@ -11,7 +11,7 @@ import (
 const schemaTemplate = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DRUDGE TUI Configuration",
-  "description": "Configures the tabs of drg tui and the layout of each tab.",
+  "description": "Configures the tabs of drg tui, the layout of each tab and how often drg tui reloads its data.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -38,6 +38,12 @@ const schemaTemplate = `{
         },
         "additionalProperties": false
       }
+    },
+    "dataRefreshSeconds": {
+      "description": "How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5.",
+      "type": "number",
+      "minimum": 0.1,
+      "default": 2
     }
   },
   "additionalProperties": false,
@@ -71,6 +77,11 @@ const schemaTemplate = `{
           "type": "number",
           "exclusiveMinimum": 0,
           "default": 1
+        },
+        "showStatus": {
+          "description": "Whether the tile shows its status segment on the left of the bottom bar. Only a tile has a status segment.",
+          "type": "boolean",
+          "default": true
         }
       },
       "additionalProperties": false

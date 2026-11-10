@@ -2,6 +2,8 @@
 package tasklist
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -47,6 +49,13 @@ const (
 	blockerJoiner  = ", "
 )
 
+// Status segments of the task list: the number of the cursor row and the
+// task count.
+const (
+	statusFormat  = "%d/%d"
+	noTasksStatus = "0/0"
+)
+
 // Keys of the task list. The up key and the top key carry the hint of their
 // pair.
 var (
@@ -57,12 +66,12 @@ var (
 )
 
 // View lists the tasks of a project the way drg task list does, with a cursor
-// on one row.
+// on one row. A failed load keeps the tasks of the last load that worked.
 type View struct {
 	styles   *styles.Styles
 	tasks    []task.ListedTask
+	hasTasks bool
 	loadErr  error
-	isLoaded bool
 	cursor   int
 	offset   int
 	width    int
@@ -82,6 +91,19 @@ func (view *View) KeyHints() []key.Binding {
 	return []key.Binding{moveUpKey, jumpTopKey}
 }
 
+// Status returns the number of the cursor row and the task count, like 12/200.
+// It is empty until the tasks load.
+func (view *View) Status() string {
+	switch {
+	case !view.hasTasks:
+		return ""
+	case len(view.tasks) == 0:
+		return noTasksStatus
+	}
+	cursorNumber := view.cursor + 1
+	return fmt.Sprintf(statusFormat, cursorNumber, len(view.tasks))
+}
+
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
@@ -92,15 +114,38 @@ func (view *View) SetSize(width, height int) {
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
-		view.isLoaded = true
-		view.tasks = msg.Tasks
 		view.loadErr = msg.Err
-		view.cursor = 0
-		view.offset = 0
+		if msg.Err == nil {
+			view.showTasks(msg.Tasks)
+		}
 	case tea.KeyPressMsg:
 		view.moveCursor(msg)
 	}
 	return nil
+}
+
+// showTasks replaces the tasks and keeps the cursor on the task it was on.
+// When that task is gone, the cursor keeps its row or moves up to the last
+// row.
+func (view *View) showTasks(tasks []task.ListedTask) {
+	cursorTaskID := view.cursorTaskID()
+	view.tasks = tasks
+	view.hasTasks = true
+	index := slices.IndexFunc(tasks, func(entry task.ListedTask) bool { return entry.Task.ID == cursorTaskID })
+	if index == -1 {
+		index = max(min(view.cursor, len(tasks)-1), 0)
+	}
+	view.cursor = index
+	view.scrollToCursor()
+}
+
+// cursorTaskID returns the ID of the task under the cursor, or an empty ID
+// when there are no tasks.
+func (view *View) cursorTaskID() task.TaskID {
+	if view.cursor >= len(view.tasks) {
+		return ""
+	}
+	return view.tasks[view.cursor].Task.ID
 }
 
 func (view *View) moveCursor(msg tea.KeyPressMsg) {
@@ -136,10 +181,10 @@ func (view *View) Render() string {
 	switch {
 	case view.height <= 0:
 		return ""
-	case !view.isLoaded:
-		return view.styles.Muted.Render("Loading tasks" + cells.Ellipsis)
-	case view.loadErr != nil:
+	case !view.hasTasks && view.loadErr != nil:
 		return view.styles.Error.Render("Could not load tasks: " + view.loadErr.Error())
+	case !view.hasTasks:
+		return view.styles.Muted.Render("Loading tasks" + cells.Ellipsis)
 	case len(view.tasks) == 0:
 		return view.styles.Muted.Render("No tasks found")
 	}

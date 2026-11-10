@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -29,8 +30,18 @@ const warningPrefix = "! "
 // Tiles.
 const tooSmallFormat = "terminal too small for tab %q, resize it"
 
-// warningSeparator joins the warnings of the bottom bar.
+// loadErrorPrefix starts a load error in the bottom bar.
+const loadErrorPrefix = "✗ "
+
+// loadErrorFormat is the load error of one source in the bottom bar.
+const loadErrorFormat = "could not load %s: %v"
+
+// warningSeparator joins the load errors and the warnings of the bottom bar,
+// and puts them after the status segments.
 const warningSeparator = "  "
+
+// statusSeparator joins the status segments of the bottom bar.
+const statusSeparator = " · "
 
 // spreadGap is how many spaces a bar keeps between its left and its right
 // part.
@@ -54,51 +65,84 @@ const (
 // Keys of the root. Views never bind them.
 var (
 	quitKey        = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"))
+	refreshKey     = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
 	tabNumberKey   = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
 	nextTabKey     = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
 	previousTabKey = key.NewBinding(key.WithKeys("["))
 )
 
+// rootKeyHints are the root keys the bottom bar shows after the keys of the
+// focused View.
+var rootKeyHints = []key.Binding{refreshKey, tabNumberKey, nextTabKey, quitKey}
+
+// tasksSourceName names the task source in load errors.
+const tasksSourceName = "tasks"
+
+// dataSource is one kind of data the root loads for the Views. load returns
+// the message for the Views and the error the load failed with.
+type dataSource struct {
+	name string
+	load func(projectSlug string) (tea.Msg, error)
+}
+
+// loadKey names the data of one source for one project.
+type loadKey struct {
+	projectSlug string
+	sourceName  string
+}
+
+// refreshTickMsg starts the loads of a refresh.
+type refreshTickMsg struct{}
+
+// dataLoadedMsg carries the result of one load to the root.
+type dataLoadedMsg struct {
+	key     loadKey
+	viewMsg tea.Msg
+	err     error
+}
+
 // Model is the root of the screen: a top bar, the active Tab and a bottom bar.
-// It loads the data and sends it to the Views of every Tab.
+// It loads the data on every refresh and sends it to the Views of every Tab.
 type Model struct {
-	project        *project.Project
-	source         TaskSource
-	styles         *styles.Styles
-	warnings       []string
-	tabs           []*Tab
-	activeTabIndex int
-	help           help.Model
-	width          int
-	height         int
+	project         *project.Project
+	source          TaskSource
+	styles          *styles.Styles
+	warnings        []string
+	tabs            []*Tab
+	activeTabIndex  int
+	refreshInterval time.Duration
+	runningLoads    map[loadKey]bool
+	loadErrors      map[loadKey]error
+	help            help.Model
+	width           int
+	height          int
 }
 
 // NewModel returns the screen of a project with the first Tab active. It
-// shows the warnings in the bottom bar and refuses an empty list of Tabs.
-func NewModel(shownProject *project.Project, source TaskSource, screenStyles *styles.Styles, tabs []*Tab, warnings []string) (*Model, error) {
+// reloads the data every refresh interval, shows the warnings in the bottom
+// bar and refuses an empty list of Tabs.
+func NewModel(shownProject *project.Project, source TaskSource, screenStyles *styles.Styles, tabs []*Tab, refreshInterval time.Duration, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
 	return &Model{
-		project:  shownProject,
-		source:   source,
-		styles:   screenStyles,
-		warnings: warnings,
-		tabs:     tabs,
-		help:     keyHelp,
+		project:         shownProject,
+		source:          source,
+		styles:          screenStyles,
+		warnings:        warnings,
+		tabs:            tabs,
+		refreshInterval: refreshInterval,
+		runningLoads:    map[loadKey]bool{},
+		loadErrors:      map[loadKey]error{},
+		help:            keyHelp,
 	}, nil
 }
 
-// Init loads the tasks of the project.
+// Init loads the data and starts the refresh ticks.
 func (model *Model) Init() tea.Cmd {
-	return model.loadTasks
-}
-
-func (model *Model) loadTasks() tea.Msg {
-	listed, err := model.source.ListTasks(model.project.Slug, task.ListTasksFilter{}, firstPage, allOnOnePage)
-	return views.TasksLoadedMsg{Tasks: listed.Items, Err: err}
+	return tea.Batch(model.refresh(), model.nextTick())
 }
 
 func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -108,10 +152,56 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case tea.KeyPressMsg:
 		return model, model.handleKey(msg)
-	case views.TasksLoadedMsg:
-		return model, model.broadcast(msg)
+	case refreshTickMsg:
+		return model, tea.Batch(model.refresh(), model.nextTick())
+	case dataLoadedMsg:
+		return model, model.handleDataLoaded(msg)
 	}
 	return model, nil
+}
+
+func (model *Model) nextTick() tea.Cmd {
+	return tea.Tick(model.refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
+}
+
+// dataSources returns every source the root loads for the project.
+func (model *Model) dataSources() []dataSource {
+	return []dataSource{{name: tasksSourceName, load: model.loadTasks}}
+}
+
+// refresh starts one load of every source of the project. It skips a source
+// whose last load still runs.
+func (model *Model) refresh() tea.Cmd {
+	var commands []tea.Cmd
+	for _, source := range model.dataSources() {
+		dataKey := loadKey{projectSlug: model.project.Slug, sourceName: source.name}
+		if model.runningLoads[dataKey] {
+			continue
+		}
+		model.runningLoads[dataKey] = true
+		commands = append(commands, func() tea.Msg {
+			viewMsg, err := source.load(dataKey.projectSlug)
+			return dataLoadedMsg{key: dataKey, viewMsg: viewMsg, err: err}
+		})
+	}
+	return tea.Batch(commands...)
+}
+
+func (model *Model) loadTasks(projectSlug string) (tea.Msg, error) {
+	listed, err := model.source.ListTasks(projectSlug, task.ListTasksFilter{}, firstPage, allOnOnePage)
+	return views.TasksLoadedMsg{ProjectSlug: projectSlug, Tasks: listed.Items, Err: err}, err
+}
+
+// handleDataLoaded ends a load, keeps its error for the bottom bar and sends
+// its message to the Views of every Tab.
+func (model *Model) handleDataLoaded(msg dataLoadedMsg) tea.Cmd {
+	delete(model.runningLoads, msg.key)
+	if msg.err != nil {
+		model.loadErrors[msg.key] = msg.err
+	} else {
+		delete(model.loadErrors, msg.key)
+	}
+	return model.broadcast(msg.viewMsg)
 }
 
 func (model *Model) handleResize(msg tea.WindowSizeMsg) {
@@ -123,12 +213,14 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	}
 }
 
-// handleKey quits, switches Tabs or passes the key to the focused View of the
-// active Tab. A number key with no Tab behind it does nothing.
+// handleKey quits, refreshes, switches Tabs or passes the key to the focused
+// View of the active Tab. A number key with no Tab behind it does nothing.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, quitKey):
 		return tea.Quit
+	case key.Matches(msg, refreshKey):
+		return model.refresh()
 	case key.Matches(msg, nextTabKey):
 		model.nextTab()
 	case key.Matches(msg, previousTabKey):
@@ -252,19 +344,57 @@ func renderTabLabel(index int, title string) string {
 	return fmt.Sprintf(tabLabelFormat, title)
 }
 
-// renderBottomBar shows the warnings on the left and the key hints on the right.
+// renderBottomBar shows the status segments of the active Tab, the load
+// errors and the warnings on the left and the key hints on the right.
 func (model *Model) renderBottomBar() string {
-	bindings := slices.Concat(model.ActiveTab().FocusedTile().view.KeyHints(), []key.Binding{tabNumberKey, nextTabKey, quitKey})
+	bindings := slices.Concat(model.ActiveTab().FocusedTile().view.KeyHints(), rootKeyHints)
 	hints := model.help.ShortHelpView(bindings)
-	warnings := make([]string, 0, len(model.warnings))
+	notices := model.renderLoadErrors()
 	for _, warning := range model.warnings {
-		warnings = append(warnings, model.renderWarning(warning))
+		notices = append(notices, model.renderWarning(warning))
 	}
-	return spread(strings.Join(warnings, warningSeparator), hints, model.width)
+	statuses := ""
+	if activeStatuses := model.ActiveTab().Statuses(); len(activeStatuses) > 0 {
+		statuses = model.styles.Muted.Render(strings.Join(activeStatuses, statusSeparator))
+	}
+	room := model.width - ansi.StringWidth(hints) - spreadGap
+	left := joinStatusLine(statuses, strings.Join(notices, warningSeparator), room)
+	return spread(left, hints, model.width)
+}
+
+// renderLoadErrors returns the errors of the last loads of the project, in
+// the order of its sources.
+func (model *Model) renderLoadErrors() []string {
+	var rendered []string
+	for _, source := range model.dataSources() {
+		err, ok := model.loadErrors[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
+		if ok {
+			rendered = append(rendered, model.styles.Error.Render(loadErrorPrefix+fmt.Sprintf(loadErrorFormat, source.name, err)))
+		}
+	}
+	return rendered
 }
 
 func (model *Model) renderWarning(warning string) string {
 	return model.styles.Warning.Render(warningPrefix + warning)
+}
+
+// joinStatusLine puts the notices after the status segments within room
+// cells. It cuts the status segments from the end first and drops them when
+// the notices alone do not fit. It leaves the notices whole for the bar to
+// cut.
+func joinStatusLine(statuses, notices string, room int) string {
+	switch {
+	case statuses == "":
+		return notices
+	case notices == "":
+		return statuses
+	}
+	statusRoom := room - ansi.StringWidth(notices) - len(warningSeparator)
+	if statusRoom <= 0 {
+		return notices
+	}
+	return ansi.Truncate(statuses, statusRoom, cells.Ellipsis) + warningSeparator + notices
 }
 
 // spread lays out one line with one text at its start and another at its end.

@@ -14,22 +14,24 @@ import (
 
 // Keys of the TUI config file.
 const (
-	schemaKey      = "$schema"
-	tabsKey        = tabsPath
-	titleKey       = "title"
-	layoutKey      = layoutPath
-	arrangementKey = "arrangement"
-	childrenKey    = "children"
-	viewKey        = "view"
-	weightKey      = "weight"
+	schemaKey             = "$schema"
+	tabsKey               = tabsPath
+	dataRefreshSecondsKey = "dataRefreshSeconds"
+	titleKey              = "title"
+	layoutKey             = layoutPath
+	arrangementKey        = "arrangement"
+	childrenKey           = "children"
+	viewKey               = "view"
+	weightKey             = "weight"
+	showStatusKey         = "showStatus"
 )
 
 // Keys each object of the TUI config file may hold, in the order the errors
 // list them.
 var (
-	rootKeys = []string{schemaKey, tabsKey}
+	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey}
 	tabKeys  = []string{titleKey, layoutKey}
-	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey}
+	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey, showStatusKey}
 )
 
 // Kinds of JSON values, as the errors name them.
@@ -65,7 +67,8 @@ func LoadConfig(path string) (Config, error) {
 }
 
 // ParseConfig decodes a TUI config file. It refuses JSON that does not parse,
-// a value of the wrong kind, an unknown key and a weight that is not above 0.
+// a value of the wrong kind, an unknown key, a weight that is not above 0 and
+// a data refresh below its minimum.
 // An error starts with the path of the value to change, like
 // tabs[0].layout.children[1].weight. BuildTabs checks the rest.
 func ParseConfig(data []byte) (Config, error) {
@@ -83,6 +86,14 @@ func ParseConfig(data []byte) (Config, error) {
 		}
 	}
 	var config Config
+	if rawSeconds, ok := root[dataRefreshSecondsKey]; ok {
+		if config.DataRefreshSeconds, err = decodeValue[float64](rawSeconds, dataRefreshSecondsKey, jsonNumber); err != nil {
+			return Config{}, err
+		}
+		if config.DataRefreshSeconds < minDataRefreshSeconds {
+			return Config{}, fmt.Errorf("%s: %g is below the minimum of %g, use %g or more seconds", dataRefreshSecondsKey, config.DataRefreshSeconds, minDataRefreshSeconds, minDataRefreshSeconds)
+		}
+	}
 	rawTabs, ok := root[tabsKey]
 	if !ok {
 		return config, nil
@@ -165,6 +176,13 @@ func parseNode(raw json.RawMessage, path string) (NodeConfig, error) {
 		if err := validateWeight(node.Weight, path); err != nil {
 			return NodeConfig{}, err
 		}
+	}
+	if rawShowStatus, ok := object[showStatusKey]; ok {
+		isStatusShown, err := decodeValue[bool](rawShowStatus, joinKeyPath(path, showStatusKey), jsonBoolean)
+		if err != nil {
+			return NodeConfig{}, err
+		}
+		node.ShowStatus = &isStatusShown
 	}
 	return node, nil
 }

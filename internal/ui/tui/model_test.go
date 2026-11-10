@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"errors"
+	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -15,13 +19,41 @@ import (
 
 var testProject = &project.Project{Slug: "uploader", Name: "Uploader"}
 
+var errDiskOnFire = errors.New("disk on fire")
+
+// testRefreshInterval is long enough that no tick comes during a test that
+// refreshes with the refresh key.
+const testRefreshInterval = time.Hour
+
+// waitTimeout caps how long a test waits for a load of a running program.
+const waitTimeout = 5 * time.Second
+
+// fakeTaskSource lists its tasks. The call numbered failFromCall and every
+// later call fail with errDiskOnFire. A call sends its number on startedCalls
+// and waits for release when they are set.
 type fakeTaskSource struct {
-	tasks []task.ListedTask
+	tasks        []task.ListedTask
+	failFromCall int
+	startedCalls chan int
+	release      chan struct{}
+	callCount    atomic.Int32
 }
 
-func (source fakeTaskSource) ListTasks(projectSlug string, filter task.ListTasksFilter, page int, size int) (common.Page[task.ListedTask], error) {
+func (source *fakeTaskSource) ListTasks(projectSlug string, filter task.ListTasksFilter, page int, size int) (common.Page[task.ListedTask], error) {
+	callNumber := int(source.callCount.Add(1))
+	if source.startedCalls != nil {
+		source.startedCalls <- callNumber
+	}
+	if source.release != nil {
+		<-source.release
+	}
+	if source.failFromCall > 0 && callNumber >= source.failFromCall {
+		return common.Page[task.ListedTask]{}, errDiskOnFire
+	}
 	return common.Paginate(source.tasks, page, size)
 }
+
+var keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
 
 var (
 	keyNextTab     = tea.KeyPressMsg{Code: ']', Text: "]"}
@@ -55,11 +87,80 @@ func buildTestTabs(t *testing.T, config Config) []*Tab {
 // tasks.
 func newTestModel(t *testing.T, tabs []*Tab, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProject, fakeTaskSource{tasks: tuitest.ListedTasks()}, tuitest.Styles(), tabs, warnings)
+	return newTestModelWithSource(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, tabs, testRefreshInterval, warnings)
+}
+
+func newTestModelWithSource(t *testing.T, source TaskSource, tabs []*Tab, refreshInterval time.Duration, warnings []string) *Model {
+	t.Helper()
+	model, err := NewModel(testProject, source, tuitest.Styles(), tabs, refreshInterval, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return model
+}
+
+// refreshNow presses the refresh key and runs the loads it starts.
+func refreshNow(model *Model) {
+	_, cmd := model.Update(keyRefresh)
+	runCommand(model, cmd)
+}
+
+// runCommand runs a command and every command its messages lead to. It never
+// gets a refresh tick, since a tick waits for the refresh interval.
+func runCommand(model *Model, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, batched := range batch {
+			runCommand(model, batched)
+		}
+		return
+	}
+	_, next := model.Update(msg)
+	runCommand(model, next)
+}
+
+// startProgram runs a model in a program with no terminal and quits it when
+// the test ends.
+func startProgram(t *testing.T, model *Model) *tea.Program {
+	t.Helper()
+	program := tea.NewProgram(model,
+		tea.WithInput(nil),
+		tea.WithOutput(io.Discard),
+		tea.WithoutRenderer(),
+		tea.WithoutSignals(),
+		tea.WithWindowSize(100, 12),
+	)
+	isDone := make(chan struct{})
+	go func() {
+		defer close(isDone)
+		if _, err := program.Run(); err != nil {
+			t.Errorf("the program failed: %v", err)
+		}
+	}()
+	t.Cleanup(func() {
+		program.Quit()
+		<-isDone
+	})
+	return program
+}
+
+// waitForCall waits until the source starts the call numbered wantNumber.
+func waitForCall(t *testing.T, startedCalls chan int, wantNumber int) {
+	t.Helper()
+	timeout := time.After(waitTimeout)
+	for {
+		select {
+		case number := <-startedCalls:
+			if number == wantNumber {
+				return
+			}
+		case <-timeout:
+			t.Fatalf("the source did not start call %d within %s", wantNumber, waitTimeout)
+		}
+	}
 }
 
 func TestModel(t *testing.T) {
@@ -89,7 +190,7 @@ func TestModel(t *testing.T) {
 			}
 			model := newTestModel(t, testTabs(t, tabTitles...), testCase.warnings)
 			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
-			model.Update(model.Init()())
+			refreshNow(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}
@@ -161,8 +262,99 @@ func TestModel_SwitchesTabs(t *testing.T) {
 	}
 }
 
+func TestModel_SkipsRefreshWhileLoadRuns(t *testing.T) {
+	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), startedCalls: make(chan int, 100), release: make(chan struct{})}
+	refreshInterval := time.Duration(minDataRefreshSeconds * float64(time.Second))
+	program := startProgram(t, newTestModelWithSource(t, source, testTabs(t, "Tasks"), refreshInterval, nil))
+
+	waitForCall(t, source.startedCalls, 1)
+	program.Send(keyRefresh)
+	select {
+	case number := <-source.startedCalls:
+		t.Fatalf("call %d started while call 1 still ran", number)
+	case <-time.After(4 * refreshInterval):
+	}
+
+	close(source.release)
+	waitForCall(t, source.startedCalls, 2)
+}
+
+func TestModel_FailedLoadKeepsLastData(t *testing.T) {
+	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 2}
+	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
+	model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+
+	refreshNow(model)
+	refreshNow(model)
+
+	content := model.View().Content
+	if wantTask := "Add retry to uploader"; !strings.Contains(content, wantTask) {
+		t.Errorf("expected the tasks of the first load to stay on screen, got:\n%s", content)
+	}
+	if wantError := "✗ could not load tasks: disk on fire"; !strings.Contains(content, wantError) {
+		t.Errorf("expected the screen to show %q, got:\n%s", wantError, content)
+	}
+}
+
+func TestModel_SuccessfulLoadClearsError(t *testing.T) {
+	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 1}
+	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
+	model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+
+	refreshNow(model)
+	source.failFromCall = 0
+	refreshNow(model)
+
+	if content := model.View().Content; strings.Contains(content, "could not load") {
+		t.Errorf("expected no load error after a load that worked, got:\n%s", content)
+	}
+}
+
+func TestModel_BottomBar(t *testing.T) {
+	threeTiles := func(middleShowStatus *bool) Config {
+		return oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
+			{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: tasklist.Name, ShowStatus: middleShowStatus}}},
+			taskListNode(),
+		}})
+	}
+	cases := []struct {
+		name         string
+		width        int
+		config       Config
+		failFromCall int
+		warnings     []string
+		keys         []tea.KeyPressMsg
+	}{
+		{name: "bottom_bar_segments", width: 140, config: threeTiles(nil), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+		{name: "bottom_bar_status_hidden", width: 140, config: threeTiles(new(false)), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+		{
+			name:         "bottom_bar_errors_and_warnings",
+			width:        240,
+			config:       threeTiles(nil),
+			failFromCall: 2,
+			warnings:     []string{`theme.json: "red" is not a color for role error, using the theme's own`},
+		},
+		{name: "bottom_bar_overflow_cuts_segments", width: 124, config: threeTiles(nil), failFromCall: 2},
+		{name: "bottom_bar_overflow_cuts_errors", width: 100, config: threeTiles(nil), failFromCall: 2},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: testCase.failFromCall}
+			model := newTestModelWithSource(t, source, buildTestTabs(t, testCase.config), testRefreshInterval, testCase.warnings)
+			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: 24})
+			refreshNow(model)
+			refreshNow(model)
+			for _, keyPress := range testCase.keys {
+				model.Update(keyPress)
+			}
+			lines := strings.Split(model.View().Content, "\n")
+			tuitest.AssertGolden(t, testCase.name, lines[len(lines)-1])
+		})
+	}
+}
+
 func TestNewModel_NoTabs(t *testing.T) {
-	_, err := NewModel(testProject, fakeTaskSource{}, tuitest.Styles(), nil, nil)
+	_, err := NewModel(testProject, &fakeTaskSource{}, tuitest.Styles(), nil, testRefreshInterval, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}
