@@ -192,6 +192,16 @@ func (t *Theme) Hex(role string) string {
 	return string(hex)
 }
 
+// RoleColor returns the color of role. ok is false for an unknown role. It
+// ignores whether color is on, so the caller decides that with IsColorOn.
+func (t *Theme) RoleColor(role string) (roleColor RoleColor, ok bool) {
+	found, ok := t.colors[role]
+	if !ok {
+		return RoleColor{}, false
+	}
+	return found.describe(), true
+}
+
 // Colors returns the "#rrggbb" string of every role with a hex color.
 func (t *Theme) Colors() map[string]string {
 	hexes := make(map[string]string, len(t.colors))

@@ -55,6 +55,7 @@ func NewRoot(version string) *Cmd {
 			ProjectCmd,
 			TaskCmd,
 			DrudgerCmd,
+			TuiCmd,
 			NewUpdateCmd(version),
 		},
 		Setup: func(fs *flag.FlagSet) func(args []string) error {

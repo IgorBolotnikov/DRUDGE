@@ -26,4 +26,5 @@ Runs your backlog through coding agents, each in its own sandbox, on your own ma
 | [`drg project`]({{< relref "/docs/cli/project" >}}) | Project management commands |
 | [`drg task`]({{< relref "/docs/cli/task" >}}) | Task management commands |
 | [`drg drudger`]({{< relref "/docs/cli/drudger" >}}) | Drudger management commands |
+| [`drg tui`]({{< relref "/docs/cli/tui" >}}) | Show the tasks of the project in this directory full screen |
 | [`drg update`]({{< relref "/docs/cli/update" >}}) | Update drg to the latest release |

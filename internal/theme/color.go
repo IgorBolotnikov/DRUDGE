@@ -10,6 +10,28 @@ type color interface {
 	// rgb returns the red, green and blue bytes of the color. ok is false for
 	// a color that has no RGB.
 	rgb() (red, green, blue int, ok bool)
+	// describe returns the color as a terminal library reads it.
+	describe() RoleColor
+}
+
+// ColorKind is how the color of a role is written.
+type ColorKind int
+
+// Kinds of role color.
+const (
+	ColorHex ColorKind = iota + 1
+	ColorANSI
+	ColorDim
+)
+
+// RoleColor is the color of one role, described without escape sequences.
+type RoleColor struct {
+	Kind ColorKind
+	// Hex is the "#rrggbb" of a hex color.
+	Hex string
+	// ANSI is the number of a basic ANSI color, from 0 for black to 7 for
+	// white.
+	ANSI int
 }
 
 // hexColor is a 24-bit color written as "#rrggbb".
@@ -18,6 +40,10 @@ type hexColor string
 func (hex hexColor) escape() string {
 	red, green, blue := hexToRGB(string(hex))
 	return rgbEscape(red, green, blue)
+}
+
+func (hex hexColor) describe() RoleColor {
+	return RoleColor{Kind: ColorHex, Hex: string(hex)}
 }
 
 func (hex hexColor) rgb() (red, green, blue int, ok bool) {
@@ -46,6 +72,16 @@ const ansiSGRFormat = "\x1b[%dm"
 
 func (sgr ansiColor) escape() string {
 	return fmt.Sprintf(ansiSGRFormat, int(sgr))
+}
+
+// ansiForegroundBase is the SGR code of the first basic foreground color.
+const ansiForegroundBase = 30
+
+func (sgr ansiColor) describe() RoleColor {
+	if sgr == ansiDim {
+		return RoleColor{Kind: ColorDim}
+	}
+	return RoleColor{Kind: ColorANSI, ANSI: int(sgr) - ansiForegroundBase}
 }
 
 func (sgr ansiColor) rgb() (red, green, blue int, ok bool) {
