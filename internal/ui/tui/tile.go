@@ -15,10 +15,10 @@ import (
 const tileBorder = 2
 
 // Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
-// with the name of its View in the top edge and clips the View to the space
-// inside.
+// with its title in the top edge and clips the View to the space inside.
 type Tile struct {
 	view      views.View
+	title     string
 	styles    *styles.Styles
 	weight    float64
 	isFocused bool
@@ -26,9 +26,13 @@ type Tile struct {
 	height    int
 }
 
-// NewTile places a View in a Tile. NewTab checks the weight.
-func NewTile(view views.View, tileStyles *styles.Styles, weight float64) *Tile {
-	return &Tile{view: view, styles: tileStyles, weight: weight}
+// NewTile places a View in a Tile. A Tile with an empty title shows the name
+// of its View. NewTab checks the weight.
+func NewTile(view views.View, title string, tileStyles *styles.Styles, weight float64) *Tile {
+	if title == "" {
+		title = view.Name()
+	}
+	return &Tile{view: view, title: title, styles: tileStyles, weight: weight}
 }
 
 func (tile *Tile) Weight() float64 {
@@ -78,14 +82,14 @@ func (tile *Tile) Render() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderTopEdge returns the top border with the name of the View in it. A name
-// wider than the edge is cut.
+// renderTopEdge returns the top border with the title in it. A title wider
+// than the edge is cut.
 func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
 	titleStyle := tile.styles.Border
 	if tile.isFocused {
 		titleStyle = tile.styles.TileTitle
 	}
-	title := ansi.Truncate(border.Top+" "+tile.view.Name()+" ", innerWidth, "")
+	title := ansi.Truncate(border.Top+" "+tile.title+" ", innerWidth, "")
 	titleWidth := ansi.StringWidth(title)
 	return tile.styles.Border.Render(border.TopLeft) +
 		titleStyle.Render(title) +

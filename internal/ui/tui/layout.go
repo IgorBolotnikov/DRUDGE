@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -130,28 +129,34 @@ func divide(size int, weights []float64) []int {
 
 // validateNode refuses a layout the Tab cannot divide: a missing Node, a
 // weight that is not above 0, an unknown arrangement or a Split with fewer
-// than two children.
-func validateNode(node Node) error {
+// than two children. An error starts with the path of the value to change,
+// like layout.children[1].weight.
+func validateNode(node Node, path string) error {
 	if node == nil {
-		return errors.New("the layout has an empty node, put a split or a tile there")
+		return fmt.Errorf("%s: the node is empty, put a split or a tile there", path)
 	}
 	if weight := node.Weight(); weight <= 0 {
-		return fmt.Errorf("weight %v is not above 0, use a positive weight", weight)
+		return fmt.Errorf("%s.weight: %v is not above 0, use a positive weight", path, weight)
 	}
 	split, isSplit := node.(*Split)
 	if !isSplit {
 		return nil
 	}
 	if split.arrangement != SideBySide && split.arrangement != Stacked {
-		return fmt.Errorf("unknown arrangement %q, use %q or %q", split.arrangement, SideBySide, Stacked)
+		return fmt.Errorf("%s.arrangement: unknown arrangement %q, use %q or %q", path, split.arrangement, SideBySide, Stacked)
 	}
 	if len(split.children) < minSplitChildren {
-		return fmt.Errorf("a split holds %d tiles and needs at least %d, put its tile in place of the split", len(split.children), minSplitChildren)
+		return fmt.Errorf("%s.children: a split holds %d nodes and needs at least %d, put its only child in place of the split", path, len(split.children), minSplitChildren)
 	}
-	for _, child := range split.children {
-		if err := validateNode(child); err != nil {
+	for index, child := range split.children {
+		if err := validateNode(child, childPath(path, index)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// childPath returns the path of the child at index of the split at path.
+func childPath(path string, index int) string {
+	return fmt.Sprintf("%s.children[%d]", path, index)
 }

@@ -40,7 +40,7 @@ func Run() error {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
 	screenStyles := styles.New(palette)
-	tabs, err := defaultTabs(screenStyles)
+	tabs, err := BuildTabs(defaultConfig(), screenStyles)
 	if err != nil {
 		return err
 	}

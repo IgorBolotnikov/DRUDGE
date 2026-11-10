@@ -18,6 +18,9 @@ import (
 // Name is the kind of the View that lists tasks.
 const Name = "task-list"
 
+// Description says in one line what the View shows.
+const Description = "Lists the tasks of the project with the rows of drg task list."
+
 // Widths of the task list columns.
 const (
 	statusWidth   = 15

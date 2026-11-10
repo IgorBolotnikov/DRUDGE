@@ -40,7 +40,7 @@ func (view *sizeView) KeyHints() []key.Binding { return nil }
 
 // sizeTile returns a Tile with a sizeView of the name.
 func sizeTile(name string, weight float64) *Tile {
-	return NewTile(&sizeView{name: name}, tuitest.Styles(), weight)
+	return NewTile(&sizeView{name: name}, "", tuitest.Styles(), weight)
 }
 
 func TestTab_Render(t *testing.T) {
@@ -95,16 +95,18 @@ func TestTab_Render(t *testing.T) {
 
 func TestNewTab_RefusesLayout(t *testing.T) {
 	cases := []struct {
-		name      string
-		layout    Node
-		wantError string
+		name       string
+		layout     Node
+		wantPath   string
+		wantReason string
 	}{
-		{name: "no layout", layout: nil, wantError: "empty node"},
-		{name: "split with one tile", layout: NewSplit(SideBySide, 1, sizeTile("a", 1)), wantError: "needs at least 2"},
-		{name: "split with no tiles", layout: NewSplit(Stacked, 1), wantError: "needs at least 2"},
-		{name: "unknown arrangement", layout: NewSplit("diagonal", 1, sizeTile("a", 1), sizeTile("b", 1)), wantError: `unknown arrangement "diagonal"`},
-		{name: "zero tile weight", layout: NewSplit(Stacked, 1, sizeTile("a", 0), sizeTile("b", 1)), wantError: "weight 0 is not above 0"},
-		{name: "negative split weight", layout: NewSplit(Stacked, 1, NewSplit(SideBySide, -1, sizeTile("a", 1), sizeTile("b", 1)), sizeTile("c", 1)), wantError: "weight -1 is not above 0"},
+		{name: "no layout", layout: nil, wantPath: "layout: ", wantReason: "the node is empty"},
+		{name: "split with one tile", layout: NewSplit(SideBySide, 1, sizeTile("a", 1)), wantPath: "layout.children: ", wantReason: "needs at least 2"},
+		{name: "split with no tiles", layout: NewSplit(Stacked, 1), wantPath: "layout.children: ", wantReason: "needs at least 2"},
+		{name: "unknown arrangement", layout: NewSplit("diagonal", 1, sizeTile("a", 1), sizeTile("b", 1)), wantPath: "layout.arrangement: ", wantReason: `unknown arrangement "diagonal"`},
+		{name: "zero tile weight", layout: NewSplit(Stacked, 1, sizeTile("a", 0), sizeTile("b", 1)), wantPath: "layout.children[0].weight: ", wantReason: "0 is not above 0"},
+		{name: "negative nested split weight", layout: NewSplit(Stacked, 1, sizeTile("a", 1), NewSplit(SideBySide, -1, sizeTile("b", 1), sizeTile("c", 1))), wantPath: "layout.children[1].weight: ", wantReason: "-1 is not above 0"},
+		{name: "tile deep in the tree", layout: NewSplit(Stacked, 1, sizeTile("a", 1), NewSplit(SideBySide, 1, sizeTile("b", 1), sizeTile("c", -2))), wantPath: "layout.children[1].children[1].weight: ", wantReason: "-2 is not above 0"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -112,11 +114,11 @@ func TestNewTab_RefusesLayout(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected an error")
 			}
-			if !strings.Contains(err.Error(), `tab "Broken"`) {
-				t.Errorf("expected the error to name the tab, got %q", err)
+			if !strings.HasPrefix(err.Error(), testCase.wantPath) {
+				t.Errorf("expected the error to start with %q, got %q", testCase.wantPath, err)
 			}
-			if !strings.Contains(err.Error(), testCase.wantError) {
-				t.Errorf("expected the error to contain %q, got %q", testCase.wantError, err)
+			if !strings.Contains(err.Error(), testCase.wantReason) {
+				t.Errorf("expected the error to contain %q, got %q", testCase.wantReason, err)
 			}
 		})
 	}
@@ -137,8 +139,8 @@ func TestTab_BroadcastReachesEveryTile(t *testing.T) {
 	views := []*sizeView{{name: "a"}, {name: "b"}, {name: "c"}}
 	screenStyles := tuitest.Styles()
 	tab, err := NewTab("Tab", NewSplit(Stacked, 1,
-		NewSplit(SideBySide, 1, NewTile(views[0], screenStyles, 1), NewTile(views[1], screenStyles, 1)),
-		NewTile(views[2], screenStyles, 1),
+		NewSplit(SideBySide, 1, NewTile(views[0], "", screenStyles, 1), NewTile(views[1], "", screenStyles, 1)),
+		NewTile(views[2], "", screenStyles, 1),
 	))
 	if err != nil {
 		t.Fatal(err)

@@ -33,14 +33,19 @@ var (
 // testTabs returns one task list Tab per title.
 func testTabs(t *testing.T, titles ...string) []*Tab {
 	t.Helper()
-	screenStyles := tuitest.Styles()
-	tabs := make([]*Tab, 0, len(titles))
+	config := Config{}
 	for _, title := range titles {
-		tab, err := NewTab(title, NewTile(tasklist.New(screenStyles), screenStyles, defaultWeight))
-		if err != nil {
-			t.Fatal(err)
-		}
-		tabs = append(tabs, tab)
+		config.Tabs = append(config.Tabs, TabConfig{Title: title, Layout: NodeConfig{View: tasklist.Name}})
+	}
+	return buildTestTabs(t, config)
+}
+
+// buildTestTabs builds the Tabs of a config with the test styles.
+func buildTestTabs(t *testing.T, config Config) []*Tab {
+	t.Helper()
+	tabs, err := BuildTabs(config, tuitest.Styles())
+	if err != nil {
+		t.Fatal(err)
 	}
 	return tabs
 }

@@ -1,24 +1,9 @@
 package tui
 
-import (
-	"fmt"
+import tea "charm.land/bubbletea/v2"
 
-	tea "charm.land/bubbletea/v2"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
-	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
-)
-
-const tasksTabTitle = "Tasks"
-
-// defaultTabs returns the Tabs the TUI shows.
-func defaultTabs(screenStyles *styles.Styles) ([]*Tab, error) {
-	tasksTab, err := NewTab(tasksTabTitle, NewTile(tasklist.New(screenStyles), screenStyles, defaultWeight))
-	if err != nil {
-		return nil, err
-	}
-	return []*Tab{tasksTab}, nil
-}
+// layoutPath is the path of the layout of a Tab in the errors about it.
+const layoutPath = "layout"
 
 // Tab is a full screen with a title and a layout of Tiles. One Tile of the Tab
 // has focus.
@@ -30,10 +15,11 @@ type Tab struct {
 }
 
 // NewTab returns a Tab with a layout and gives focus to its first Tile. It
-// refuses a layout it cannot divide.
+// refuses a layout it cannot divide, with an error that starts with the path
+// of the value to change, like layout.children[1].weight.
 func NewTab(title string, layout Node) (*Tab, error) {
-	if err := validateNode(layout); err != nil {
-		return nil, fmt.Errorf("tab %q: %w", title, err)
+	if err := validateNode(layout, layoutPath); err != nil {
+		return nil, err
 	}
 	tiles := layout.Tiles()
 	tiles[0].SetFocused(true)
