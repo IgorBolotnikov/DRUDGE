@@ -338,6 +338,97 @@ func TestFileTaskRepository_ListTasks_SkipsNonMdFiles(t *testing.T) {
 	}
 }
 
+func TestFileTaskRepository_ReadTaskEntries(t *testing.T) {
+	tests := []struct {
+		name string
+		// breakFile changes the file of the task named "Gone" after the
+		// directory is listed.
+		breakFile func(t *testing.T, path string)
+		wantTitle []string
+		wantErr   bool
+	}{
+		{
+			name: "skips a file removed after the listing",
+			breakFile: func(t *testing.T, path string) {
+				if err := os.Remove(path); err != nil {
+					t.Fatalf("Remove: %v", err)
+				}
+			},
+			wantTitle: []string{"Kept"},
+		},
+		{
+			name: "fails on a file that cannot be read",
+			breakFile: func(t *testing.T, path string) {
+				if err := os.Chmod(path, 0); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+				if _, err := os.ReadFile(path); err == nil {
+					t.Skip("file permissions are not enforced")
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home, cleanup := setupTaskTestHome(t)
+			defer cleanup()
+
+			projectDir := filepath.Join(common.ProjectsDir(home), "test-project")
+			if err := common.EnsureDir(projectDir); err != nil {
+				t.Fatalf("ensure project dir: %v", err)
+			}
+
+			repo := NewFileTaskRepository("test-project")
+			var gonePath string
+			for _, title := range []string{"Gone", "Kept"} {
+				created, err := repo.CreateTask(task.CreateTaskDto{
+					Title:       title,
+					Status:      task.StatusDraft,
+					ProjectSlug: "test-project",
+					CreatedAt:   time.Now().UTC(),
+				})
+				if err != nil {
+					t.Fatalf("CreateTask: %v", err)
+				}
+				if title == "Gone" {
+					found, err := repo.exactTaskFile(created.ID)
+					if err != nil {
+						t.Fatalf("exactTaskFile: %v", err)
+					}
+					gonePath = found.path
+				}
+			}
+
+			tasksDir := filepath.Dir(gonePath)
+			entries, err := os.ReadDir(tasksDir)
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			tt.breakFile(t, gonePath)
+
+			tasks, err := repo.readTaskEntries(tasksDir, entries)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readTaskEntries: %v", err)
+			}
+			var gotTitle []string
+			for _, listed := range tasks {
+				gotTitle = append(gotTitle, listed.Title)
+			}
+			if !slices.Equal(gotTitle, tt.wantTitle) {
+				t.Errorf("titles = %v, want %v", gotTitle, tt.wantTitle)
+			}
+		})
+	}
+}
+
 func TestFileTaskRepository_GetTask_Found(t *testing.T) {
 	home, cleanup := setupTaskTestHome(t)
 	defer cleanup()

@@ -3,6 +3,7 @@ package persistence
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -396,21 +397,31 @@ func (r *FileTaskRepository) ListTasks(projectSlug string) ([]*task.Task, error)
 		return nil, fmt.Errorf("could not list tasks directory: %w", err)
 	}
 
+	return r.readTaskEntries(tasksDir, entries)
+}
+
+// readTaskEntries reads the task file of every listed entry. An entry whose
+// file is gone by the time it is read is skipped, because another command
+// removed or renamed that task after the directory was listed.
+func (r *FileTaskRepository) readTaskEntries(tasksDir string, entries []os.DirEntry) ([]*task.Task, error) {
 	var tasks []*task.Task
-	for _, e := range entries {
-		if e.IsDir() {
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
-		if !strings.HasSuffix(e.Name(), taskFileExtension) {
+		if !strings.HasSuffix(entry.Name(), taskFileExtension) {
 			continue
 		}
 
-		t, err := r.parseTaskFromFile(filepath.Join(tasksDir, e.Name()))
+		parsed, err := r.parseTaskFromFile(filepath.Join(tasksDir, entry.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
 
-		tasks = append(tasks, t)
+		tasks = append(tasks, parsed)
 	}
 
 	return tasks, nil
