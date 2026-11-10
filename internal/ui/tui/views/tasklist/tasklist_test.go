@@ -228,3 +228,40 @@ func TestView_CursorRowStyle(t *testing.T) {
 		})
 	}
 }
+
+func TestView_ColumnsFollowTasks(t *testing.T) {
+	const blockedByHeader = "BLOCKED BY"
+	shortBlockers := tuitest.ListedTasks()
+	for index := range shortBlockers {
+		shortBlockers[index].Holding = nil
+	}
+	shortBlockers[0].Holding = []task.TaskID{"aaaaaaaa-0000"}
+	longBlockers := tuitest.ListedTasks()
+	for index := range longBlockers {
+		longBlockers[index].Holding = nil
+	}
+	longBlockers[0].Holding = []task.TaskID{"aaaaaaaa-0000", "bbbbbbbb-0000", "cccccccc-0000"}
+
+	view := New(tuitest.Styles())
+	view.SetSize(200, 8)
+	view.Update(views.TasksLoadedMsg{Tasks: shortBlockers})
+	shortWidth := blockedByWidth(t, view.Render(), blockedByHeader)
+	view.Update(views.TasksLoadedMsg{Tasks: longBlockers})
+	longWidth := blockedByWidth(t, view.Render(), blockedByHeader)
+	if longWidth <= shortWidth {
+		t.Errorf("expected the blockers column to widen from %d, got %d", shortWidth, longWidth)
+	}
+}
+
+// blockedByWidth returns the cells between the header of the blockers column
+// and the header of the next column.
+func blockedByWidth(t *testing.T, rendered, blockedByHeader string) int {
+	t.Helper()
+	header := ansi.Strip(strings.SplitN(rendered, "\n", 2)[0])
+	start := strings.Index(header, blockedByHeader)
+	end := strings.Index(header, "TICKET")
+	if start == -1 || end == -1 {
+		t.Fatalf("expected the blockers and ticket headers in %q", header)
+	}
+	return end - start
+}

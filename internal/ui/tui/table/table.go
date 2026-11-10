@@ -4,6 +4,7 @@
 package table
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -38,11 +39,17 @@ type Layout struct {
 	isShown []bool
 }
 
-// NewLayout fits the columns in width cells. A column is as wide as its title
-// and its widest cell, and at least its minimum width. Columns drop by
-// priority until the rest fit, and the fill column takes the width left over.
-// When the required columns alone do not fit, the layout is wider than width.
-func NewLayout(columns []Column, rows [][]string, width int) Layout {
+// Measured is the columns of a table with the width the cells ask for. It
+// fits any number of widths without reading the cells again.
+type Measured struct {
+	columns []Column
+	widths  []int
+}
+
+// Measure finds the width of each column. A column is as wide as its title and
+// its widest cell, and at least its minimum width. A fill column takes its
+// minimum width.
+func Measure(columns []Column, rows [][]string) Measured {
 	widths := make([]int, len(columns))
 	for index, column := range columns {
 		widths[index] = column.MinWidth
@@ -54,11 +61,18 @@ func NewLayout(columns []Column, rows [][]string, width int) Layout {
 			widths[index] = max(widths[index], ansi.StringWidth(row[index]))
 		}
 	}
-	isShown := make([]bool, len(columns))
+	return Measured{columns: columns, widths: widths}
+}
+
+// Fit fits the columns in width cells. Columns drop by priority until the rest
+// fit, and the fill column takes the width left over. When the required
+// columns alone do not fit, the layout is wider than width.
+func (measured Measured) Fit(width int) Layout {
+	isShown := make([]bool, len(measured.columns))
 	for index := range isShown {
 		isShown[index] = true
 	}
-	layout := Layout{columns: columns, widths: widths, isShown: isShown}
+	layout := Layout{columns: measured.columns, widths: slices.Clone(measured.widths), isShown: isShown}
 	for layout.Width() > width {
 		index, ok := layout.nextToDrop()
 		if !ok {
@@ -70,6 +84,11 @@ func NewLayout(columns []Column, rows [][]string, width int) Layout {
 		layout.widths[fillIndex] += max(width-layout.Width(), 0)
 	}
 	return layout
+}
+
+// NewLayout measures the rows and fits the columns in width cells.
+func NewLayout(columns []Column, rows [][]string, width int) Layout {
+	return Measure(columns, rows).Fit(width)
 }
 
 // Width returns how many cells a line of the table takes.

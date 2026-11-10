@@ -115,6 +115,8 @@ type View struct {
 	tasks       []task.ListedTask
 	rows        []task.ListedTask
 	hasTasks    bool
+	measured    table.Measured
+	layout      table.Layout
 	loadErr     error
 	filter      textinput.Model
 	isFiltering bool
@@ -129,7 +131,8 @@ func New(viewStyles *styles.Styles) *View {
 	filter := textinput.New()
 	filter.Prompt = filterPrompt
 	filter.SetStyles(textinput.Styles{Focused: textinput.StyleState{Prompt: viewStyles.Muted}})
-	return &View{styles: viewStyles, filter: filter}
+	measured := table.Measure(columns, nil)
+	return &View{styles: viewStyles, filter: filter, measured: measured, layout: measured.Fit(0)}
 }
 
 func (view *View) Name() string {
@@ -169,6 +172,7 @@ func (view *View) Status() string {
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
+	view.fitColumns()
 	view.filter.SetWidth(max(width-ansi.StringWidth(filterPrompt)-filterCursorGap, 0))
 	view.scrollToCursor()
 }
@@ -182,6 +186,7 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 		if msg.Err == nil {
 			view.tasks = msg.Tasks
 			view.hasTasks = true
+			view.measureColumns()
 			view.showRows()
 		}
 	case tea.KeyPressMsg:
@@ -315,47 +320,52 @@ func (view *View) renderList() string {
 		return view.styles.Muted.Render("No tasks match the filter")
 	}
 
-	layout := view.layout()
-	lines := []string{view.styles.Header.Render(noCursorMarker + layout.Header())}
+	lines := []string{view.styles.Header.Render(noCursorMarker + view.layout.Header())}
 	end := min(view.offset+view.rowLineCount(), len(view.rows))
 	for index := view.offset; index < end; index++ {
-		lines = append(lines, view.renderRow(layout, index))
+		lines = append(lines, view.renderRow(index))
 	}
 	return strings.Join(lines, "\n")
 }
 
-// layout fits the columns in the width left after the cursor marker. The
-// columns are as wide as the cells of every task, so the filter does not move
-// them.
-func (view *View) layout() table.Layout {
+// measureColumns finds the width of each column from the cells of every task,
+// so the filter does not move the columns.
+func (view *View) measureColumns() {
 	rows := make([][]string, 0, len(view.tasks))
 	for _, entry := range view.tasks {
 		rows = append(rows, newTaskRow(entry))
 	}
-	return table.NewLayout(columns, rows, view.width-ansi.StringWidth(noCursorMarker))
+	view.measured = table.Measure(columns, rows)
+	view.fitColumns()
+}
+
+// fitColumns fits the measured columns in the width left after the cursor
+// marker.
+func (view *View) fitColumns() {
+	view.layout = view.measured.Fit(view.width - ansi.StringWidth(noCursorMarker))
 }
 
 // renderRow renders the row at index. A context row takes one style across
 // the row, so its cells stay plain.
-func (view *View) renderRow(layout table.Layout, index int) string {
+func (view *View) renderRow(index int) string {
 	entry := view.rows[index]
 	row := newTaskRow(entry)
 	switch {
 	case index == view.cursor:
-		return view.renderCursorRow(layout, entry, row)
+		return view.renderCursorRow(entry, row)
 	case entry.IsContext:
-		return view.styles.Muted.Render(noCursorMarker + layout.Row(row))
+		return view.styles.Muted.Render(noCursorMarker + view.layout.Row(row))
 	}
 	row[statusCell] = view.styles.Status(entry.Task.Status).Render(row[statusCell])
 	row[idCell] = view.styles.ShortID.Render(row[idCell])
-	return noCursorMarker + layout.Row(row)
+	return noCursorMarker + view.layout.Row(row)
 }
 
 // renderCursorRow renders the cells of the cursor row in the styles of a
 // normal row, on the selection background. An inner style ends with a reset,
 // so every cell, gap and the padding to the view width carries the background
 // itself.
-func (view *View) renderCursorRow(layout table.Layout, entry task.ListedTask, row []string) string {
+func (view *View) renderCursorRow(entry task.ListedTask, row []string) string {
 	selection := view.styles.Selection
 	cellStyles := make([]lipgloss.Style, len(row))
 	for index := range cellStyles {
@@ -368,7 +378,7 @@ func (view *View) renderCursorRow(layout table.Layout, entry task.ListedTask, ro
 		cellStyles[statusCell] = selection.Inherit(view.styles.Status(entry.Task.Status))
 		cellStyles[idCell] = selection.Inherit(view.styles.ShortID)
 	}
-	line := selection.Render(cursorMarker) + layout.StyledRow(row, cellStyles, selection)
+	line := selection.Render(cursorMarker) + view.layout.StyledRow(row, cellStyles, selection)
 	line = ansi.Truncate(line, view.width, "")
 	return line + selection.Render(strings.Repeat(" ", max(view.width-ansi.StringWidth(line), 0)))
 }
