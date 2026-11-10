@@ -11,9 +11,45 @@ drg tui
 
 Outside a project directory it fails with the same error the other task commands give.
 
-The screen shows the task list with the same rows as [`drg task list`]({{< relref "/docs/cli/task/list" >}}). It loads the tasks once when it starts. Restart it to see changes.
+Each `task-list` tile shows the task list with the same rows as [`drg task list`]({{< relref "/docs/cli/task/list" >}}). It loads the tasks once when it starts. Restart it to see changes.
 
 It sets the title of the terminal window to `DRUDGE | <project name>`. Terminals that don't support window titles ignore it.
+
+The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/configuration/tui" >}}). Without a TUI config file `drg tui` shows this:
+
+```json
+{
+  "$schema": "./schema/tui.json",
+  "tabs": [
+    {
+      "title": "overview",
+      "layout": {
+        "arrangement": "stacked",
+        "children": [
+          {
+            "arrangement": "side-by-side",
+            "children": [
+              { "view": "task-list", "weight": 2 },
+              { "view": "task-list" }
+            ]
+          },
+          {
+            "arrangement": "side-by-side",
+            "children": [
+              { "view": "task-list" },
+              { "view": "task-list" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "tasks",
+      "layout": { "view": "task-list" }
+    }
+  ]
+}
+```
 
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger to see them.
 

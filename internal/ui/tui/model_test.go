@@ -85,7 +85,7 @@ func TestModel(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			tabTitles := testCase.tabTitles
 			if tabTitles == nil {
-				tabTitles = []string{tasksTabTitle}
+				tabTitles = []string{"Tasks"}
 			}
 			model := newTestModel(t, testTabs(t, tabTitles...), testCase.warnings)
 			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
@@ -120,7 +120,7 @@ func TestModel_Quits(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			model := newTestModel(t, testTabs(t, tasksTabTitle), nil)
+			model := newTestModel(t, testTabs(t, "Tasks"), nil)
 			_, cmd := model.Update(testCase.keyPress)
 			if cmd == nil {
 				t.Fatal("expected a command")

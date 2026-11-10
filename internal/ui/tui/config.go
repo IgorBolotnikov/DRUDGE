@@ -9,7 +9,14 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
-const tasksTabTitle = "Tasks"
+// Titles of the bundled Tabs.
+const (
+	overviewTabTitle = "overview"
+	tasksTabTitle    = "tasks"
+)
+
+// tabsPath is the path of the Tabs in the errors about them.
+const tabsPath = "tabs"
 
 // viewNameSeparator joins the names of the known Views in an error.
 const viewNameSeparator = ", "
@@ -37,9 +44,20 @@ type NodeConfig struct {
 	Weight      float64
 }
 
-// defaultConfig returns the Tabs the TUI shows.
+// defaultConfig returns the Tabs the TUI shows when there is no TUI config
+// file.
 func defaultConfig() Config {
 	return Config{Tabs: []TabConfig{
+		{Title: overviewTabTitle, Layout: NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
+			{Arrangement: SideBySide, Children: []NodeConfig{
+				{View: tasklist.Name, Weight: 2},
+				{View: tasklist.Name},
+			}},
+			{Arrangement: SideBySide, Children: []NodeConfig{
+				{View: tasklist.Name},
+				{View: tasklist.Name},
+			}},
+		}}},
 		{Title: tasksTabTitle, Layout: NodeConfig{View: tasklist.Name}},
 	}}
 }
@@ -50,22 +68,27 @@ func defaultConfig() Config {
 // the value to change, like tabs[0].layout.children[1].view.
 func BuildTabs(config Config, screenStyles *styles.Styles) ([]*Tab, error) {
 	if len(config.Tabs) == 0 {
-		return nil, errors.New("tabs: there are no tabs, add at least one tab")
+		return nil, fmt.Errorf("%s: there are no tabs, add at least one tab", tabsPath)
 	}
 	tabs := make([]*Tab, 0, len(config.Tabs))
 	tabIndexByTitle := make(map[string]int, len(config.Tabs))
 	for index, tabConfig := range config.Tabs {
 		if firstIndex, isTaken := tabIndexByTitle[tabConfig.Title]; isTaken {
-			return nil, fmt.Errorf("tabs[%d].title: %q is already the title of tabs[%d], give each tab its own title", index, tabConfig.Title, firstIndex)
+			return nil, fmt.Errorf("%s.title: %q is already the title of %s, give each tab its own title", tabPath(index), tabConfig.Title, tabPath(firstIndex))
 		}
 		tabIndexByTitle[tabConfig.Title] = index
 		tab, err := buildTab(tabConfig, screenStyles)
 		if err != nil {
-			return nil, fmt.Errorf("tabs[%d].%w", index, err)
+			return nil, fmt.Errorf("%s.%w", tabPath(index), err)
 		}
 		tabs = append(tabs, tab)
 	}
 	return tabs, nil
+}
+
+// tabPath returns the path of the Tab at index.
+func tabPath(index int) string {
+	return fmt.Sprintf("%s[%d]", tabsPath, index)
 }
 
 func buildTab(tabConfig TabConfig, screenStyles *styles.Styles) (*Tab, error) {

@@ -59,6 +59,39 @@ func TestRenderSchemaTable(t *testing.T) {
 			wantRows: []string{"| `title` | string | `\"<a\\|b>\"` |  | Text \\| &lt;b&gt; |"},
 		},
 		{
+			name:     "a key with an exclusive minimum",
+			schema:   `{"properties": {"weight": {"type": "number", "exclusiveMinimum": 0, "default": 1}}}`,
+			wantRows: []string{"| `weight` | number | `1` | above 0 |  |"},
+		},
+		{
+			name:   "a key that refers to a definition",
+			schema: `{"properties": {"layout": {"$ref": "#/$defs/node", "description": "The layout."}}, "$defs": {"node": {"type": "object", "description": "A node.", "properties": {"view": {"type": "string"}}}}}`,
+			wantRows: []string{
+				"| `layout` | object |  |  | The layout. |",
+				"| `layout.view` | string |  |  |  |",
+			},
+		},
+		{
+			name: "a definition that refers to itself in an array of tabs",
+			schema: `{"properties": {"tabs": {"type": "array", "items": {"type": "object", "properties": {"layout": {"$ref": "#/$defs/node"}}}}},
+				"$defs": {"node": {"type": "object", "description": "A node.", "properties": {
+					"arrangement": {"type": "string", "enum": ["stacked"]},
+					"children": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+					"weight": {"type": "number"}}}}}`,
+			wantRows: []string{
+				"| `tabs` | array |  |  |  |",
+				"| `tabs[].layout` | object |  |  | A node. |",
+				"| `tabs[].layout.arrangement` | string |  | `\"stacked\"` |  |",
+				"| `tabs[].layout.children` | array |  |  |  |",
+				"| `tabs[].layout.weight` | number |  |  |  |",
+			},
+		},
+		{
+			name:    "a reference to a missing definition",
+			schema:  `{"properties": {"layout": {"$ref": "#/$defs/node"}}}`,
+			wantErr: `key "layout" refers to "#/$defs/node", which is not a definition of the schema`,
+		},
+		{
 			name:    "a key without a type",
 			schema:  `{"properties": {"task": {"properties": {"pageSize": {"type": "integer"}}}}}`,
 			wantErr: `key "task" has no type`,

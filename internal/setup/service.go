@@ -16,11 +16,14 @@ import (
 )
 
 type SetupService struct {
-	home string
+	home             string
+	interfaceSchemas []SchemaFile
 }
 
-func NewSetupService(home string) *SetupService {
-	return &SetupService{home: home}
+// NewSetupService returns a SetupService for home. Setup writes the schemas
+// of the config files of the user interfaces after the schemas it bundles.
+func NewSetupService(home string, interfaceSchemas []SchemaFile) *SetupService {
+	return &SetupService{home: home, interfaceSchemas: interfaceSchemas}
 }
 
 // DrudgeDir returns the drudge home directory Setup creates and Cleanup
@@ -282,17 +285,14 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if err := common.EnsureDir(schemaDir); err != nil {
 		return nil, err
 	}
-	schemas := []struct {
-		name    string
-		content []byte
-	}{
-		{common.ThemeConfigName, theme.Schema()},
-		{common.GloablConfigName, config.Schema()},
-		{common.LocalSchemaName, config.LocalSchema()},
-	}
+	schemas := slices.Concat([]SchemaFile{
+		{Name: common.ThemeConfigName, Content: theme.Schema()},
+		{Name: common.GloablConfigName, Content: config.Schema()},
+		{Name: common.LocalSchemaName, Content: config.LocalSchema()},
+	}, s.interfaceSchemas)
 	for _, schema := range schemas {
-		path := filepath.Join(schemaDir, schema.name)
-		if err := common.WriteFile(path, string(schema.content)); err != nil {
+		path := filepath.Join(schemaDir, schema.Name)
+		if err := common.WriteFile(path, string(schema.Content)); err != nil {
 			return nil, err
 		}
 		result.SchemaPaths = append(result.SchemaPaths, path)

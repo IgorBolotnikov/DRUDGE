@@ -85,7 +85,7 @@ It then creates `~/.drudge/` and writes:
 
 - `~/.drudge/config.json`, the global config
 - `~/.drudge/theme.json`, the color theme
-- `~/.drudge/schema/`, the JSON schemas both config files and the project config point at
+- `~/.drudge/schema/`, the JSON schemas both config files, the project config and the [TUI config]({{< relref "/docs/configuration/tui" >}}) point at
 - `~/.drudge/projects/`, where the projects and their Tasks live
 
 It also installs the DRUDGE skill for the configured harness. The skill lets a planning agent write DRUDGE Tasks for you. Only the configured harness gets it:

@@ -8,6 +8,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui"
 )
 
 const (
@@ -80,5 +81,5 @@ func newSetupService() (*setup.SetupService, error) {
 	if err != nil {
 		return nil, err
 	}
-	return setup.NewSetupService(home), nil
+	return setup.NewSetupService(home, []setup.SchemaFile{{Name: common.TuiConfigName, Content: tui.Schema()}}), nil
 }

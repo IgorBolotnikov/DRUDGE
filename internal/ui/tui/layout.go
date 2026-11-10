@@ -139,8 +139,8 @@ func validateNode(node Node, path string) error {
 	if node == nil {
 		return fmt.Errorf("%s: the node is empty, put a split or a tile there", path)
 	}
-	if weight := node.Weight(); weight <= 0 {
-		return fmt.Errorf("%s.weight: %v is not above 0, use a positive weight", path, weight)
+	if err := validateWeight(node.Weight(), path); err != nil {
+		return err
 	}
 	split, isSplit := node.(*Split)
 	if !isSplit {
@@ -156,6 +156,14 @@ func validateNode(node Node, path string) error {
 		if err := validateNode(child, childPath(path, index)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateWeight refuses a weight of the node at path that is not above 0.
+func validateWeight(weight float64, path string) error {
+	if weight <= 0 {
+		return fmt.Errorf("%s.weight: %v is not above 0, use a positive weight", path, weight)
 	}
 	return nil
 }

@@ -17,6 +17,8 @@ import (
 
 const staleSchema = "stale"
 
+var interfaceSchemas = []SchemaFile{{Name: common.TuiConfigName, Content: []byte("{}")}}
+
 func tempHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -30,6 +32,7 @@ func schemaPaths(home string) []string {
 		filepath.Join(schemaDir, common.ThemeConfigName),
 		filepath.Join(schemaDir, common.GloablConfigName),
 		filepath.Join(schemaDir, common.LocalSchemaName),
+		filepath.Join(schemaDir, common.TuiConfigName),
 	}
 }
 
@@ -50,7 +53,7 @@ func TestSetup(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
-			service := NewSetupService(home)
+			service := NewSetupService(home, interfaceSchemas)
 			for range testCase.runsBefore {
 				if _, err := service.Setup(nil); err != nil {
 					t.Fatalf("Setup before: %v", err)
@@ -216,7 +219,7 @@ func TestQuestions(t *testing.T) {
 			home := tempHome(t)
 			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
 
-			questions, err := NewSetupService(home).Questions()
+			questions, err := NewSetupService(home, interfaceSchemas).Questions()
 			if err != nil {
 				t.Fatalf("Questions: %v", err)
 			}
@@ -270,7 +273,7 @@ func TestQuestions_Shape(t *testing.T) {
 		{key: theme.ThemeKey, wantKind: common.QuestionSelect, wantOptions: selectOptions("system", "nord", "monokai", "catppuccin-mocha", "dracula"), wantDefault: "system"},
 	}
 
-	questions, err := NewSetupService(tempHome(t)).Questions()
+	questions, err := NewSetupService(tempHome(t), interfaceSchemas).Questions()
 	if err != nil {
 		t.Fatalf("Questions: %v", err)
 	}
@@ -304,7 +307,7 @@ func TestQuestions_DraftOnlyAfterPullRequests(t *testing.T) {
 		{name: "skipped after no", pullRequestsAnswer: common.AnswerNo, wantIsAsked: false},
 	}
 
-	questions, err := NewSetupService(tempHome(t)).Questions()
+	questions, err := NewSetupService(tempHome(t), interfaceSchemas).Questions()
 	if err != nil {
 		t.Fatalf("Questions: %v", err)
 	}
@@ -332,7 +335,7 @@ func TestQuestions_ConcurrencyRefusal(t *testing.T) {
 		{answer: "many", wantErr: `"many" is not a whole number`},
 	}
 
-	questions, err := NewSetupService(tempHome(t)).Questions()
+	questions, err := NewSetupService(tempHome(t), interfaceSchemas).Questions()
 	if err != nil {
 		t.Fatalf("Questions: %v", err)
 	}
@@ -431,7 +434,7 @@ func TestSetup_Answers(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
 
-			result, err := NewSetupService(home).Setup(testCase.answers)
+			result, err := NewSetupService(home, interfaceSchemas).Setup(testCase.answers)
 			if err != nil {
 				t.Fatalf("Setup: %v", err)
 			}
@@ -475,7 +478,7 @@ func TestSetup_InvalidAnswerWritesNothing(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
 
-			_, err := NewSetupService(home).Setup(testCase.answers)
+			_, err := NewSetupService(home, interfaceSchemas).Setup(testCase.answers)
 			if err == nil {
 				t.Fatal("Setup succeeded, want an error")
 			}
@@ -510,7 +513,7 @@ func TestSetup_ThemeAnswer(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			result, err := NewSetupService(tempHome(t)).Setup(testCase.answers)
+			result, err := NewSetupService(tempHome(t), interfaceSchemas).Setup(testCase.answers)
 			if err != nil {
 				t.Fatalf("Setup: %v", err)
 			}
@@ -658,7 +661,7 @@ func TestSetup_Rerun(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
 			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
-			service := NewSetupService(home)
+			service := NewSetupService(home, interfaceSchemas)
 			before, err := common.ReadFile(common.GlobalConfigPath(home))
 			if err != nil {
 				t.Fatalf("ReadFile: %v", err)
@@ -713,7 +716,7 @@ func TestSetup_DefaultsLeaveExistingFiles(t *testing.T) {
 			home := tempHome(t)
 			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
 
-			result, err := NewSetupService(home).Setup(nil)
+			result, err := NewSetupService(home, interfaceSchemas).Setup(nil)
 			if err != nil {
 				t.Fatalf("Setup: %v", err)
 			}
@@ -766,7 +769,7 @@ func TestSetup_BrokenConfigWritesNothing(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
 			writeConfigFiles(t, home, testCase.globalConfig, testCase.themeConfig)
-			service := NewSetupService(home)
+			service := NewSetupService(home, interfaceSchemas)
 
 			if _, err := service.Questions(); err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 				t.Errorf("Questions error = %v, want it to contain %q", err, testCase.wantErr)
@@ -818,7 +821,7 @@ func TestSetup_BrokenConfigWritesNothing(t *testing.T) {
 
 func TestSetup_DefaultConfigsLoad(t *testing.T) {
 	home := tempHome(t)
-	if _, err := NewSetupService(home).Setup(nil); err != nil {
+	if _, err := NewSetupService(home, interfaceSchemas).Setup(nil); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -837,7 +840,7 @@ func TestSetup_DefaultConfigsLoad(t *testing.T) {
 
 func TestSetup_ThemeConfigSharesLoadPath(t *testing.T) {
 	home := tempHome(t)
-	result, err := NewSetupService(home).Setup(nil)
+	result, err := NewSetupService(home, interfaceSchemas).Setup(nil)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -872,7 +875,7 @@ func TestCleanup(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := tempHome(t)
-			service := NewSetupService(home)
+			service := NewSetupService(home, interfaceSchemas)
 			if testCase.isSetUp {
 				if _, err := service.Setup(nil); err != nil {
 					t.Fatalf("Setup: %v", err)

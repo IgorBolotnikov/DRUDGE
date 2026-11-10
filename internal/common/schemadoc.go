@@ -19,6 +19,9 @@ const (
 	schemaAnyKeyName       = "<key>"
 	schemaTableHeader      = "| Key | Type | Default | Allowed | Description |\n| --- | --- | --- | --- | --- |\n"
 	schemaRequiredSentence = "Required."
+	// schemaDefinitionRefPrefix starts a reference to a definition of the
+	// schema.
+	schemaDefinitionRefPrefix = "#/$defs/"
 )
 
 // schemaNode is the part of a JSON schema the reference table shows.
@@ -28,10 +31,16 @@ type schemaNode struct {
 	Default     json.RawMessage   `json:"default"`
 	Enum        []json.RawMessage `json:"enum"`
 	Minimum     *json.Number      `json:"minimum"`
-	Pattern     string            `json:"pattern"`
-	Required    []string          `json:"required"`
-	Properties  schemaProperties  `json:"properties"`
-	Items       *schemaNode       `json:"items"`
+	// ExclusiveMinimum is the number every value is above.
+	ExclusiveMinimum *json.Number     `json:"exclusiveMinimum"`
+	Pattern          string           `json:"pattern"`
+	Required         []string         `json:"required"`
+	Properties       schemaProperties `json:"properties"`
+	Items            *schemaNode      `json:"items"`
+	Ref              string           `json:"$ref"`
+	// Definitions holds the nodes a reference names. Only the root of the
+	// schema has them.
+	Definitions map[string]schemaNode `json:"$defs"`
 	// AdditionalProperties holds either a boolean or the schema of every key
 	// the properties leave out.
 	AdditionalProperties json.RawMessage `json:"additionalProperties"`
@@ -72,61 +81,100 @@ func (properties *schemaProperties) UnmarshalJSON(data []byte) error {
 // RenderSchemaTable renders every key of a JSON schema as a row of a markdown
 // table, in the order the schema lists them. A nested key reads as a dotted
 // path, an item of an array as "[]" after the array and a key the schema does
-// not name as "<key>".
+// not name as "<key>". A key that refers to a definition of the schema shows
+// the keys of the definition below it. A definition that refers to itself
+// shows its keys once, at the outermost key that refers to it.
 func RenderSchemaTable(schema []byte) (string, error) {
 	var root schemaNode
 	if err := json.Unmarshal(schema, &root); err != nil {
 		return "", fmt.Errorf("could not parse the schema: %w", err)
 	}
-	var table strings.Builder
-	table.WriteString(schemaTableHeader)
-	if err := writeSchemaRows(&table, "", root); err != nil {
+	writer := &schemaTableWriter{definitions: root.Definitions, expandingRefs: map[string]bool{}}
+	writer.table.WriteString(schemaTableHeader)
+	if err := writer.writeChildren("", "", root); err != nil {
 		return "", err
 	}
-	return table.String(), nil
+	return writer.table.String(), nil
 }
 
-// writeSchemaRows writes a row for every key below node, with prefix as the
-// path of node.
-func writeSchemaRows(table *strings.Builder, prefix string, node schemaNode) error {
+// schemaTableWriter writes the rows of a schema table. It tracks the
+// references it is expanding to stop at a definition that refers to itself.
+type schemaTableWriter struct {
+	table         strings.Builder
+	definitions   map[string]schemaNode
+	expandingRefs map[string]bool
+}
+
+// writeChildren writes a row for every key below node, with path as the path
+// of node. ref is the reference node came from, or empty.
+func (writer *schemaTableWriter) writeChildren(path string, ref string, node schemaNode) error {
+	if ref != "" {
+		if writer.expandingRefs[ref] {
+			return nil
+		}
+		writer.expandingRefs[ref] = true
+		defer delete(writer.expandingRefs, ref)
+	}
 	for _, property := range node.Properties {
-		path := joinSchemaPath(prefix, property.name)
-		if err := writeSchemaKey(table, path, property.node, slices.Contains(node.Required, property.name)); err != nil {
+		if err := writer.writeKey(joinSchemaPath(path, property.name), property.node, slices.Contains(node.Required, property.name)); err != nil {
 			return err
 		}
 	}
 	if len(node.AdditionalProperties) > 0 && node.AdditionalProperties[0] == '{' {
 		var anyKey schemaNode
 		if err := json.Unmarshal(node.AdditionalProperties, &anyKey); err != nil {
-			return fmt.Errorf("additional properties of %q: %w", prefix, err)
+			return fmt.Errorf("additional properties of %q: %w", path, err)
 		}
-		if err := writeSchemaKey(table, joinSchemaPath(prefix, schemaAnyKeyName), anyKey, false); err != nil {
+		if err := writer.writeKey(joinSchemaPath(path, schemaAnyKeyName), anyKey, false); err != nil {
 			return err
 		}
 	}
-	return nil
+	if node.Items == nil {
+		return nil
+	}
+	itemsPath := path + schemaArrayItemSuffix
+	items, err := writer.resolve(itemsPath, *node.Items)
+	if err != nil {
+		return err
+	}
+	return writer.writeChildren(itemsPath, node.Items.Ref, items)
 }
 
-// writeSchemaKey writes the row of one key and the rows of the keys below it.
-// It refuses a key without a type, since the table would show it empty.
-func writeSchemaKey(table *strings.Builder, path string, node schemaNode, isRequired bool) error {
-	if node.Type == "" {
+// writeKey writes the row of one key and the rows of the keys below it. It
+// refuses a key without a type, since the table would show it empty.
+func (writer *schemaTableWriter) writeKey(path string, node schemaNode, isRequired bool) error {
+	resolved, err := writer.resolve(path, node)
+	if err != nil {
+		return err
+	}
+	if resolved.Type == "" {
 		return fmt.Errorf("key %q has no type", path)
 	}
-	description := node.Description
+	description := resolved.Description
 	if isRequired {
 		description = strings.TrimSpace(schemaRequiredSentence + " " + description)
 	}
-	fmt.Fprintf(table, "| %s | %s | %s | %s | %s |\n",
-		codeSpan(path), node.Type, formatSchemaDefault(node.Default), formatSchemaAllowed(node), escapeTableText(description))
+	fmt.Fprintf(&writer.table, "| %s | %s | %s | %s | %s |\n",
+		codeSpan(path), resolved.Type, formatSchemaDefault(resolved.Default), formatSchemaAllowed(resolved), escapeTableText(description))
+	return writer.writeChildren(path, node.Ref, resolved)
+}
 
-	if err := writeSchemaRows(table, path, node); err != nil {
-		return err
+// resolve returns the definition a node refers to, with the description of
+// the node when it has one. A node without a reference is returned as it is.
+// It refuses a reference outside the definitions of the schema.
+func (writer *schemaTableWriter) resolve(path string, node schemaNode) (schemaNode, error) {
+	if node.Ref == "" {
+		return node, nil
 	}
-	if node.Items != nil {
-		return writeSchemaRows(table, path+schemaArrayItemSuffix, *node.Items)
+	name, isDefinitionRef := strings.CutPrefix(node.Ref, schemaDefinitionRefPrefix)
+	definition, ok := writer.definitions[name]
+	if !isDefinitionRef || !ok {
+		return schemaNode{}, fmt.Errorf("key %q refers to %q, which is not a definition of the schema", path, node.Ref)
 	}
-	return nil
+	if node.Description != "" {
+		definition.Description = node.Description
+	}
+	return definition, nil
 }
 
 func joinSchemaPath(prefix, name string) string {
@@ -143,7 +191,7 @@ func formatSchemaDefault(value json.RawMessage) string {
 	return codeSpan(string(value))
 }
 
-// formatSchemaAllowed lists the enum values, the minimum and the pattern of a
+// formatSchemaAllowed lists the enum values, the minimums and the pattern of a
 // key.
 func formatSchemaAllowed(node schemaNode) string {
 	var allowed []string
@@ -156,6 +204,9 @@ func formatSchemaAllowed(node schemaNode) string {
 	}
 	if node.Minimum != nil {
 		allowed = append(allowed, "minimum "+node.Minimum.String())
+	}
+	if node.ExclusiveMinimum != nil {
+		allowed = append(allowed, "above "+node.ExclusiveMinimum.String())
 	}
 	if node.Pattern != "" {
 		allowed = append(allowed, "matches "+codeSpan(node.Pattern))

@@ -11,6 +11,13 @@ type SetupResult struct {
 	ThemeConfig  ConfigFile
 }
 
+// SchemaFile is a bundled JSON schema setup writes to the schema directory
+// under Name.
+type SchemaFile struct {
+	Name    string
+	Content []byte
+}
+
 // ConfigFile is a config file setup asks about, with what setup did to it.
 type ConfigFile struct {
 	Path    string

@@ -25,9 +25,15 @@ type silentProgress struct{}
 func (silentProgress) Report(any) {}
 
 // Run shows the project of the current directory full screen until the user
-// quits. It fails before it takes over the terminal when the current
-// directory is not a project.
+// quits. It fails before it takes over the terminal when the TUI config file
+// is invalid or the current directory is not a project.
 func Run() error {
+	palette, warnings := loadTheme()
+	screenStyles := styles.New(palette)
+	tabs, err := loadTabs(screenStyles)
+	if err != nil {
+		return err
+	}
 	configs, err := app.LoadConfigs()
 	if err != nil {
 		return err
@@ -40,17 +46,11 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	palette, warnings := loadTheme()
 	tasks := app.NewTaskService(configs.Local.ProjectSlug, configs.Local, configs.Global, silentProgress{})
 
 	var options []tea.ProgramOption
 	if !palette.IsColorOn(theme.Stdout) {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
-	}
-	screenStyles := styles.New(palette)
-	tabs, err := BuildTabs(defaultConfig(), screenStyles)
-	if err != nil {
-		return err
 	}
 	model, err := NewModel(shownProject, tasks, screenStyles, tabs, warnings)
 	if err != nil {
@@ -58,6 +58,25 @@ func Run() error {
 	}
 	_, err = tea.NewProgram(model, options...).Run()
 	return err
+}
+
+// loadTabs builds the Tabs of the TUI config file. An error starts with the
+// path of the file.
+func loadTabs(screenStyles *styles.Styles) ([]*Tab, error) {
+	home, err := common.HomeDir()
+	if err != nil {
+		return nil, err
+	}
+	path := common.TuiConfigPath(home)
+	config, err := LoadConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	tabs, err := BuildTabs(config, screenStyles)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return tabs, nil
 }
 
 // loadTheme loads the theme and returns the warnings about it. A theme that

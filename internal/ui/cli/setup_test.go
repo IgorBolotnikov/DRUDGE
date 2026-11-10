@@ -16,6 +16,7 @@ func TestRunSetup(t *testing.T) {
 					"  ✓ Created " + home + "/.drudge/schema/theme.json\n" +
 					"  ✓ Created " + home + "/.drudge/schema/config.json\n" +
 					"  ✓ Created " + home + "/.drudge/schema/local-config.json\n" +
+					"  ✓ Created " + home + "/.drudge/schema/tui.json\n" +
 					"  ✓ Created " + home + "/.claude/skills/DRUDGE/SKILL.md\n" +
 					"  ✓ Created " + home + "/.drudge/config.json\n" +
 					"  ✓ Created " + home + "/.drudge/theme.json\n" +
@@ -30,6 +31,7 @@ func TestRunSetup(t *testing.T) {
 					"  ✓ Created " + home + "/.drudge/schema/theme.json\n" +
 					"  ✓ Created " + home + "/.drudge/schema/config.json\n" +
 					"  ✓ Created " + home + "/.drudge/schema/local-config.json\n" +
+					"  ✓ Created " + home + "/.drudge/schema/tui.json\n" +
 					"  ✓ Created " + home + "/.claude/skills/DRUDGE/SKILL.md\n" +
 					"  · Left " + home + "/.drudge/config.json as it was\n" +
 					"  · Left " + home + "/.drudge/theme.json as it was\n" +

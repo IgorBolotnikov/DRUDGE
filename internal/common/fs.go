@@ -24,6 +24,7 @@ const (
 	SchemaDirName    = "schema"
 	DefaultFilePerm  = 0o644
 	ThemeConfigName  = "theme.json"
+	TuiConfigName    = "tui.json"
 	LocalSchemaName  = "local-config.json"
 )
 
@@ -502,6 +503,11 @@ func LocalConfigPath() string {
 // ThemeConfigPath returns a path to a global theme config file
 func ThemeConfigPath(home string) string {
 	return filepath.Join(DrudgeDir(home), ThemeConfigName)
+}
+
+// TuiConfigPath returns the path to the global TUI config file.
+func TuiConfigPath(home string) string {
+	return filepath.Join(DrudgeDir(home), TuiConfigName)
 }
 
 // GlobalConfigPath returns the path to the global drudge config file.

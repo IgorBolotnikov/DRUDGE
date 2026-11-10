@@ -17,7 +17,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 )
 
-var shouldUpdateGoldens = flag.Bool("update", false, "Rewrite the golden files of the TUI from what it renders")
+var shouldUpdateGoldens = flag.Bool("update", false, "Rewrite the golden files and the generated docs of the TUI")
 
 const goldenDir = "testdata"
 
@@ -41,6 +41,12 @@ func Styles() *styles.Styles {
 	return styles.New(theme.NewTheme("nord"))
 }
 
+// ShouldUpdate reports whether the tests rewrite the golden files and the
+// generated docs of the TUI.
+func ShouldUpdate() bool {
+	return *shouldUpdateGoldens
+}
+
 // AssertGolden strips the colors from a screen and compares it with a golden
 // file in the testdata directory of the package under test.
 func AssertGolden(t *testing.T, name string, screen string) {
@@ -51,7 +57,7 @@ func AssertGolden(t *testing.T, name string, screen string) {
 		t.Fatal(err)
 	}
 	goldenPath := filepath.Join(goldenDir, name+".golden")
-	if *shouldUpdateGoldens {
+	if ShouldUpdate() {
 		if err := os.WriteFile(goldenPath, plain.Bytes(), 0o644); err != nil {
 			t.Fatal(err)
 		}
