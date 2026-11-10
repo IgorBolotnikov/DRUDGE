@@ -48,3 +48,27 @@ Two questions with two homes, and they never overlap:
 
 - **Is the Drudger able to work?** Answered by the Drudger record, in two parts: its sandbox and its agent.
 - **How is the work going?** Answered by the Session's run directory.
+
+## TUI
+
+The words below name the parts of the screen of `drg tui`. They are not domain words, and no domain package uses them.
+
+### Tab
+
+A full screen with a title. The top bar lists the Tabs, and one of them is active. A Tab owns a layout of Tiles and knows which of its Tiles has focus.
+
+### Tile
+
+One rectangle in the layout of a Tab. A Tile draws a border with its title, and shows one View inside it. Every Tile has a View of its own, so two Tiles that show the same kind of View keep their own cursor and scroll.
+
+### Split
+
+A node of the layout that holds two or more Tiles or Splits. It places them side by side or stacked and divides its space between them by weight. A Split draws nothing itself.
+
+### View
+
+What a Tile shows, such as the task list. A View is a kind of content, and a Tile is one placed instance of it. A View renders within the size its Tile gives it and never calls a service. The data it shows reaches it as messages.
+
+### Widget
+
+A small control inside a View, such as the components from `bubbles`. A widget is never a Tile or a View.
