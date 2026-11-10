@@ -13,6 +13,8 @@ Outside a project directory it fails with the same error the other task commands
 
 The screen shows the task list with the same rows as [`drg task list`]({{< relref "/docs/cli/task/list" >}}). It loads the tasks once when it starts. Restart it to see changes.
 
+When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger to see them.
+
 | Key | Does |
 | --- | --- |
 | `j` or `↓` | Moves the cursor down |

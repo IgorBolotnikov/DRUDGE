@@ -45,6 +45,17 @@ func (tab *Tab) Broadcast(msg tea.Msg) tea.Cmd {
 	return tea.Batch(commands...)
 }
 
+// HasRoomForTiles reports whether every Tile got space for its View at the
+// size the Tab last got.
+func (tab *Tab) HasRoomForTiles() bool {
+	for _, tile := range tab.tiles {
+		if !tile.hasRoomForView() {
+			return false
+		}
+	}
+	return true
+}
+
 // Render returns the lines of the Tab.
 func (tab *Tab) Render() string {
 	return tab.layout.Render()

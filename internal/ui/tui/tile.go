@@ -14,6 +14,12 @@ import (
 // tileBorder is the width and the height a Tile border takes.
 const tileBorder = 2
 
+// The smallest space inside its border a Tile shows its View in.
+const (
+	minViewWidth  = 10
+	minViewHeight = 3
+)
+
 // Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
 // with its title in the top edge and clips the View to the space inside.
 type Tile struct {
@@ -49,6 +55,12 @@ func (tile *Tile) SetSize(width, height int) {
 	tile.width = width
 	tile.height = height
 	tile.view.SetSize(max(width-tileBorder, 0), max(height-tileBorder, 0))
+}
+
+// hasRoomForView reports whether the space inside the border is big enough
+// for a View.
+func (tile *Tile) hasRoomForView() bool {
+	return tile.width-tileBorder >= minViewWidth && tile.height-tileBorder >= minViewHeight
 }
 
 // SetFocused sets whether the Tile has focus.

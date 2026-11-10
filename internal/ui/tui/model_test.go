@@ -78,6 +78,7 @@ func TestModel(t *testing.T) {
 		{name: "screen_tabs", width: 100, height: 12, tabTitles: []string{"Tasks", "Board", "Drudgers"}},
 		{name: "screen_tabs_cursor_on_second", width: 100, height: 12, tabTitles: []string{"Tasks", "Board"}, keys: []tea.KeyPressMsg{keyNextTab, tuitest.KeyDown, keyPreviousTab}},
 		{name: "screen_tabs_scrolled", width: 30, height: 8, tabTitles: []string{"Tasks", "Board", "Drudgers", "Backlog"}, keys: []tea.KeyPressMsg{keyPreviousTab}},
+		{name: "screen_too_small_one_line", width: 60, height: 3},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

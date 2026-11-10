@@ -24,6 +24,10 @@ const barHeight = 2
 // warningPrefix starts a warning in the bottom bar.
 const warningPrefix = "! "
 
+// tooSmallFormat is the warning in place of a Tab that has no room for its
+// Tiles.
+const tooSmallFormat = "terminal too small for tab %q, resize it"
+
 // warningSeparator joins the warnings of the bottom bar.
 const warningSeparator = "  "
 
@@ -175,13 +179,28 @@ func (model *Model) View() tea.View {
 	}
 	lines := []string{model.renderTopBar()}
 	if model.height > barHeight {
-		lines = append(lines, model.ActiveTab().Render())
+		lines = append(lines, model.renderActiveTab())
 	}
 	if model.height > 1 {
 		lines = append(lines, model.renderBottomBar())
 	}
 	view.Content = strings.Join(lines, "\n")
 	return view
+}
+
+// renderActiveTab returns the lines of the active Tab, or a warning in their
+// place when the Tab has no room for its Tiles.
+func (model *Model) renderActiveTab() string {
+	activeTab := model.ActiveTab()
+	if activeTab.HasRoomForTiles() {
+		return activeTab.Render()
+	}
+	warning := cells.Fit(model.renderWarning(fmt.Sprintf(tooSmallFormat, activeTab.Title)), model.width)
+	linesBelowWarning := model.height - barHeight - 1
+	if linesBelowWarning == 0 {
+		return warning
+	}
+	return warning + "\n" + cells.BlankLines(model.width, linesBelowWarning)
 }
 
 // renderTopBar shows the Tabs on the left and the project on the right.

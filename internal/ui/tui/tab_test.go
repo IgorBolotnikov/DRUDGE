@@ -93,6 +93,45 @@ func TestTab_Render(t *testing.T) {
 	}
 }
 
+func TestTab_HasRoomForTiles(t *testing.T) {
+	cases := []struct {
+		name        string
+		width       int
+		height      int
+		wantHasRoom bool
+	}{
+		{name: "every tile at the minimum", width: 24, height: 10, wantHasRoom: true},
+		{name: "one column short", width: 23, height: 10, wantHasRoom: false},
+		{name: "one row short", width: 24, height: 9, wantHasRoom: false},
+		{name: "no size", width: 0, height: 0, wantHasRoom: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tab, err := NewTab("Tab", NewSplit(Stacked, 1,
+				NewSplit(SideBySide, 1, sizeTile("a", 1), sizeTile("b", 1)),
+				sizeTile("c", 1),
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tab.SetSize(testCase.width, testCase.height)
+			if got := tab.HasRoomForTiles(); got != testCase.wantHasRoom {
+				t.Errorf("expected room for tiles %v, got %v", testCase.wantHasRoom, got)
+			}
+		})
+	}
+}
+
+func TestTab_RenderBeforeSetSize(t *testing.T) {
+	tab, err := NewTab("Tab", NewSplit(Stacked, 1, sizeTile("a", 1), sizeTile("b", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tab.Render(); got != "" {
+		t.Errorf("expected nothing before the tab gets a size, got %q", got)
+	}
+}
+
 func TestNewTab_RefusesLayout(t *testing.T) {
 	cases := []struct {
 		name       string

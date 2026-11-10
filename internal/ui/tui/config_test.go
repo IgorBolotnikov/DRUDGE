@@ -112,27 +112,38 @@ func TestBuildTabs_DefaultConfig(t *testing.T) {
 }
 
 func TestBuildTabs_Screen(t *testing.T) {
+	nestedLayout := NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
+		{Arrangement: SideBySide, Weight: 2, Children: []NodeConfig{
+			{View: tasklist.Name, Title: "Mine", Weight: 2},
+			taskListNode(),
+		}},
+		taskListNode(),
+	}}
 	cases := []struct {
 		name   string
+		width  int
+		height int
 		config Config
 		keys   []tea.KeyPressMsg
 	}{
 		{
-			name: "screen_split_tiles_own_cursor",
-			config: oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
-				{Arrangement: SideBySide, Weight: 2, Children: []NodeConfig{
-					{View: tasklist.Name, Title: "Mine", Weight: 2},
-					taskListNode(),
-				}},
-				taskListNode(),
-			}}),
-			keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown},
+			name:   "screen_split_tiles_own_cursor",
+			width:  120,
+			height: 24,
+			config: oneTabConfig(nestedLayout),
+			keys:   []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown},
+		},
+		{
+			name:   "screen_too_small_for_tiles",
+			width:  50,
+			height: 12,
+			config: oneTabConfig(nestedLayout),
 		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
 			model.Update(model.Init()())
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)

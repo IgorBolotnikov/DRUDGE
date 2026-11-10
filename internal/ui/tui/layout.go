@@ -84,8 +84,12 @@ func (split *Split) SetSize(width, height int) {
 }
 
 // Render joins the lines of the children. A stacked child with no height
-// adds no line.
+// adds no line. A Split that never got a size renders nothing.
 func (split *Split) Render() string {
+	hasSize := len(split.childSizes) == len(split.children)
+	if !hasSize {
+		return ""
+	}
 	renderedChildren := make([]string, 0, len(split.children))
 	for index, child := range split.children {
 		// A stacked child with no rows renders as an empty string. The join
