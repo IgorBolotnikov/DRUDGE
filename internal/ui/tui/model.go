@@ -116,6 +116,7 @@ type Model struct {
 	styles          *styles.Styles
 	warnings        []string
 	tabs            []*Tab
+	dataSources     []dataSource
 	activeTabIndex  int
 	refreshInterval time.Duration
 	runningLoads    map[loadKey]bool
@@ -134,7 +135,7 @@ func NewModel(shownProject *project.Project, source TaskSource, screenStyles *st
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
-	return &Model{
+	model := &Model{
 		project:         shownProject,
 		source:          source,
 		styles:          screenStyles,
@@ -144,7 +145,9 @@ func NewModel(shownProject *project.Project, source TaskSource, screenStyles *st
 		runningLoads:    map[loadKey]bool{},
 		loadErrors:      map[loadKey]error{},
 		help:            keyHelp,
-	}, nil
+	}
+	model.dataSources = []dataSource{{name: tasksSourceName, load: model.loadTasks}}
+	return model, nil
 }
 
 // Init loads the data and starts the refresh ticks.
@@ -171,16 +174,11 @@ func (model *Model) nextTick() tea.Cmd {
 	return tea.Tick(model.refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
 }
 
-// dataSources returns every source the root loads for the project.
-func (model *Model) dataSources() []dataSource {
-	return []dataSource{{name: tasksSourceName, load: model.loadTasks}}
-}
-
 // refresh starts one load of every source of the project. It skips a source
 // whose last load still runs.
 func (model *Model) refresh() tea.Cmd {
 	var commands []tea.Cmd
-	for _, source := range model.dataSources() {
+	for _, source := range model.dataSources {
 		dataKey := loadKey{projectSlug: model.project.Slug, sourceName: source.name}
 		if model.runningLoads[dataKey] {
 			continue
@@ -389,7 +387,7 @@ func (model *Model) renderBottomBar() string {
 // the order of its sources.
 func (model *Model) renderLoadErrors() []string {
 	var rendered []string
-	for _, source := range model.dataSources() {
+	for _, source := range model.dataSources {
 		err, ok := model.loadErrors[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
 		if ok {
 			rendered = append(rendered, model.styles.Error.Render(loadErrorPrefix+fmt.Sprintf(loadErrorFormat, source.name, err)))
