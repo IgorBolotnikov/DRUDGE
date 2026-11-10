@@ -1,0 +1,8 @@
+Add retry to uploader · 3f9a1c2e · in-progress · UP-12 · 5b20d7aa · 7c1e4f90, 9d8b2a11 · api · 2026…
+                                                                                                    
+The uploader gives up on the first network error. Retry it with a backoff.                          
+                                                                                                    
+• Retry up to 5 times                                                                               
+• Wait twice as long after each try                                                                 
+• Log every retry with the error that caused it                                                     
+                                                                                                    

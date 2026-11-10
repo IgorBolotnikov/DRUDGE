@@ -1,20 +1,34 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
+)
 
 // layoutPath is the path of the layout of a Tab in the errors about it.
 const layoutPath = "layout"
 
 // Tab is a full screen with a title and a layout of Tiles. One Tile of the Tab
-// has focus. A zoomed Tab gives all of its space to the focused Tile.
+// has focus. A zoomed Tab gives all of its space to the focused Tile. The Tab
+// keeps the task selected in its Views and hands it to its Views that show a
+// task.
 type Tab struct {
 	Title            string
 	layout           Node
 	tiles            []*Tile
 	focusedTileIndex int
 	isZoomed         bool
+	selectedTaskID   task.TaskID
 	width            int
 	height           int
+}
+
+// tabMsg is a message of a command of a View, with the Tab of the View.
+type tabMsg struct {
+	tab *Tab
+	msg tea.Msg
 }
 
 // NewTab returns a Tab with a layout and gives focus to its first Tile. It
@@ -108,7 +122,7 @@ func (tab *Tab) Click(msg tea.MouseClickMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return tab.FocusedTile().view.Update(tea.MouseClickMsg(inView))
+	return tab.tag(tab.FocusedTile().view.Update(tea.MouseClickMsg(inView)))
 }
 
 // Wheel passes a turn of the wheel at a cell of the Tab to the View of the
@@ -122,7 +136,7 @@ func (tab *Tab) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return tab.tiles[tileIndex].view.Update(tea.MouseWheelMsg(inView))
+	return tab.tag(tab.tiles[tileIndex].view.Update(tea.MouseWheelMsg(inView)))
 }
 
 // tileAt returns the index and the Rect of the Tile shown at a cell of the
@@ -145,9 +159,61 @@ func (tab *Tab) tileAt(x, y int) (tileIndex int, rect Rect, ok bool) {
 func (tab *Tab) Broadcast(msg tea.Msg) tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(tab.tiles))
 	for _, tile := range tab.tiles {
-		commands = append(commands, tile.view.Update(msg))
+		commands = append(commands, tab.tag(tile.view.Update(msg)))
 	}
 	return tea.Batch(commands...)
+}
+
+// TakesAllKeys reports whether the View of the focused Tile takes all keys.
+func (tab *Tab) TakesAllKeys() bool {
+	return tab.FocusedTile().view.TakesAllKeys()
+}
+
+// Update sends a message to the View of the focused Tile.
+func (tab *Tab) Update(msg tea.Msg) tea.Cmd {
+	return tab.tag(tab.FocusedTile().view.Update(msg))
+}
+
+// tag returns a command that runs cmd and wraps its message with the Tab, so
+// the root can tell which Tab a selection came from.
+func (tab *Tab) tag(cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		return tabMsg{tab: tab, msg: cmd()}
+	}
+}
+
+// SelectTask keeps the task as the selected task of the Tab and hands it to
+// every View of the Tab that shows a task.
+func (tab *Tab) SelectTask(id task.TaskID) {
+	tab.selectedTaskID = id
+	for _, tile := range tab.tiles {
+		if shower, ok := tile.view.(views.TaskShower); ok {
+			shower.ShowTask(id)
+		}
+	}
+}
+
+// SelectedTaskID returns the task last selected in the Tab, or an empty ID
+// before any.
+func (tab *Tab) SelectedTaskID() task.TaskID {
+	return tab.selectedTaskID
+}
+
+// OpenTask hands the task to the first View in tree order that shows a task
+// and gives focus to its Tile. isShown is false when no View of the Tab shows
+// a task.
+func (tab *Tab) OpenTask(id task.TaskID) (isShown bool) {
+	for index, tile := range tab.tiles {
+		if shower, ok := tile.view.(views.TaskShower); ok {
+			shower.ShowTask(id)
+			tab.focus(index)
+			return true
+		}
+	}
+	return false
 }
 
 // Statuses returns the status segments of the Tiles in tree order. It leaves

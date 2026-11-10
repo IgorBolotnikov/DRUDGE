@@ -1,0 +1,12 @@
+ 1 Tab                                                                                              
+╭─ task-list ────────────────────────────────────╮╭─ ▸ task-detail ────────────────────────────────╮
+│  STATUS         ID        TITLE                ││Title   Wire retries into the CLI               │
+│  in-progress    3f9a1c2e  Add retry to uploader││ID      7c1e4f90                                │
+│    done         5b20d7aa    Write the backoff  ││Status  todo                                    │
+│▸ todo           7c1e4f90  Wire retries into th…││No description                                  │
+│  fucked-up      9d8b2a11  Fix the flaky upload…││                                                │
+│  draft          a01f3b55  Draft the release no…││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+3/5 · 7c1e4f90                                                                                ? help

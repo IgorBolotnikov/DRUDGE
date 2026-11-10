@@ -48,7 +48,7 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 			wantPath:   "tabs[0].layout: ",
 			wantReason: "sets both a view and a split",
 		},
-		{name: "unknown view", config: oneTabConfig(NodeConfig{View: "kanban"}), wantPath: "tabs[0].layout.view: ", wantReason: `unknown view "kanban", use one of: drudger-list, task-list`},
+		{name: "unknown view", config: oneTabConfig(NodeConfig{View: "kanban"}), wantPath: "tabs[0].layout.view: ", wantReason: `unknown view "kanban", use one of: drudger-list, task-detail, task-list`},
 		{
 			name: "unknown view deep in the tree",
 			config: oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{

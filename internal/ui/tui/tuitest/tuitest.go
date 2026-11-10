@@ -41,6 +41,9 @@ var (
 	KeyEscape = tea.KeyPressMsg{Code: tea.KeyEscape}
 )
 
+// KeyEnter opens the task under a cursor.
+var KeyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
+
 // Type returns the key presses that type text.
 func Type(text string) []tea.Msg {
 	keyPresses := make([]tea.Msg, 0, len(text))
@@ -48,6 +51,24 @@ func Type(text string) []tea.Msg {
 		keyPresses = append(keyPresses, tea.KeyPressMsg{Code: character, Text: string(character)})
 	}
 	return keyPresses
+}
+
+// Messages runs a command and returns its messages, with the messages of a
+// batch in its place.
+func Messages(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var messages []tea.Msg
+	for _, batched := range batch {
+		messages = append(messages, Messages(batched)...)
+	}
+	return messages
 }
 
 // Styles builds the styles of a theme with hex colors. Goldens strip the

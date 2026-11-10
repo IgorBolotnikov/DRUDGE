@@ -12,6 +12,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -37,6 +38,14 @@ var viewKinds = []viewKind{
 		keys:        drudgerlist.Keys,
 		newView: func(viewStyles *styles.Styles, options views.OptionValues) views.View {
 			return drudgerlist.New(viewStyles)
+		},
+	},
+	{
+		name:        taskdetail.Name,
+		description: taskdetail.Description,
+		keys:        taskdetail.Keys,
+		newView: func(viewStyles *styles.Styles, options views.OptionValues) views.View {
+			return taskdetail.New(viewStyles)
 		},
 	},
 	{

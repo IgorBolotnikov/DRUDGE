@@ -24,6 +24,9 @@ var (
 // closeHelpKey closes the help overlay, as the help key does.
 var closeHelpKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close help"))
 
+// closeTaskKey closes the task overlay.
+var closeTaskKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close"))
+
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
 var rootBindings = []key.Binding{zoomKey, refreshKey, checkKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}

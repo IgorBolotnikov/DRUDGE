@@ -3,7 +3,11 @@
 // Views. Each View lives in a package of its own below it.
 package views
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+)
 
 // View is what a Tile shows. It renders within the size it last got and
 // never calls a service. The root model sends it the data it shows as
@@ -20,4 +24,11 @@ type View interface {
 	// Status is a short plain-text segment the bottom bar shows for the Tile
 	// of the View. An empty string shows nothing.
 	Status() string
+}
+
+// TaskShower is a View that shows one task. Its Tab hands it the selected task
+// and the task to open.
+type TaskShower interface {
+	View
+	ShowTask(id task.TaskID)
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -428,6 +429,105 @@ func TestModel_HelpOverlay(t *testing.T) {
 			}
 			if testCase.golden != "" {
 				tuitest.AssertGolden(t, testCase.golden, content)
+			}
+		})
+	}
+}
+
+// pressKeys presses each key and runs the commands it starts.
+func pressKeys(model *Model, keys []tea.Msg) {
+	for _, keyPress := range keys {
+		_, cmd := model.Update(keyPress)
+		runCommand(model, cmd)
+	}
+}
+
+// listAndDetailTab describes a Tab with a task list beside a task detail.
+func listAndDetailTab(title string) TabConfig {
+	return TabConfig{Title: title, Layout: NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{
+		taskListNode(),
+		{View: taskdetail.Name},
+	}}}
+}
+
+func TestModel_SelectionStaysInItsTab(t *testing.T) {
+	secondID := tuitest.ListedTasks()[1].Task.ID
+	thirdID := tuitest.ListedTasks()[2].Task.ID
+	cases := []struct {
+		name              string
+		keys              []tea.Msg
+		wantFirstTabTask  task.TaskID
+		wantSecondTabTask task.TaskID
+		golden            string
+	}{
+		{name: "nothing selected at start", golden: "screen_nothing_selected"},
+		{name: "cursor selects in its tab", keys: []tea.Msg{tuitest.KeyDown}, wantFirstTabTask: secondID, golden: "screen_task_selected"},
+		{name: "other tab keeps nothing selected", keys: []tea.Msg{tuitest.KeyDown, keyTabTwo}, wantFirstTabTask: secondID, golden: "screen_selection_in_other_tab"},
+		{name: "each tab keeps its own selection", keys: []tea.Msg{tuitest.KeyDown, keyTabTwo, tuitest.KeyDown, tuitest.KeyDown, keyTabOne}, wantFirstTabTask: secondID, wantSecondTabTask: thirdID},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := Config{Tabs: []TabConfig{listAndDetailTab("First"), listAndDetailTab("Second")}}
+			model := newTestModel(t, buildTestTabs(t, config), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			refreshNow(model)
+			pressKeys(model, testCase.keys)
+			if got := model.tabs[0].SelectedTaskID(); got != testCase.wantFirstTabTask {
+				t.Errorf("expected task %q selected in the first tab, got %q", testCase.wantFirstTabTask, got)
+			}
+			if got := model.tabs[1].SelectedTaskID(); got != testCase.wantSecondTabTask {
+				t.Errorf("expected task %q selected in the second tab, got %q", testCase.wantSecondTabTask, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+func TestModel_OpensTask(t *testing.T) {
+	listAndDetail := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: taskdetail.Name}}})
+	twoLists := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), taskListNode()}})
+	twoLists.Tabs = append(twoLists.Tabs, TabConfig{Title: "Second", Layout: taskListNode()})
+	cases := []struct {
+		name                 string
+		config               Config
+		keys                 []tea.Msg
+		wantOverlayOpen      bool
+		wantFocusedTileIndex int
+		wantActiveTab        string
+		golden               string
+	}{
+		{name: "enter focuses the task detail", config: listAndDetail, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyEnter}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_opened_in_tile"},
+		{name: "esc in the task detail keeps focus", config: listAndDetail, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab"},
+		{name: "enter opens the overlay without a task detail", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlayOpen: true, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay"},
+		{name: "overlay takes every key", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyTabTwo, keyNextTile, keyQuit, keyHelp, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlayOpen: true, wantActiveTab: "Tab"},
+		{name: "esc closes the overlay and keeps focus", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay_closed"},
+		{name: "keys work again after the overlay closes", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Second"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			refreshNow(model)
+			for _, msg := range testCase.keys {
+				_, cmd := model.Update(msg)
+				if isQuit(cmd) {
+					t.Fatalf("expected no quit from %v", msg)
+				}
+				runCommand(model, cmd)
+			}
+			if got := model.taskOverlay.isOpen; got != testCase.wantOverlayOpen {
+				t.Errorf("expected task overlay open %t, got %t", testCase.wantOverlayOpen, got)
+			}
+			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+			if got := model.ActiveTab().focusedTileIndex; got != testCase.wantFocusedTileIndex {
+				t.Errorf("expected tile %d focused, got %d", testCase.wantFocusedTileIndex, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
 			}
 		})
 	}

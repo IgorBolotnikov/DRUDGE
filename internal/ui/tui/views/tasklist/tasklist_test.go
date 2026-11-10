@@ -95,6 +95,49 @@ func TestView_TakesAllKeys(t *testing.T) {
 	}
 }
 
+func TestView_SelectsAndOpensTasks(t *testing.T) {
+	loaded := views.TasksLoadedMsg{Tasks: tuitest.ListedTasks()}
+	firstID := tuitest.ListedTasks()[0].Task.ID
+	secondID := tuitest.ListedTasks()[1].Task.ID
+	thirdID := tuitest.ListedTasks()[2].Task.ID
+	cases := []struct {
+		name     string
+		messages []tea.Msg
+		input    tea.Msg
+		want     []tea.Msg
+	}{
+		{name: "cursor moves onto a task", messages: []tea.Msg{loaded}, input: tuitest.KeyDown, want: []tea.Msg{views.TaskSelectedMsg{TaskID: secondID}}},
+		{name: "cursor stays at the top", messages: []tea.Msg{loaded}, input: tuitest.KeyUp},
+		{name: "no tasks to move over", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyDown},
+		{name: "filter moves the cursor onto another task", messages: []tea.Msg{loaded, tuitest.KeyFilter}, input: tea.KeyPressMsg{Code: 'W', Text: "W"}, want: []tea.Msg{views.TaskSelectedMsg{TaskID: secondID}}},
+		{name: "arrow moves the cursor while filtering", messages: []tea.Msg{loaded, tuitest.KeyFilter}, input: tuitest.KeyArrowDown, want: []tea.Msg{views.TaskSelectedMsg{TaskID: secondID}}},
+		{name: "enter opens the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown, tuitest.KeyDown}, input: tuitest.KeyEnter, want: []tea.Msg{views.OpenTaskMsg{TaskID: thirdID}}},
+		{name: "enter opens the first task before the cursor moves", messages: []tea.Msg{loaded}, input: tuitest.KeyEnter, want: []tea.Msg{views.OpenTaskMsg{TaskID: firstID}}},
+		{name: "enter opens a task while filtering", messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("backoff")), input: tuitest.KeyEnter, want: []tea.Msg{views.OpenTaskMsg{TaskID: secondID}}},
+		{name: "enter with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyEnter},
+		{name: "click moves the cursor onto a task", messages: []tea.Msg{loaded}, input: tea.MouseClickMsg{Y: 3, Button: tea.MouseLeft}, want: []tea.Msg{views.TaskSelectedMsg{TaskID: thirdID}}},
+		{name: "click on the cursor row", messages: []tea.Msg{loaded}, input: tea.MouseClickMsg{Y: 1, Button: tea.MouseLeft}},
+		{name: "wheel moves the cursor onto a task", messages: []tea.Msg{loaded, tea.WindowSizeMsg{Width: 100, Height: 2}}, input: tea.MouseWheelMsg{Button: tea.MouseWheelDown}, want: []tea.Msg{views.TaskSelectedMsg{TaskID: secondID}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles(), "")
+			view.SetSize(100, 8)
+			for _, msg := range testCase.messages {
+				if size, ok := msg.(tea.WindowSizeMsg); ok {
+					view.SetSize(size.Width, size.Height)
+					continue
+				}
+				view.Update(msg)
+			}
+			got := tuitest.Messages(view.Update(testCase.input))
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("expected messages %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestView_Status(t *testing.T) {
 	loaded := views.TasksLoadedMsg{Tasks: tuitest.ListedTasks()}
 	cases := []struct {

@@ -1,0 +1,12 @@
+ 1 First  2 Second                                                                                  
+╭─ ▸ task-list ──────────────────────────────────╮╭─ task-detail ──────────────────────────────────╮
+│  STATUS         ID        TITLE                ││Nothing selected                                │
+│▸ in-progress    3f9a1c2e  Add retry to uploader││                                                │
+│    done         5b20d7aa    Write the backoff  ││                                                │
+│  todo           7c1e4f90  Wire retries into th…││                                                │
+│  fucked-up      9d8b2a11  Fix the flaky upload…││                                                │
+│  draft          a01f3b55  Draft the release no…││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+1/5                                                                                           ? help

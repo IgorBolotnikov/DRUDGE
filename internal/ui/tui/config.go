@@ -8,6 +8,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -107,7 +108,7 @@ func defaultConfig() Config {
 			}},
 			{Arrangement: SideBySide, Children: []NodeConfig{
 				{View: tasklist.Name},
-				{View: tasklist.Name},
+				{View: taskdetail.Name},
 			}},
 		}}},
 		{Title: tasksTabTitle, Layout: NodeConfig{View: tasklist.Name}},

@@ -104,13 +104,14 @@ func statusNames() []string {
 }
 
 // Keys of the task list. The up key and the top key carry the help of their
-// pair. While the filter is open, the arrow keys move the cursor and every
-// other key goes to the filter.
+// pair. While the filter is open, the arrow keys move the cursor, enter opens
+// the task and every other key goes to the filter.
 var (
 	moveUpKey      = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("j/k", "move"))
 	moveDownKey    = key.NewBinding(key.WithKeys("j", "down"))
 	jumpTopKey     = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
 	jumpBottomKey  = key.NewBinding(key.WithKeys("G", "end"))
+	openTaskKey    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task"))
 	openFilterKey  = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	closeFilterKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
 	arrowUpKey     = key.NewBinding(key.WithKeys("up"))
@@ -118,7 +119,7 @@ var (
 )
 
 // Keys are the keys of the task list the help lists.
-var Keys = []key.Binding{moveUpKey, jumpTopKey, openFilterKey, closeFilterKey}
+var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openFilterKey, closeFilterKey}
 
 // columns of the task list. The status and the title always stay. The parent
 // drops first, then the ticket, the blockers and the ID.
@@ -208,7 +209,9 @@ func (view *View) SetSize(width, height int) {
 }
 
 // Update takes the loaded tasks, moves the cursor and edits the filter on
-// keys, moves the cursor to a clicked row and scrolls on the wheel.
+// keys, moves the cursor to a clicked row and scrolls on the wheel. Moving
+// the cursor onto another task selects that task. Enter opens the task under
+// the cursor.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -220,14 +223,25 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			view.showRows()
 		}
 	case tea.KeyPressMsg:
-		if view.isFiltering {
-			return view.handleFilterKey(msg)
+		if key.Matches(msg, openTaskKey) {
+			return view.openTask()
 		}
-		return view.handleKey(msg)
+		previousTaskID := view.cursorTaskID()
+		var cmd tea.Cmd
+		if view.isFiltering {
+			cmd = view.handleFilterKey(msg)
+		} else {
+			cmd = view.handleKey(msg)
+		}
+		return tea.Batch(cmd, view.selectMovedCursor(previousTaskID))
 	case tea.MouseClickMsg:
+		previousTaskID := view.cursorTaskID()
 		view.handleClick(msg)
+		return view.selectMovedCursor(previousTaskID)
 	case tea.MouseWheelMsg:
+		previousTaskID := view.cursorTaskID()
 		view.handleWheel(msg)
+		return view.selectMovedCursor(previousTaskID)
 	}
 	return nil
 }
@@ -264,6 +278,26 @@ func (view *View) scroll(lines int) {
 	view.offset = min(max(view.offset+lines, 0), lastOffset)
 	lastShownIndex := view.offset + lineCount - 1
 	view.cursor = min(max(view.cursor, view.offset), lastShownIndex)
+}
+
+// openTask asks to open the task under the cursor. It does nothing when no
+// row is shown.
+func (view *View) openTask() tea.Cmd {
+	taskID := view.cursorTaskID()
+	if taskID == "" {
+		return nil
+	}
+	return func() tea.Msg { return views.OpenTaskMsg{TaskID: taskID} }
+}
+
+// selectMovedCursor selects the task under the cursor when it is another task
+// than the one at previousTaskID.
+func (view *View) selectMovedCursor(previousTaskID task.TaskID) tea.Cmd {
+	taskID := view.cursorTaskID()
+	if taskID == "" || taskID == previousTaskID {
+		return nil
+	}
+	return func() tea.Msg { return views.TaskSelectedMsg{TaskID: taskID} }
 }
 
 func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {

@@ -22,6 +22,22 @@ The view takes no options.
 | `j/k` | scroll |
 | `g/G` | top/bottom |
 
+## `task-detail`
+
+Shows the fields and the description of the task selected in a task list of the same tab.
+
+### View options
+
+The view takes no options.
+
+### Keys
+
+| Key | Does |
+| --- | --- |
+| `j/k` | scroll |
+| `u/d` | half page up/down |
+| `g/G` | top/bottom |
+
 ## `task-list`
 
 Lists the tasks of the project with the rows of drg task list.
@@ -38,5 +54,6 @@ Lists the tasks of the project with the rows of drg task list.
 | --- | --- |
 | `j/k` | move |
 | `g/G` | top/bottom |
+| `enter` | open task |
 | `/` | filter |
 | `esc` | clear filter |

@@ -31,3 +31,15 @@ type DrudgersCheckedMsg struct {
 	CheckedAt   time.Time
 	Err         error
 }
+
+// TaskSelectedMsg tells the Tab of a View that the cursor of the View moved
+// onto a task.
+type TaskSelectedMsg struct {
+	TaskID task.TaskID
+}
+
+// OpenTaskMsg asks the Tab of a View to show a task in a View that can show
+// one.
+type OpenTaskMsg struct {
+	TaskID task.TaskID
+}
