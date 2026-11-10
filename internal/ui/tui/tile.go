@@ -94,16 +94,20 @@ func (tile *Tile) Render() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderTopEdge returns the top border with the title in it. A title wider
-// than the edge is cut.
+// renderTopEdge returns the top border with the title in it, one border cell
+// after the corner. Only the title takes the title style. A title wider than
+// the edge is cut.
 func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
 	titleStyle := tile.styles.Border
 	if tile.isFocused {
 		titleStyle = tile.styles.TileTitle
 	}
-	title := ansi.Truncate(border.Top+" "+tile.title+" ", innerWidth, "")
+	lead := ansi.Truncate(border.Top, innerWidth, "")
+	leadWidth := ansi.StringWidth(lead)
+	title := ansi.Truncate(" "+tile.title+" ", innerWidth-leadWidth, "")
 	titleWidth := ansi.StringWidth(title)
-	return tile.styles.Border.Render(border.TopLeft) +
+	rest := strings.Repeat(border.Top, innerWidth-leadWidth-titleWidth)
+	return tile.styles.Border.Render(border.TopLeft+lead) +
 		titleStyle.Render(title) +
-		tile.styles.Border.Render(strings.Repeat(border.Top, innerWidth-titleWidth)+border.TopRight)
+		tile.styles.Border.Render(rest+border.TopRight)
 }
