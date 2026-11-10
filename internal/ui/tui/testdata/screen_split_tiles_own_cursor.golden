@@ -1,11 +1,11 @@
  1 Tab                                                                                                                  
 ╭─ ▸ Mine ─────────────────────────────────────────────────────────────────────╮╭─ task-list ──────────────────────────╮
-│  STATUS           ID        TITLE                          BLOCKED BY  TICKET││  STATUS           ID        TITLE    │
-│  in-progress      3f9a1c2e  Add retry to uploader                      UP-12 ││▸ in-progress      3f9a1c2e  Add retry│
-│    done           5b20d7aa    Write the backoff                              ││    done           5b20d7aa    Write t│
-│▸ todo             7c1e4f90  Wire retries into the CLI      3f9a1c2e          ││  todo             7c1e4f90  Wire retr│
-│  fucked-up        9d8b2a11  Fix the flaky upload test th…              UP-7  ││  fucked-up        9d8b2a11  Fix the f│
-│  draft            a01f3b55  Draft the release notes                          ││  draft            a01f3b55  Draft the│
+│  STATUS         ID        TITLE                  BLOCKED BY  TICKET  PARENT  ││  STATUS         ID        TITLE      │
+│  in-progress    3f9a1c2e  Add retry to uploader              UP-12           ││▸ in-progress    3f9a1c2e  Add retry …│
+│    done         5b20d7aa    Write the backoff                        3f9a1c2e││    done         5b20d7aa    Write th…│
+│▸ todo           7c1e4f90  Wire retries into th…  3f9a1c2e                    ││  todo           7c1e4f90  Wire retri…│
+│  fucked-up      9d8b2a11  Fix the flaky upload…              UP-7            ││  fucked-up      9d8b2a11  Fix the fl…│
+│  draft          a01f3b55  Draft the release no…                              ││  draft          a01f3b55  Draft the …│
 │                                                                              ││                                      │
 │                                                                              ││                                      │
 │                                                                              ││                                      │
@@ -15,10 +15,10 @@
 │                                                                              ││                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────╯
 ╭─ task-list ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  STATUS           ID        TITLE                                                                  BLOCKED BY  TICKET│
-│▸ in-progress      3f9a1c2e  Add retry to uploader                                                              UP-12 │
-│    done           5b20d7aa    Write the backoff                                                                      │
-│  todo             7c1e4f90  Wire retries into the CLI                                              3f9a1c2e          │
-│  fucked-up        9d8b2a11  Fix the flaky upload test that fails on slow machines                              UP-7  │
+│  STATUS         ID        TITLE                                                          BLOCKED BY  TICKET  PARENT  │
+│▸ in-progress    3f9a1c2e  Add retry to uploader                                                      UP-12           │
+│    done         5b20d7aa    Write the backoff                                                                3f9a1c2e│
+│  todo           7c1e4f90  Wire retries into the CLI                                      3f9a1c2e                    │
+│  fucked-up      9d8b2a11  Fix the flaky upload test that fails on slow machines                      UP-7            │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-3/5 · 1/5 · 1/5                    j/k move • g/G top/bottom • z zoom • r refresh • 1-9 tab • [/] prev/next tab • q quit
+3/5 · 1/5 · 1/5         j/k move • g/G top/bottom • / filter • z zoom • r refresh • 1-9 tab • [/] prev/next tab • q quit

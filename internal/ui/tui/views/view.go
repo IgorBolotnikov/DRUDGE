@@ -20,6 +20,9 @@ type View interface {
 	// KeyHints are the keys the bottom bar shows while the Tile of the View
 	// has focus.
 	KeyHints() []key.Binding
+	// TakesAllKeys reports whether the View gets every key, the keys of the
+	// root among them, like while a filter input is open.
+	TakesAllKeys() bool
 	// Status is a short plain-text segment the bottom bar shows for the Tile
 	// of the View. An empty string shows nothing.
 	Status() string

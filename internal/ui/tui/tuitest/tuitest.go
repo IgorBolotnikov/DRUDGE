@@ -35,6 +35,21 @@ var (
 	KeyBottom    = tea.KeyPressMsg{Code: 'g', Text: "G", Mod: tea.ModShift}
 )
 
+// Key presses that open and close a filter.
+var (
+	KeyFilter = tea.KeyPressMsg{Code: '/', Text: "/"}
+	KeyEscape = tea.KeyPressMsg{Code: tea.KeyEscape}
+)
+
+// Type returns the key presses that type text.
+func Type(text string) []tea.Msg {
+	keyPresses := make([]tea.Msg, 0, len(text))
+	for _, character := range text {
+		keyPresses = append(keyPresses, tea.KeyPressMsg{Code: character, Text: string(character)})
+	}
+	return keyPresses
+}
+
 // Styles builds the styles of a theme with hex colors. Goldens strip the
 // colors.
 func Styles() *styles.Styles {

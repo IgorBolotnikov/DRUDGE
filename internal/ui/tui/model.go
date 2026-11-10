@@ -64,7 +64,8 @@ const (
 
 // Keys of the root. Views never bind them.
 var (
-	quitKey         = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"))
+	quitKey         = key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit"))
+	interruptKey    = key.NewBinding(key.WithKeys("ctrl+c"))
 	refreshKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
 	tabNumberKey    = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
 	nextTabKey      = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
@@ -220,10 +221,16 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 
 // handleKey quits, refreshes, switches Tabs, moves focus between the Tiles of
 // the active Tab, zooms the focused Tile or passes the key to its View. A
-// number key with no Tab behind it does nothing.
+// number key with no Tab behind it does nothing. A View that takes all keys
+// gets every key but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	activeTab := model.ActiveTab()
+	focusedView := activeTab.FocusedTile().view
 	switch {
+	case key.Matches(msg, interruptKey):
+		return tea.Quit
+	case focusedView.TakesAllKeys():
+		return focusedView.Update(msg)
 	case key.Matches(msg, quitKey):
 		return tea.Quit
 	case key.Matches(msg, refreshKey):
@@ -252,7 +259,7 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, zoomKey):
 		activeTab.ToggleZoom()
 	default:
-		return activeTab.FocusedTile().view.Update(msg)
+		return focusedView.Update(msg)
 	}
 	return nil
 }
@@ -366,9 +373,14 @@ func renderTabLabel(index int, title string) string {
 }
 
 // renderBottomBar shows the status segments of the active Tab, the load
-// errors and the warnings on the left and the key hints on the right.
+// errors and the warnings on the left and the key hints on the right. The
+// hints leave out the root keys while the focused View takes all keys.
 func (model *Model) renderBottomBar() string {
-	bindings := slices.Concat(model.ActiveTab().FocusedTile().view.KeyHints(), rootKeyHints)
+	focusedView := model.ActiveTab().FocusedTile().view
+	bindings := focusedView.KeyHints()
+	if !focusedView.TakesAllKeys() {
+		bindings = slices.Concat(bindings, rootKeyHints)
+	}
 	hints := model.help.ShortHelpView(bindings)
 	notices := model.renderLoadErrors()
 	for _, warning := range model.warnings {

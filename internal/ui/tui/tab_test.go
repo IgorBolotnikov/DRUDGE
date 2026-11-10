@@ -39,6 +39,8 @@ func (view *sizeView) Render() string {
 
 func (view *sizeView) KeyHints() []key.Binding { return nil }
 
+func (view *sizeView) TakesAllKeys() bool { return false }
+
 func (view *sizeView) Status() string { return view.name }
 
 // sizeTile returns a Tile with a sizeView of the name.

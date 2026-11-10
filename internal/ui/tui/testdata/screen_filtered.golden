@@ -1,0 +1,12 @@
+ 1 Tasks  2 Board                                                                                   
+╭─ ▸ task-list ────────────────────────────────────────────────────────────────────────────────────╮
+│/RETR                                                                                             │
+│  STATUS         ID        TITLE                                      BLOCKED BY  TICKET  PARENT  │
+│▸ in-progress    3f9a1c2e  Add retry to uploader                                  UP-12           │
+│  todo           7c1e4f90  Wire retries into the CLI                  3f9a1c2e                    │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+/RETR 1/2                                                                ↑/↓ move • esc clear filter

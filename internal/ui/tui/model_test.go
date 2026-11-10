@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -275,6 +276,60 @@ func TestModel_SwitchesTabs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestModel_Filter(t *testing.T) {
+	keyQuit := tea.KeyPressMsg{Code: 'q', Text: "q"}
+	cases := []struct {
+		name          string
+		keys          []tea.Msg
+		wantActiveTab string
+		wantStatuses  []string
+		wantQuit      bool
+		golden        string
+	}{
+		{name: "matching ignores case", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR")), wantActiveTab: "Tasks", wantStatuses: []string{"/RETR 1/2"}, golden: "screen_filtered"},
+		{name: "a digit goes to the filter", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("2")), wantActiveTab: "Tasks", wantStatuses: []string{"/2 0/0"}},
+		{name: "root keys go to the filter", keys: []tea.Msg{tuitest.KeyFilter, keyQuit, keyNextTab, keyPreviousTab, keyRefresh, keyZoom}, wantActiveTab: "Tasks", wantStatuses: []string{"/q][rz 0/0"}},
+		{name: "ctrl+c quits from the filter", keys: []tea.Msg{tuitest.KeyFilter, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantActiveTab: "Tasks", wantStatuses: []string{"/ 1/5"}, wantQuit: true},
+		{name: "esc restores the full list", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR"), []tea.Msg{tuitest.KeyEscape}), wantActiveTab: "Tasks", wantStatuses: []string{"1/5"}},
+		{name: "a digit switches tabs after esc", keys: []tea.Msg{tuitest.KeyFilter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Board", wantStatuses: []string{"1/5"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, testTabs(t, "Tasks", "Board"), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			refreshNow(model)
+			didQuit := false
+			for _, msg := range testCase.keys {
+				_, cmd := model.Update(msg)
+				if isQuit(cmd) {
+					didQuit = true
+				}
+			}
+			if didQuit != testCase.wantQuit {
+				t.Errorf("expected quit %t, got %t", testCase.wantQuit, didQuit)
+			}
+			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+			if got := model.ActiveTab().Statuses(); !slices.Equal(got, testCase.wantStatuses) {
+				t.Errorf("expected statuses %q, got %q", testCase.wantStatuses, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+// isQuit reports whether a command quits the program.
+func isQuit(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	_, ok := cmd().(tea.QuitMsg)
+	return ok
 }
 
 // tallLeftConfig describes a Tab with one tall Tile on the left and three

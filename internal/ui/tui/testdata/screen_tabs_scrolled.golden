@@ -1,8 +1,8 @@
  3 Drudgers  4 Backlog        
 ╭─ ▸ task-list ──────────────╮
-│  STATUS           ID       │
-│▸ in-progress      3f9a1c2e │
-│    done           5b20d7aa │
-│  todo             7c1e4f90 │
+│  STATUS         TITLE      │
+│▸ in-progress    Add retry …│
+│    done           Write th…│
+│  todo           Wire retri…│
 ╰────────────────────────────╯
 1… j/k move • g/G top/bottom …

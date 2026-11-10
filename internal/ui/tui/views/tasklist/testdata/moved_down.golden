@@ -1,6 +1,6 @@
-  STATUS           ID        TITLE                                                BLOCKED BY  TICKET
-  in-progress      3f9a1c2e  Add retry to uploader                                            UP-12
-    done           5b20d7aa    Write the backoff                                              
-▸ todo             7c1e4f90  Wire retries into the CLI                            3f9a1c2e          
-  fucked-up        9d8b2a11  Fix the flaky upload test that fails on slow machi…              UP-7
-  draft            a01f3b55  Draft the release notes                                          
+  STATUS         ID        TITLE                                        BLOCKED BY  TICKET  PARENT  
+  in-progress    3f9a1c2e  Add retry to uploader                                    UP-12           
+    done         5b20d7aa    Write the backoff                                              3f9a1c2e
+▸ todo           7c1e4f90  Wire retries into the CLI                    3f9a1c2e                    
+  fucked-up      9d8b2a11  Fix the flaky upload test that fails on sl…              UP-7            
+  draft          a01f3b55  Draft the release notes                                                  

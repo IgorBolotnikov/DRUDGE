@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/table"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
@@ -23,13 +24,8 @@ const Name = "task-list"
 // Description says in one line what the View shows.
 const Description = "Lists the tasks of the project with the rows of drg task list."
 
-// Widths of the task list columns.
-const (
-	statusWidth   = 15
-	minTitleWidth = 10
-	columnGap     = "  "
-	columnCount   = 5
-)
+// minTitleWidth is the fewest cells the title column takes.
+const minTitleWidth = 10
 
 // Titles of the task list columns.
 const (
@@ -38,6 +34,17 @@ const (
 	titleTitle     = "TITLE"
 	blockedByTitle = "BLOCKED BY"
 	ticketTitle    = "TICKET"
+	parentTitle    = "PARENT"
+)
+
+// Indexes of the cells of a row, in the order of the columns.
+const (
+	statusCell = iota
+	idCell
+	titleCell
+	blockedByCell
+	ticketCell
+	parentCell
 )
 
 const (
@@ -50,37 +57,78 @@ const (
 )
 
 // Status segments of the task list: the number of the cursor row and the
-// task count.
+// task count, after the filter while it is open.
 const (
-	statusFormat  = "%d/%d"
-	noTasksStatus = "0/0"
+	statusFormat         = "%d/%d"
+	noTasksStatus        = "0/0"
+	filteredStatusFormat = "%s%s %s"
+)
+
+// filterPrompt starts the filter input. The input keeps one more cell for its
+// cursor.
+const (
+	filterPrompt    = "/"
+	filterCursorGap = 1
 )
 
 // Keys of the task list. The up key and the top key carry the hint of their
-// pair.
+// pair. While the filter is open, the arrow keys move the cursor and every
+// other key goes to the filter.
 var (
-	moveUpKey     = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("j/k", "move"))
-	moveDownKey   = key.NewBinding(key.WithKeys("j", "down"))
-	jumpTopKey    = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
-	jumpBottomKey = key.NewBinding(key.WithKeys("G", "end"))
+	moveUpKey      = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("j/k", "move"))
+	moveDownKey    = key.NewBinding(key.WithKeys("j", "down"))
+	jumpTopKey     = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
+	jumpBottomKey  = key.NewBinding(key.WithKeys("G", "end"))
+	openFilterKey  = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
+	closeFilterKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
+	arrowUpKey     = key.NewBinding(key.WithKeys("up"), key.WithHelp("↑/↓", "move"))
+	arrowDownKey   = key.NewBinding(key.WithKeys("down"))
 )
 
+// columns of the task list. The status and the title always stay. The parent
+// drops first, then the ticket, the blockers and the ID.
+var columns = []table.Column{
+	{Title: statusTitle, MinWidth: statusWidth(), IsRequired: true},
+	{Title: idTitle, MinWidth: task.ShortIDLength, Priority: 4},
+	{Title: titleTitle, MinWidth: minTitleWidth, IsFill: true},
+	{Title: blockedByTitle, Priority: 3},
+	{Title: ticketTitle, Priority: 2},
+	{Title: parentTitle, Priority: 1},
+}
+
+// statusWidth returns the width of the widest status of a task listed under
+// its parent, so the status column keeps its width as the tasks change.
+func statusWidth() int {
+	width := 0
+	for _, status := range task.Statuses {
+		width = max(width, ansi.StringWidth(childIndent+string(status)))
+	}
+	return width
+}
+
 // View lists the tasks of a project the way drg task list does, with a cursor
-// on one row. A failed load keeps the tasks of the last load that worked.
+// on one row. A failed load keeps the tasks of the last load that worked. The
+// filter shows the tasks whose title holds its text in any case.
 type View struct {
-	styles   *styles.Styles
-	tasks    []task.ListedTask
-	hasTasks bool
-	loadErr  error
-	cursor   int
-	offset   int
-	width    int
-	height   int
+	styles      *styles.Styles
+	tasks       []task.ListedTask
+	rows        []task.ListedTask
+	hasTasks    bool
+	loadErr     error
+	filter      textinput.Model
+	isFiltering bool
+	cursor      int
+	offset      int
+	width       int
+	height      int
 }
 
 // New returns a task list that shows a loading line until it gets the tasks.
 func New(viewStyles *styles.Styles) *View {
-	return &View{styles: viewStyles}
+	filter := textinput.New()
+	filter.Prompt = filterPrompt
+	filter.SetStyles(textinput.Styles{Focused: textinput.StyleState{Prompt: viewStyles.Muted}})
+	return &View{styles: viewStyles, filter: filter}
 }
 
 func (view *View) Name() string {
@@ -88,68 +136,120 @@ func (view *View) Name() string {
 }
 
 func (view *View) KeyHints() []key.Binding {
-	return []key.Binding{moveUpKey, jumpTopKey}
+	if view.isFiltering {
+		return []key.Binding{arrowUpKey, closeFilterKey}
+	}
+	return []key.Binding{moveUpKey, jumpTopKey, openFilterKey}
 }
 
-// Status returns the number of the cursor row and the task count, like 12/200.
-// It is empty until the tasks load.
+// TakesAllKeys reports whether the filter is open.
+func (view *View) TakesAllKeys() bool {
+	return view.isFiltering
+}
+
+// Status returns the number of the cursor row and the row count, like 12/200,
+// after the filter while it is open, like /retry 1/3. It is empty until the
+// tasks load.
 func (view *View) Status() string {
-	switch {
-	case !view.hasTasks:
+	if !view.hasTasks {
 		return ""
-	case len(view.tasks) == 0:
-		return noTasksStatus
 	}
-	cursorNumber := view.cursor + 1
-	return fmt.Sprintf(statusFormat, cursorNumber, len(view.tasks))
+	position := noTasksStatus
+	if len(view.rows) > 0 {
+		cursorNumber := view.cursor + 1
+		position = fmt.Sprintf(statusFormat, cursorNumber, len(view.rows))
+	}
+	if view.isFiltering {
+		return fmt.Sprintf(filteredStatusFormat, filterPrompt, view.filter.Value(), position)
+	}
+	return position
 }
 
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
+	view.filter.SetWidth(max(width-ansi.StringWidth(filterPrompt)-filterCursorGap, 0))
 	view.scrollToCursor()
 }
 
-// Update takes the loaded tasks and moves the cursor on keys.
+// Update takes the loaded tasks, moves the cursor and edits the filter on
+// keys.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
 		view.loadErr = msg.Err
 		if msg.Err == nil {
-			view.showTasks(msg.Tasks)
+			view.tasks = msg.Tasks
+			view.hasTasks = true
+			view.showRows()
 		}
 	case tea.KeyPressMsg:
-		view.moveCursor(msg)
+		if view.isFiltering {
+			return view.handleFilterKey(msg)
+		}
+		return view.handleKey(msg)
 	}
 	return nil
 }
 
-// showTasks replaces the tasks and keeps the cursor on the task it was on.
-// When that task is gone, the cursor keeps its row or moves up to the last
-// row.
-func (view *View) showTasks(tasks []task.ListedTask) {
+func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	if key.Matches(msg, openFilterKey) {
+		view.isFiltering = true
+		view.scrollToCursor()
+		return view.filter.Focus()
+	}
+	view.moveCursor(msg)
+	return nil
+}
+
+// handleFilterKey closes and clears the filter on esc, moves the cursor on
+// the arrow keys and gives every other key to the filter.
+func (view *View) handleFilterKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, closeFilterKey):
+		view.isFiltering = false
+		view.filter.Blur()
+		view.filter.Reset()
+		view.showRows()
+		return nil
+	case key.Matches(msg, arrowUpKey, arrowDownKey):
+		view.moveCursor(msg)
+		return nil
+	}
+	var cmd tea.Cmd
+	view.filter, cmd = view.filter.Update(msg)
+	view.showRows()
+	return cmd
+}
+
+// showRows shows the tasks the filter matches and keeps the cursor on the
+// task it was on. When that task is not shown, the cursor keeps its row or
+// moves up to the last row.
+func (view *View) showRows() {
 	cursorTaskID := view.cursorTaskID()
-	view.tasks = tasks
-	view.hasTasks = true
-	index := slices.IndexFunc(tasks, func(entry task.ListedTask) bool { return entry.Task.ID == cursorTaskID })
+	needle := strings.ToLower(view.filter.Value())
+	view.rows = slices.DeleteFunc(slices.Clone(view.tasks), func(entry task.ListedTask) bool {
+		return !strings.Contains(strings.ToLower(entry.Task.Title), needle)
+	})
+	index := slices.IndexFunc(view.rows, func(entry task.ListedTask) bool { return entry.Task.ID == cursorTaskID })
 	if index == -1 {
-		index = max(min(view.cursor, len(tasks)-1), 0)
+		index = max(min(view.cursor, len(view.rows)-1), 0)
 	}
 	view.cursor = index
 	view.scrollToCursor()
 }
 
 // cursorTaskID returns the ID of the task under the cursor, or an empty ID
-// when there are no tasks.
+// when no row is shown.
 func (view *View) cursorTaskID() task.TaskID {
-	if view.cursor >= len(view.tasks) {
+	if view.cursor >= len(view.rows) {
 		return ""
 	}
-	return view.tasks[view.cursor].Task.ID
+	return view.rows[view.cursor].Task.ID
 }
 
 func (view *View) moveCursor(msg tea.KeyPressMsg) {
-	last := len(view.tasks) - 1
+	last := len(view.rows) - 1
 	switch {
 	case key.Matches(msg, moveUpKey):
 		view.cursor = max(view.cursor-1, 0)
@@ -163,69 +263,96 @@ func (view *View) moveCursor(msg tea.KeyPressMsg) {
 	view.scrollToCursor()
 }
 
-// scrollToCursor moves the rows in sight so the cursor row is one of them.
+// rowLineCount returns how many lines the View has for rows, below the filter
+// and the header.
+func (view *View) rowLineCount() int {
+	lineCount := view.height - 1
+	if view.isFiltering {
+		lineCount--
+	}
+	return lineCount
+}
+
+// scrollToCursor moves the rows in sight so the cursor row is one of them. It
+// scrolls back when rows fit below the last row.
 func (view *View) scrollToCursor() {
-	rowCount := view.height - 1
-	if rowCount <= 0 {
+	lineCount := view.rowLineCount()
+	if lineCount <= 0 {
 		return
 	}
 	if view.cursor < view.offset {
 		view.offset = view.cursor
 	}
-	if view.cursor >= view.offset+rowCount {
-		view.offset = view.cursor - rowCount + 1
+	if view.cursor >= view.offset+lineCount {
+		view.offset = view.cursor - lineCount + 1
 	}
+	lastOffset := max(len(view.rows)-lineCount, 0)
+	view.offset = min(view.offset, lastOffset)
 }
 
 func (view *View) Render() string {
 	switch {
 	case view.height <= 0:
 		return ""
+	case view.isFiltering:
+		return view.filter.View() + "\n" + view.renderList()
+	}
+	return view.renderList()
+}
+
+// renderList renders the header and the rows in sight, or a line that says
+// why there are none.
+func (view *View) renderList() string {
+	switch {
 	case !view.hasTasks && view.loadErr != nil:
 		return view.styles.Error.Render("Could not load tasks: " + view.loadErr.Error())
 	case !view.hasTasks:
 		return view.styles.Muted.Render("Loading tasks" + cells.Ellipsis)
 	case len(view.tasks) == 0:
 		return view.styles.Muted.Render("No tasks found")
+	case len(view.rows) == 0:
+		return view.styles.Muted.Render("No tasks match the filter")
 	}
 
-	columns := view.columns()
-	header := taskRow{status: statusTitle, id: idTitle, title: titleTitle, blockedBy: blockedByTitle, ticket: ticketTitle}
-	plain := lipgloss.NewStyle()
-	lines := []string{view.styles.Header.Render(columns.render(noCursorMarker, header, plain, plain))}
-	end := min(view.offset+view.height-1, len(view.tasks))
+	layout := view.layout()
+	lines := []string{view.styles.Header.Render(noCursorMarker + layout.Header())}
+	end := min(view.offset+view.rowLineCount(), len(view.rows))
 	for index := view.offset; index < end; index++ {
-		lines = append(lines, view.renderRow(columns, index))
+		lines = append(lines, view.renderRow(layout, index))
 	}
 	return strings.Join(lines, "\n")
 }
 
+// layout fits the columns in the width left after the cursor marker. The
+// columns are as wide as the cells of every task, so the filter does not move
+// them.
+func (view *View) layout() table.Layout {
+	rows := make([][]string, 0, len(view.tasks))
+	for _, entry := range view.tasks {
+		rows = append(rows, newTaskRow(entry))
+	}
+	return table.NewLayout(columns, rows, view.width-ansi.StringWidth(noCursorMarker))
+}
+
 // renderRow renders the row at index. The cursor row and a context row take
 // one style across the row, so their cells stay plain.
-func (view *View) renderRow(columns taskColumns, index int) string {
-	entry := view.tasks[index]
+func (view *View) renderRow(layout table.Layout, index int) string {
+	entry := view.rows[index]
 	row := newTaskRow(entry)
-	plain := lipgloss.NewStyle()
 	switch {
 	case index == view.cursor:
-		return view.styles.Cursor.Render(cells.Fit(columns.render(cursorMarker, row, plain, plain), view.width))
+		return view.styles.Cursor.Render(cells.Fit(cursorMarker+layout.Row(row), view.width))
 	case entry.IsContext:
-		return view.styles.Muted.Render(columns.render(noCursorMarker, row, plain, plain))
-	default:
-		return columns.render(noCursorMarker, row, view.styles.Status(entry.Task.Status), view.styles.ShortID)
+		return view.styles.Muted.Render(noCursorMarker + layout.Row(row))
 	}
+	row[statusCell] = view.styles.Status(entry.Task.Status).Render(row[statusCell])
+	row[idCell] = view.styles.ShortID.Render(row[idCell])
+	return noCursorMarker + layout.Row(row)
 }
 
-// taskRow holds the cells of one row of the task list.
-type taskRow struct {
-	status    string
-	id        string
-	title     string
-	blockedBy string
-	ticket    string
-}
-
-func newTaskRow(entry task.ListedTask) taskRow {
+// newTaskRow returns the cells of the row of a task, in the order of the
+// columns.
+func newTaskRow(entry task.ListedTask) []string {
 	indent := ""
 	if entry.IsUnderParent {
 		indent = childIndent
@@ -234,45 +361,14 @@ func newTaskRow(entry task.ListedTask) taskRow {
 	for _, id := range entry.Holding {
 		holding = append(holding, task.ShortID(id))
 	}
-	return taskRow{
-		status:    indent + string(entry.Task.Status),
-		id:        task.ShortID(entry.Task.ID),
-		title:     indent + entry.Task.Title,
-		blockedBy: strings.Join(holding, blockerJoiner),
-		ticket:    entry.Task.TicketID,
+	row := make([]string, len(columns))
+	row[statusCell] = indent + string(entry.Task.Status)
+	row[idCell] = task.ShortID(entry.Task.ID)
+	row[titleCell] = indent + entry.Task.Title
+	row[blockedByCell] = strings.Join(holding, blockerJoiner)
+	row[ticketCell] = entry.Task.TicketID
+	if entry.Task.ParentTaskID != "" {
+		row[parentCell] = task.ShortID(entry.Task.ParentTaskID)
 	}
-}
-
-// taskColumns holds the widths of the columns that change with the tasks and
-// the size of the View.
-type taskColumns struct {
-	title     int
-	blockedBy int
-}
-
-// columns makes the blockers column as wide as its widest value and gives the
-// title what is left of the width.
-func (view *View) columns() taskColumns {
-	blockedByWidth := ansi.StringWidth(blockedByTitle)
-	ticketWidth := ansi.StringWidth(ticketTitle)
-	for _, entry := range view.tasks {
-		row := newTaskRow(entry)
-		blockedByWidth = max(blockedByWidth, ansi.StringWidth(row.blockedBy))
-		ticketWidth = max(ticketWidth, ansi.StringWidth(row.ticket))
-	}
-	gapsWidth := (columnCount - 1) * len(columnGap)
-	fixedWidth := len(noCursorMarker) + statusWidth + task.ShortIDLength + blockedByWidth + ticketWidth + gapsWidth
-	return taskColumns{
-		title:     max(view.width-fixedWidth, minTitleWidth),
-		blockedBy: blockedByWidth,
-	}
-}
-
-func (columns taskColumns) render(marker string, row taskRow, statusStyle, idStyle lipgloss.Style) string {
-	return marker +
-		statusStyle.Render(cells.FitEllipsis(row.status, statusWidth)) + columnGap +
-		idStyle.Render(cells.FitEllipsis(row.id, task.ShortIDLength)) + columnGap +
-		cells.FitEllipsis(row.title, columns.title) + columnGap +
-		cells.FitEllipsis(row.blockedBy, columns.blockedBy) + columnGap +
-		row.ticket
+	return row
 }

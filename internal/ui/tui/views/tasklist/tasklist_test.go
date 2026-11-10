@@ -41,15 +41,50 @@ func TestView(t *testing.T) {
 		{name: "scrolled_to_bottom", width: 100, height: 3, messages: []tea.Msg{loaded, tuitest.KeyBottom, tuitest.KeyDown}},
 		{name: "back_to_top", width: 100, height: 3, messages: []tea.Msg{loaded, tuitest.KeyBottom, tuitest.KeyTop, tuitest.KeyUp}},
 		{name: "narrow", width: 60, height: 8, messages: []tea.Msg{loaded}},
+		{name: "narrower", width: 40, height: 8, messages: []tea.Msg{loaded}},
+		{name: "narrowest", width: 30, height: 8, messages: []tea.Msg{loaded}},
+		{name: "taller_scrolls_back", width: 100, height: 8, messages: []tea.Msg{loaded, tuitest.KeyBottom, tea.WindowSizeMsg{Width: 100, Height: 3}, tea.WindowSizeMsg{Width: 100, Height: 8}}},
+		{name: "filter_open", width: 100, height: 8, messages: []tea.Msg{loaded, tuitest.KeyFilter}},
+		{name: "filtered", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("RETR"))},
+		{name: "filtered_no_match", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("nothing"))},
+		{name: "filter_cleared", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("retr"), []tea.Msg{tuitest.KeyEscape})},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			view := New(tuitest.Styles())
 			view.SetSize(testCase.width, testCase.height)
 			for _, msg := range testCase.messages {
+				if size, ok := msg.(tea.WindowSizeMsg); ok {
+					view.SetSize(size.Width, size.Height)
+					continue
+				}
 				view.Update(msg)
 			}
 			tuitest.AssertGolden(t, testCase.name, view.Render())
+		})
+	}
+}
+
+func TestView_TakesAllKeys(t *testing.T) {
+	loaded := views.TasksLoadedMsg{Tasks: tuitest.ListedTasks()}
+	cases := []struct {
+		name     string
+		messages []tea.Msg
+		want     bool
+	}{
+		{name: "filter closed", messages: []tea.Msg{loaded}, want: false},
+		{name: "filter open", messages: []tea.Msg{loaded, tuitest.KeyFilter}, want: true},
+		{name: "filter closed with esc", messages: []tea.Msg{loaded, tuitest.KeyFilter, tuitest.KeyEscape}, want: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			if got := view.TakesAllKeys(); got != testCase.want {
+				t.Errorf("expected takes all keys %t, got %t", testCase.want, got)
+			}
 		})
 	}
 }
@@ -67,6 +102,11 @@ func TestView_Status(t *testing.T) {
 		{name: "cursor on the first task", messages: []tea.Msg{loaded}, want: "1/5"},
 		{name: "cursor moved", messages: []tea.Msg{loaded, tuitest.KeyDown, tuitest.KeyDown}, want: "3/5"},
 		{name: "error keeps the tasks", messages: []tea.Msg{loaded, tuitest.KeyBottom, views.TasksLoadedMsg{Err: errPermissionDenied}}, want: "5/5"},
+		{name: "filter open", messages: []tea.Msg{loaded, tuitest.KeyFilter}, want: "/ 1/5"},
+		{name: "filter ignores case", messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("RETR")), want: "/RETR 1/2"},
+		{name: "filter matches nothing", messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("nothing")), want: "/nothing 0/0"},
+		{name: "filter keeps the cursor on its task", messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyFilter}, tuitest.Type("retr")), want: "/retr 2/2"},
+		{name: "filter cleared", messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("retr"), []tea.Msg{tuitest.KeyEscape}), want: "1/5"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
