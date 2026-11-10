@@ -3,7 +3,7 @@ title: TUI
 weight: 6
 ---
 
-`drg tui` shows the [Tasks]({{< relref "/docs/concepts/tasks" >}}) of a Project full screen. Run it from a project directory, the one you ran [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in:
+`drg tui` opens a full screen dashboard of a Project. The dashboard is made of tabs, and each tab arranges tiles. A tile shows one view, like the list of [Tasks]({{< relref "/docs/concepts/tasks" >}}). Run it from a project directory, the one you ran [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in:
 
 ```sh
 drg tui
