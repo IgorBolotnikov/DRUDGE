@@ -6,6 +6,7 @@ package table
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
@@ -118,6 +119,18 @@ func (layout Layout) Row(row []string) string {
 		}
 	}
 	return strings.Join(fitted, Gap)
+}
+
+// StyledRow renders a row like Row and styles each cell after it is fitted,
+// so the padding of a cell takes its style. The gaps take gapStyle.
+func (layout Layout) StyledRow(row []string, cellStyles []lipgloss.Style, gapStyle lipgloss.Style) string {
+	var fitted []string
+	for index, cell := range row {
+		if layout.isShown[index] {
+			fitted = append(fitted, cellStyles[index].Render(cells.FitEllipsis(cell, layout.widths[index])))
+		}
+	}
+	return strings.Join(fitted, gapStyle.Render(Gap))
 }
 
 // nextToDrop returns the index of the shown column with the lowest priority

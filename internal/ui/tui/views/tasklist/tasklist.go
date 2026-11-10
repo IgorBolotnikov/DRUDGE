@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -334,20 +335,42 @@ func (view *View) layout() table.Layout {
 	return table.NewLayout(columns, rows, view.width-ansi.StringWidth(noCursorMarker))
 }
 
-// renderRow renders the row at index. The cursor row and a context row take
-// one style across the row, so their cells stay plain.
+// renderRow renders the row at index. A context row takes one style across
+// the row, so its cells stay plain.
 func (view *View) renderRow(layout table.Layout, index int) string {
 	entry := view.rows[index]
 	row := newTaskRow(entry)
 	switch {
 	case index == view.cursor:
-		return view.styles.Cursor.Render(cells.Fit(cursorMarker+layout.Row(row), view.width))
+		return view.renderCursorRow(layout, entry, row)
 	case entry.IsContext:
 		return view.styles.Muted.Render(noCursorMarker + layout.Row(row))
 	}
 	row[statusCell] = view.styles.Status(entry.Task.Status).Render(row[statusCell])
 	row[idCell] = view.styles.ShortID.Render(row[idCell])
 	return noCursorMarker + layout.Row(row)
+}
+
+// renderCursorRow renders the cells of the cursor row in the styles of a
+// normal row, on the selection background. An inner style ends with a reset,
+// so every cell, gap and the padding to the view width carries the background
+// itself.
+func (view *View) renderCursorRow(layout table.Layout, entry task.ListedTask, row []string) string {
+	selection := view.styles.Selection
+	cellStyles := make([]lipgloss.Style, len(row))
+	for index := range cellStyles {
+		cellStyles[index] = selection
+		if entry.IsContext {
+			cellStyles[index] = selection.Inherit(view.styles.Muted)
+		}
+	}
+	if !entry.IsContext {
+		cellStyles[statusCell] = selection.Inherit(view.styles.Status(entry.Task.Status))
+		cellStyles[idCell] = selection.Inherit(view.styles.ShortID)
+	}
+	line := selection.Render(cursorMarker) + layout.StyledRow(row, cellStyles, selection)
+	line = ansi.Truncate(line, view.width, "")
+	return line + selection.Render(strings.Repeat(" ", max(view.width-ansi.StringWidth(line), 0)))
 }
 
 // newTaskRow returns the cells of the row of a task, in the order of the

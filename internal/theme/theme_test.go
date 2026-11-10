@@ -22,6 +22,25 @@ func TestBundledThemesHaveAllRoles(t *testing.T) {
 	}
 }
 
+func TestBundledThemesSelection(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{name: "nord", want: "#3B4252"},
+		{name: "monokai", want: "#3E3D32"},
+		{name: "catppuccin-mocha", want: "#313244"},
+		{name: "dracula", want: "#44475A"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := NewTheme(testCase.name).Hex(RoleSelection); got != testCase.want {
+				t.Errorf("Hex(%q) = %q, want %q", RoleSelection, got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestPaintShadeAndReset_FollowColorEnv(t *testing.T) {
 	const wantColor = "\x1b[38;2;191;97;106m"
 	cases := []struct {
@@ -495,7 +514,7 @@ func setupTempHome(t *testing.T, content string) string {
 func allRoles() []string {
 	return []string{
 		"primary", "heading", "success", "error", "warning",
-		"info", "muted", "secondary", "border", "path",
+		"info", "muted", "secondary", "border", "path", "selection",
 	}
 }
 
@@ -511,6 +530,7 @@ func TestSystemTheme(t *testing.T) {
 		RoleSecondary: "\x1b[37m",
 		RoleBorder:    "\x1b[2m",
 		RolePath:      "\x1b[32m",
+		RoleSelection: "\x1b[90m",
 	}
 	cases := []struct {
 		name       string

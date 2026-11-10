@@ -18,7 +18,7 @@ type Styles struct {
 	TileTitle lipgloss.Style
 	Header    lipgloss.Style
 	ShortID   lipgloss.Style
-	Cursor    lipgloss.Style
+	Selection lipgloss.Style
 	Muted     lipgloss.Style
 	Error     lipgloss.Style
 	Warning   lipgloss.Style
@@ -40,7 +40,7 @@ func New(palette *theme.Theme) *Styles {
 		TileTitle: roleStyle(palette, theme.RolePrimary).Bold(true),
 		Header:    lipgloss.NewStyle().Bold(true),
 		ShortID:   lipgloss.NewStyle().Bold(true),
-		Cursor:    lipgloss.NewStyle().Reverse(true),
+		Selection: roleBackgroundStyle(palette, theme.RoleSelection),
 		Muted:     muted,
 		Error:     roleStyle(palette, theme.RoleError),
 		Warning:   roleStyle(palette, theme.RoleWarning),
@@ -77,6 +77,24 @@ func roleStyle(palette *theme.Theme, role string) lipgloss.Style {
 		return plain.Foreground(lipgloss.ANSIColor(roleColor.ANSI))
 	case theme.ColorDim:
 		return plain.Faint(true)
+	default:
+		return plain
+	}
+}
+
+// roleBackgroundStyle returns a style with the color of role as the
+// background and no foreground. A dim or unknown role is plain.
+func roleBackgroundStyle(palette *theme.Theme, role string) lipgloss.Style {
+	plain := lipgloss.NewStyle()
+	roleColor, ok := palette.RoleColor(role)
+	if !ok {
+		return plain
+	}
+	switch roleColor.Kind {
+	case theme.ColorHex:
+		return plain.Background(lipgloss.Color(roleColor.Hex))
+	case theme.ColorANSI:
+		return plain.Background(lipgloss.ANSIColor(roleColor.ANSI))
 	default:
 		return plain
 	}

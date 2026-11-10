@@ -85,6 +85,12 @@ const schemaJSON = `{
           "type": "string",
           "pattern": "^#[0-9a-fA-F]{6}$",
           "examples": ["#A3BE8C"]
+        },
+        "selection": {
+          "description": "Background color of the highlighted row.",
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "examples": ["#3B4252"]
         }
       }
     }

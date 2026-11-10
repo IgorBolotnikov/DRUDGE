@@ -15,6 +15,10 @@ func TestRoleColor(t *testing.T) {
 		{name: "white of the system theme", themeFile: `{"theme": "system"}`, role: RoleSecondary, want: RoleColor{Kind: ColorANSI, ANSI: 7}, wantOk: true},
 		{name: "dim of the system theme", themeFile: `{"theme": "system"}`, role: RoleMuted, want: RoleColor{Kind: ColorDim}, wantOk: true},
 		{name: "an override of the system theme", themeFile: `{"theme": "system", "overrides": {"error": "#ff0000"}}`, role: RoleError, want: RoleColor{Kind: ColorHex, Hex: "#ff0000"}, wantOk: true},
+		{name: "the selection of a hex theme", themeFile: `{"theme": "nord"}`, role: RoleSelection, want: RoleColor{Kind: ColorHex, Hex: "#3B4252"}, wantOk: true},
+		{name: "the selection of the system theme is bright black", themeFile: `{"theme": "system"}`, role: RoleSelection, want: RoleColor{Kind: ColorANSI, ANSI: 8}, wantOk: true},
+		{name: "a selection override", themeFile: `{"theme": "nord", "overrides": {"selection": "#112233"}}`, role: RoleSelection, want: RoleColor{Kind: ColorHex, Hex: "#112233"}, wantOk: true},
+		{name: "a selection override of the system theme", themeFile: `{"theme": "system", "overrides": {"selection": "#112233"}}`, role: RoleSelection, want: RoleColor{Kind: ColorHex, Hex: "#112233"}, wantOk: true},
 		{name: "an unknown role", themeFile: `{"theme": "nord"}`, role: "nope", wantOk: false},
 	}
 	for _, testCase := range cases {

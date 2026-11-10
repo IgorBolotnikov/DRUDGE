@@ -55,6 +55,7 @@ An override that is not a `#rrggbb` color is skipped. Every command prints a war
 | `overrides.secondary` | string |  | matches `^#[0-9a-fA-F]{6}$` | Secondary text color. |
 | `overrides.border` | string |  | matches `^#[0-9a-fA-F]{6}$` | Border / separator color. |
 | `overrides.path` | string |  | matches `^#[0-9a-fA-F]{6}$` | File path display color. |
+| `overrides.selection` | string |  | matches `^#[0-9a-fA-F]{6}$` | Background color of the highlighted row. |
 | `overrides.<key>` | string |  | matches `^#[0-9a-fA-F]{6}$` |  |
 
 <!-- END GENERATED -->

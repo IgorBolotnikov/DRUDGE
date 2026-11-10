@@ -23,6 +23,7 @@ const (
 	RoleSecondary = "secondary"
 	RoleBorder    = "border"
 	RolePath      = "path"
+	RoleSelection = "selection"
 )
 
 // Theme holds the effective foreground color of each role after all merges.

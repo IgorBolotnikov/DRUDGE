@@ -12,6 +12,7 @@ var (
 		"secondary": "#D8DEE9",
 		"border":    "#434C5E",
 		"path":      "#A3BE8C",
+		"selection": "#3B4252",
 	}
 
 	monokaiPalette = map[string]string{
@@ -25,6 +26,7 @@ var (
 		"secondary": "#75715E",
 		"border":    "#49483E",
 		"path":      "#A6E22E",
+		"selection": "#3E3D32",
 	}
 
 	catppuccinMochaPalette = map[string]string{
@@ -38,6 +40,7 @@ var (
 		"secondary": "#A5ADCE",
 		"border":    "#585B70",
 		"path":      "#A6D189",
+		"selection": "#313244",
 	}
 
 	draculaPalette = map[string]string{
@@ -51,6 +54,7 @@ var (
 		"secondary": "#6F8ABF",
 		"border":    "#6272A4",
 		"path":      "#50FA7B",
+		"selection": "#44475A",
 	}
 )
 
@@ -68,6 +72,7 @@ var systemPalette = map[string]ansiColor{
 	"secondary": ansiWhite,
 	"border":    ansiDim,
 	"path":      ansiGreen,
+	"selection": ansiBrightBlack,
 }
 
 var bundledPalettes = map[string]map[string]string{

@@ -2,10 +2,13 @@ package tasklist
 
 import (
 	"errors"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
@@ -117,6 +120,110 @@ func TestView_Status(t *testing.T) {
 			}
 			if got := view.Status(); got != testCase.want {
 				t.Errorf("expected status %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+// Parameters of the SGR sequences the nord theme sets on the cursor row.
+const (
+	nordSelectionBackground = "48;2;59;66;82"
+	nordInfoForeground      = "38;2;136;192;208"
+	nordMutedForeground     = "38;2;76;86;106"
+	boldParameter           = "1"
+)
+
+var sgrPattern = regexp.MustCompile("\x1b\\[([0-9;]*)m")
+
+// styledRun is a piece of text with the SGR parameters in effect over it.
+type styledRun struct {
+	text       string
+	parameters string
+}
+
+// styledRuns splits a line into runs of text and tracks the SGR parameters
+// since the last reset, so a run shows what the terminal would draw.
+func styledRuns(line string) []styledRun {
+	var runs []styledRun
+	parameters := ""
+	rest := line
+	for rest != "" {
+		location := sgrPattern.FindStringSubmatchIndex(rest)
+		if location == nil {
+			runs = append(runs, styledRun{text: rest, parameters: parameters})
+			break
+		}
+		if location[0] > 0 {
+			runs = append(runs, styledRun{text: rest[:location[0]], parameters: parameters})
+		}
+		sequence := rest[location[2]:location[3]]
+		if sequence == "" || sequence == "0" {
+			parameters = ""
+		} else {
+			parameters += ";" + sequence
+		}
+		rest = rest[location[1]:]
+	}
+	return runs
+}
+
+func TestView_CursorRowStyle(t *testing.T) {
+	const width = 100
+	cases := []struct {
+		name           string
+		messages       []tea.Msg
+		wantForeground map[string]string
+		wantBold       string
+	}{
+		{
+			name:           "a task keeps its status color and bold id",
+			messages:       []tea.Msg{views.TasksLoadedMsg{Tasks: tuitest.ListedTasks()}},
+			wantForeground: map[string]string{"in-progress": nordInfoForeground},
+			wantBold:       "3f9a1c2e",
+		},
+		{
+			name: "a context row keeps the muted color",
+			messages: []tea.Msg{
+				views.TasksLoadedMsg{Tasks: tuitest.ListedTasks()},
+				tuitest.KeyFilter, tea.KeyPressMsg{Code: 'w', Text: "w"}, tea.KeyPressMsg{Code: 'r', Text: "r"}, tea.KeyPressMsg{Code: 'i', Text: "i"},
+				tea.KeyPressMsg{Code: tea.KeyUp},
+			},
+			wantForeground: map[string]string{"Add retry": nordMutedForeground},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(width, 8)
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			lines := strings.Split(view.Render(), "\n")
+			var cursorLine string
+			for _, line := range lines {
+				if strings.Contains(line, cursorMarker) {
+					cursorLine = line
+				}
+			}
+			if cursorLine == "" {
+				t.Fatalf("no cursor row in:\n%s", view.Render())
+			}
+			if got := ansi.StringWidth(cursorLine); got != width {
+				t.Errorf("expected the cursor row to be %d cells wide, got %d", width, got)
+			}
+			for _, run := range styledRuns(cursorLine) {
+				if !strings.Contains(run.parameters, nordSelectionBackground) {
+					t.Errorf("expected the selection background over %q, got parameters %q", run.text, run.parameters)
+				}
+				for text, foreground := range testCase.wantForeground {
+					if strings.Contains(run.text, text) && !strings.Contains(run.parameters, foreground) {
+						t.Errorf("expected foreground %q over %q, got parameters %q", foreground, run.text, run.parameters)
+					}
+				}
+				isBold := slices.Contains(strings.Split(run.parameters, ";"), boldParameter)
+				if testCase.wantBold != "" && strings.Contains(run.text, testCase.wantBold) && !isBold {
+					t.Errorf("expected %q to be bold, got parameters %q", run.text, run.parameters)
+				}
 			}
 		})
 	}

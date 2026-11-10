@@ -29,8 +29,8 @@ type RoleColor struct {
 	Kind ColorKind
 	// Hex is the "#rrggbb" of a hex color.
 	Hex string
-	// ANSI is the number of a basic ANSI color, from 0 for black to 7 for
-	// white.
+	// ANSI is the number of an ANSI color, from 0 for black to 7 for white and
+	// from 8 for bright black to 15 for bright white.
 	ANSI int
 }
 
@@ -65,6 +65,9 @@ const (
 	ansiBlue   ansiColor = 34
 	ansiCyan   ansiColor = 36
 	ansiWhite  ansiColor = 37
+	// ansiBrightBlack is the SGR code of the foreground bright black. Terminals
+	// draw it as gray.
+	ansiBrightBlack ansiColor = 90
 )
 
 // ansiSGRFormat is the ANSI escape sequence that sets an SGR code.
@@ -77,9 +80,19 @@ func (sgr ansiColor) escape() string {
 // ansiForegroundBase is the SGR code of the first basic foreground color.
 const ansiForegroundBase = 30
 
+// ansiBrightForegroundBase is the SGR code of the first bright foreground
+// color. brightANSIOffset is the number of the first bright ANSI color.
+const (
+	ansiBrightForegroundBase ansiColor = 90
+	brightANSIOffset                   = 8
+)
+
 func (sgr ansiColor) describe() RoleColor {
 	if sgr == ansiDim {
 		return RoleColor{Kind: ColorDim}
+	}
+	if sgr >= ansiBrightForegroundBase {
+		return RoleColor{Kind: ColorANSI, ANSI: int(sgr-ansiBrightForegroundBase) + brightANSIOffset}
 	}
 	return RoleColor{Kind: ColorANSI, ANSI: int(sgr) - ansiForegroundBase}
 }
