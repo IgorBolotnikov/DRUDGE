@@ -1,5 +1,5 @@
  1 Tasks  2 Board                                                                                   
-╭─ task-list ──────────────────────────────────────────────────────────────────────────────────────╮
+╭─ ▸ task-list ────────────────────────────────────────────────────────────────────────────────────╮
 │  STATUS           ID        TITLE                                              BLOCKED BY  TICKET│
 │▸ in-progress      3f9a1c2e  Add retry to uploader                                          UP-12 │
 │    done           5b20d7aa    Write the backoff                                                  │
@@ -9,4 +9,4 @@
 │                                                                                                  │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-1/5                     j/k move • g/G top/bottom • r refresh • 1-9 tab • [/] prev/next tab • q quit
+1/5            j/k move • g/G top/bottom • z zoom • r refresh • 1-9 tab • [/] prev/next tab • q quit

@@ -166,6 +166,13 @@ func TestBuildTabs_Screen(t *testing.T) {
 			height: 12,
 			config: oneTabConfig(nestedLayout),
 		},
+		{
+			name:   "screen_too_small_zoomed",
+			width:  50,
+			height: 12,
+			config: oneTabConfig(nestedLayout),
+			keys:   []tea.KeyPressMsg{keyZoom},
+		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

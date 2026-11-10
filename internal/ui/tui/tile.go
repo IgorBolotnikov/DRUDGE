@@ -20,6 +20,13 @@ const (
 	minViewHeight = 3
 )
 
+// Markers in the title of a Tile. The focus marker keeps focus visible with
+// color off.
+const (
+	focusMarker = "▸ "
+	zoomMarker  = " [zoom]"
+)
+
 // Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
 // with its title in the top edge and clips the View to the space inside.
 type Tile struct {
@@ -29,6 +36,7 @@ type Tile struct {
 	weight        float64
 	isStatusShown bool
 	isFocused     bool
+	isZoomed      bool
 	width         int
 	height        int
 }
@@ -78,6 +86,11 @@ func (tile *Tile) SetFocused(isFocused bool) {
 	tile.isFocused = isFocused
 }
 
+// SetZoomed sets whether the Tile fills its Tab.
+func (tile *Tile) SetZoomed(isZoomed bool) {
+	tile.isZoomed = isZoomed
+}
+
 // Render returns exactly the lines of the Tile at its size.
 func (tile *Tile) Render() string {
 	if tile.width < tileBorder || tile.height < tileBorder {
@@ -105,16 +118,22 @@ func (tile *Tile) Render() string {
 }
 
 // renderTopEdge returns the top border with the title in it, one border cell
-// after the corner. Only the title takes the title style. A title wider than
-// the edge is cut.
+// after the corner. Only the title takes the title style. The title of a
+// focused Tile starts with the focus marker and the title of a zoomed Tile
+// ends with the zoom marker. A title wider than the edge is cut.
 func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
 	titleStyle := tile.styles.Border
+	title := tile.title
 	if tile.isFocused {
 		titleStyle = tile.styles.TileTitle
+		title = focusMarker + title
+	}
+	if tile.isZoomed {
+		title += zoomMarker
 	}
 	lead := ansi.Truncate(border.Top, innerWidth, "")
 	leadWidth := ansi.StringWidth(lead)
-	title := ansi.Truncate(" "+tile.title+" ", innerWidth-leadWidth, "")
+	title = ansi.Truncate(" "+title+" ", innerWidth-leadWidth, "")
 	titleWidth := ansi.StringWidth(title)
 	rest := strings.Repeat(border.Top, innerWidth-leadWidth-titleWidth)
 	return tile.styles.Border.Render(border.TopLeft+lead) +

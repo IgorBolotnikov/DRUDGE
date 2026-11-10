@@ -28,7 +28,7 @@ const warningPrefix = "! "
 
 // tooSmallFormat is the warning in place of a Tab that has no room for its
 // Tiles.
-const tooSmallFormat = "terminal too small for tab %q, resize it"
+const tooSmallFormat = "terminal too small for tab %q, zoom with z or resize"
 
 // loadErrorPrefix starts a load error in the bottom bar.
 const loadErrorPrefix = "✗ "
@@ -64,16 +64,23 @@ const (
 
 // Keys of the root. Views never bind them.
 var (
-	quitKey        = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"))
-	refreshKey     = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
-	tabNumberKey   = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
-	nextTabKey     = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
-	previousTabKey = key.NewBinding(key.WithKeys("["))
+	quitKey         = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"))
+	refreshKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
+	tabNumberKey    = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
+	nextTabKey      = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
+	previousTabKey  = key.NewBinding(key.WithKeys("["))
+	focusLeftKey    = key.NewBinding(key.WithKeys("ctrl+h", "ctrl+left"))
+	focusDownKey    = key.NewBinding(key.WithKeys("ctrl+j", "ctrl+down"))
+	focusUpKey      = key.NewBinding(key.WithKeys("ctrl+k", "ctrl+up"))
+	focusRightKey   = key.NewBinding(key.WithKeys("ctrl+l", "ctrl+right"))
+	nextTileKey     = key.NewBinding(key.WithKeys("tab"))
+	previousTileKey = key.NewBinding(key.WithKeys("shift+tab"))
+	zoomKey         = key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "zoom"))
 )
 
 // rootKeyHints are the root keys the bottom bar shows after the keys of the
 // focused View.
-var rootKeyHints = []key.Binding{refreshKey, tabNumberKey, nextTabKey, quitKey}
+var rootKeyHints = []key.Binding{zoomKey, refreshKey, tabNumberKey, nextTabKey, quitKey}
 
 // tasksSourceName names the task source in load errors.
 const tasksSourceName = "tasks"
@@ -213,9 +220,11 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	}
 }
 
-// handleKey quits, refreshes, switches Tabs or passes the key to the focused
-// View of the active Tab. A number key with no Tab behind it does nothing.
+// handleKey quits, refreshes, switches Tabs, moves focus between the Tiles of
+// the active Tab, zooms the focused Tile or passes the key to its View. A
+// number key with no Tab behind it does nothing.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	activeTab := model.ActiveTab()
 	switch {
 	case key.Matches(msg, quitKey):
 		return tea.Quit
@@ -230,8 +239,22 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if tabNumber <= len(model.tabs) {
 			model.activeTabIndex = tabNumber - 1
 		}
+	case key.Matches(msg, focusLeftKey):
+		activeTab.FocusToward(Left)
+	case key.Matches(msg, focusDownKey):
+		activeTab.FocusToward(Down)
+	case key.Matches(msg, focusUpKey):
+		activeTab.FocusToward(Up)
+	case key.Matches(msg, focusRightKey):
+		activeTab.FocusToward(Right)
+	case key.Matches(msg, nextTileKey):
+		activeTab.FocusNextTile()
+	case key.Matches(msg, previousTileKey):
+		activeTab.FocusPreviousTile()
+	case key.Matches(msg, zoomKey):
+		activeTab.ToggleZoom()
 	default:
-		return model.ActiveTab().FocusedTile().view.Update(msg)
+		return activeTab.FocusedTile().view.Update(msg)
 	}
 	return nil
 }

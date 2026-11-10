@@ -1,0 +1,24 @@
+ 1 Tab                                                                                              
+╭─ Left ─────────────────────────────────────────╮╭─ Top ──────────────────────────────────────────╮
+│  STATUS           ID        TITLE       BLOCKED││  STATUS           ID        TITLE       BLOCKED│
+│▸ in-progress      3f9a1c2e  Add retry…         ││▸ in-progress      3f9a1c2e  Add retry…         │
+│    done           5b20d7aa    Write t…         ││    done           5b20d7aa    Write t…         │
+│  todo             7c1e4f90  Wire retr…  3f9a1c2││  todo             7c1e4f90  Wire retr…  3f9a1c2│
+│  fucked-up        9d8b2a11  Fix the f…         ││  fucked-up        9d8b2a11  Fix the f…         │
+│  draft            a01f3b55  Draft the…         │╰────────────────────────────────────────────────╯
+│                                                │╭─ ▸ Middle ─────────────────────────────────────╮
+│                                                ││  STATUS           ID        TITLE       BLOCKED│
+│                                                ││▸ in-progress      3f9a1c2e  Add retry…         │
+│                                                ││    done           5b20d7aa    Write t…         │
+│                                                ││  todo             7c1e4f90  Wire retr…  3f9a1c2│
+│                                                ││  fucked-up        9d8b2a11  Fix the f…         │
+│                                                ││  draft            a01f3b55  Draft the…         │
+│                                                │╰────────────────────────────────────────────────╯
+│                                                │╭─ Bottom ───────────────────────────────────────╮
+│                                                ││  STATUS           ID        TITLE       BLOCKED│
+│                                                ││▸ in-progress      3f9a1c2e  Add retry…         │
+│                                                ││    done           5b20d7aa    Write t…         │
+│                                                ││  todo             7c1e4f90  Wire retr…  3f9a1c2│
+│                                                ││  fucked-up        9d8b2a11  Fix the f…         │
+╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+1/5 · 1/5 · 1… j/k move • g/G top/bottom • z zoom • r refresh • 1-9 tab • [/] prev/next tab • q quit

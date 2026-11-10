@@ -58,9 +58,24 @@ var keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
 var (
 	keyNextTab     = tea.KeyPressMsg{Code: ']', Text: "]"}
 	keyPreviousTab = tea.KeyPressMsg{Code: '[', Text: "["}
+	keyTabOne      = tea.KeyPressMsg{Code: '1', Text: "1"}
 	keyTabTwo      = tea.KeyPressMsg{Code: '2', Text: "2"}
 	keyTabThree    = tea.KeyPressMsg{Code: '3', Text: "3"}
 	keyTabNine     = tea.KeyPressMsg{Code: '9', Text: "9"}
+)
+
+var (
+	keyFocusLeft    = tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl}
+	keyFocusDown    = tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+	keyFocusUp      = tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
+	keyFocusRight   = tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
+	keyArrowLeft    = tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModCtrl}
+	keyArrowDown    = tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModCtrl}
+	keyArrowUp      = tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl}
+	keyArrowRight   = tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModCtrl}
+	keyNextTile     = tea.KeyPressMsg{Code: tea.KeyTab}
+	keyPreviousTile = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	keyZoom         = tea.KeyPressMsg{Code: 'z', Text: "z"}
 )
 
 // testTabs returns one task list Tab per title.
@@ -262,6 +277,91 @@ func TestModel_SwitchesTabs(t *testing.T) {
 	}
 }
 
+// tallLeftConfig describes a Tab with one tall Tile on the left and three
+// stacked on the right.
+func tallLeftConfig(title string) TabConfig {
+	return TabConfig{Title: title, Layout: NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{
+		{View: tasklist.Name, Title: "Left"},
+		{Arrangement: Stacked, Children: []NodeConfig{
+			{View: tasklist.Name, Title: "Top"},
+			{View: tasklist.Name, Title: "Middle"},
+			{View: tasklist.Name, Title: "Bottom"},
+		}},
+	}}}
+}
+
+func TestModel_MovesFocusAndZooms(t *testing.T) {
+	cases := []struct {
+		name            string
+		keys            []tea.KeyPressMsg
+		wantFocusedTile string
+		wantZoomed      bool
+		golden          string
+	}{
+		{name: "first tile at start", wantFocusedTile: "Left", golden: "screen_focus_first_tile"},
+		{name: "right to the middle of three", keys: []tea.KeyPressMsg{keyFocusRight}, wantFocusedTile: "Middle", golden: "screen_focus_moved"},
+		{name: "right then down", keys: []tea.KeyPressMsg{keyFocusRight, keyFocusDown}, wantFocusedTile: "Bottom"},
+		{name: "right then up", keys: []tea.KeyPressMsg{keyFocusRight, keyFocusUp}, wantFocusedTile: "Top"},
+		{name: "right then left", keys: []tea.KeyPressMsg{keyFocusRight, keyFocusLeft}, wantFocusedTile: "Left"},
+		{name: "arrows", keys: []tea.KeyPressMsg{keyArrowRight, keyArrowUp, keyArrowDown, keyArrowDown, keyArrowLeft}, wantFocusedTile: "Left"},
+		{name: "arrow right then down", keys: []tea.KeyPressMsg{keyArrowRight, keyArrowDown}, wantFocusedTile: "Bottom"},
+		{name: "left with no tile there", keys: []tea.KeyPressMsg{keyFocusLeft}, wantFocusedTile: "Left"},
+		{name: "next tile in tree order", keys: []tea.KeyPressMsg{keyNextTile, keyNextTile}, wantFocusedTile: "Middle"},
+		{name: "next tile wraps to the first", keys: []tea.KeyPressMsg{keyNextTile, keyNextTile, keyNextTile, keyNextTile}, wantFocusedTile: "Left"},
+		{name: "previous tile wraps to the last", keys: []tea.KeyPressMsg{keyPreviousTile}, wantFocusedTile: "Bottom"},
+		{name: "zoom", keys: []tea.KeyPressMsg{keyFocusRight, keyZoom}, wantFocusedTile: "Middle", wantZoomed: true, golden: "screen_zoomed"},
+		{name: "zoom again restores the tiles", keys: []tea.KeyPressMsg{keyFocusRight, keyZoom, keyZoom}, wantFocusedTile: "Middle", golden: "screen_unzoomed"},
+		{name: "focus moves the zoom", keys: []tea.KeyPressMsg{keyZoom, keyNextTile}, wantFocusedTile: "Top", wantZoomed: true, golden: "screen_zoom_moved"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, buildTestTabs(t, Config{Tabs: []TabConfig{tallLeftConfig("Tab")}}), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+			refreshNow(model)
+			for _, keyPress := range testCase.keys {
+				if _, cmd := model.Update(keyPress); cmd != nil {
+					t.Errorf("expected no command from %q", keyPress.String())
+				}
+			}
+			activeTab := model.ActiveTab()
+			if got := activeTab.FocusedTile().title; got != testCase.wantFocusedTile {
+				t.Errorf("expected focus on tile %q, got %q", testCase.wantFocusedTile, got)
+			}
+			if got := activeTab.IsZoomed(); got != testCase.wantZoomed {
+				t.Errorf("expected zoomed %v, got %v", testCase.wantZoomed, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+func TestModel_TabsKeepFocusedTile(t *testing.T) {
+	config := Config{Tabs: []TabConfig{tallLeftConfig("First"), tallLeftConfig("Second")}}
+	model := newTestModel(t, buildTestTabs(t, config), nil)
+	model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	keys := []tea.KeyPressMsg{keyFocusRight, keyFocusDown, keyNextTab, keyNextTile, keyPreviousTab}
+	for _, keyPress := range keys {
+		model.Update(keyPress)
+	}
+
+	cases := []struct {
+		tabKey          tea.KeyPressMsg
+		wantFocusedTile string
+	}{
+		{tabKey: keyTabOne, wantFocusedTile: "Bottom"},
+		{tabKey: keyTabTwo, wantFocusedTile: "Top"},
+		{tabKey: keyTabOne, wantFocusedTile: "Bottom"},
+	}
+	for _, testCase := range cases {
+		model.Update(testCase.tabKey)
+		if got := model.ActiveTab().FocusedTile().title; got != testCase.wantFocusedTile {
+			t.Errorf("expected tab %q to keep focus on tile %q, got %q", model.ActiveTab().Title, testCase.wantFocusedTile, got)
+		}
+	}
+}
+
 func TestModel_SkipsRefreshWhileLoadRuns(t *testing.T) {
 	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), startedCalls: make(chan int, 100), release: make(chan struct{})}
 	refreshInterval := time.Duration(minDataRefreshSeconds * float64(time.Second))
@@ -282,7 +382,7 @@ func TestModel_SkipsRefreshWhileLoadRuns(t *testing.T) {
 func TestModel_FailedLoadKeepsLastData(t *testing.T) {
 	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 2}
 	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
-	model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+	model.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
 
 	refreshNow(model)
 	refreshNow(model)
@@ -336,6 +436,15 @@ func TestModel_BottomBar(t *testing.T) {
 		},
 		{name: "bottom_bar_overflow_cuts_segments", width: 124, config: threeTiles(nil), failFromCall: 2},
 		{name: "bottom_bar_overflow_cuts_errors", width: 100, config: threeTiles(nil), failFromCall: 2},
+		{
+			name:         "bottom_bar_zoomed",
+			width:        280,
+			config:       threeTiles(nil),
+			failFromCall: 2,
+			warnings:     []string{`theme.json: "red" is not a color for role error, using the theme's own`},
+			keys:         []tea.KeyPressMsg{keyNextTile, tuitest.KeyDown, keyZoom},
+		},
+		{name: "bottom_bar_zoomed_status_hidden", width: 140, config: threeTiles(new(false)), keys: []tea.KeyPressMsg{keyNextTile, keyZoom}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

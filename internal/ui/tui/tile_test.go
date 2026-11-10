@@ -28,10 +28,12 @@ func TestTile_RenderTitleStyle(t *testing.T) {
 		name      string
 		title     string
 		width     int
+		isZoomed  bool
 		wantTitle string
 	}{
-		{name: "whole title", title: "task-list", width: 30, wantTitle: " task-list "},
-		{name: "title cut to the edge", title: "task-list", width: 8, wantTitle: " task"},
+		{name: "whole title", title: "task-list", width: 30, wantTitle: " ▸ task-list "},
+		{name: "zoomed title", title: "task-list", width: 30, isZoomed: true, wantTitle: " ▸ task-list [zoom] "},
+		{name: "title cut to the edge", title: "task-list", width: 8, wantTitle: " ▸ ta"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -39,6 +41,7 @@ func TestTile_RenderTitleStyle(t *testing.T) {
 			titleOpening, _, _ := strings.Cut(screenStyles.TileTitle.Render("x"), "x")
 			tile := NewTile(&sizeView{name: "a"}, testCase.title, screenStyles, 1, true)
 			tile.SetFocused(true)
+			tile.SetZoomed(testCase.isZoomed)
 			tile.SetSize(testCase.width, 5)
 
 			topEdge, _, _ := strings.Cut(tile.Render(), "\n")

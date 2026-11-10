@@ -66,21 +66,27 @@ func (split *Split) Tiles() []*Tile {
 // SetSize divides the width between side by side children and the height
 // between stacked children.
 func (split *Split) SetSize(width, height int) {
+	split.childSizes = split.divideSpace(width, height)
+	for index, child := range split.children {
+		if split.arrangement == SideBySide {
+			child.SetSize(split.childSizes[index], height)
+		} else {
+			child.SetSize(width, split.childSizes[index])
+		}
+	}
+}
+
+// divideSpace returns the width of each side by side child or the height of
+// each stacked child.
+func (split *Split) divideSpace(width, height int) []int {
 	weights := make([]float64, 0, len(split.children))
 	for _, child := range split.children {
 		weights = append(weights, child.Weight())
 	}
 	if split.arrangement == SideBySide {
-		split.childSizes = divide(width, weights)
-		for index, child := range split.children {
-			child.SetSize(split.childSizes[index], height)
-		}
-		return
+		return divide(width, weights)
 	}
-	split.childSizes = divide(height, weights)
-	for index, child := range split.children {
-		child.SetSize(width, split.childSizes[index])
-	}
+	return divide(height, weights)
 }
 
 // Render joins the lines of the children. A stacked child with no height
@@ -105,6 +111,56 @@ func (split *Split) Render() string {
 		return lipgloss.JoinHorizontal(lipgloss.Top, renderedChildren...)
 	}
 	return strings.Join(renderedChildren, "\n")
+}
+
+// Rect is the place of a Tile on the screen of its Tab, in cells from the top
+// left corner of the Tab.
+type Rect struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
+}
+
+func (rect Rect) right() int {
+	return rect.X + rect.Width
+}
+
+func (rect Rect) bottom() int {
+	return rect.Y + rect.Height
+}
+
+func (rect Rect) isEmpty() bool {
+	return rect.Width == 0 || rect.Height == 0
+}
+
+// TileRects returns the Rect of every Tile of a layout of width by height
+// cells, in tree order. A Split divides the space for it the same way it
+// does when it gets that size.
+func TileRects(node Node, width, height int) []Rect {
+	return tileRects(node, Rect{Width: width, Height: height})
+}
+
+func tileRects(node Node, area Rect) []Rect {
+	split, isSplit := node.(*Split)
+	if !isSplit {
+		return []Rect{area}
+	}
+	var rects []Rect
+	offset := 0
+	for index, size := range split.divideSpace(area.Width, area.Height) {
+		childArea := area
+		if split.arrangement == SideBySide {
+			childArea.X = area.X + offset
+			childArea.Width = size
+		} else {
+			childArea.Y = area.Y + offset
+			childArea.Height = size
+		}
+		rects = append(rects, tileRects(split.children[index], childArea)...)
+		offset += size
+	}
+	return rects
 }
 
 // divide splits size cells between weights. Each part ends where its share of
