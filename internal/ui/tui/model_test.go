@@ -31,11 +31,16 @@ var (
 )
 
 // testTabs returns one task list Tab per title.
-func testTabs(titles ...string) []*Tab {
+func testTabs(t *testing.T, titles ...string) []*Tab {
+	t.Helper()
 	screenStyles := tuitest.Styles()
 	tabs := make([]*Tab, 0, len(titles))
 	for _, title := range titles {
-		tabs = append(tabs, NewTab(title, NewTile(tasklist.New(screenStyles), screenStyles)))
+		tab, err := NewTab(title, NewTile(tasklist.New(screenStyles), screenStyles, defaultWeight))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tabs = append(tabs, tab)
 	}
 	return tabs
 }
@@ -75,7 +80,7 @@ func TestModel(t *testing.T) {
 			if tabTitles == nil {
 				tabTitles = []string{tasksTabTitle}
 			}
-			model := newTestModel(t, testTabs(tabTitles...), testCase.warnings)
+			model := newTestModel(t, testTabs(t, tabTitles...), testCase.warnings)
 			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
 			model.Update(model.Init()())
 			for _, keyPress := range testCase.keys {
@@ -105,7 +110,7 @@ func TestModel_Quits(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			model := newTestModel(t, testTabs(tasksTabTitle), nil)
+			model := newTestModel(t, testTabs(t, tasksTabTitle), nil)
 			_, cmd := model.Update(testCase.keyPress)
 			if cmd == nil {
 				t.Fatal("expected a command")
@@ -133,7 +138,7 @@ func TestModel_SwitchesTabs(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			model := newTestModel(t, testTabs("Tasks", "Board", "Drudgers"), nil)
+			model := newTestModel(t, testTabs(t, "Tasks", "Board", "Drudgers"), nil)
 			for _, keyPress := range testCase.keys {
 				if _, cmd := model.Update(keyPress); cmd != nil {
 					t.Errorf("expected no command from %q", keyPress.String())

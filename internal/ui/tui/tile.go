@@ -14,19 +14,29 @@ import (
 // tileBorder is the width and the height a Tile border takes.
 const tileBorder = 2
 
-// Tile is one rectangle of a Tab. It draws a border with the name of its
-// View in the top edge and clips the View to the space inside.
+// Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
+// with the name of its View in the top edge and clips the View to the space
+// inside.
 type Tile struct {
 	view      views.View
 	styles    *styles.Styles
+	weight    float64
 	isFocused bool
 	width     int
 	height    int
 }
 
-// NewTile places a View in a Tile.
-func NewTile(view views.View, tileStyles *styles.Styles) *Tile {
-	return &Tile{view: view, styles: tileStyles}
+// NewTile places a View in a Tile. NewTab checks the weight.
+func NewTile(view views.View, tileStyles *styles.Styles, weight float64) *Tile {
+	return &Tile{view: view, styles: tileStyles, weight: weight}
+}
+
+func (tile *Tile) Weight() float64 {
+	return tile.weight
+}
+
+func (tile *Tile) Tiles() []*Tile {
+	return []*Tile{tile}
 }
 
 // SetSize sets the outer size of the Tile and gives the View the space inside
