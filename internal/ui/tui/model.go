@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
@@ -41,6 +42,8 @@ const (
 	allOnOnePage = 0
 )
 
+const windowTitleFormat = "DRUDGE | %s"
+
 // Labels of a Tab in the top bar. The first nine Tabs show their number key.
 const (
 	numberedTabLabelFormat = " %d %s "
@@ -59,7 +62,7 @@ var (
 // Model is the root of the screen: a top bar, the active Tab and a bottom bar.
 // It loads the data and sends it to the Views of every Tab.
 type Model struct {
-	projectSlug    string
+	project        *project.Project
 	source         TaskSource
 	styles         *styles.Styles
 	warnings       []string
@@ -72,19 +75,19 @@ type Model struct {
 
 // NewModel returns the screen of a project with the first Tab active. It
 // shows the warnings in the bottom bar and refuses an empty list of Tabs.
-func NewModel(projectSlug string, source TaskSource, screenStyles *styles.Styles, tabs []*Tab, warnings []string) (*Model, error) {
+func NewModel(shownProject *project.Project, source TaskSource, screenStyles *styles.Styles, tabs []*Tab, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
 	return &Model{
-		projectSlug: projectSlug,
-		source:      source,
-		styles:      screenStyles,
-		warnings:    warnings,
-		tabs:        tabs,
-		help:        keyHelp,
+		project:  shownProject,
+		source:   source,
+		styles:   screenStyles,
+		warnings: warnings,
+		tabs:     tabs,
+		help:     keyHelp,
 	}, nil
 }
 
@@ -94,7 +97,7 @@ func (model *Model) Init() tea.Cmd {
 }
 
 func (model *Model) loadTasks() tea.Msg {
-	listed, err := model.source.ListTasks(model.projectSlug, task.ListTasksFilter{}, firstPage, allOnOnePage)
+	listed, err := model.source.ListTasks(model.project.Slug, task.ListTasksFilter{}, firstPage, allOnOnePage)
 	return views.TasksLoadedMsg{Tasks: listed.Items, Err: err}
 }
 
@@ -174,6 +177,7 @@ func (model *Model) ActiveTab() *Tab {
 func (model *Model) View() tea.View {
 	view := tea.NewView("")
 	view.AltScreen = true
+	view.WindowTitle = fmt.Sprintf(windowTitleFormat, model.project.Name)
 	if model.width <= 0 || model.height <= 0 {
 		return view
 	}
@@ -203,11 +207,9 @@ func (model *Model) renderActiveTab() string {
 	return warning + "\n" + cells.BlankLines(model.width, linesBelowWarning)
 }
 
-// renderTopBar shows the Tabs on the left and the project on the right.
+// renderTopBar shows the Tabs.
 func (model *Model) renderTopBar() string {
-	project := model.styles.Project.Render(model.projectSlug)
-	tabBarWidth := model.width - ansi.StringWidth(project) - spreadGap
-	return spread(model.renderTabBar(tabBarWidth), project, model.width)
+	return cells.FitEllipsis(model.renderTabBar(model.width), model.width)
 }
 
 // renderTabBar returns the Tab labels. When they are wider than the space, it

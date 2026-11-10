@@ -1,4 +1,4 @@
- 1 Tasks                                                                                    uploader
+ 1 Tasks                                                                                            
 ╭─ task-list ──────────────────────────────────────────────────────────────────────────────────────╮
 │  STATUS           ID        TITLE                                              BLOCKED BY  TICKET│
 │  in-progress      3f9a1c2e  Add retry to uploader                                          UP-12 │

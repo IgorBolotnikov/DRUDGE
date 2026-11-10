@@ -1,4 +1,4 @@
- 1 Tab                                                                                                          uploader
+ 1 Tab                                                                                                                  
 ╭─ Mine ───────────────────────────────────────────────────────────────────────╮╭─ task-list ──────────────────────────╮
 │  STATUS           ID        TITLE                          BLOCKED BY  TICKET││  STATUS           ID        TITLE    │
 │  in-progress      3f9a1c2e  Add retry to uploader                      UP-12 ││▸ in-progress      3f9a1c2e  Add retry│

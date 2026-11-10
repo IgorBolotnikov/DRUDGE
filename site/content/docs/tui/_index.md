@@ -13,6 +13,8 @@ Outside a project directory it fails with the same error the other task commands
 
 The screen shows the task list with the same rows as [`drg task list`]({{< relref "/docs/cli/task/list" >}}). It loads the tasks once when it starts. Restart it to see changes.
 
+It sets the title of the terminal window to `DRUDGE | <project name>`. Terminals that don't support window titles ignore it.
+
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger to see them.
 
 | Key | Does |

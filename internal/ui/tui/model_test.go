@@ -7,12 +7,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
-const testProjectSlug = "uploader"
+var testProject = &project.Project{Slug: "uploader", Name: "Uploader"}
 
 type fakeTaskSource struct {
 	tasks []task.ListedTask
@@ -54,7 +55,7 @@ func buildTestTabs(t *testing.T, config Config) []*Tab {
 // tasks.
 func newTestModel(t *testing.T, tabs []*Tab, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProjectSlug, fakeTaskSource{tasks: tuitest.ListedTasks()}, tuitest.Styles(), tabs, warnings)
+	model, err := NewModel(testProject, fakeTaskSource{tasks: tuitest.ListedTasks()}, tuitest.Styles(), tabs, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +97,9 @@ func TestModel(t *testing.T) {
 			view := model.View()
 			if !view.AltScreen {
 				t.Error("expected the screen in the alt screen")
+			}
+			if wantTitle := "DRUDGE | Uploader"; view.WindowTitle != wantTitle {
+				t.Errorf("expected window title %q, got %q", wantTitle, view.WindowTitle)
 			}
 			lines := strings.Split(view.Content, "\n")
 			if len(lines) != testCase.height {
@@ -158,7 +162,7 @@ func TestModel_SwitchesTabs(t *testing.T) {
 }
 
 func TestNewModel_NoTabs(t *testing.T) {
-	_, err := NewModel(testProjectSlug, fakeTaskSource{}, tuitest.Styles(), nil, nil)
+	_, err := NewModel(testProject, fakeTaskSource{}, tuitest.Styles(), nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

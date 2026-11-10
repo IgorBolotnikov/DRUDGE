@@ -32,6 +32,14 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+	projects, err := app.NewProjectService(silentProgress{})
+	if err != nil {
+		return err
+	}
+	shownProject, err := projects.LookupProject(configs.Local.ProjectSlug)
+	if err != nil {
+		return err
+	}
 	palette, warnings := loadTheme()
 	tasks := app.NewTaskService(configs.Local.ProjectSlug, configs.Local, configs.Global, silentProgress{})
 
@@ -44,7 +52,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	model, err := NewModel(configs.Local.ProjectSlug, tasks, screenStyles, tabs, warnings)
+	model, err := NewModel(shownProject, tasks, screenStyles, tabs, warnings)
 	if err != nil {
 		return err
 	}

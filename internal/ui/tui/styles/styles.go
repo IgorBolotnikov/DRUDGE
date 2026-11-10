@@ -14,7 +14,6 @@ import (
 type Styles struct {
 	Tab       lipgloss.Style
 	ActiveTab lipgloss.Style
-	Project   lipgloss.Style
 	Border    lipgloss.Style
 	TileTitle lipgloss.Style
 	Header    lipgloss.Style
@@ -37,7 +36,6 @@ func New(palette *theme.Theme) *Styles {
 	return &Styles{
 		Tab:       muted,
 		ActiveTab: roleStyle(palette, theme.RolePrimary).Bold(true).Reverse(true),
-		Project:   muted,
 		Border:    muted,
 		TileTitle: roleStyle(palette, theme.RolePrimary).Bold(true),
 		Header:    lipgloss.NewStyle().Bold(true),
