@@ -21,6 +21,11 @@ var shouldUpdateGoldens = flag.Bool("update", false, "Rewrite the golden files o
 
 const goldenDir = "testdata"
 
+// updateCommand regenerates the goldens of every TUI package. The packages
+// without goldens do not define the update flag, so a pattern over the whole
+// TUI fails.
+const updateCommand = "go test ./internal/ui/tui ./internal/ui/tui/views/... -update"
+
 // Key presses that move a cursor.
 var (
 	KeyDown      = tea.KeyPressMsg{Code: 'j', Text: "j"}
@@ -54,10 +59,10 @@ func AssertGolden(t *testing.T, name string, screen string) {
 	}
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
-		t.Fatalf("%v, regenerate it with go test ./internal/ui/tui ./internal/ui/tui/views/... -update", err)
+		t.Fatalf("%v, regenerate it with %s", err, updateCommand)
 	}
 	if got := plain.String(); got != string(want) {
-		t.Errorf("screen differs from %s\ngot:\n%s\nwant:\n%s", goldenPath, got, want)
+		t.Errorf("screen differs from %s, regenerate it with %s if the change is intended\ngot:\n%s\nwant:\n%s", goldenPath, updateCommand, got, want)
 	}
 }
 
