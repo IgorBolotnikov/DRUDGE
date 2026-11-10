@@ -3,7 +3,6 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -19,6 +19,9 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
+
+// helpOverlayZ puts the help box above the screen.
+const helpOverlayZ = 1
 
 // barHeight is how many lines the top bar and the bottom bar take together.
 const barHeight = 2
@@ -62,26 +65,11 @@ const (
 	numberedTabCount       = 9
 )
 
-// Keys of the root. Views never bind them.
-var (
-	quitKey         = key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit"))
-	interruptKey    = key.NewBinding(key.WithKeys("ctrl+c"))
-	refreshKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
-	tabNumberKey    = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
-	nextTabKey      = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
-	previousTabKey  = key.NewBinding(key.WithKeys("["))
-	focusLeftKey    = key.NewBinding(key.WithKeys("ctrl+h", "ctrl+left"))
-	focusDownKey    = key.NewBinding(key.WithKeys("ctrl+j", "ctrl+down"))
-	focusUpKey      = key.NewBinding(key.WithKeys("ctrl+k", "ctrl+up"))
-	focusRightKey   = key.NewBinding(key.WithKeys("ctrl+l", "ctrl+right"))
-	nextTileKey     = key.NewBinding(key.WithKeys("tab"))
-	previousTileKey = key.NewBinding(key.WithKeys("shift+tab"))
-	zoomKey         = key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "zoom"))
-)
-
-// rootKeyHints are the root keys the bottom bar shows after the keys of the
-// focused View.
-var rootKeyHints = []key.Binding{zoomKey, refreshKey, tabNumberKey, nextTabKey, quitKey}
+// keyTaker is a part of the screen that may take every key but ctrl+c.
+type keyTaker interface {
+	TakesAllKeys() bool
+	Update(msg tea.Msg) tea.Cmd
+}
 
 // tasksSourceName names the task source in load errors.
 const tasksSourceName = "tasks"
@@ -123,6 +111,7 @@ type Model struct {
 	runningLoads    map[loadKey]bool
 	loadErrors      map[loadKey]error
 	help            help.Model
+	helpOverlay     helpOverlay
 	width           int
 	height          int
 }
@@ -213,28 +202,30 @@ func (model *Model) handleDataLoaded(msg dataLoadedMsg) tea.Cmd {
 func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	model.width = msg.Width
 	model.height = msg.Height
-	model.help.SetWidth(msg.Width)
 	for _, tab := range model.tabs {
 		tab.SetSize(msg.Width, max(msg.Height-barHeight, 0))
 	}
 }
 
-// handleKey quits, refreshes, switches Tabs, moves focus between the Tiles of
-// the active Tab, zooms the focused Tile or passes the key to its View. A
-// number key with no Tab behind it does nothing. A View that takes all keys
-// gets every key but ctrl+c.
+// handleKey quits, refreshes, opens the help overlay, switches Tabs, moves
+// focus between the Tiles of the active Tab, zooms the focused Tile or passes
+// the key to its View. A number key with no Tab behind it does nothing. The
+// part of the screen that takes all keys gets every key but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
-	activeTab := model.ActiveTab()
-	focusedView := activeTab.FocusedTile().view
-	switch {
-	case key.Matches(msg, interruptKey):
+	if key.Matches(msg, interruptKey) {
 		return tea.Quit
-	case focusedView.TakesAllKeys():
-		return focusedView.Update(msg)
+	}
+	if taker, ok := model.allKeysTaker(); ok {
+		return taker.Update(msg)
+	}
+	activeTab := model.ActiveTab()
+	switch {
 	case key.Matches(msg, quitKey):
 		return tea.Quit
 	case key.Matches(msg, refreshKey):
 		return model.refresh()
+	case key.Matches(msg, helpKey):
+		model.helpOverlay.open()
 	case key.Matches(msg, nextTabKey):
 		model.nextTab()
 	case key.Matches(msg, previousTabKey):
@@ -259,9 +250,26 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, zoomKey):
 		activeTab.ToggleZoom()
 	default:
-		return focusedView.Update(msg)
+		return activeTab.FocusedTile().view.Update(msg)
 	}
 	return nil
+}
+
+// allKeysTaker returns the part of the screen that takes all keys: the open
+// help overlay, then the focused View. ok is false when neither does.
+func (model *Model) allKeysTaker() (taker keyTaker, ok bool) {
+	for _, candidate := range []keyTaker{&model.helpOverlay, model.ActiveTab().FocusedTile().view} {
+		if candidate.TakesAllKeys() {
+			return candidate, true
+		}
+	}
+	return nil, false
+}
+
+// keyMap returns the keys of the focused View and the root keys.
+func (model *Model) keyMap() keyMap {
+	kind, _ := findViewKind(model.ActiveTab().FocusedTile().view.Name())
+	return keyMap{viewKeys: kind.keys}
 }
 
 // nextTab makes the next Tab active. The last Tab wraps to the first.
@@ -309,7 +317,24 @@ func (model *Model) View() tea.View {
 		lines = append(lines, model.renderBottomBar())
 	}
 	view.Content = strings.Join(lines, "\n")
+	if model.helpOverlay.isOpen {
+		view.Content = model.renderHelpOverlay(view.Content)
+	}
 	return view
+}
+
+// renderHelpOverlay draws the help box centered over the screen. The screen
+// under the box keeps its layout. A box bigger than the screen starts at the
+// top left corner and is cut at the right and the bottom edge.
+func (model *Model) renderHelpOverlay(screen string) string {
+	box := model.styles.HelpBox.Render(model.help.FullHelpView(model.keyMap().FullHelp()))
+	boxX := max((model.width-lipgloss.Width(box))/2, 0)
+	boxY := max((model.height-lipgloss.Height(box))/2, 0)
+	compositor := lipgloss.NewCompositor(
+		lipgloss.NewLayer(screen),
+		lipgloss.NewLayer(box).X(boxX).Y(boxY).Z(helpOverlayZ),
+	)
+	return lipgloss.NewCanvas(model.width, model.height).Compose(compositor).Render()
 }
 
 // renderActiveTab returns the lines of the active Tab, or a warning in their
@@ -373,15 +398,14 @@ func renderTabLabel(index int, title string) string {
 }
 
 // renderBottomBar shows the status segments of the active Tab, the load
-// errors and the warnings on the left and the key hints on the right. The
-// hints leave out the root keys while the focused View takes all keys.
+// errors and the warnings on the left and the help hint on the right. The hint
+// is left out while the focused View takes all keys, since the help key goes
+// to the View then.
 func (model *Model) renderBottomBar() string {
-	focusedView := model.ActiveTab().FocusedTile().view
-	bindings := focusedView.KeyHints()
-	if !focusedView.TakesAllKeys() {
-		bindings = slices.Concat(bindings, rootKeyHints)
+	hints := ""
+	if !model.ActiveTab().FocusedTile().view.TakesAllKeys() {
+		hints = model.help.ShortHelpView(model.keyMap().ShortHelp())
 	}
-	hints := model.help.ShortHelpView(bindings)
 	notices := model.renderLoadErrors()
 	for _, warning := range model.warnings {
 		notices = append(notices, model.renderWarning(warning))

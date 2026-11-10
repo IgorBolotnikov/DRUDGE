@@ -72,7 +72,29 @@ const (
 	filterCursorGap = 1
 )
 
-// Keys of the task list. The up key and the top key carry the hint of their
+// StatusOption names the option that shows only the tasks of one status.
+const StatusOption = "status"
+
+// Options are the options a Tile sets for the task list.
+var Options = []views.Option{
+	{
+		Name:        StatusOption,
+		Type:        views.OptionString,
+		Allowed:     statusNames(),
+		Description: "Shows only the tasks with this status, without grouping them under their parent. Without it the list shows every task.",
+	},
+}
+
+// statusNames returns the name of every task status.
+func statusNames() []string {
+	names := make([]string, 0, len(task.Statuses))
+	for _, status := range task.Statuses {
+		names = append(names, string(status))
+	}
+	return names
+}
+
+// Keys of the task list. The up key and the top key carry the help of their
 // pair. While the filter is open, the arrow keys move the cursor and every
 // other key goes to the filter.
 var (
@@ -82,9 +104,12 @@ var (
 	jumpBottomKey  = key.NewBinding(key.WithKeys("G", "end"))
 	openFilterKey  = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	closeFilterKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
-	arrowUpKey     = key.NewBinding(key.WithKeys("up"), key.WithHelp("↑/↓", "move"))
+	arrowUpKey     = key.NewBinding(key.WithKeys("up"))
 	arrowDownKey   = key.NewBinding(key.WithKeys("down"))
 )
+
+// Keys are the keys of the task list the help lists.
+var Keys = []key.Binding{moveUpKey, jumpTopKey, openFilterKey, closeFilterKey}
 
 // columns of the task list. The status and the title always stay. The parent
 // drops first, then the ticket, the blockers and the ID.
@@ -112,6 +137,7 @@ func statusWidth() int {
 // filter shows the tasks whose title holds its text in any case.
 type View struct {
 	styles      *styles.Styles
+	status      task.TaskStatus
 	tasks       []task.ListedTask
 	rows        []task.ListedTask
 	hasTasks    bool
@@ -127,23 +153,18 @@ type View struct {
 }
 
 // New returns a task list that shows a loading line until it gets the tasks.
-func New(viewStyles *styles.Styles) *View {
+// A list with a status shows only the tasks with that status. An empty status
+// shows every task.
+func New(viewStyles *styles.Styles, status task.TaskStatus) *View {
 	filter := textinput.New()
 	filter.Prompt = filterPrompt
 	filter.SetStyles(textinput.Styles{Focused: textinput.StyleState{Prompt: viewStyles.Muted}})
 	measured := table.Measure(columns, nil)
-	return &View{styles: viewStyles, filter: filter, measured: measured, layout: measured.Fit(0)}
+	return &View{styles: viewStyles, status: status, filter: filter, measured: measured, layout: measured.Fit(0)}
 }
 
 func (view *View) Name() string {
 	return Name
-}
-
-func (view *View) KeyHints() []key.Binding {
-	if view.isFiltering {
-		return []key.Binding{arrowUpKey, closeFilterKey}
-	}
-	return []key.Binding{moveUpKey, jumpTopKey, openFilterKey}
 }
 
 // TakesAllKeys reports whether the filter is open.
@@ -184,7 +205,7 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 	case views.TasksLoadedMsg:
 		view.loadErr = msg.Err
 		if msg.Err == nil {
-			view.tasks = msg.Tasks
+			view.tasks = view.withStatus(msg.Tasks)
 			view.hasTasks = true
 			view.measureColumns()
 			view.showRows()
@@ -226,6 +247,21 @@ func (view *View) handleFilterKey(msg tea.KeyPressMsg) tea.Cmd {
 	view.filter, cmd = view.filter.Update(msg)
 	view.showRows()
 	return cmd
+}
+
+// withStatus returns the tasks with the status of the list, each at the top
+// level. A list with no status returns every task as it is.
+func (view *View) withStatus(tasks []task.ListedTask) []task.ListedTask {
+	if view.status == "" {
+		return tasks
+	}
+	var kept []task.ListedTask
+	for _, entry := range tasks {
+		if entry.Task.Status == view.status {
+			kept = append(kept, task.ListedTask{Task: entry.Task, Holding: entry.Holding})
+		}
+	}
+	return kept
 }
 
 // showRows shows the tasks the filter matches and keeps the cursor on the

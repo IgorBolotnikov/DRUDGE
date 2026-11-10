@@ -24,6 +24,7 @@ const (
 	viewKey               = "view"
 	weightKey             = "weight"
 	showStatusKey         = "showStatus"
+	viewOptionsKey        = "viewOptions"
 )
 
 // Keys each object of the TUI config file may hold, in the order the errors
@@ -31,7 +32,7 @@ const (
 var (
 	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey}
 	tabKeys  = []string{titleKey, layoutKey}
-	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey, showStatusKey}
+	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey, showStatusKey, viewOptionsKey}
 )
 
 // Kinds of JSON values, as the errors name them.
@@ -183,6 +184,11 @@ func parseNode(raw json.RawMessage, path string) (NodeConfig, error) {
 			return NodeConfig{}, err
 		}
 		node.ShowStatus = &isStatusShown
+	}
+	if rawViewOptions, ok := object[viewOptionsKey]; ok {
+		if node.ViewOptions, err = decodeValue[map[string]any](rawViewOptions, joinKeyPath(path, viewOptionsKey), jsonObject); err != nil {
+			return NodeConfig{}, err
+		}
 	}
 	return node, nil
 }

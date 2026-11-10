@@ -54,7 +54,11 @@ func (source *fakeTaskSource) ListTasks(projectSlug string, filter task.ListTask
 	return common.Paginate(source.tasks, page, size)
 }
 
-var keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
+var (
+	keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
+	keyQuit    = tea.KeyPressMsg{Code: 'q', Text: "q"}
+	keyHelp    = tea.KeyPressMsg{Code: '?', Text: "?"}
+)
 
 var (
 	keyNextTab     = tea.KeyPressMsg{Code: ']', Text: "]"}
@@ -140,7 +144,7 @@ func runCommand(model *Model, cmd tea.Cmd) {
 
 // startProgram runs a model in a program with no terminal and quits it when
 // the test ends.
-func startProgram(t *testing.T, model *Model) *tea.Program {
+func startProgram(t *testing.T, model tea.Model) *tea.Program {
 	t.Helper()
 	program := tea.NewProgram(model,
 		tea.WithInput(nil),
@@ -279,7 +283,6 @@ func TestModel_SwitchesTabs(t *testing.T) {
 }
 
 func TestModel_Filter(t *testing.T) {
-	keyQuit := tea.KeyPressMsg{Code: 'q', Text: "q"}
 	cases := []struct {
 		name          string
 		keys          []tea.Msg
@@ -320,6 +323,130 @@ func TestModel_Filter(t *testing.T) {
 				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
 			}
 		})
+	}
+}
+
+func TestModel_HelpOverlay(t *testing.T) {
+	cases := []struct {
+		name          string
+		width         int
+		height        int
+		keys          []tea.Msg
+		wantHelpOpen  bool
+		wantActiveTab string
+		golden        string
+	}{
+		{name: "help opens", width: 100, height: 24, keys: []tea.Msg{keyHelp}, wantHelpOpen: true, wantActiveTab: "First", golden: "screen_help"},
+		{name: "help in a terminal smaller than the box", width: 30, height: 8, keys: []tea.Msg{keyHelp}, wantHelpOpen: true, wantActiveTab: "First", golden: "screen_help_too_small"},
+		{name: "help lists the keys of the focused view", width: 100, height: 24, keys: []tea.Msg{keyNextTile, keyHelp}, wantHelpOpen: true, wantActiveTab: "First"},
+		{name: "esc closes help", width: 100, height: 24, keys: []tea.Msg{keyHelp, tuitest.KeyEscape}, wantActiveTab: "First"},
+		{name: "help key closes help", width: 100, height: 24, keys: []tea.Msg{keyHelp, keyHelp}, wantActiveTab: "First"},
+		{
+			name:          "help takes the root and view keys",
+			width:         100,
+			height:        24,
+			keys:          []tea.Msg{keyHelp, keyNextTab, keyPreviousTab, keyTabTwo, keyZoom, keyNextTile, tuitest.KeyDown, tuitest.KeyFilter},
+			wantHelpOpen:  true,
+			wantActiveTab: "First",
+			golden:        "screen_help_takes_keys",
+		},
+		{name: "the help key goes to an open filter", width: 100, height: 24, keys: []tea.Msg{tuitest.KeyFilter, keyHelp}, wantActiveTab: "First"},
+		{name: "keys work again after help closes", width: 100, height: 24, keys: []tea.Msg{keyHelp, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Second"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := Config{Tabs: []TabConfig{
+				oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), taskListNode()}}).Tabs[0],
+				{Title: "Second", Layout: taskListNode()},
+			}}
+			config.Tabs[0].Title = "First"
+			model := newTestModel(t, buildTestTabs(t, config), nil)
+			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
+			refreshNow(model)
+			for _, msg := range testCase.keys {
+				_, cmd := model.Update(msg)
+				if isQuit(cmd) {
+					t.Fatalf("expected no quit from %v", msg)
+				}
+			}
+			if got := model.helpOverlay.isOpen; got != testCase.wantHelpOpen {
+				t.Errorf("expected help open %t, got %t", testCase.wantHelpOpen, got)
+			}
+			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+			content := model.View().Content
+			if lines := strings.Split(content, "\n"); len(lines) != testCase.height {
+				t.Errorf("expected %d lines, got %d", testCase.height, len(lines))
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, content)
+			}
+		})
+	}
+}
+
+// stateProbe asks a running program for the state of its screen.
+type stateProbe struct {
+	reply chan<- probedState
+}
+
+type probedState struct {
+	activeTab  string
+	isHelpOpen bool
+}
+
+// probedModel answers a state probe from the goroutine of the program.
+type probedModel struct {
+	*Model
+}
+
+func (probed probedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if probe, ok := msg.(stateProbe); ok {
+		probe.reply <- probedState{activeTab: probed.ActiveTab().Title, isHelpOpen: probed.helpOverlay.isOpen}
+		return probed, nil
+	}
+	_, cmd := probed.Model.Update(msg)
+	return probed, cmd
+}
+
+// probeState returns the state of the screen once the program handled every
+// message sent before. It fails the test when the program does not answer,
+// like after it quit.
+func probeState(t *testing.T, program *tea.Program) probedState {
+	t.Helper()
+	reply := make(chan probedState, 1)
+	program.Send(stateProbe{reply: reply})
+	select {
+	case state := <-reply:
+		return state
+	case <-time.After(waitTimeout):
+		t.Fatalf("the program did not answer within %s, it may have quit", waitTimeout)
+		return probedState{}
+	}
+}
+
+func TestModel_HelpOverlayTakesKeysInProgram(t *testing.T) {
+	program := startProgram(t, probedModel{newTestModel(t, testTabs(t, "Tasks", "Board"), nil)})
+
+	program.Send(keyHelp)
+	if state := probeState(t, program); !state.isHelpOpen {
+		t.Fatal("expected the help key to open the help")
+	}
+
+	program.Send(keyQuit)
+	program.Send(keyTabTwo)
+	state := probeState(t, program)
+	if !state.isHelpOpen {
+		t.Error("expected the help to stay open")
+	}
+	if state.activeTab != "Tasks" {
+		t.Errorf("expected tab %q to stay active, got %q", "Tasks", state.activeTab)
+	}
+
+	program.Send(tuitest.KeyEscape)
+	if state := probeState(t, program); state.isHelpOpen {
+		t.Error("expected esc to close the help")
 	}
 }
 

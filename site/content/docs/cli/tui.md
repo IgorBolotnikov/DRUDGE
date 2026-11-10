@@ -15,3 +15,5 @@ Open the full screen dashboard of the project in this directory.
 The dashboard is made of tabs. Each tab arranges tiles, and each tile shows one view, like the task list.
 
 The tabs and their tiles come from the TUI config file ~/.drudge/tui.json. Without it the dashboard shows the default layout.
+
+Press ? in the dashboard to list every key.

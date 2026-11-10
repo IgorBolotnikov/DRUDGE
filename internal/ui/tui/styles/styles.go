@@ -24,6 +24,7 @@ type Styles struct {
 	Warning   lipgloss.Style
 	Statuses  map[task.TaskStatus]lipgloss.Style
 	Help      help.Styles
+	HelpBox   lipgloss.Style
 }
 
 // New builds the styles of the screen from the roles of palette.
@@ -49,8 +50,12 @@ func New(palette *theme.Theme) *Styles {
 			ShortKey:       lipgloss.NewStyle().Bold(true),
 			ShortDesc:      muted,
 			ShortSeparator: muted,
+			FullKey:        lipgloss.NewStyle().Bold(true),
+			FullDesc:       muted,
+			FullSeparator:  muted,
 			Ellipsis:       muted,
 		},
+		HelpBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(muted.GetForeground()).Padding(0, 1),
 	}
 }
 

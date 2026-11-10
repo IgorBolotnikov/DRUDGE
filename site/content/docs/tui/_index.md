@@ -3,7 +3,7 @@ title: TUI
 weight: 6
 ---
 
-`drg tui` opens a full screen dashboard of a Project. The dashboard is made of tabs, and each tab arranges tiles. A tile shows one view, like the list of [Tasks]({{< relref "/docs/concepts/tasks" >}}). Run it from a project directory, the one you ran [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in:
+`drg tui` opens a full screen dashboard of a Project. The dashboard is made of tabs, and each tab arranges tiles. A tile shows one view, like the list of [Tasks]({{< relref "/docs/concepts/tasks" >}}). The [views page]({{< relref "/docs/tui/views" >}}) lists every view with its options and its keys. Run it from a project directory, the one you ran [`drg project init`]({{< relref "/docs/cli/project/init" >}}) in:
 
 ```sh
 drg tui
@@ -55,11 +55,13 @@ The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/
 }
 ```
 
-The left side of the bottom bar shows a status segment for each tile of the tab, in layout order. A `task-list` tile shows the row of its cursor and its task count, like `12/200`. While its filter is open, the filter comes first, like `/retry 1/3`. Set `showStatus` to `false` on a tile to hide its segment. Load errors and warnings follow the segments. Key hints sit on the right. When the bar is too narrow, the segments are cut first.
+The left side of the bottom bar shows a status segment for each tile of the tab, in layout order. A `task-list` tile shows the row of its cursor and its task count, like `12/200`. While its filter is open, the filter comes first, like `/retry 1/3`. Set `showStatus` to `false` on a tile to hide its segment. Load errors and warnings follow the segments. `? help` sits on the right and is hidden while a filter is open. When the bar is too narrow, the segments are cut first.
 
 One tile of a tab has focus. Its title starts with `▸` and the keys you press go to it. Each tab keeps its own focused tile when you switch tabs. `z` zooms the focused tile to fill the tab and adds `[zoom]` to its title. Press `z` again to go back to the tiles. While a tile is zoomed, the bottom bar shows only the status segment of that tile.
 
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger or zoom a tile with `z`.
+
+`?` opens a box over the tabs that lists the keys of the focused tile and the keys of the whole dashboard. While the box is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
 
 | Key | Does |
 | --- | --- |
@@ -75,6 +77,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |
 | `tab` or `shift+tab` | Moves focus to the next or previous tile in layout order |
 | `z` | Zooms the focused tile or restores the tiles |
+| `?` | Lists every key, `esc` or `?` closes the list |
 | `q` or `ctrl+c` | Quits |
 
 Colors come from the [theme]({{< relref "/docs/configuration/theme" >}}). An override in the theme file that is not a color shows as a warning in the bottom bar.

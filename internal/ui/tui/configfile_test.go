@@ -71,6 +71,16 @@ func TestParseConfig(t *testing.T) {
 			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ShowStatus: new(true)}}}},
 		},
 		{
+			name: "a tile with view options",
+			data: `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "viewOptions": {"status": "todo", "colour": 1}}}]}`,
+			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ViewOptions: map[string]any{"status": "todo", "colour": float64(1)}}}}},
+		},
+		{
+			name:    "view options that are an array",
+			data:    `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "viewOptions": ["todo"]}}]}`,
+			wantErr: "tabs[0].layout.viewOptions: expected an object, got an array",
+		},
+		{
 			name:    "a data refresh below the minimum",
 			data:    `{"dataRefreshSeconds": 0.05}`,
 			wantErr: "dataRefreshSeconds: 0.05 is below the minimum of 0.1, use 0.1 or more seconds",
@@ -118,7 +128,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key deep in a layout",
 			data:    `{"tabs": [{"title": "Tasks", "layout": {"arrangement": "stacked", "children": [{"view": "task-list"}, {"view": "task-list", "colour": "red"}]}}]}`,
-			wantErr: "tabs[0].layout.children[1].colour: unknown key, use one of: arrangement, children, view, title, weight, showStatus",
+			wantErr: "tabs[0].layout.children[1].colour: unknown key, use one of: arrangement, children, view, title, weight, showStatus, viewOptions",
 		},
 		{
 			name:    "an explicit weight of 0",

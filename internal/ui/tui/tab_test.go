@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
@@ -36,8 +35,6 @@ func (view *sizeView) Update(msg tea.Msg) tea.Cmd {
 func (view *sizeView) Render() string {
 	return fmt.Sprintf("%dx%d", view.width, view.height)
 }
-
-func (view *sizeView) KeyHints() []key.Binding { return nil }
 
 func (view *sizeView) TakesAllKeys() bool { return false }
 

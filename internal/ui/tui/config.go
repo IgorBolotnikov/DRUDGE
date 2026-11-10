@@ -53,9 +53,10 @@ type TabConfig struct {
 }
 
 // NodeConfig describes one node of a layout. A split sets Arrangement and
-// Children. A Tile sets View and may set Title and ShowStatus. A weight of 0
-// is the default weight. A Tile with no status setting shows its status
-// segment.
+// Children. A Tile sets View and may set Title, ShowStatus and ViewOptions. A
+// weight of 0 is the default weight. A Tile with no status setting shows its
+// status segment. ViewOptions holds the options of the View as decoded from
+// JSON, by option name.
 type NodeConfig struct {
 	Arrangement Arrangement
 	Children    []NodeConfig
@@ -63,6 +64,7 @@ type NodeConfig struct {
 	Title       string
 	Weight      float64
 	ShowStatus  *bool
+	ViewOptions map[string]any
 }
 
 // defaultConfig returns the Tabs the TUI shows when there is no TUI config
@@ -124,8 +126,9 @@ func buildTab(tabConfig TabConfig, screenStyles *styles.Styles) (*Tab, error) {
 }
 
 // buildNode builds the Node a config describes. It refuses a node that is both
-// a split and a Tile or neither, a split with a title or a status setting and
-// a Tile with an unknown View. NewTab checks the rest.
+// a split and a Tile or neither, a split with a title, a status setting or
+// view options, a Tile with an unknown View and view options the View refuses.
+// NewTab checks the rest.
 func buildNode(nodeConfig NodeConfig, path string, screenStyles *styles.Styles) (Node, error) {
 	weight := nodeConfig.Weight
 	if weight == 0 {
@@ -150,8 +153,12 @@ func buildTile(nodeConfig NodeConfig, weight float64, path string, screenStyles 
 	if !ok {
 		return nil, fmt.Errorf("%s.view: unknown view %q, use one of: %s", path, nodeConfig.View, strings.Join(viewKindNames(), viewNameSeparator))
 	}
+	options, err := kind.optionValues(nodeConfig.ViewOptions, joinKeyPath(path, viewOptionsKey))
+	if err != nil {
+		return nil, err
+	}
 	isStatusShown := nodeConfig.ShowStatus == nil || *nodeConfig.ShowStatus
-	return NewTile(kind.newView(screenStyles), nodeConfig.Title, screenStyles, weight, isStatusShown), nil
+	return NewTile(kind.newView(screenStyles, options), nodeConfig.Title, screenStyles, weight, isStatusShown), nil
 }
 
 func buildSplit(nodeConfig NodeConfig, weight float64, path string, screenStyles *styles.Styles) (*Split, error) {
@@ -160,6 +167,9 @@ func buildSplit(nodeConfig NodeConfig, weight float64, path string, screenStyles
 	}
 	if nodeConfig.ShowStatus != nil {
 		return nil, fmt.Errorf("%s.showStatus: only a tile has a status segment, move it to a tile of the split", path)
+	}
+	if nodeConfig.ViewOptions != nil {
+		return nil, fmt.Errorf("%s.viewOptions: only a tile has view options, move them to a tile of the split", path)
 	}
 	children := make([]Node, 0, len(nodeConfig.Children))
 	for index, childConfig := range nodeConfig.Children {

@@ -111,6 +111,63 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 	}
 }
 
+func TestBuildTabs_ViewOptions(t *testing.T) {
+	inSplit := func(viewOptions map[string]any) Config {
+		return oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
+			taskListNode(),
+			{View: tasklist.Name, ViewOptions: viewOptions},
+		}})
+	}
+	cases := []struct {
+		name    string
+		config  Config
+		wantErr string
+	}{
+		{name: "no view options", config: inSplit(nil)},
+		{name: "empty view options", config: inSplit(map[string]any{})},
+		{name: "a known status", config: inSplit(map[string]any{"status": "done"})},
+		{
+			name:    "an unknown option",
+			config:  inSplit(map[string]any{"colour": "red"}),
+			wantErr: `tabs[0].layout.children[1].viewOptions.colour: view "task-list" has no option "colour", use one of: status`,
+		},
+		{
+			name:    "an unknown status",
+			config:  inSplit(map[string]any{"status": "blocked"}),
+			wantErr: `tabs[0].layout.children[1].viewOptions.status: "blocked" is not allowed, use one of: draft, todo, in-progress, fucked-up, unmerged, done`,
+		},
+		{
+			name:    "a status that is a number",
+			config:  inSplit(map[string]any{"status": float64(1)}),
+			wantErr: "tabs[0].layout.children[1].viewOptions.status: expected a string, got a number",
+		},
+		{
+			name:    "a status of null",
+			config:  inSplit(map[string]any{"status": nil}),
+			wantErr: "tabs[0].layout.children[1].viewOptions.status: expected a string, got null",
+		},
+		{
+			name:    "view options on a split",
+			config:  oneTabConfig(NodeConfig{Arrangement: Stacked, ViewOptions: map[string]any{}, Children: []NodeConfig{taskListNode(), taskListNode()}}),
+			wantErr: "tabs[0].layout.viewOptions: only a tile has view options, move them to a tile of the split",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := BuildTabs(testCase.config, tuitest.Styles())
+			if testCase.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != testCase.wantErr {
+				t.Fatalf("expected the error %q, got %v", testCase.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestConfig_RefreshInterval(t *testing.T) {
 	cases := []struct {
 		name               string
@@ -159,6 +216,12 @@ func TestBuildTabs_Screen(t *testing.T) {
 			height: 24,
 			config: oneTabConfig(nestedLayout),
 			keys:   []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown},
+		},
+		{
+			name:   "screen_status_option",
+			width:  100,
+			height: 12,
+			config: oneTabConfig(NodeConfig{View: tasklist.Name, ViewOptions: map[string]any{tasklist.StatusOption: "done"}}),
 		},
 		{
 			name:   "screen_too_small_for_tiles",

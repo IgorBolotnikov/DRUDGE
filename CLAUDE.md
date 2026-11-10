@@ -67,7 +67,9 @@ Both write their bundled JSON schema files to `~/.drudge/schema/` via `drg setup
 
 **Docs site.** `site/` is the Hugo project published at `https://drgtools.dev/` by `.github/workflows/docs.yaml`. It has its own `go.mod`, so `go build ./...` and `go test ./...` skip it. The Hextra theme comes in as a Hugo module pinned in `site/go.mod`. `site/hugo.yaml` mounts the root `install.sh` and `assets/logo.svg`, so those files have one copy each. User docs live in `site/content/docs/`. The key tables of `site/content/docs/configuration/config.md`, `project-config.md` and `theme.md` are generated from the bundled JSON schemas and sit between the `BEGIN GENERATED` and `END GENERATED` markers. Everything outside the markers is hand-written. Regenerate the tables with `go test ./internal/config ./internal/theme -update`. `docs/` holds notes for contributors and agents and is never published.
 
-`site/content/docs/cli/` is the CLI reference, generated from the `drg` command tree by `TestCLIReference` in `internal/ui/cli`. Never edit it by hand. Regenerate it with `go test ./internal/ui/cli -run TestCLIReference -update` after changing a command. `site/layouts/_partials/toc.html` is a copy of the Hextra partial that leaves the edit link off generated pages, so update it along with the Hextra version.
+`site/content/docs/cli/` is the CLI reference, generated from the `drg` command tree by `TestCLIReference` in `internal/ui/cli`. Never edit it by hand. Regenerate it with `go test ./internal/ui/cli -run TestCLIReference -update` after changing a command. `site/content/docs/tui/views.md` lists every View of the TUI with its options and keys. It is generated from the View registry by `TestViewsPage` in `internal/ui/tui`. Never edit it by hand. Regenerate it with `go test ./internal/ui/tui -run TestViewsPage -update` after changing a View.
+
+`site/layouts/_partials/toc.html` is a copy of the Hextra partial that leaves the edit link off generated pages, so update it along with the Hextra version.
 
 A change to user-facing behavior updates the matching page under `site/content/docs/` in the same commit.
 

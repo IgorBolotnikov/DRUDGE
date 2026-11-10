@@ -31,6 +31,7 @@ func TestView(t *testing.T) {
 		name     string
 		width    int
 		height   int
+		status   task.TaskStatus
 		messages []tea.Msg
 	}{
 		{name: "loading", width: 80, height: 4},
@@ -50,11 +51,13 @@ func TestView(t *testing.T) {
 		{name: "filter_open", width: 100, height: 8, messages: []tea.Msg{loaded, tuitest.KeyFilter}},
 		{name: "filtered", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("RETR"))},
 		{name: "filtered_no_match", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("nothing"))},
+		{name: "status_filter", width: 100, height: 8, status: task.StatusDone, messages: []tea.Msg{loaded}},
+		{name: "status_filter_no_match", width: 100, height: 8, status: task.StatusUnmerged, messages: []tea.Msg{loaded}},
 		{name: "filter_cleared", width: 100, height: 8, messages: slices.Concat([]tea.Msg{loaded, tuitest.KeyFilter}, tuitest.Type("retr"), []tea.Msg{tuitest.KeyEscape})},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			view := New(tuitest.Styles())
+			view := New(tuitest.Styles(), testCase.status)
 			view.SetSize(testCase.width, testCase.height)
 			for _, msg := range testCase.messages {
 				if size, ok := msg.(tea.WindowSizeMsg); ok {
@@ -81,7 +84,7 @@ func TestView_TakesAllKeys(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			view := New(tuitest.Styles())
+			view := New(tuitest.Styles(), "")
 			for _, msg := range testCase.messages {
 				view.Update(msg)
 			}
@@ -113,7 +116,7 @@ func TestView_Status(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			view := New(tuitest.Styles())
+			view := New(tuitest.Styles(), "")
 			view.SetSize(100, 8)
 			for _, msg := range testCase.messages {
 				view.Update(msg)
@@ -193,7 +196,7 @@ func TestView_CursorRowStyle(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			view := New(tuitest.Styles())
+			view := New(tuitest.Styles(), "")
 			view.SetSize(width, 8)
 			for _, msg := range testCase.messages {
 				view.Update(msg)
@@ -242,7 +245,7 @@ func TestView_ColumnsFollowTasks(t *testing.T) {
 	}
 	longBlockers[0].Holding = []task.TaskID{"aaaaaaaa-0000", "bbbbbbbb-0000", "cccccccc-0000"}
 
-	view := New(tuitest.Styles())
+	view := New(tuitest.Styles(), "")
 	view.SetSize(200, 8)
 	view.Update(views.TasksLoadedMsg{Tasks: shortBlockers})
 	shortWidth := blockedByWidth(t, view.Render(), blockedByHeader)

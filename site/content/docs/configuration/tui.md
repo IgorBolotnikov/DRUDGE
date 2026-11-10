@@ -5,7 +5,7 @@ weight: 4
 
 The TUI config file is `~/.drudge/tui.json`. It sets the tabs of [`drg tui`]({{< relref "/docs/tui" >}}) and the layout of each tab. DRUDGE never writes it. Without the file `drg tui` shows the bundled default, which the [TUI page]({{< relref "/docs/tui" >}}) shows as JSON. Copy it into the file to start from it.
 
-`drg tui` reads the file when it starts. A file that does not parse, or that holds an unknown key or a layout DRUDGE cannot build, stops `drg tui` with an error that names the file and the path of the value to change, like `tabs[0].layout.children[1].weight`.
+`drg tui` reads the file when it starts. A file that does not parse, or that holds an unknown key, a layout DRUDGE cannot build or a view option the view refuses, stops `drg tui` with an error that names the file and the path of the value to change, like `tabs[0].layout.children[1].weight`.
 
 ## Schema
 
@@ -15,7 +15,7 @@ Start the file with `"$schema": "./schema/tui.json"`, a path relative to the fil
 
 A layout is a tree of nodes. A node is a tile or a split.
 
-- A tile sets `view`, the thing it shows, and may set `title` and `showStatus`.
+- A tile sets `view`, the thing it shows, and may set `title`, `showStatus` and `viewOptions`. `viewOptions` holds the options of the view, like `{"status": "todo"}` for a `task-list`. The [views page]({{< relref "/docs/tui/views" >}}) lists the options of each view.
 - A split sets `arrangement` and two or more `children`. `side-by-side` places the children left to right and `stacked` places them top to bottom.
 
 A split divides its space between its children by `weight`. A child with weight 2 gets twice the space of a child with weight 1.
@@ -36,6 +36,7 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout.title` | string |  |  | The title of the tile in its top border. Only a tile has a title. |
 | `tabs[].layout.weight` | number | `1` | above 0 | The share of the space of its split the node takes, relative to the other children of the split. It may be a fraction. |
 | `tabs[].layout.showStatus` | boolean | `true` |  | Whether the tile shows its status segment on the left of the bottom bar. Only a tile has a status segment. |
+| `tabs[].layout.viewOptions` | object |  |  | The options of the view of the tile. Each view takes its own options. Only a tile has view options. |
 | `dataRefreshSeconds` | number | `2` | minimum 0.1 | How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5. |
 
 <!-- END GENERATED -->
