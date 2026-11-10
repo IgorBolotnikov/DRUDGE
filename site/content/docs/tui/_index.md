@@ -19,6 +19,8 @@ The screen shows the task list with the same rows as [`drg task list`]({{< relre
 | `k` or `↑` | Moves the cursor up |
 | `g` or `home` | Jumps to the top |
 | `G` or `end` | Jumps to the bottom |
+| `1` to `9` | Goes to that tab |
+| `[` or `]` | Goes to the previous or next tab |
 | `q` or `ctrl+c` | Quits |
 
 Colors come from the [theme]({{< relref "/docs/configuration/theme" >}}). An override in the theme file that is not a color shows as a warning in the bottom bar.

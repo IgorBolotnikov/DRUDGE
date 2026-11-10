@@ -1,4 +1,5 @@
-package tui
+// Package styles builds the lipgloss styles of the TUI from the theme.
+package styles
 
 import (
 	"charm.land/bubbles/v2/help"
@@ -11,6 +12,7 @@ import (
 
 // Styles holds every style of the screen, built once from the theme.
 type Styles struct {
+	Tab       lipgloss.Style
 	ActiveTab lipgloss.Style
 	Project   lipgloss.Style
 	Border    lipgloss.Style
@@ -25,14 +27,15 @@ type Styles struct {
 	Help      help.Styles
 }
 
-// NewStyles builds the styles of the screen from the roles of palette.
-func NewStyles(palette *theme.Theme) *Styles {
+// New builds the styles of the screen from the roles of palette.
+func New(palette *theme.Theme) *Styles {
 	muted := roleStyle(palette, theme.RoleMuted)
 	statuses := make(map[task.TaskStatus]lipgloss.Style, len(style.StatusRoles))
 	for status, role := range style.StatusRoles {
 		statuses[status] = roleStyle(palette, role)
 	}
 	return &Styles{
+		Tab:       muted,
 		ActiveTab: roleStyle(palette, theme.RolePrimary).Bold(true).Reverse(true),
 		Project:   muted,
 		Border:    muted,

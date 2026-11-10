@@ -11,6 +11,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 )
 
 // TaskSource lists the tasks of a project.
@@ -38,7 +39,11 @@ func Run() error {
 	if !palette.IsColorOn(theme.Stdout) {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
-	model := NewModel(configs.Local.ProjectSlug, tasks, NewStyles(palette), warnings)
+	screenStyles := styles.New(palette)
+	model, err := NewModel(configs.Local.ProjectSlug, tasks, screenStyles, defaultTabs(screenStyles), warnings)
+	if err != nil {
+		return err
+	}
 	_, err = tea.NewProgram(model, options...).Run()
 	return err
 }

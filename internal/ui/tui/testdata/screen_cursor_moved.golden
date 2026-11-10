@@ -1,4 +1,4 @@
- Tasks                                                                                      uploader
+ 1 Tasks                                                                                    uploader
 ╭─ task-list ──────────────────────────────────────────────────────────────────────────────────────╮
 │  STATUS           ID        TITLE                                              BLOCKED BY  TICKET│
 │  in-progress      3f9a1c2e  Add retry to uploader                                          UP-12 │
@@ -9,4 +9,4 @@
 │                                                                                                  │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-                                                                  j/k move • g/G top/bottom • q quit
+                                    j/k move • g/G top/bottom • 1-9 tab • [/] prev/next tab • q quit

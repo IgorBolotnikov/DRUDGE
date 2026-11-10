@@ -86,7 +86,3 @@ If we were to put this project on a scale of AI psychosis from 0 to 5, it would 
 ## Code and comment style
 
 The rules for writing code, comments, commit messages and branch names live in the `code-style` skill. Invoke it before you edit any file in this repo, and again before you write a commit message.
-
-## Roadmap docs
-
-`docs/TASK_IMPLEMENTATION.md` and `TODO.md` describe planned behavior that isn't implemented yet (e.g. `drg task show`, automatic status transitions with timestamps, git branch setup per task). Check whether a feature actually exists in `internal/ui/cli`/`internal/task` before assuming these docs describe current behavior.

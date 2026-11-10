@@ -29,6 +29,18 @@ wrote -> didWrite
 called -> wasCalled
 ```
 
+## Readable code
+
+A reader understands a line in one pass. Code that needs a language fact or a puzzle solved to read gets rewritten.
+
+- Write plain control flow. Avoid arithmetic tricks such as byte math on characters, modulo to wrap an index, or bit tricks. Use `strconv`, an `if` or a small named helper.
+- Give a non-trivial condition a name. Move a condition that calls functions or slices data into a helper or a boolean variable, like `isWider(labels, width)`.
+- Name values by their unit. A 1-based value is a `number`, a 0-based value is an `index`. Convert between them in one obvious line, like `index := number - 1`.
+- A function returns only what its callers use. Do not return a value that is always nil to match the shape of a sibling function.
+- Name sibling functions the same way. Handlers of one switch share one naming pattern, like `handleResize` and `handleKey`.
+- A method that returns a thing names it. Drop `Get` and the words the receiver already says, and keep the noun when the receiver holds more than one kind of thing, like `model.ActiveTab()` and `tab.FocusedTile()`.
+- Never append to or write into a slice or map another function returned. Copy it first with `slices.Concat`, `slices.Clone` or `maps.Clone`. A returned slice or map can share its memory with the function or struct that returned it.
+
 ## Prose in markdown
 
 This covers `docs/*.md`, `README.md`, `CLAUDE.md`, skills and any other markdown in the repo.

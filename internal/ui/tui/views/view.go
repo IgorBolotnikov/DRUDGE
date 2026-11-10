@@ -1,10 +1,11 @@
-package tui
+// Package views holds what the View of every Tile has in common: the View
+// interface and the messages that carry data to Views. Each View lives in a
+// package of its own below it.
+package views
 
 import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
 // View is what a Tile shows. It renders within the size it last got and
@@ -15,15 +16,8 @@ type View interface {
 	Name() string
 	SetSize(width, height int)
 	Update(msg tea.Msg) tea.Cmd
-	View() string
+	Render() string
 	// KeyHints are the keys the bottom bar shows while the Tile of the View
 	// has focus.
 	KeyHints() []key.Binding
-}
-
-// tasksLoadedMsg carries the tasks of the project, or the error listing them
-// failed with.
-type tasksLoadedMsg struct {
-	tasks []task.ListedTask
-	err   error
 }

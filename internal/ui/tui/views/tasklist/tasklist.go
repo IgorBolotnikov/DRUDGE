@@ -1,4 +1,5 @@
-package tui
+// Package tasklist is the View that lists the tasks of a project.
+package tasklist
 
 import (
 	"strings"
@@ -9,10 +10,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-// TaskListViewName is the kind of the View that lists tasks.
-const TaskListViewName = "task-list"
+// Name is the kind of the View that lists tasks.
+const Name = "task-list"
 
 // Widths of the task list columns.
 const (
@@ -49,10 +53,10 @@ var (
 	jumpBottomKey = key.NewBinding(key.WithKeys("G", "end"))
 )
 
-// TaskListView lists the tasks of a project the way drg task list does, with
-// a cursor on one row.
-type TaskListView struct {
-	styles   *Styles
+// View lists the tasks of a project the way drg task list does, with a cursor
+// on one row.
+type View struct {
+	styles   *styles.Styles
 	tasks    []task.ListedTask
 	loadErr  error
 	isLoaded bool
@@ -62,33 +66,32 @@ type TaskListView struct {
 	height   int
 }
 
-// NewTaskListView returns a task list that shows a loading line until it gets
-// the tasks.
-func NewTaskListView(styles *Styles) *TaskListView {
-	return &TaskListView{styles: styles}
+// New returns a task list that shows a loading line until it gets the tasks.
+func New(viewStyles *styles.Styles) *View {
+	return &View{styles: viewStyles}
 }
 
-func (view *TaskListView) Name() string {
-	return TaskListViewName
+func (view *View) Name() string {
+	return Name
 }
 
-func (view *TaskListView) KeyHints() []key.Binding {
+func (view *View) KeyHints() []key.Binding {
 	return []key.Binding{moveUpKey, jumpTopKey}
 }
 
-func (view *TaskListView) SetSize(width, height int) {
+func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
 	view.scrollToCursor()
 }
 
 // Update takes the loaded tasks and moves the cursor on keys.
-func (view *TaskListView) Update(msg tea.Msg) tea.Cmd {
+func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tasksLoadedMsg:
+	case views.TasksLoadedMsg:
 		view.isLoaded = true
-		view.tasks = msg.tasks
-		view.loadErr = msg.err
+		view.tasks = msg.Tasks
+		view.loadErr = msg.Err
 		view.cursor = 0
 		view.offset = 0
 	case tea.KeyPressMsg:
@@ -97,7 +100,7 @@ func (view *TaskListView) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (view *TaskListView) moveCursor(msg tea.KeyPressMsg) {
+func (view *View) moveCursor(msg tea.KeyPressMsg) {
 	last := len(view.tasks) - 1
 	switch {
 	case key.Matches(msg, moveUpKey):
@@ -113,7 +116,7 @@ func (view *TaskListView) moveCursor(msg tea.KeyPressMsg) {
 }
 
 // scrollToCursor moves the rows in sight so the cursor row is one of them.
-func (view *TaskListView) scrollToCursor() {
+func (view *View) scrollToCursor() {
 	rowCount := view.height - 1
 	if rowCount <= 0 {
 		return
@@ -126,12 +129,12 @@ func (view *TaskListView) scrollToCursor() {
 	}
 }
 
-func (view *TaskListView) View() string {
+func (view *View) Render() string {
 	switch {
 	case view.height <= 0:
 		return ""
 	case !view.isLoaded:
-		return view.styles.Muted.Render("Loading tasks" + ellipsis)
+		return view.styles.Muted.Render("Loading tasks" + cells.Ellipsis)
 	case view.loadErr != nil:
 		return view.styles.Error.Render("Could not load tasks: " + view.loadErr.Error())
 	case len(view.tasks) == 0:
@@ -151,13 +154,13 @@ func (view *TaskListView) View() string {
 
 // renderRow renders the row at index. The cursor row and a context row take
 // one style across the row, so their cells stay plain.
-func (view *TaskListView) renderRow(columns taskColumns, index int) string {
+func (view *View) renderRow(columns taskColumns, index int) string {
 	entry := view.tasks[index]
 	row := newTaskRow(entry)
 	plain := lipgloss.NewStyle()
 	switch {
 	case index == view.cursor:
-		return view.styles.Cursor.Render(fit(columns.render(cursorMarker, row, plain, plain), view.width))
+		return view.styles.Cursor.Render(cells.Fit(columns.render(cursorMarker, row, plain, plain), view.width))
 	case entry.IsContext:
 		return view.styles.Muted.Render(columns.render(noCursorMarker, row, plain, plain))
 	default:
@@ -201,7 +204,7 @@ type taskColumns struct {
 
 // columns makes the blockers column as wide as its widest value and gives the
 // title what is left of the width.
-func (view *TaskListView) columns() taskColumns {
+func (view *View) columns() taskColumns {
 	blockedByWidth := ansi.StringWidth(blockedByTitle)
 	ticketWidth := ansi.StringWidth(ticketTitle)
 	for _, entry := range view.tasks {
@@ -219,9 +222,9 @@ func (view *TaskListView) columns() taskColumns {
 
 func (columns taskColumns) render(marker string, row taskRow, statusStyle, idStyle lipgloss.Style) string {
 	return marker +
-		statusStyle.Render(fitEllipsis(row.status, statusWidth)) + columnGap +
-		idStyle.Render(fitEllipsis(row.id, task.ShortIDLength)) + columnGap +
-		fitEllipsis(row.title, columns.title) + columnGap +
-		fitEllipsis(row.blockedBy, columns.blockedBy) + columnGap +
+		statusStyle.Render(cells.FitEllipsis(row.status, statusWidth)) + columnGap +
+		idStyle.Render(cells.FitEllipsis(row.id, task.ShortIDLength)) + columnGap +
+		cells.FitEllipsis(row.title, columns.title) + columnGap +
+		cells.FitEllipsis(row.blockedBy, columns.blockedBy) + columnGap +
 		row.ticket
 }
