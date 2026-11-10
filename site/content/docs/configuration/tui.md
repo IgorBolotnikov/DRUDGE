@@ -32,11 +32,12 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout` | object |  |  | Required. The node that fills the tab: a tile or a split. |
 | `tabs[].layout.arrangement` | string |  | `"side-by-side"`, `"stacked"` | How the split places its children. |
 | `tabs[].layout.children` | array |  |  | The nodes of the split. Each child has the keys of a layout. |
-| `tabs[].layout.view` | string |  | `"task-list"` | What the tile shows. `task-list`: Lists the tasks of the project with the rows of drg task list. |
+| `tabs[].layout.view` | string |  | `"drudger-list"`, `"task-list"` | What the tile shows. `drudger-list`: Lists the Drudgers of the project with what DRUDGE last saw of each. `task-list`: Lists the tasks of the project with the rows of drg task list. |
 | `tabs[].layout.title` | string |  |  | The title of the tile in its top border. Only a tile has a title. |
 | `tabs[].layout.weight` | number | `1` | above 0 | The share of the space of its split the node takes, relative to the other children of the split. It may be a fraction. |
 | `tabs[].layout.showStatus` | boolean | `true` |  | Whether the tile shows its status segment on the left of the bottom bar. Only a tile has a status segment. |
 | `tabs[].layout.viewOptions` | object |  |  | The options of the view of the tile. Each view takes its own options. Only a tile has view options. |
 | `dataRefreshSeconds` | number | `2` | minimum 0.1 | How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5. |
+| `drudgerCheckSeconds` | integer | `30` | minimum 1 | How often drg tui checks the Drudgers with what drg drudger list does, in whole seconds. A check never starts while the last one runs. |
 
 <!-- END GENERATED -->

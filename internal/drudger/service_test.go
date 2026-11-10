@@ -3333,6 +3333,55 @@ func TestDrudgerService_ListDrudgers_Pages(t *testing.T) {
 	}
 }
 
+func TestDrudgerService_ReadDrudgers(t *testing.T) {
+	checkedAt := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	refused := busyDrudger(1)
+	refused.SandboxHealth = SandboxUsable
+	refused.WorkspaceHealth = WorkspaceUsable
+	refused.AgentHealth = AgentRefused
+	refused.LastChecked = checkedAt
+
+	cases := []struct {
+		name string
+		pool []*Drudger
+		// hasFinishedSession gives the Drudger of slot 1 a Session that is
+		// over, which a list would reclaim.
+		hasFinishedSession bool
+		want               []*Drudger
+	}{
+		{name: "no Drudgers", want: []*Drudger{}},
+		{name: "slot order", pool: []*Drudger{idleDrudger(3), idleDrudger(1), idleDrudger(2)}, want: []*Drudger{idleDrudger(1), idleDrudger(2), idleDrudger(3)}},
+		{name: "what drudge last saw", pool: []*Drudger{idleDrudger(2), refused}, want: []*Drudger{refused, idleDrudger(2)}},
+		{name: "a finished Session keeps its slot", pool: []*Drudger{busyDrudger(1)}, hasFinishedSession: true, want: []*Drudger{busyDrudger(1)}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			commands := &fakeCommandRunner{}
+			service := newTestServiceWithPool(testSettings(), commands, testCase.pool)
+			if testCase.hasFinishedSession {
+				service.runs.finishSession(busyTaskID(1))
+			}
+
+			got, err := service.ReadDrudgers(testProjectSlug)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("expected %v, got %v", testCase.want, got)
+			}
+			if len(commands.calls) != 0 {
+				t.Errorf("expected a read to run no commands, got %v", commands.subcommands())
+			}
+			if service.drudgers.updates != 0 {
+				t.Errorf("expected a read to write nothing, got %d writes", service.drudgers.updates)
+			}
+		})
+	}
+}
+
 func TestDrudgerService_RunTask_GivesEachSbxCommandItsConfiguredTimeout(t *testing.T) {
 	projectDir := setupProjectDir(t)
 	taskToRun := todoTask()

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -14,23 +15,24 @@ import (
 
 // Keys of the TUI config file.
 const (
-	schemaKey             = "$schema"
-	tabsKey               = tabsPath
-	dataRefreshSecondsKey = "dataRefreshSeconds"
-	titleKey              = "title"
-	layoutKey             = layoutPath
-	arrangementKey        = "arrangement"
-	childrenKey           = "children"
-	viewKey               = "view"
-	weightKey             = "weight"
-	showStatusKey         = "showStatus"
-	viewOptionsKey        = "viewOptions"
+	schemaKey              = "$schema"
+	tabsKey                = tabsPath
+	dataRefreshSecondsKey  = "dataRefreshSeconds"
+	drudgerCheckSecondsKey = "drudgerCheckSeconds"
+	titleKey               = "title"
+	layoutKey              = layoutPath
+	arrangementKey         = "arrangement"
+	childrenKey            = "children"
+	viewKey                = "view"
+	weightKey              = "weight"
+	showStatusKey          = "showStatus"
+	viewOptionsKey         = "viewOptions"
 )
 
 // Keys each object of the TUI config file may hold, in the order the errors
 // list them.
 var (
-	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey}
+	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey, drudgerCheckSecondsKey}
 	tabKeys  = []string{titleKey, layoutKey}
 	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey, showStatusKey, viewOptionsKey}
 )
@@ -68,8 +70,9 @@ func LoadConfig(path string) (Config, error) {
 }
 
 // ParseConfig decodes a TUI config file. It refuses JSON that does not parse,
-// a value of the wrong kind, an unknown key, a weight that is not above 0 and
-// a data refresh below its minimum.
+// a value of the wrong kind, an unknown key, a weight that is not above 0, a
+// data refresh below its minimum and a Drudger check that is not a whole
+// number of seconds at or above its minimum.
 // An error starts with the path of the value to change, like
 // tabs[0].layout.children[1].weight. BuildTabs checks the rest.
 func ParseConfig(data []byte) (Config, error) {
@@ -95,6 +98,11 @@ func ParseConfig(data []byte) (Config, error) {
 			return Config{}, fmt.Errorf("%s: %g is below the minimum of %g, use %g or more seconds", dataRefreshSecondsKey, config.DataRefreshSeconds, minDataRefreshSeconds, minDataRefreshSeconds)
 		}
 	}
+	if rawSeconds, ok := root[drudgerCheckSecondsKey]; ok {
+		if config.DrudgerCheckSeconds, err = parseDrudgerCheckSeconds(rawSeconds); err != nil {
+			return Config{}, err
+		}
+	}
 	rawTabs, ok := root[tabsKey]
 	if !ok {
 		return config, nil
@@ -111,6 +119,22 @@ func ParseConfig(data []byte) (Config, error) {
 		config.Tabs = append(config.Tabs, tab)
 	}
 	return config, nil
+}
+
+// parseDrudgerCheckSeconds decodes the seconds between two Drudger checks. It
+// refuses a fraction and a value below the minimum.
+func parseDrudgerCheckSeconds(raw json.RawMessage) (int, error) {
+	seconds, err := decodeValue[float64](raw, drudgerCheckSecondsKey, jsonNumber)
+	if err != nil {
+		return 0, err
+	}
+	if seconds != math.Trunc(seconds) {
+		return 0, fmt.Errorf("%s: %g is not a whole number, use whole seconds like %d", drudgerCheckSecondsKey, seconds, defaultDrudgerCheckSeconds)
+	}
+	if seconds < minDrudgerCheckSeconds {
+		return 0, fmt.Errorf("%s: %g is below the minimum of %d, use %d or more seconds", drudgerCheckSecondsKey, seconds, minDrudgerCheckSeconds, minDrudgerCheckSeconds)
+	}
+	return int(seconds), nil
 }
 
 func parseTab(raw json.RawMessage, path string) (TabConfig, error) {

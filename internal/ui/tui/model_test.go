@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
@@ -54,8 +55,45 @@ func (source *fakeTaskSource) ListTasks(projectSlug string, filter task.ListTask
 	return common.Paginate(source.tasks, page, size)
 }
 
+// fakeDrudgerSource reads and checks its Drudgers. A read sends its number on
+// startedReads and a check sends its number on startedChecks when they are
+// set. A check waits for releaseChecks when it is set. A check fails with
+// checkErr.
+type fakeDrudgerSource struct {
+	drudgers      []*drudger.Drudger
+	checkErr      error
+	startedReads  chan int
+	startedChecks chan int
+	releaseChecks chan struct{}
+	readCount     atomic.Int32
+	checkCount    atomic.Int32
+}
+
+func (source *fakeDrudgerSource) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
+	readNumber := int(source.readCount.Add(1))
+	if source.startedReads != nil {
+		source.startedReads <- readNumber
+	}
+	return source.drudgers, nil
+}
+
+func (source *fakeDrudgerSource) ListDrudgers(projectSlug string, page int, size int) (common.Page[*drudger.Drudger], error) {
+	checkNumber := int(source.checkCount.Add(1))
+	if source.startedChecks != nil {
+		source.startedChecks <- checkNumber
+	}
+	if source.releaseChecks != nil {
+		<-source.releaseChecks
+	}
+	if source.checkErr != nil {
+		return common.Page[*drudger.Drudger]{}, source.checkErr
+	}
+	return common.Paginate(source.drudgers, page, size)
+}
+
 var (
 	keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
+	keyCheck   = tea.KeyPressMsg{Code: 'r', Text: "R", Mod: tea.ModShift}
 	keyQuit    = tea.KeyPressMsg{Code: 'q', Text: "q"}
 	keyHelp    = tea.KeyPressMsg{Code: '?', Text: "?"}
 )
@@ -110,9 +148,18 @@ func newTestModel(t *testing.T, tabs []*Tab, warnings []string) *Model {
 	return newTestModelWithSource(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, tabs, testRefreshInterval, warnings)
 }
 
+// newTestModelWithSource returns a Model of the test project that lists the
+// tasks of source and has no Drudgers. Its Drudger check waits for the test
+// refresh interval.
 func newTestModelWithSource(t *testing.T, source TaskSource, tabs []*Tab, refreshInterval time.Duration, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProject, source, tuitest.Styles(), tabs, refreshInterval, warnings)
+	sources := Sources{Tasks: source, Drudgers: &fakeDrudgerSource{}}
+	return newTestModelWithSources(t, sources, tabs, Intervals{Refresh: refreshInterval, DrudgerCheck: testRefreshInterval}, warnings)
+}
+
+func newTestModelWithSources(t *testing.T, sources Sources, tabs []*Tab, intervals Intervals, warnings []string) *Model {
+	t.Helper()
+	model, err := NewModel(testProject, sources, tuitest.Styles(), tabs, intervals, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,6 +608,84 @@ func TestModel_SkipsRefreshWhileLoadRuns(t *testing.T) {
 	waitForCall(t, source.startedCalls, 2)
 }
 
+func TestModel_DrudgerSchedule(t *testing.T) {
+	const shortInterval = 10 * time.Millisecond
+	cases := []struct {
+		name      string
+		intervals Intervals
+		keys      []tea.KeyPressMsg
+		// wantReads and wantChecks are the calls each source starts. A count
+		// above 1 comes from the ticks of its interval or from the keys.
+		wantReads  int
+		wantChecks int
+	}{
+		{name: "reads follow the data refresh", intervals: Intervals{Refresh: shortInterval, DrudgerCheck: testRefreshInterval}, wantReads: 3, wantChecks: 1},
+		{name: "checks follow the Drudger check", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: shortInterval}, wantReads: 1, wantChecks: 3},
+		{name: "R checks right away", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, keys: []tea.KeyPressMsg{keyCheck}, wantReads: 1, wantChecks: 2},
+		{name: "r reads and does not check", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, keys: []tea.KeyPressMsg{keyRefresh}, wantReads: 2, wantChecks: 1},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			drudgers := &fakeDrudgerSource{startedReads: make(chan int, 100), startedChecks: make(chan int, 100)}
+			sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
+			program := startProgram(t, newTestModelWithSources(t, sources, testTabs(t, "Tasks"), testCase.intervals, nil))
+
+			waitForCall(t, drudgers.startedReads, 1)
+			waitForCall(t, drudgers.startedChecks, 1)
+			for _, keyPress := range testCase.keys {
+				program.Send(keyPress)
+			}
+			assertCalls(t, "reads", drudgers.startedReads, &drudgers.readCount, testCase.wantReads)
+			assertCalls(t, "checks", drudgers.startedChecks, &drudgers.checkCount, testCase.wantChecks)
+		})
+	}
+}
+
+// assertCalls waits until a source starts the call numbered wantCount after
+// its first call. A want of 1 expects no call after the first.
+func assertCalls(t *testing.T, name string, startedCalls chan int, callCount *atomic.Int32, wantCount int) {
+	t.Helper()
+	if wantCount > 1 {
+		waitForCall(t, startedCalls, wantCount)
+		return
+	}
+	if got := int(callCount.Load()); got != 1 {
+		t.Errorf("expected 1 of the %s, got %d", name, got)
+	}
+}
+
+func TestModel_SkipsCheckWhileCheckRuns(t *testing.T) {
+	drudgers := &fakeDrudgerSource{startedChecks: make(chan int, 100), releaseChecks: make(chan struct{})}
+	sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
+	checkInterval := 10 * time.Millisecond
+	program := startProgram(t, newTestModelWithSources(t, sources, testTabs(t, "Tasks"), Intervals{Refresh: testRefreshInterval, DrudgerCheck: checkInterval}, nil))
+
+	waitForCall(t, drudgers.startedChecks, 1)
+	program.Send(keyCheck)
+	select {
+	case number := <-drudgers.startedChecks:
+		t.Fatalf("check %d started while check 1 still ran", number)
+	case <-time.After(4 * checkInterval):
+	}
+
+	close(drudgers.releaseChecks)
+	waitForCall(t, drudgers.startedChecks, 2)
+}
+
+func TestModel_FailedCheckShowsError(t *testing.T) {
+	drudgers := &fakeDrudgerSource{checkErr: errDiskOnFire}
+	sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
+	model := newTestModelWithSources(t, sources, testTabs(t, "Tasks"), Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, nil)
+	model.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
+
+	_, cmd := model.Update(keyCheck)
+	runCommand(model, cmd)
+
+	if wantError := "✗ could not check Drudgers: disk on fire"; !strings.Contains(model.View().Content, wantError) {
+		t.Errorf("expected the screen to show %q, got:\n%s", wantError, model.View().Content)
+	}
+}
+
 func TestModel_FailedLoadKeepsLastData(t *testing.T) {
 	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 2}
 	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
@@ -645,7 +770,8 @@ func TestModel_BottomBar(t *testing.T) {
 }
 
 func TestNewModel_NoTabs(t *testing.T) {
-	_, err := NewModel(testProject, &fakeTaskSource{}, tuitest.Styles(), nil, testRefreshInterval, nil)
+	sources := Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
+	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

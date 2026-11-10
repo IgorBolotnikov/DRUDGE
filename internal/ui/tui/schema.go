@@ -12,7 +12,7 @@ import (
 const schemaTemplate = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DRUDGE TUI Configuration",
-  "description": "Configures the tabs of drg tui, the layout of each tab and how often drg tui reloads its data.",
+  "description": "Configures the tabs of drg tui, the layout of each tab, how often drg tui reloads its data and how often it checks the Drudgers.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -45,6 +45,12 @@ const schemaTemplate = `{
       "type": "number",
       "minimum": 0.1,
       "default": 2
+    },
+    "drudgerCheckSeconds": {
+      "description": "How often drg tui checks the Drudgers with what drg drudger list does, in whole seconds. A check never starts while the last one runs.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 30
     }
   },
   "additionalProperties": false,

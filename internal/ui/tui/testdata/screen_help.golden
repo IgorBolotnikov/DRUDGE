@@ -4,12 +4,12 @@
 │▸ in-progress    3f9a1c2e  Add retry to uploader││▸ in-progress    3f9a1c2e  Add retry to uploader│
 │    done         5b20d7aa    Write the backoff  ││    done         5b20d7aa    Write the backoff  │
 │  todo           7c1e4f90  Wire retries into th…││  todo           7c1e4f90  Wire retries into th…│
-│  fucked-up      9d8b2a11  Fix the flaky upload…││  fucked-up      9d8b2a11  Fix the flaky upload…│
-│  draft          a01f3b╭──────────────────────────────────────────────────╮  Draft the release no…│
-│                       │ j/k move            z             zoom           │                       │
+│  fucked-up      9d8b2a╭──────────────────────────────────────────────────╮  Fix the flaky upload…│
+│  draft          a01f3b│ j/k move            z             zoom           │  Draft the release no…│
 │                       │ g/G top/bottom      r             refresh        │                       │
-│                       │ /   filter          1-9           tab            │                       │
-│                       │ esc clear filter    [/]           prev/next tab  │                       │
+│                       │ /   filter          R             check drudgers │                       │
+│                       │ esc clear filter    1-9           tab            │                       │
+│                       │                     [/]           prev/next tab  │                       │
 │                       │                     ctrl+h/j/k/l  move focus     │                       │
 │                       │                     tab/shift+tab next/prev tile │                       │
 │                       │                     ?             help           │                       │

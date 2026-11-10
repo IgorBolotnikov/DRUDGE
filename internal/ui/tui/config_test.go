@@ -48,7 +48,7 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 			wantPath:   "tabs[0].layout: ",
 			wantReason: "sets both a view and a split",
 		},
-		{name: "unknown view", config: oneTabConfig(NodeConfig{View: "kanban"}), wantPath: "tabs[0].layout.view: ", wantReason: `unknown view "kanban", use one of: task-list`},
+		{name: "unknown view", config: oneTabConfig(NodeConfig{View: "kanban"}), wantPath: "tabs[0].layout.view: ", wantReason: `unknown view "kanban", use one of: drudger-list, task-list`},
 		{
 			name: "unknown view deep in the tree",
 			config: oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
@@ -183,6 +183,24 @@ func TestConfig_RefreshInterval(t *testing.T) {
 			config := Config{DataRefreshSeconds: testCase.dataRefreshSeconds}
 			if got := config.RefreshInterval(); got != testCase.want {
 				t.Errorf("expected %s, got %s", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestConfig_Intervals(t *testing.T) {
+	cases := []struct {
+		name   string
+		config Config
+		want   Intervals
+	}{
+		{name: "unset gives the defaults", want: Intervals{Refresh: 2 * time.Second, DrudgerCheck: 30 * time.Second}},
+		{name: "both set", config: Config{DataRefreshSeconds: 0.5, DrudgerCheckSeconds: 10}, want: Intervals{Refresh: 500 * time.Millisecond, DrudgerCheck: 10 * time.Second}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := testCase.config.Intervals(); got != testCase.want {
+				t.Errorf("expected %+v, got %+v", testCase.want, got)
 			}
 		})
 	}

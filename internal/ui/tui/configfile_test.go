@@ -61,6 +61,16 @@ func TestParseConfig(t *testing.T) {
 			want: Config{DataRefreshSeconds: 0.1},
 		},
 		{
+			name: "a Drudger check",
+			data: `{"drudgerCheckSeconds": 60}`,
+			want: Config{DrudgerCheckSeconds: 60},
+		},
+		{
+			name: "a Drudger check at the minimum",
+			data: `{"drudgerCheckSeconds": 1}`,
+			want: Config{DrudgerCheckSeconds: 1},
+		},
+		{
 			name: "a tile that hides its status",
 			data: `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": false}}]}`,
 			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ShowStatus: new(false)}}}},
@@ -96,6 +106,21 @@ func TestParseConfig(t *testing.T) {
 			wantErr: "dataRefreshSeconds: expected a number, got a string",
 		},
 		{
+			name:    "a Drudger check below the minimum",
+			data:    `{"drudgerCheckSeconds": 0}`,
+			wantErr: "drudgerCheckSeconds: 0 is below the minimum of 1, use 1 or more seconds",
+		},
+		{
+			name:    "a Drudger check that is a fraction",
+			data:    `{"drudgerCheckSeconds": 2.5}`,
+			wantErr: "drudgerCheckSeconds: 2.5 is not a whole number, use whole seconds like 30",
+		},
+		{
+			name:    "a Drudger check that is a string",
+			data:    `{"drudgerCheckSeconds": "30"}`,
+			wantErr: "drudgerCheckSeconds: expected a number, got a string",
+		},
+		{
 			name:    "a show status that is a string",
 			data:    `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": "no"}}]}`,
 			wantErr: "tabs[0].layout.showStatus: expected a boolean, got a string",
@@ -118,7 +143,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key at the top",
 			data:    `{"tab": []}`,
-			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds",
+			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds, drudgerCheckSeconds",
 		},
 		{
 			name:    "an unknown key in a tab",

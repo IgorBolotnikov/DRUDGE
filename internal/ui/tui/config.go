@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -28,12 +29,33 @@ const (
 	minDataRefreshSeconds     = 0.1
 )
 
-// Config describes the Tabs of the TUI, the layout of each Tab and how often
-// the TUI reloads its data. It holds only plain values, so building it again
-// gives fresh Tabs. A data refresh of 0 is the default data refresh.
+// Seconds between two checks of the Drudgers. A config sets whole seconds.
+const (
+	defaultDrudgerCheckSeconds = 30
+	minDrudgerCheckSeconds     = 1
+)
+
+// Config describes the Tabs of the TUI, the layout of each Tab, how often the
+// TUI reloads its data and how often it checks the Drudgers. It holds only
+// plain values, so building it again gives fresh Tabs. A data refresh or a
+// Drudger check of 0 is the default.
 type Config struct {
-	Tabs               []TabConfig
-	DataRefreshSeconds float64
+	Tabs                []TabConfig
+	DataRefreshSeconds  float64
+	DrudgerCheckSeconds int
+}
+
+// Intervals returns how long the TUI waits between two loads of its data and
+// between two checks of the Drudgers.
+func (config Config) Intervals() Intervals {
+	checkSeconds := config.DrudgerCheckSeconds
+	if checkSeconds == 0 {
+		checkSeconds = defaultDrudgerCheckSeconds
+	}
+	return Intervals{
+		Refresh:      config.RefreshInterval(),
+		DrudgerCheck: time.Duration(checkSeconds) * time.Second,
+	}
 }
 
 // RefreshInterval returns how long the TUI waits between two loads of its
@@ -74,7 +96,7 @@ func defaultConfig() Config {
 		{Title: overviewTabTitle, Layout: NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
 			{Arrangement: SideBySide, Children: []NodeConfig{
 				{View: tasklist.Name, Weight: 2},
-				{View: tasklist.Name},
+				{View: drudgerlist.Name},
 			}},
 			{Arrangement: SideBySide, Children: []NodeConfig{
 				{View: tasklist.Name},

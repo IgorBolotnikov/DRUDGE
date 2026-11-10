@@ -8,6 +8,7 @@ var (
 	quitKey         = key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit"))
 	interruptKey    = key.NewBinding(key.WithKeys("ctrl+c"))
 	refreshKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
+	checkKey        = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "check drudgers"))
 	tabNumberKey    = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
 	nextTabKey      = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
 	previousTabKey  = key.NewBinding(key.WithKeys("["))
@@ -25,7 +26,7 @@ var closeHelpKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clos
 
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
-var rootBindings = []key.Binding{zoomKey, refreshKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
+var rootBindings = []key.Binding{zoomKey, refreshKey, checkKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
 
 // keyMap is the keys of the screen while a Tile has focus: the keys of its
 // View and the root keys.

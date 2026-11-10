@@ -98,9 +98,7 @@ func (service *DrudgerService) ListDrudgers(projectSlug string, page int, size i
 		return common.Page[*Drudger]{}, fmt.Errorf("could not list the Drudgers of project %s: %w", projectSlug, err)
 	}
 
-	slices.SortFunc(drudgers, func(first, second *Drudger) int {
-		return cmp.Compare(first.Slot, second.Slot)
-	})
+	sortBySlot(drudgers)
 
 	listed, err := common.Paginate(drudgers, page, size)
 	var notFound *common.PageNotFoundError
@@ -108,6 +106,23 @@ func (service *DrudgerService) ListDrudgers(projectSlug string, page int, size i
 		notFound.Noun = "Drudgers"
 	}
 	return listed, err
+}
+
+// ReadDrudgers returns the Drudgers of a project in slot order as the Drudger
+// file records them. It runs no sandbox command and writes nothing.
+func (service *DrudgerService) ReadDrudgers(projectSlug string) ([]*Drudger, error) {
+	drudgers, err := service.drudgers.ListDrudgers(projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the Drudgers of project %s: %w", projectSlug, err)
+	}
+	sortBySlot(drudgers)
+	return drudgers, nil
+}
+
+func sortBySlot(drudgers []*Drudger) {
+	slices.SortFunc(drudgers, func(first, second *Drudger) int {
+		return cmp.Compare(first.Slot, second.Slot)
+	})
 }
 
 // RunTask hands one task to an agent. In dry run mode it only resolves and

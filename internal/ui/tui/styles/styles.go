@@ -23,8 +23,10 @@ type Styles struct {
 	Error     lipgloss.Style
 	Warning   lipgloss.Style
 	Statuses  map[task.TaskStatus]lipgloss.Style
-	Help      help.Styles
-	HelpBox   lipgloss.Style
+	// HealthLabels holds the style of each Drudger health label.
+	HealthLabels map[string]lipgloss.Style
+	Help         help.Styles
+	HelpBox      lipgloss.Style
 }
 
 // New builds the styles of the screen from the roles of palette.
@@ -34,18 +36,23 @@ func New(palette *theme.Theme) *Styles {
 	for status, role := range style.StatusRoles {
 		statuses[status] = roleStyle(palette, role)
 	}
+	healthLabels := make(map[string]lipgloss.Style, len(style.HealthLabelRoles))
+	for label, role := range style.HealthLabelRoles {
+		healthLabels[label] = roleStyle(palette, role)
+	}
 	return &Styles{
-		Tab:       muted,
-		ActiveTab: roleStyle(palette, theme.RolePrimary).Bold(true).Reverse(true),
-		Border:    muted,
-		TileTitle: roleStyle(palette, theme.RolePrimary).Bold(true),
-		Header:    lipgloss.NewStyle().Bold(true),
-		ShortID:   lipgloss.NewStyle().Bold(true),
-		Selection: roleBackgroundStyle(palette, theme.RoleSelection),
-		Muted:     muted,
-		Error:     roleStyle(palette, theme.RoleError),
-		Warning:   roleStyle(palette, theme.RoleWarning),
-		Statuses:  statuses,
+		Tab:          muted,
+		ActiveTab:    roleStyle(palette, theme.RolePrimary).Bold(true).Reverse(true),
+		Border:       muted,
+		TileTitle:    roleStyle(palette, theme.RolePrimary).Bold(true),
+		Header:       lipgloss.NewStyle().Bold(true),
+		ShortID:      lipgloss.NewStyle().Bold(true),
+		Selection:    roleBackgroundStyle(palette, theme.RoleSelection),
+		Muted:        muted,
+		Error:        roleStyle(palette, theme.RoleError),
+		Warning:      roleStyle(palette, theme.RoleWarning),
+		Statuses:     statuses,
+		HealthLabels: healthLabels,
 		Help: help.Styles{
 			ShortKey:       lipgloss.NewStyle().Bold(true),
 			ShortDesc:      muted,
@@ -63,6 +70,15 @@ func New(palette *theme.Theme) *Styles {
 func (styles *Styles) Status(status task.TaskStatus) lipgloss.Style {
 	if statusStyle, ok := styles.Statuses[status]; ok {
 		return statusStyle
+	}
+	return lipgloss.NewStyle()
+}
+
+// HealthLabel returns the style of a Drudger health label. A label with no
+// role is plain.
+func (styles *Styles) HealthLabel(label string) lipgloss.Style {
+	if labelStyle, ok := styles.HealthLabels[label]; ok {
+		return labelStyle
 	}
 	return lipgloss.NewStyle()
 }

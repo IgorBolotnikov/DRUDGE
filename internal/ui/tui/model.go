@@ -39,6 +39,9 @@ const loadErrorPrefix = "✗ "
 // loadErrorFormat is the load error of one source in the bottom bar.
 const loadErrorFormat = "could not load %s: %v"
 
+// checkErrorFormat is the error of the last Drudger check in the bottom bar.
+const checkErrorFormat = "could not check Drudgers: %v"
+
 // warningSeparator joins the load errors and the warnings of the bottom bar,
 // and puts them after the status segments.
 const warningSeparator = "  "
@@ -71,8 +74,11 @@ type keyTaker interface {
 	Update(msg tea.Msg) tea.Cmd
 }
 
-// tasksSourceName names the task source in load errors.
-const tasksSourceName = "tasks"
+// Names of the data sources in load errors.
+const (
+	tasksSourceName    = "tasks"
+	drudgersSourceName = "Drudgers"
+)
 
 // dataSource is one kind of data the root loads for the Views. load returns
 // the message for the Views and the error the load failed with.
@@ -90,6 +96,21 @@ type loadKey struct {
 // refreshTickMsg starts the loads of a refresh.
 type refreshTickMsg struct{}
 
+// drudgerCheckTickMsg starts a check of the Drudgers.
+type drudgerCheckTickMsg struct{}
+
+// drudgersCheckedMsg carries the end of a Drudger check to the root.
+type drudgersCheckedMsg struct {
+	viewMsg views.DrudgersCheckedMsg
+}
+
+// Intervals are how long the root waits between two loads of its data and
+// between two checks of the Drudgers.
+type Intervals struct {
+	Refresh      time.Duration
+	DrudgerCheck time.Duration
+}
+
 // dataLoadedMsg carries the result of one load to the root.
 type dataLoadedMsg struct {
 	key     loadKey
@@ -98,51 +119,57 @@ type dataLoadedMsg struct {
 }
 
 // Model is the root of the screen: a top bar, the active Tab and a bottom bar.
-// It loads the data on every refresh and sends it to the Views of every Tab.
+// It loads the data on every refresh, checks the Drudgers on every Drudger
+// check and sends both to the Views of every Tab.
 type Model struct {
-	project         *project.Project
-	source          TaskSource
-	styles          *styles.Styles
-	warnings        []string
-	tabs            []*Tab
-	dataSources     []dataSource
-	activeTabIndex  int
-	refreshInterval time.Duration
-	runningLoads    map[loadKey]bool
-	loadErrors      map[loadKey]error
-	help            help.Model
-	helpOverlay     helpOverlay
-	width           int
-	height          int
+	project        *project.Project
+	sources        Sources
+	styles         *styles.Styles
+	warnings       []string
+	tabs           []*Tab
+	dataSources    []dataSource
+	activeTabIndex int
+	intervals      Intervals
+	runningLoads   map[loadKey]bool
+	loadErrors     map[loadKey]error
+	isChecking     bool
+	checkErr       error
+	help           help.Model
+	helpOverlay    helpOverlay
+	width          int
+	height         int
 }
 
 // NewModel returns the screen of a project with the first Tab active. It
-// reloads the data every refresh interval, shows the warnings in the bottom
-// bar and refuses an empty list of Tabs.
-func NewModel(shownProject *project.Project, source TaskSource, screenStyles *styles.Styles, tabs []*Tab, refreshInterval time.Duration, warnings []string) (*Model, error) {
+// reloads the data and checks the Drudgers at the intervals, shows the
+// warnings in the bottom bar and refuses an empty list of Tabs.
+func NewModel(shownProject *project.Project, sources Sources, screenStyles *styles.Styles, tabs []*Tab, intervals Intervals, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
 	model := &Model{
-		project:         shownProject,
-		source:          source,
-		styles:          screenStyles,
-		warnings:        warnings,
-		tabs:            tabs,
-		refreshInterval: refreshInterval,
-		runningLoads:    map[loadKey]bool{},
-		loadErrors:      map[loadKey]error{},
-		help:            keyHelp,
+		project:      shownProject,
+		sources:      sources,
+		styles:       screenStyles,
+		warnings:     warnings,
+		tabs:         tabs,
+		intervals:    intervals,
+		runningLoads: map[loadKey]bool{},
+		loadErrors:   map[loadKey]error{},
+		help:         keyHelp,
 	}
-	model.dataSources = []dataSource{{name: tasksSourceName, load: model.loadTasks}}
+	model.dataSources = []dataSource{
+		{name: tasksSourceName, load: model.loadTasks},
+		{name: drudgersSourceName, load: model.loadDrudgers},
+	}
 	return model, nil
 }
 
-// Init loads the data and starts the refresh ticks.
+// Init loads the data, checks the Drudgers and starts the ticks of both.
 func (model *Model) Init() tea.Cmd {
-	return tea.Batch(model.refresh(), model.nextTick())
+	return tea.Batch(model.refresh(), model.nextTick(), model.checkDrudgers(), model.nextCheckTick())
 }
 
 func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -156,12 +183,20 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, tea.Batch(model.refresh(), model.nextTick())
 	case dataLoadedMsg:
 		return model, model.handleDataLoaded(msg)
+	case drudgerCheckTickMsg:
+		return model, tea.Batch(model.checkDrudgers(), model.nextCheckTick())
+	case drudgersCheckedMsg:
+		return model, model.handleDrudgersChecked(msg)
 	}
 	return model, nil
 }
 
 func (model *Model) nextTick() tea.Cmd {
-	return tea.Tick(model.refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
+	return tea.Tick(model.intervals.Refresh, func(time.Time) tea.Msg { return refreshTickMsg{} })
+}
+
+func (model *Model) nextCheckTick() tea.Cmd {
+	return tea.Tick(model.intervals.DrudgerCheck, func(time.Time) tea.Msg { return drudgerCheckTickMsg{} })
 }
 
 // refresh starts one load of every source of the project. It skips a source
@@ -183,8 +218,35 @@ func (model *Model) refresh() tea.Cmd {
 }
 
 func (model *Model) loadTasks(projectSlug string) (tea.Msg, error) {
-	listed, err := model.source.ListTasks(projectSlug, task.ListTasksFilter{}, firstPage, allOnOnePage)
+	listed, err := model.sources.Tasks.ListTasks(projectSlug, task.ListTasksFilter{}, firstPage, allOnOnePage)
 	return views.TasksLoadedMsg{ProjectSlug: projectSlug, Tasks: listed.Items, Err: err}, err
+}
+
+func (model *Model) loadDrudgers(projectSlug string) (tea.Msg, error) {
+	drudgers, err := model.sources.Drudgers.ReadDrudgers(projectSlug)
+	return views.DrudgersLoadedMsg{ProjectSlug: projectSlug, Drudgers: drudgers, ReadAt: time.Now(), Err: err}, err
+}
+
+// checkDrudgers starts a check of the Drudgers of the project. It skips the
+// check while the last one runs.
+func (model *Model) checkDrudgers() tea.Cmd {
+	if model.isChecking {
+		return nil
+	}
+	model.isChecking = true
+	projectSlug := model.project.Slug
+	return func() tea.Msg {
+		_, err := model.sources.Drudgers.ListDrudgers(projectSlug, firstPage, allOnOnePage)
+		return drudgersCheckedMsg{viewMsg: views.DrudgersCheckedMsg{ProjectSlug: projectSlug, CheckedAt: time.Now(), Err: err}}
+	}
+}
+
+// handleDrudgersChecked ends a check, keeps its error for the bottom bar and
+// sends its message to the Views of every Tab.
+func (model *Model) handleDrudgersChecked(msg drudgersCheckedMsg) tea.Cmd {
+	model.isChecking = false
+	model.checkErr = msg.viewMsg.Err
+	return model.broadcast(msg.viewMsg)
 }
 
 // handleDataLoaded ends a load, keeps its error for the bottom bar and sends
@@ -207,9 +269,9 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	}
 }
 
-// handleKey quits, refreshes, opens the help overlay, switches Tabs, moves
-// focus between the Tiles of the active Tab, zooms the focused Tile or passes
-// the key to its View. A number key with no Tab behind it does nothing. The
+// handleKey quits, refreshes, checks the Drudgers, opens the help overlay,
+// switches Tabs, moves focus between the Tiles of the active Tab, zooms the
+// focused Tile or passes the key to its View. A number key with no Tab behind it does nothing. The
 // part of the screen that takes all keys gets every key but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key.Matches(msg, interruptKey) {
@@ -224,6 +286,8 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case key.Matches(msg, refreshKey):
 		return model.refresh()
+	case key.Matches(msg, checkKey):
+		return model.checkDrudgers()
 	case key.Matches(msg, helpKey):
 		model.helpOverlay.open()
 	case key.Matches(msg, nextTabKey):
@@ -420,16 +484,23 @@ func (model *Model) renderBottomBar() string {
 }
 
 // renderLoadErrors returns the errors of the last loads of the project, in
-// the order of its sources.
+// the order of its sources, and the error of the last Drudger check.
 func (model *Model) renderLoadErrors() []string {
 	var rendered []string
 	for _, source := range model.dataSources {
 		err, ok := model.loadErrors[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
 		if ok {
-			rendered = append(rendered, model.styles.Error.Render(loadErrorPrefix+fmt.Sprintf(loadErrorFormat, source.name, err)))
+			rendered = append(rendered, model.renderLoadError(fmt.Sprintf(loadErrorFormat, source.name, err)))
 		}
 	}
+	if model.checkErr != nil {
+		rendered = append(rendered, model.renderLoadError(fmt.Sprintf(checkErrorFormat, model.checkErr)))
+	}
 	return rendered
+}
+
+func (model *Model) renderLoadError(message string) string {
+	return model.styles.Error.Render(loadErrorPrefix + message)
 }
 
 func (model *Model) renderWarning(warning string) string {

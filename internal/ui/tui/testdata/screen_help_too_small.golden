@@ -1,8 +1,8 @@
 ╭─────────────────────────────
 │ j/k move            z
 │ g/G top/bottom      r
-│ /   filter          1-9
-│ esc clear filter    [/]
+│ /   filter          R
+│ esc clear filter    1-9
+│                     [/]
 │                     ctrl+h/j
 │                     tab/shif
-│                     ?

@@ -11,6 +11,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -30,6 +31,14 @@ type viewKind struct {
 
 // viewKinds lists every View a Tile can show, sorted by name.
 var viewKinds = []viewKind{
+	{
+		name:        drudgerlist.Name,
+		description: drudgerlist.Description,
+		keys:        drudgerlist.Keys,
+		newView: func(viewStyles *styles.Styles, options views.OptionValues) views.View {
+			return drudgerlist.New(viewStyles)
+		},
+	},
 	{
 		name:        tasklist.Name,
 		description: tasklist.Description,
