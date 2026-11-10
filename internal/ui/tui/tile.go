@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -13,6 +14,9 @@ import (
 
 // tileBorder is the width and the height a Tile border takes.
 const tileBorder = 2
+
+// tileEdge is the width of one side of a Tile border.
+const tileEdge = 1
 
 // The smallest space inside its border a Tile shows its View in.
 const (
@@ -79,6 +83,23 @@ func (tile *Tile) SetSize(width, height int) {
 // for a View.
 func (tile *Tile) hasRoomForView() bool {
 	return tile.width-tileBorder >= minViewWidth && tile.height-tileBorder >= minViewHeight
+}
+
+// viewMouse moves a mouse event at a cell of the Tab into the cells of the
+// View of the Tile at rect. ok is false for a cell on the border.
+func viewMouse(mouse tea.Mouse, rect Rect) (moved tea.Mouse, ok bool) {
+	viewRect := Rect{
+		X:      rect.X + tileEdge,
+		Y:      rect.Y + tileEdge,
+		Width:  rect.Width - tileBorder,
+		Height: rect.Height - tileBorder,
+	}
+	if !viewRect.contains(mouse.X, mouse.Y) {
+		return tea.Mouse{}, false
+	}
+	mouse.X -= viewRect.X
+	mouse.Y -= viewRect.Y
+	return mouse, true
 }
 
 // SetFocused sets whether the Tile has focus.

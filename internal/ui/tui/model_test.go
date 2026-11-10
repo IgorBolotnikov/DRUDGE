@@ -159,7 +159,7 @@ func newTestModelWithSource(t *testing.T, source TaskSource, tabs []*Tab, refres
 
 func newTestModelWithSources(t *testing.T, sources Sources, tabs []*Tab, intervals Intervals, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProject, sources, tuitest.Styles(), tabs, intervals, warnings)
+	model, err := NewModel(testProject, sources, tuitest.Styles(), tabs, intervals, true, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,6 +566,110 @@ func TestModel_MovesFocusAndZooms(t *testing.T) {
 	}
 }
 
+func leftClick(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+func wheelDown(x, y int) tea.MouseWheelMsg {
+	return tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown}
+}
+
+func wheelUp(x, y int) tea.MouseWheelMsg {
+	return tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelUp}
+}
+
+// Cells of a screen of 100 by 24 with a tall left Tile and three stacked on
+// the right, under the top bar of the Tabs First and Second. The Top Tile has
+// room for four of the five tasks.
+var (
+	clickSecondTabLabel = leftClick(12, 0)
+	clickPastTabLabels  = leftClick(90, 0)
+	clickTopBorder      = leftClick(60, 1)
+	clickTopFirstLine   = leftClick(60, 3)
+	clickTopSecondLine  = leftClick(60, 4)
+	wheelDownTop        = wheelDown(60, 4)
+	wheelUpTop          = wheelUp(60, 4)
+	rightClickTop       = tea.MouseClickMsg{X: 60, Y: 4, Button: tea.MouseRight}
+	clickMiddleHeader   = leftClick(60, 9)
+	clickMiddleThirdRow = leftClick(60, 12)
+	clickLeftSecondRow  = leftClick(10, 4)
+	clickBottomBar      = leftClick(60, 23)
+)
+
+func TestModel_Mouse(t *testing.T) {
+	cases := []struct {
+		name            string
+		msgs            []tea.Msg
+		wantActiveTab   string
+		wantFocusedTile string
+		wantStatuses    []string
+		golden          string
+	}{
+		{name: "a click on a tab label switches tabs", msgs: []tea.Msg{clickSecondTabLabel}, wantActiveTab: "Second", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click past the tab labels does nothing", msgs: []tea.Msg{clickPastTabLabels}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click on a border focuses the tile", msgs: []tea.Msg{clickTopBorder}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click on a header focuses the tile", msgs: []tea.Msg{clickMiddleHeader}, wantActiveTab: "First", wantFocusedTile: "Middle", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click on a row moves the cursor there", msgs: []tea.Msg{clickMiddleThirdRow}, wantActiveTab: "First", wantFocusedTile: "Middle", wantStatuses: []string{"1/5", "1/5", "3/5", "1/5"}, golden: "screen_mouse_clicked_row"},
+		{name: "a click on a row of the focused tile", msgs: []tea.Msg{clickLeftSecondRow}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"2/5", "1/5", "1/5", "1/5"}},
+		{name: "a click on the bottom bar does nothing", msgs: []tea.Msg{clickBottomBar}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a right click does nothing", msgs: []tea.Msg{rightClickTop}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click while the help is open does nothing", msgs: []tea.Msg{keyHelp, clickMiddleThirdRow, clickSecondTabLabel}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "the wheel scrolls an unfocused tile", msgs: []tea.Msg{wheelDownTop}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "2/5", "1/5", "1/5"}, golden: "screen_mouse_wheel_scrolled"},
+		{name: "a click on a scrolled tile counts from the first row in sight", msgs: []tea.Msg{wheelDownTop, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "3/5", "1/5", "1/5"}},
+		{name: "the wheel stops at the last row", msgs: []tea.Msg{wheelDownTop, wheelDownTop, wheelDownTop, clickTopFirstLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "2/5", "1/5", "1/5"}},
+		{name: "the wheel scrolls back up", msgs: []tea.Msg{wheelDownTop, wheelUpTop, clickTopFirstLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a click at the cell of another tile goes to the zoomed tile", msgs: []tea.Msg{keyZoom, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"2/5"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := Config{Tabs: []TabConfig{tallLeftConfig("First"), tallLeftConfig("Second")}}
+			model := newTestModel(t, buildTestTabs(t, config), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+			refreshNow(model)
+			for _, msg := range testCase.msgs {
+				model.Update(msg)
+			}
+			activeTab := model.ActiveTab()
+			if got := activeTab.Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+			if got := activeTab.FocusedTile().title; got != testCase.wantFocusedTile {
+				t.Errorf("expected focus on tile %q, got %q", testCase.wantFocusedTile, got)
+			}
+			if got := activeTab.Statuses(); !slices.Equal(got, testCase.wantStatuses) {
+				t.Errorf("expected statuses %q, got %q", testCase.wantStatuses, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+func TestModel_ClickOnScrolledTabBar(t *testing.T) {
+	cases := []struct {
+		name          string
+		x             int
+		wantActiveTab string
+	}{
+		{name: "the first label shown is the first tab not hidden", x: 0, wantActiveTab: "Drudgers"},
+		{name: "the last cell of a label", x: 11, wantActiveTab: "Drudgers"},
+		{name: "the first cell of the next label", x: 12, wantActiveTab: "Backlog"},
+		{name: "past the labels", x: 25, wantActiveTab: "Backlog"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, testTabs(t, "Tasks", "Board", "Drudgers", "Backlog"), nil)
+			model.Update(tea.WindowSizeMsg{Width: 30, Height: 8})
+			model.Update(keyPreviousTab)
+			model.Update(leftClick(testCase.x, 0))
+			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+		})
+	}
+}
+
 func TestModel_TabsKeepFocusedTile(t *testing.T) {
 	config := Config{Tabs: []TabConfig{tallLeftConfig("First"), tallLeftConfig("Second")}}
 	model := newTestModel(t, buildTestTabs(t, config), nil)
@@ -771,7 +875,7 @@ func TestModel_BottomBar(t *testing.T) {
 
 func TestNewModel_NoTabs(t *testing.T) {
 	sources := Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
-	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, nil)
+	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, true, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

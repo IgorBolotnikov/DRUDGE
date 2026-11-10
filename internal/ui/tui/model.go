@@ -26,6 +26,9 @@ const helpOverlayZ = 1
 // barHeight is how many lines the top bar and the bottom bar take together.
 const barHeight = 2
 
+// topBarHeight is how many lines the top bar takes above the active Tab.
+const topBarHeight = 1
+
 // warningPrefix starts a warning in the bottom bar.
 const warningPrefix = "! "
 
@@ -122,43 +125,46 @@ type dataLoadedMsg struct {
 // It loads the data on every refresh, checks the Drudgers on every Drudger
 // check and sends both to the Views of every Tab.
 type Model struct {
-	project        *project.Project
-	sources        Sources
-	styles         *styles.Styles
-	warnings       []string
-	tabs           []*Tab
-	dataSources    []dataSource
-	activeTabIndex int
-	intervals      Intervals
-	runningLoads   map[loadKey]bool
-	loadErrors     map[loadKey]error
-	isChecking     bool
-	checkErr       error
-	help           help.Model
-	helpOverlay    helpOverlay
-	width          int
-	height         int
+	project         *project.Project
+	sources         Sources
+	styles          *styles.Styles
+	warnings        []string
+	tabs            []*Tab
+	dataSources     []dataSource
+	activeTabIndex  int
+	intervals       Intervals
+	runningLoads    map[loadKey]bool
+	loadErrors      map[loadKey]error
+	isChecking      bool
+	checkErr        error
+	isMouseCaptured bool
+	help            help.Model
+	helpOverlay     helpOverlay
+	width           int
+	height          int
 }
 
 // NewModel returns the screen of a project with the first Tab active. It
 // reloads the data and checks the Drudgers at the intervals, shows the
-// warnings in the bottom bar and refuses an empty list of Tabs.
-func NewModel(shownProject *project.Project, sources Sources, screenStyles *styles.Styles, tabs []*Tab, intervals Intervals, warnings []string) (*Model, error) {
+// warnings in the bottom bar, takes the mouse from the terminal when it is
+// captured and refuses an empty list of Tabs.
+func NewModel(shownProject *project.Project, sources Sources, screenStyles *styles.Styles, tabs []*Tab, intervals Intervals, isMouseCaptured bool, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
 	model := &Model{
-		project:      shownProject,
-		sources:      sources,
-		styles:       screenStyles,
-		warnings:     warnings,
-		tabs:         tabs,
-		intervals:    intervals,
-		runningLoads: map[loadKey]bool{},
-		loadErrors:   map[loadKey]error{},
-		help:         keyHelp,
+		project:         shownProject,
+		sources:         sources,
+		styles:          screenStyles,
+		warnings:        warnings,
+		tabs:            tabs,
+		intervals:       intervals,
+		runningLoads:    map[loadKey]bool{},
+		loadErrors:      map[loadKey]error{},
+		help:            keyHelp,
+		isMouseCaptured: isMouseCaptured,
 	}
 	model.dataSources = []dataSource{
 		{name: tasksSourceName, load: model.loadTasks},
@@ -179,6 +185,10 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case tea.KeyPressMsg:
 		return model, model.handleKey(msg)
+	case tea.MouseClickMsg:
+		return model, model.handleClick(msg)
+	case tea.MouseWheelMsg:
+		return model, model.handleWheel(msg)
 	case refreshTickMsg:
 		return model, tea.Batch(model.refresh(), model.nextTick())
 	case dataLoadedMsg:
@@ -319,6 +329,63 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// handleClick switches to the Tab of a label in the top bar, or gives focus to
+// the Tile under the pointer and passes the click to its View. It takes only
+// the left button and does nothing while the help overlay is open.
+func (model *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
+	if msg.Button != tea.MouseLeft || model.helpOverlay.isOpen {
+		return nil
+	}
+	if msg.Y < topBarHeight {
+		if tabIndex, ok := model.tabAt(msg.X); ok {
+			model.activeTabIndex = tabIndex
+		}
+		return nil
+	}
+	inTab, ok := model.tabMouse(tea.Mouse(msg))
+	if !ok {
+		return nil
+	}
+	return model.ActiveTab().Click(tea.MouseClickMsg(inTab))
+}
+
+// handleWheel passes a turn of the wheel to the View of the Tile under the
+// pointer, focused or not. It does nothing while the help overlay is open.
+func (model *Model) handleWheel(msg tea.MouseWheelMsg) tea.Cmd {
+	if model.helpOverlay.isOpen {
+		return nil
+	}
+	inTab, ok := model.tabMouse(tea.Mouse(msg))
+	if !ok {
+		return nil
+	}
+	return model.ActiveTab().Wheel(tea.MouseWheelMsg(inTab))
+}
+
+// tabMouse moves a mouse event on the screen into the cells of the active Tab.
+// ok is false outside the Tab and while the Tab shows a warning in place of
+// its Tiles.
+func (model *Model) tabMouse(mouse tea.Mouse) (moved tea.Mouse, ok bool) {
+	tabHeight := model.height - barHeight
+	mouse.Y -= topBarHeight
+	isInTab := mouse.Y >= 0 && mouse.Y < tabHeight
+	if !isInTab || !model.ActiveTab().HasRoomForTiles() {
+		return tea.Mouse{}, false
+	}
+	return mouse, true
+}
+
+// tabAt returns the index of the Tab whose label the top bar shows at a
+// column. ok is false for a column with no label.
+func (model *Model) tabAt(x int) (tabIndex int, ok bool) {
+	for _, label := range model.tabBarLabels(model.width) {
+		if x >= label.x && x < label.x+label.width {
+			return label.tabIndex, true
+		}
+	}
+	return 0, false
+}
+
 // allKeysTaker returns the part of the screen that takes all keys: the open
 // help overlay, then the focused View. ok is false when neither does.
 func (model *Model) allKeysTaker() (taker keyTaker, ok bool) {
@@ -370,6 +437,9 @@ func (model *Model) View() tea.View {
 	view := tea.NewView("")
 	view.AltScreen = true
 	view.WindowTitle = fmt.Sprintf(windowTitleFormat, model.project.Name)
+	if model.isMouseCaptured {
+		view.MouseMode = tea.MouseModeCellMotion
+	}
 	if model.width <= 0 || model.height <= 0 {
 		return view
 	}
@@ -421,9 +491,28 @@ func (model *Model) renderTopBar() string {
 	return cells.FitEllipsis(model.renderTabBar(model.width), model.width)
 }
 
-// renderTabBar returns the Tab labels. When they are wider than the space, it
-// drops Tabs from the left until the active Tab fits.
+// renderTabBar returns the Tab labels the tab bar shows.
 func (model *Model) renderTabBar(width int) string {
+	var rendered strings.Builder
+	for _, label := range model.tabBarLabels(width) {
+		rendered.WriteString(label.rendered)
+	}
+	return rendered.String()
+}
+
+// tabBarLabel is the label of one Tab the tab bar shows.
+type tabBarLabel struct {
+	tabIndex int
+	rendered string
+	// x is the column the label starts at.
+	x     int
+	width int
+}
+
+// tabBarLabels returns the labels the tab bar shows in width cells, left to
+// right. When the labels of every Tab are wider than the space, it drops Tabs
+// from the left until the active Tab fits.
+func (model *Model) tabBarLabels(width int) []tabBarLabel {
 	labels := make([]string, len(model.tabs))
 	for index, tab := range model.tabs {
 		labelStyle := model.styles.Tab
@@ -433,7 +522,14 @@ func (model *Model) renderTabBar(width int) string {
 		labels[index] = labelStyle.Render(renderTabLabel(index, tab.Title))
 	}
 	firstShownIndex := model.firstShownTabIndex(labels, width)
-	return strings.Join(labels[firstShownIndex:], "")
+	shown := make([]tabBarLabel, 0, len(labels)-firstShownIndex)
+	x := 0
+	for index := firstShownIndex; index < len(labels); index++ {
+		labelWidth := ansi.StringWidth(labels[index])
+		shown = append(shown, tabBarLabel{tabIndex: index, rendered: labels[index], x: x, width: labelWidth})
+		x += labelWidth
+	}
+	return shown
 }
 
 // firstShownTabIndex returns the index of the leftmost Tab the tab bar shows.

@@ -85,4 +85,6 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `?` | Lists every key, `esc` or `?` closes the list |
 | `q` or `ctrl+c` | Quits |
 
+`drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. The wheel scrolls the tile under the pointer, focused or not. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
+
 Colors come from the [theme]({{< relref "/docs/configuration/theme" >}}). An override in the theme file that is not a color shows as a warning in the bottom bar.

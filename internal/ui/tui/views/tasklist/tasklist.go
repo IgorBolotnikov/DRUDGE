@@ -65,6 +65,15 @@ const (
 	filteredStatusFormat = "%s%s %s"
 )
 
+// Lines above the rows: the filter while it is open and the header.
+const (
+	filterLines = 1
+	headerLines = 1
+)
+
+// wheelScrollLines is how many lines one turn of the wheel scrolls.
+const wheelScrollLines = 1
+
 // filterPrompt starts the filter input. The input keeps one more cell for its
 // cursor.
 const (
@@ -199,7 +208,7 @@ func (view *View) SetSize(width, height int) {
 }
 
 // Update takes the loaded tasks, moves the cursor and edits the filter on
-// keys.
+// keys, moves the cursor to a clicked row and scrolls on the wheel.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -215,8 +224,46 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			return view.handleFilterKey(msg)
 		}
 		return view.handleKey(msg)
+	case tea.MouseClickMsg:
+		view.handleClick(msg)
+	case tea.MouseWheelMsg:
+		view.handleWheel(msg)
 	}
 	return nil
+}
+
+// handleClick moves the cursor to the row at the line of the click. A click
+// on the filter, the header or below the last row does nothing.
+func (view *View) handleClick(msg tea.MouseClickMsg) {
+	rowIndex := view.offset + msg.Y - view.firstRowLine()
+	isOnRow := rowIndex >= view.offset && rowIndex < view.rowsEnd()
+	if isOnRow {
+		view.cursor = rowIndex
+	}
+}
+
+// handleWheel scrolls the rows on a turn of the wheel. The cursor moves along
+// when its row leaves sight.
+func (view *View) handleWheel(msg tea.MouseWheelMsg) {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		view.scroll(-wheelScrollLines)
+	case tea.MouseWheelDown:
+		view.scroll(wheelScrollLines)
+	}
+}
+
+// scroll moves the rows in sight by lines and keeps the cursor on a row in
+// sight. It stops at the first and at the last row.
+func (view *View) scroll(lines int) {
+	lineCount := view.rowLineCount()
+	if lineCount <= 0 {
+		return
+	}
+	lastOffset := max(len(view.rows)-lineCount, 0)
+	view.offset = min(max(view.offset+lines, 0), lastOffset)
+	lastShownIndex := view.offset + lineCount - 1
+	view.cursor = min(max(view.cursor, view.offset), lastShownIndex)
 }
 
 func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -308,11 +355,21 @@ func (view *View) moveCursor(msg tea.KeyPressMsg) {
 // rowLineCount returns how many lines the View has for rows, below the filter
 // and the header.
 func (view *View) rowLineCount() int {
-	lineCount := view.height - 1
+	return view.height - view.firstRowLine()
+}
+
+// firstRowLine returns the index of the line of the first row in sight, below
+// the filter and the header.
+func (view *View) firstRowLine() int {
 	if view.isFiltering {
-		lineCount--
+		return filterLines + headerLines
 	}
-	return lineCount
+	return headerLines
+}
+
+// rowsEnd returns the index after the last row in sight.
+func (view *View) rowsEnd() int {
+	return min(view.offset+view.rowLineCount(), len(view.rows))
 }
 
 // scrollToCursor moves the rows in sight so the cursor row is one of them. It
@@ -357,8 +414,7 @@ func (view *View) renderList() string {
 	}
 
 	lines := []string{view.styles.Header.Render(noCursorMarker + view.layout.Header())}
-	end := min(view.offset+view.rowLineCount(), len(view.rows))
-	for index := view.offset; index < end; index++ {
+	for index := view.offset; index < view.rowsEnd(); index++ {
 		lines = append(lines, view.renderRow(index))
 	}
 	return strings.Join(lines, "\n")

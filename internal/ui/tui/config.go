@@ -36,13 +36,15 @@ const (
 )
 
 // Config describes the Tabs of the TUI, the layout of each Tab, how often the
-// TUI reloads its data and how often it checks the Drudgers. It holds only
-// plain values, so building it again gives fresh Tabs. A data refresh or a
-// Drudger check of 0 is the default.
+// TUI reloads its data, how often it checks the Drudgers and whether it
+// captures the mouse. It holds only plain values, so building it again gives
+// fresh Tabs. A data refresh or a Drudger check of 0 is the default. A TUI
+// with no mouse setting captures the mouse.
 type Config struct {
 	Tabs                []TabConfig
 	DataRefreshSeconds  float64
 	DrudgerCheckSeconds int
+	CaptureMouse        *bool
 }
 
 // Intervals returns how long the TUI waits between two loads of its data and
@@ -56,6 +58,11 @@ func (config Config) Intervals() Intervals {
 		Refresh:      config.RefreshInterval(),
 		DrudgerCheck: time.Duration(checkSeconds) * time.Second,
 	}
+}
+
+// IsMouseCaptured reports whether the TUI takes the mouse from the terminal.
+func (config Config) IsMouseCaptured() bool {
+	return config.CaptureMouse == nil || *config.CaptureMouse
 }
 
 // RefreshInterval returns how long the TUI waits between two loads of its

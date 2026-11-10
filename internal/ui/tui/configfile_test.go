@@ -71,6 +71,16 @@ func TestParseConfig(t *testing.T) {
 			want: Config{DrudgerCheckSeconds: 1},
 		},
 		{
+			name: "mouse capture off",
+			data: `{"captureMouse": false}`,
+			want: Config{CaptureMouse: new(false)},
+		},
+		{
+			name: "mouse capture on",
+			data: `{"captureMouse": true}`,
+			want: Config{CaptureMouse: new(true)},
+		},
+		{
 			name: "a tile that hides its status",
 			data: `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": false}}]}`,
 			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name, ShowStatus: new(false)}}}},
@@ -121,6 +131,11 @@ func TestParseConfig(t *testing.T) {
 			wantErr: "drudgerCheckSeconds: expected a number, got a string",
 		},
 		{
+			name:    "a mouse capture that is a string",
+			data:    `{"captureMouse": "no"}`,
+			wantErr: "captureMouse: expected a boolean, got a string",
+		},
+		{
 			name:    "a show status that is a string",
 			data:    `{"tabs": [{"title": "Tasks", "layout": {"view": "task-list", "showStatus": "no"}}]}`,
 			wantErr: "tabs[0].layout.showStatus: expected a boolean, got a string",
@@ -143,7 +158,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key at the top",
 			data:    `{"tab": []}`,
-			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds, drudgerCheckSeconds",
+			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds, drudgerCheckSeconds, captureMouse",
 		},
 		{
 			name:    "an unknown key in a tab",

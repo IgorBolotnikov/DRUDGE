@@ -206,6 +206,32 @@ func TestConfig_Intervals(t *testing.T) {
 	}
 }
 
+func TestConfig_MouseMode(t *testing.T) {
+	cases := []struct {
+		name         string
+		captureMouse *bool
+		want         tea.MouseMode
+	}{
+		{name: "unset captures the mouse", want: tea.MouseModeCellMotion},
+		{name: "on captures the mouse", captureMouse: new(true), want: tea.MouseModeCellMotion},
+		{name: "off leaves mouse mode off", captureMouse: new(false), want: tea.MouseModeNone},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := oneTabConfig(taskListNode())
+			config.CaptureMouse = testCase.captureMouse
+			model, err := NewModel(testProject, Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			if got := model.View().MouseMode; got != testCase.want {
+				t.Errorf("expected mouse mode %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestBuildTabs_DefaultConfig(t *testing.T) {
 	tabs := buildTestTabs(t, defaultConfig())
 	if len(tabs) == 0 {

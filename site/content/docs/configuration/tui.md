@@ -39,5 +39,6 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout.viewOptions` | object |  |  | The options of the view of the tile. Each view takes its own options. Only a tile has view options. |
 | `dataRefreshSeconds` | number | `2` | minimum 0.1 | How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5. |
 | `drudgerCheckSeconds` | integer | `30` | minimum 1 | How often drg tui checks the Drudgers with what drg drudger list does, in whole seconds. A check never starts while the last one runs. |
+| `captureMouse` | boolean | `true` |  | Whether drg tui captures the mouse. A click focuses a tile, switches tabs or moves the cursor, and the wheel scrolls the tile under the pointer. When it is false, the terminal keeps its native text selection. |
 
 <!-- END GENERATED -->

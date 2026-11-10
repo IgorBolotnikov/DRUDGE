@@ -19,6 +19,7 @@ const (
 	tabsKey                = tabsPath
 	dataRefreshSecondsKey  = "dataRefreshSeconds"
 	drudgerCheckSecondsKey = "drudgerCheckSeconds"
+	captureMouseKey        = "captureMouse"
 	titleKey               = "title"
 	layoutKey              = layoutPath
 	arrangementKey         = "arrangement"
@@ -32,7 +33,7 @@ const (
 // Keys each object of the TUI config file may hold, in the order the errors
 // list them.
 var (
-	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey, drudgerCheckSecondsKey}
+	rootKeys = []string{schemaKey, tabsKey, dataRefreshSecondsKey, drudgerCheckSecondsKey, captureMouseKey}
 	tabKeys  = []string{titleKey, layoutKey}
 	nodeKeys = []string{arrangementKey, childrenKey, viewKey, titleKey, weightKey, showStatusKey, viewOptionsKey}
 )
@@ -102,6 +103,13 @@ func ParseConfig(data []byte) (Config, error) {
 		if config.DrudgerCheckSeconds, err = parseDrudgerCheckSeconds(rawSeconds); err != nil {
 			return Config{}, err
 		}
+	}
+	if rawCaptureMouse, ok := root[captureMouseKey]; ok {
+		isMouseCaptured, err := decodeValue[bool](rawCaptureMouse, captureMouseKey, jsonBoolean)
+		if err != nil {
+			return Config{}, err
+		}
+		config.CaptureMouse = &isMouseCaptured
 	}
 	rawTabs, ok := root[tabsKey]
 	if !ok {

@@ -95,6 +95,52 @@ func (tab *Tab) focus(index int) {
 	tab.SetSize(tab.width, tab.height)
 }
 
+// Click gives focus to the Tile at a cell of the Tab and passes the click to
+// its View in the cells of the View. A click on the border of a Tile only
+// gives it focus.
+func (tab *Tab) Click(msg tea.MouseClickMsg) tea.Cmd {
+	tileIndex, rect, ok := tab.tileAt(msg.X, msg.Y)
+	if !ok {
+		return nil
+	}
+	tab.focus(tileIndex)
+	inView, ok := viewMouse(tea.Mouse(msg), rect)
+	if !ok {
+		return nil
+	}
+	return tab.FocusedTile().view.Update(tea.MouseClickMsg(inView))
+}
+
+// Wheel passes a turn of the wheel at a cell of the Tab to the View of the
+// Tile there, focused or not, in the cells of the View.
+func (tab *Tab) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
+	tileIndex, rect, ok := tab.tileAt(msg.X, msg.Y)
+	if !ok {
+		return nil
+	}
+	inView, ok := viewMouse(tea.Mouse(msg), rect)
+	if !ok {
+		return nil
+	}
+	return tab.tiles[tileIndex].view.Update(tea.MouseWheelMsg(inView))
+}
+
+// tileAt returns the index and the Rect of the Tile shown at a cell of the
+// Tab. A zoomed Tab shows only the focused Tile. ok is false for a cell no
+// Tile takes.
+func (tab *Tab) tileAt(x, y int) (tileIndex int, rect Rect, ok bool) {
+	if tab.isZoomed {
+		rect = Rect{Width: tab.width, Height: tab.height}
+		return tab.focusedTileIndex, rect, rect.contains(x, y)
+	}
+	for index, tileRect := range TileRects(tab.layout, tab.width, tab.height) {
+		if tileRect.contains(x, y) {
+			return index, tileRect, true
+		}
+	}
+	return 0, Rect{}, false
+}
+
 // Broadcast sends a message to the View of every Tile.
 func (tab *Tab) Broadcast(msg tea.Msg) tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(tab.tiles))

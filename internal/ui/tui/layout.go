@@ -130,6 +130,11 @@ func (rect Rect) bottom() int {
 	return rect.Y + rect.Height
 }
 
+// contains reports whether the cell at column x and row y lies in the Rect.
+func (rect Rect) contains(x, y int) bool {
+	return x >= rect.X && x < rect.right() && y >= rect.Y && y < rect.bottom()
+}
+
 func (rect Rect) isEmpty() bool {
 	return rect.Width == 0 || rect.Height == 0
 }

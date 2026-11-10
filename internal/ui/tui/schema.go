@@ -12,7 +12,7 @@ import (
 const schemaTemplate = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DRUDGE TUI Configuration",
-  "description": "Configures the tabs of drg tui, the layout of each tab, how often drg tui reloads its data and how often it checks the Drudgers.",
+  "description": "Configures the tabs of drg tui, the layout of each tab, how often drg tui reloads its data, how often it checks the Drudgers and whether it captures the mouse.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -51,6 +51,11 @@ const schemaTemplate = `{
       "type": "integer",
       "minimum": 1,
       "default": 30
+    },
+    "captureMouse": {
+      "description": "Whether drg tui captures the mouse. A click focuses a tile, switches tabs or moves the cursor, and the wheel scrolls the tile under the pointer. When it is false, the terminal keeps its native text selection.",
+      "type": "boolean",
+      "default": true
     }
   },
   "additionalProperties": false,

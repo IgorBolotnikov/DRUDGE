@@ -1,0 +1,24 @@
+ 1 First  2 Second                                                                                  
+╭─ ▸ Left ───────────────────────────────────────╮╭─ Top ──────────────────────────────────────────╮
+│  STATUS         ID        TITLE                ││  STATUS         ID        TITLE                │
+│▸ in-progress    3f9a1c2e  Add retry to uploader││▸   done         5b20d7aa    Write the backoff  │
+│    done         5b20d7aa    Write the backoff  ││  todo           7c1e4f90  Wire retries into th…│
+│  todo           7c1e4f90  Wire retries into th…││  fucked-up      9d8b2a11  Fix the flaky upload…│
+│  fucked-up      9d8b2a11  Fix the flaky upload…││  draft          a01f3b55  Draft the release no…│
+│  draft          a01f3b55  Draft the release no…│╰────────────────────────────────────────────────╯
+│                                                │╭─ Middle ───────────────────────────────────────╮
+│                                                ││  STATUS         ID        TITLE                │
+│                                                ││▸ in-progress    3f9a1c2e  Add retry to uploader│
+│                                                ││    done         5b20d7aa    Write the backoff  │
+│                                                ││  todo           7c1e4f90  Wire retries into th…│
+│                                                ││  fucked-up      9d8b2a11  Fix the flaky upload…│
+│                                                ││  draft          a01f3b55  Draft the release no…│
+│                                                │╰────────────────────────────────────────────────╯
+│                                                │╭─ Bottom ───────────────────────────────────────╮
+│                                                ││  STATUS         ID        TITLE                │
+│                                                ││▸ in-progress    3f9a1c2e  Add retry to uploader│
+│                                                ││    done         5b20d7aa    Write the backoff  │
+│                                                ││  todo           7c1e4f90  Wire retries into th…│
+│                                                ││  fucked-up      9d8b2a11  Fix the flaky upload…│
+╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+1/5 · 2/5 · 1/5 · 1/5                                                                         ? help

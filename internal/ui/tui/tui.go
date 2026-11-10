@@ -70,7 +70,7 @@ func Run() error {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
 	sources := Sources{Tasks: services.Tasks, Drudgers: services.Drudgers}
-	model, err := NewModel(shownProject, sources, screenStyles, tabs, config.Intervals(), warnings)
+	model, err := NewModel(shownProject, sources, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
 	if err != nil {
 		return err
 	}
