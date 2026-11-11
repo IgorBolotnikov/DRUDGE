@@ -414,10 +414,10 @@ func (view *View) renderColumns() string {
 	lines := make([]string, 0, view.height)
 	for lineIndex := range view.height {
 		lineCells := make([]string, 0, len(view.columns))
-		for columnIndex, boardColumn := range view.columns {
+		for columnIndex := range view.columns {
 			width := widths[columnIndex]
 			if lineIndex < headerLines {
-				lineCells = append(lineCells, view.renderHeader(boardColumn, width))
+				lineCells = append(lineCells, view.renderHeader(columnIndex, width))
 				continue
 			}
 			rowIndex := view.columnOffset(columnIndex) + lineIndex - headerLines
@@ -433,9 +433,8 @@ func (view *View) renderColumns() string {
 func (view *View) renderCompact() string {
 	lines := make([]string, 0, view.height)
 	for _, line := range view.compactLines() {
-		boardColumn := view.columns[line.columnIndex]
 		if line.rowIndex == headerRow {
-			lines = append(lines, view.renderHeader(boardColumn, view.width))
+			lines = append(lines, view.renderHeader(line.columnIndex, view.width))
 			continue
 		}
 		lines = append(lines, view.renderTask(line, view.width))
@@ -444,10 +443,16 @@ func (view *View) renderCompact() string {
 }
 
 // renderHeader renders the status of a column and the count of its tasks in
-// the style of the status.
-func (view *View) renderHeader(boardColumn column, width int) string {
+// the style of the status. The header of the cursor column is reversed, so an
+// empty cursor column still shows the cursor.
+func (view *View) renderHeader(columnIndex int, width int) string {
+	boardColumn := view.columns[columnIndex]
 	header := fmt.Sprintf(headerFormat, boardColumn.status, len(boardColumn.tasks))
-	return view.styles.Status(boardColumn.status).Bold(true).Render(cells.FitEllipsis(header, width))
+	headerStyle := view.styles.Status(boardColumn.status).Bold(true)
+	if columnIndex == view.columnIndex {
+		headerStyle = headerStyle.Reverse(true)
+	}
+	return headerStyle.Render(cells.FitEllipsis(header, width))
 }
 
 // renderTask renders the title of the task at a line, cut to width. The cursor

@@ -3,6 +3,7 @@ package taskboard
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -146,6 +147,39 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 			got := tuitest.Messages(view.Update(testCase.input))
 			if !slices.Equal(got, testCase.want) {
 				t.Errorf("expected messages %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestView_CursorColumnHeader(t *testing.T) {
+	loaded := views.TasksLoadedMsg{Tasks: boardTasks()}
+	cases := []struct {
+		name         string
+		width        int
+		messages     []tea.Msg
+		wantReversed task.TaskStatus
+	}{
+		{name: "first column", width: 120, messages: []tea.Msg{loaded}, wantReversed: task.StatusDraft},
+		{name: "moved column", width: 120, messages: []tea.Msg{loaded, keyRight}, wantReversed: task.StatusTodo},
+		{name: "empty column", width: 120, messages: []tea.Msg{loaded, keyRight, keyRight, keyRight, keyRight}, wantReversed: task.StatusUnmerged},
+		{name: "compact board", width: 80, messages: []tea.Msg{loaded, keyRight, keyRight}, wantReversed: task.StatusInProgress},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			screenStyles := tuitest.Styles()
+			view := New(screenStyles)
+			view.SetSize(testCase.width, 10)
+			update(view, testCase.messages)
+			rendered := view.Render()
+
+			for _, status := range task.Statuses {
+				reversedOpening, _, _ := strings.Cut(screenStyles.Status(status).Bold(true).Reverse(true).Render("x"), "x")
+				isReversed := strings.Contains(rendered, reversedOpening+string(status)+" ")
+				wantReversed := status == testCase.wantReversed
+				if isReversed != wantReversed {
+					t.Errorf("expected the header of %s reversed to be %v, got %v", status, wantReversed, isReversed)
+				}
 			}
 		})
 	}
