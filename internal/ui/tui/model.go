@@ -488,6 +488,7 @@ func (model *Model) View() tea.View {
 		return view
 	}
 	lines := []string{model.renderTopBar()}
+	model.ActiveTab().SetFocusHidden(model.isOverlayOpen())
 	if model.height > barHeight {
 		lines = append(lines, model.renderActiveTab())
 	}

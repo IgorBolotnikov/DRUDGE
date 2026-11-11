@@ -124,8 +124,9 @@ func (tile *Tile) Render() string {
 	lines := make([]string, 0, tile.height)
 	lines = append(lines, tile.renderTopEdge(border, innerWidth))
 	viewLines := strings.Split(tile.view.Render(), "\n")
-	left := tile.styles.Border.Render(border.Left)
-	right := tile.styles.Border.Render(border.Right)
+	borderStyle := tile.borderStyle()
+	left := borderStyle.Render(border.Left)
+	right := borderStyle.Render(border.Right)
 	for index := range innerHeight {
 		line := ""
 		if index < len(viewLines) {
@@ -134,8 +135,17 @@ func (tile *Tile) Render() string {
 		lines = append(lines, left+cells.Fit(line, innerWidth)+right)
 	}
 	bottom := border.BottomLeft + strings.Repeat(border.Bottom, innerWidth) + border.BottomRight
-	lines = append(lines, tile.styles.Border.Render(bottom))
+	lines = append(lines, borderStyle.Render(bottom))
 	return strings.Join(lines, "\n")
+}
+
+// borderStyle returns the style of the border. A focused Tile takes the focus
+// border.
+func (tile *Tile) borderStyle() lipgloss.Style {
+	if tile.isFocused {
+		return tile.styles.FocusBorder
+	}
+	return tile.styles.Border
 }
 
 // renderTopEdge returns the top border with the title in it, one border cell
@@ -143,7 +153,8 @@ func (tile *Tile) Render() string {
 // focused Tile starts with the focus marker and the title of a zoomed Tile
 // ends with the zoom marker. A title wider than the edge is cut.
 func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
-	titleStyle := tile.styles.Border
+	borderStyle := tile.borderStyle()
+	titleStyle := borderStyle
 	title := tile.title
 	if tile.isFocused {
 		titleStyle = tile.styles.TileTitle
@@ -157,7 +168,7 @@ func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
 	title = ansi.Truncate(" "+title+" ", innerWidth-leadWidth, "")
 	titleWidth := ansi.StringWidth(title)
 	rest := strings.Repeat(border.Top, innerWidth-leadWidth-titleWidth)
-	return tile.styles.Border.Render(border.TopLeft+lead) +
+	return borderStyle.Render(border.TopLeft+lead) +
 		titleStyle.Render(title) +
-		tile.styles.Border.Render(rest+border.TopRight)
+		borderStyle.Render(rest+border.TopRight)
 }

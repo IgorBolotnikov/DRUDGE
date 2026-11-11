@@ -20,6 +20,7 @@ type Tab struct {
 	tiles            []*Tile
 	focusedTileIndex int
 	isZoomed         bool
+	isFocusHidden    bool
 	selectedTaskID   task.TaskID
 	width            int
 	height           int
@@ -71,6 +72,13 @@ func (tab *Tab) ToggleZoom() {
 	tab.SetSize(tab.width, tab.height)
 }
 
+// SetFocusHidden sets whether the focused Tile draws as unfocused. An overlay
+// over the Tab hides the focus of the Tab. The Tile keeps its focus.
+func (tab *Tab) SetFocusHidden(isFocusHidden bool) {
+	tab.isFocusHidden = isFocusHidden
+	tab.FocusedTile().SetFocused(!isFocusHidden)
+}
+
 // FocusToward moves focus to the nearest Tile in a direction on the screen
 // of the tiled layout. It keeps focus when no Tile lies that way.
 func (tab *Tab) FocusToward(direction Direction) {
@@ -104,7 +112,7 @@ func (tab *Tab) focus(index int) {
 	tab.FocusedTile().SetFocused(false)
 	tab.FocusedTile().SetZoomed(false)
 	tab.focusedTileIndex = index
-	tab.FocusedTile().SetFocused(true)
+	tab.FocusedTile().SetFocused(!tab.isFocusHidden)
 	tab.FocusedTile().SetZoomed(tab.isZoomed)
 	tab.SetSize(tab.width, tab.height)
 }

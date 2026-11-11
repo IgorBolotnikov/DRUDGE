@@ -55,3 +55,31 @@ func TestTile_RenderTitleStyle(t *testing.T) {
 		})
 	}
 }
+
+func TestTile_RenderBorderStyle(t *testing.T) {
+	cases := []struct {
+		name          string
+		isFocused     bool
+		wantFocusLine bool
+	}{
+		{name: "focused tile", isFocused: true, wantFocusLine: true},
+		{name: "unfocused tile", isFocused: false, wantFocusLine: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			screenStyles := tuitest.Styles()
+			focusOpening, _, _ := strings.Cut(screenStyles.FocusBorder.Render("x"), "x")
+			tile := NewTile(&sizeView{name: "a"}, "task-list", screenStyles, 1, true)
+			tile.SetFocused(testCase.isFocused)
+			tile.SetSize(30, 5)
+
+			lines := strings.Split(tile.Render(), "\n")
+			bottomEdge := lines[len(lines)-1]
+			got, ok := styledText(bottomEdge, focusOpening)
+			hasFocusBorder := ok && strings.HasPrefix(got, "╰")
+			if hasFocusBorder != testCase.wantFocusLine {
+				t.Errorf("expected the focus border on the bottom edge to be %v, got %v in %q", testCase.wantFocusLine, hasFocusBorder, bottomEdge)
+			}
+		})
+	}
+}

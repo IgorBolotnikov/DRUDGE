@@ -15,14 +15,16 @@ type Styles struct {
 	Tab       lipgloss.Style
 	ActiveTab lipgloss.Style
 	Border    lipgloss.Style
-	TileTitle lipgloss.Style
-	Header    lipgloss.Style
-	ShortID   lipgloss.Style
-	Selection lipgloss.Style
-	Muted     lipgloss.Style
-	Error     lipgloss.Style
-	Warning   lipgloss.Style
-	Statuses  map[task.TaskStatus]lipgloss.Style
+	// FocusBorder is the border of the focused Tile and of an open overlay.
+	FocusBorder lipgloss.Style
+	TileTitle   lipgloss.Style
+	Header      lipgloss.Style
+	ShortID     lipgloss.Style
+	Selection   lipgloss.Style
+	Muted       lipgloss.Style
+	Error       lipgloss.Style
+	Warning     lipgloss.Style
+	Statuses    map[task.TaskStatus]lipgloss.Style
 	// HealthLabels holds the style of each Drudger health label.
 	HealthLabels map[string]lipgloss.Style
 	Help         help.Styles
@@ -32,6 +34,7 @@ type Styles struct {
 // New builds the styles of the screen from the roles of palette.
 func New(palette *theme.Theme) *Styles {
 	muted := roleStyle(palette, theme.RoleMuted)
+	primary := roleStyle(palette, theme.RolePrimary)
 	statuses := make(map[task.TaskStatus]lipgloss.Style, len(style.StatusRoles))
 	for status, role := range style.StatusRoles {
 		statuses[status] = roleStyle(palette, role)
@@ -42,9 +45,10 @@ func New(palette *theme.Theme) *Styles {
 	}
 	return &Styles{
 		Tab:          muted,
-		ActiveTab:    roleStyle(palette, theme.RolePrimary).Bold(true).Reverse(true),
+		ActiveTab:    primary.Bold(true).Reverse(true),
 		Border:       muted,
-		TileTitle:    roleStyle(palette, theme.RolePrimary).Bold(true),
+		FocusBorder:  primary,
+		TileTitle:    primary.Bold(true),
 		Header:       lipgloss.NewStyle().Bold(true),
 		ShortID:      lipgloss.NewStyle().Bold(true),
 		Selection:    roleBackgroundStyle(palette, theme.RoleSelection),
@@ -62,7 +66,7 @@ func New(palette *theme.Theme) *Styles {
 			FullSeparator:  muted,
 			Ellipsis:       muted,
 		},
-		HelpBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(muted.GetForeground()).Padding(0, 1),
+		HelpBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(primary.GetForeground()).Padding(0, 1),
 	}
 }
 
