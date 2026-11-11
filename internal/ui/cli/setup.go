@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/setup"
@@ -21,7 +22,8 @@ var SetupCmd = &Cmd{
 	Desc: "Setup DRUDGE in this computer",
 	Help: "Setup DRUDGE in this computer. In a terminal it asks for the settings of the global config and the color theme. " +
 		"An existing file preselects the answers, and the answers are merged into it. " +
-		"With --defaults or input that is not a terminal it asks nothing, takes the defaults for a missing file and leaves an existing file alone.",
+		"With --defaults or input that is not a terminal it asks nothing, takes the defaults for a missing file and leaves an existing file alone. " +
+		"A missing TUI config is created with the default layout, and an existing one is left alone.",
 	Setup: func(fs *flag.FlagSet) func(args []string) error {
 		shouldTakeDefaults := fs.Bool(defaultsFlagName, false, "Skip the questions and take the default answers")
 		alias(fs, defaultsFlagShortName, defaultsFlagName)
@@ -62,7 +64,7 @@ func runSetup(shouldTakeDefaults bool) error {
 	if result.SkillPath != "" {
 		out.Done("Created %s", result.SkillPath)
 	}
-	for _, configFile := range []setup.ConfigFile{result.GlobalConfig, result.ThemeConfig} {
+	for _, configFile := range slices.Concat([]setup.ConfigFile{result.GlobalConfig, result.ThemeConfig}, result.InterfaceConfigs) {
 		switch configFile.Outcome {
 		case setup.ConfigCreated:
 			out.Done("Created %s", configFile.Path)
@@ -81,5 +83,6 @@ func newSetupService() (*setup.SetupService, error) {
 	if err != nil {
 		return nil, err
 	}
-	return setup.NewSetupService(home, []setup.SchemaFile{{Name: common.TuiConfigName, Content: tui.Schema()}}), nil
+	tuiConfig := setup.InterfaceConfig{Name: common.TuiConfigName, Schema: tui.Schema(), Default: tui.NewDefaultDocument()}
+	return setup.NewSetupService(home, []setup.InterfaceConfig{tuiConfig}), nil
 }

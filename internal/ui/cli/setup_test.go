@@ -20,6 +20,7 @@ func TestRunSetup(t *testing.T) {
 					"  ✓ Created " + home + "/.claude/skills/DRUDGE/SKILL.md\n" +
 					"  ✓ Created " + home + "/.drudge/config.json\n" +
 					"  ✓ Created " + home + "/.drudge/theme.json\n" +
+					"  ✓ Created " + home + "/.drudge/tui.json\n" +
 					"✓ DRUDGE is set up, run drg project init <name> in a project directory\n"
 			},
 		},
@@ -35,6 +36,7 @@ func TestRunSetup(t *testing.T) {
 					"  ✓ Created " + home + "/.claude/skills/DRUDGE/SKILL.md\n" +
 					"  · Left " + home + "/.drudge/config.json as it was\n" +
 					"  · Left " + home + "/.drudge/theme.json as it was\n" +
+					"  · Left " + home + "/.drudge/tui.json as it was\n" +
 					"✓ DRUDGE is set up, run drg project init <name> in a project directory\n"
 			},
 		},

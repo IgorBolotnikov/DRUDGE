@@ -9,6 +9,9 @@ type SetupResult struct {
 	SkillPath    string // Empty when the harness takes no skill
 	GlobalConfig ConfigFile
 	ThemeConfig  ConfigFile
+	// InterfaceConfigs holds the config files of the user interfaces, in the
+	// order the service got them.
+	InterfaceConfigs []ConfigFile
 }
 
 // SchemaFile is a bundled JSON schema setup writes to the schema directory
@@ -18,7 +21,16 @@ type SchemaFile struct {
 	Content []byte
 }
 
-// ConfigFile is a config file setup asks about, with what setup did to it.
+// InterfaceConfig is the config file of a user interface. Setup writes Schema
+// to the schema directory under Name on every run. It writes Default to the
+// drudge home directory under Name when that file is missing.
+type InterfaceConfig struct {
+	Name    string
+	Schema  []byte
+	Default any
+}
+
+// ConfigFile is a config file setup writes, with what setup did to it.
 type ConfigFile struct {
 	Path    string
 	Outcome ConfigOutcome

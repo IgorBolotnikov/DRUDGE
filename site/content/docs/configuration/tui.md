@@ -3,13 +3,13 @@ title: TUI
 weight: 4
 ---
 
-The TUI config file is `~/.drudge/tui.json`. It sets the tabs of [`drg tui`]({{< relref "/docs/tui" >}}) and the layout of each tab. DRUDGE never writes it. Without the file `drg tui` shows the bundled default, which the [TUI page]({{< relref "/docs/tui" >}}) shows as JSON. Copy it into the file to start from it.
+The TUI config file is `~/.drudge/tui.json`. It sets the tabs of [`drg tui`]({{< relref "/docs/tui" >}}) and the layout of each tab. `drg setup` writes it when it is missing, with `$schema` and the bundled default layout, which the [TUI page]({{< relref "/docs/tui" >}}) shows as JSON. An existing file is left alone, so the file is yours to edit. Without the file `drg tui` shows the bundled default.
 
 `drg tui` reads the file when it starts. A file that does not parse, or that holds an unknown key, a layout DRUDGE cannot build or a view option the view refuses, stops `drg tui` with an error that names the file and the path of the value to change, like `tabs[0].layout.children[1].weight`.
 
 ## Schema
 
-Start the file with `"$schema": "./schema/tui.json"`, a path relative to the file. It points at `~/.drudge/schema/tui.json`, the local copy of the schema that `drg setup` rewrites on every run. An editor with JSON schema support uses it to complete keys and flag wrong values.
+The file starts with `"$schema": "./schema/tui.json"`, a path relative to the file. It points at `~/.drudge/schema/tui.json`, the local copy of the schema that `drg setup` rewrites on every run. An editor with JSON schema support uses it to complete keys and flag wrong values.
 
 ## Layout
 

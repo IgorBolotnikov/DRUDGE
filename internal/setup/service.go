@@ -17,13 +17,13 @@ import (
 
 type SetupService struct {
 	home             string
-	interfaceSchemas []SchemaFile
+	interfaceConfigs []InterfaceConfig
 }
 
 // NewSetupService returns a SetupService for home. Setup writes the schemas
 // of the config files of the user interfaces after the schemas it bundles.
-func NewSetupService(home string, interfaceSchemas []SchemaFile) *SetupService {
-	return &SetupService{home: home, interfaceSchemas: interfaceSchemas}
+func NewSetupService(home string, interfaceConfigs []InterfaceConfig) *SetupService {
+	return &SetupService{home: home, interfaceConfigs: interfaceConfigs}
 }
 
 // DrudgeDir returns the drudge home directory Setup creates and Cleanup
@@ -239,8 +239,10 @@ func newGlobalConfigDocument(answers common.Answers) (config.DefaultDocument, er
 
 // Setup creates the drudge home directory, writes the schema files and
 // installs the skill for the harness. The schemas and the skill are
-// overwritten on every run. A missing config is created from the answers to
-// the setup questions, and an unanswered question takes its default. An
+// overwritten on every run. A missing config of a user interface is created
+// from its default, and an existing one is left as it is. A missing global or
+// theme config is created from the answers to the setup questions, and an
+// unanswered question takes its default. An
 // existing config with no answer in answers is left as it is. Otherwise the
 // answered keys are merged into it and every other key stays as it is. Setup
 // refuses an invalid answer and a config file that does not load before it
@@ -273,6 +275,10 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	interfaceWrites, err := s.planInterfaceConfigs()
+	if err != nil {
+		return nil, err
+	}
 
 	drudgeDir := s.DrudgeDir()
 	result := &SetupResult{DrudgeDir: drudgeDir}
@@ -285,11 +291,14 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if err := common.EnsureDir(schemaDir); err != nil {
 		return nil, err
 	}
-	schemas := slices.Concat([]SchemaFile{
+	schemas := []SchemaFile{
 		{Name: common.ThemeConfigName, Content: theme.Schema()},
 		{Name: common.GloablConfigName, Content: config.Schema()},
 		{Name: common.LocalSchemaName, Content: config.LocalSchema()},
-	}, s.interfaceSchemas)
+	}
+	for _, interfaceConfig := range s.interfaceConfigs {
+		schemas = append(schemas, SchemaFile{Name: interfaceConfig.Name, Content: interfaceConfig.Schema})
+	}
 	for _, schema := range schemas {
 		path := filepath.Join(schemaDir, schema.Name)
 		if err := common.WriteFile(path, string(schema.Content)); err != nil {
@@ -312,7 +321,33 @@ func (s *SetupService) Setup(answers common.Answers) (*SetupResult, error) {
 	if result.ThemeConfig, err = themeWrite.write(); err != nil {
 		return nil, err
 	}
+	for _, interfaceWrite := range interfaceWrites {
+		interfaceConfig, err := interfaceWrite.write()
+		if err != nil {
+			return nil, err
+		}
+		result.InterfaceConfigs = append(result.InterfaceConfigs, interfaceConfig)
+	}
 	return result, nil
+}
+
+// planInterfaceConfigs returns what setup writes to the config file of each
+// user interface. A missing file gets the default of the interface.
+func (s *SetupService) planInterfaceConfigs() ([]configWrite, error) {
+	writes := make([]configWrite, 0, len(s.interfaceConfigs))
+	for _, interfaceConfig := range s.interfaceConfigs {
+		path := filepath.Join(s.DrudgeDir(), interfaceConfig.Name)
+		isPresent, err := common.Exists(path)
+		if err != nil {
+			return nil, err
+		}
+		if isPresent {
+			writes = append(writes, configWrite{path: path, outcome: ConfigUnchanged})
+			continue
+		}
+		writes = append(writes, configWrite{path: path, content: interfaceConfig.Default, outcome: ConfigCreated})
+	}
+	return writes, nil
 }
 
 // configWrite is what setup writes to one config file.

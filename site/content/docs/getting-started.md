@@ -85,6 +85,7 @@ It then creates `~/.drudge/` and writes:
 
 - `~/.drudge/config.json`, the global config
 - `~/.drudge/theme.json`, the color theme
+- `~/.drudge/tui.json`, the [TUI config]({{< relref "/docs/configuration/tui" >}}) with the default layout of [`drg tui`]({{< relref "/docs/cli/tui" >}})
 - `~/.drudge/schema/`, the JSON schemas both config files, the project config and the [TUI config]({{< relref "/docs/configuration/tui" >}}) point at
 - `~/.drudge/projects/`, where the projects and their Tasks live
 
@@ -95,7 +96,7 @@ It also installs the DRUDGE skill for the configured harness. The skill lets a p
 
 A harness switch leaves the skill of the old harness in place.
 
-The schemas and the skill are rewritten on every run. Running `drg setup` again in a terminal asks the same questions, starting on the values of your config files, and writes the answers back into them. Every key it does not ask about stays as it is. `drg setup -y` leaves existing config files alone.
+The schemas and the skill are rewritten on every run. Running `drg setup` again in a terminal asks the same questions, starting on the values of your config files, and writes the answers back into them. Every key it does not ask about stays as it is. `drg setup -y` leaves existing config files alone. `drg setup` never asks about the TUI config and leaves an existing one alone.
 
 ## First project
 
