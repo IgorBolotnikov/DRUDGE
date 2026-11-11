@@ -22,9 +22,26 @@ The view takes no options.
 | `j/k` | scroll |
 | `g/G` | top/bottom |
 
+## `task-board`
+
+Shows the tasks of the project on a board with one column per status.
+
+### View options
+
+The view takes no options.
+
+### Keys
+
+| Key | Does |
+| --- | --- |
+| `h/l` | column |
+| `j/k` | move |
+| `g/G` | top/bottom |
+| `enter` | open task |
+
 ## `task-detail`
 
-Shows the fields and the description of the task selected in a task list of the same tab.
+Shows the fields and the description of the task selected in a task list or a task board of the same tab.
 
 ### View options
 

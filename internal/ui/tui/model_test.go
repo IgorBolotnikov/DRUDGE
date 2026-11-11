@@ -16,6 +16,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
@@ -477,6 +478,39 @@ func TestModel_SelectionStaysInItsTab(t *testing.T) {
 			}
 			if got := model.tabs[1].SelectedTaskID(); got != testCase.wantSecondTabTask {
 				t.Errorf("expected task %q selected in the second tab, got %q", testCase.wantSecondTabTask, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+func TestModel_BoardDrivesTaskDetail(t *testing.T) {
+	keyNextColumn := tea.KeyPressMsg{Code: 'l', Text: "l"}
+	todoID := tuitest.ListedTasks()[2].Task.ID
+	inProgressID := tuitest.ListedTasks()[0].Task.ID
+	cases := []struct {
+		name     string
+		keys     []tea.Msg
+		wantTask task.TaskID
+		golden   string
+	}{
+		{name: "nothing selected at start", golden: "screen_board_nothing_selected"},
+		{name: "next column selects its task", keys: []tea.Msg{keyNextColumn}, wantTask: todoID, golden: "screen_board_task_selected"},
+		{name: "each move selects the task under the cursor", keys: []tea.Msg{keyNextColumn, keyNextColumn}, wantTask: inProgressID},
+		{name: "enter opens the task under the cursor", keys: []tea.Msg{tuitest.KeyEnter}, wantTask: tuitest.ListedTasks()[4].Task.ID},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{{View: taskboard.Name}, {View: taskdetail.Name}}})
+			model := newTestModel(t, buildTestTabs(t, config), nil)
+			model.Update(tea.WindowSizeMsg{Width: 120, Height: 16})
+			refreshNow(model)
+			pressKeys(model, testCase.keys)
+			detail := model.ActiveTab().tiles[1].view.(*taskdetail.View)
+			if got := detail.Status(); got != task.ShortID(testCase.wantTask) {
+				t.Errorf("expected the task detail to show task %q, got status %q", testCase.wantTask, got)
 			}
 			if testCase.golden != "" {
 				tuitest.AssertGolden(t, testCase.golden, model.View().Content)

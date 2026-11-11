@@ -26,7 +26,7 @@ import (
 const Name = "task-detail"
 
 // Description says in one line what the View shows.
-const Description = "Shows the fields and the description of the task selected in a task list of the same tab."
+const Description = "Shows the fields and the description of the task selected in a task list or a task board of the same tab."
 
 // minDescriptionLines is the fewest description lines the View keeps below
 // the fields. A View that cannot keep them folds the fields into one line.

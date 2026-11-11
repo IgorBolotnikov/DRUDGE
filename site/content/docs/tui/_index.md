@@ -15,7 +15,9 @@ Each `task-list` tile shows the task list with the same rows as [`drg task list`
 
 Each `drudger-list` tile shows the [Drudgers]({{< relref "/docs/concepts/drudgers" >}}) of the project with their slot, what DRUDGE last saw of the sandbox and of the agent, the task each one works on and how long ago DRUDGE last looked at it. When the tile is too narrow, the last check drops first, then the task, the agent and the sandbox. The slot always stays.
 
-A `task-detail` tile shows the fields of one task and its description rendered as markdown. Moving the cursor of a list onto a task selects it, and every `task-detail` tile of the same tab shows it. Other tabs keep their own selection. Until you select a task, the tile says `Nothing selected`. When the tile is too short for the fields and three lines of the description, the fields fold into one line. `j`, `k`, `u`, `d`, `g` and `G` scroll the description.
+Each `task-board` tile shows the tasks on a board with one column per status, in the order of `draft`, `todo`, `in-progress`, `fucked-up`, `unmerged` and `done`. The header of a column shows its status and its task count. `h` and `l` or `←` and `→` move between columns, and a title that does not fit is cut with `…`. When the columns would get narrower than 15 cells of title, the board turns compact: every status shows as a header with its count, and only the column under the cursor lists its tasks. A task with a status DRUDGE does not know shows in no column.
+
+A `task-detail` tile shows the fields of one task and its description rendered as markdown. Moving the cursor of a list or a board onto a task selects it, and every `task-detail` tile of the same tab shows it. Other tabs keep their own selection. Until you select a task, the tile says `Nothing selected`. When the tile is too short for the fields and three lines of the description, the fields fold into one line. `j`, `k`, `u`, `d`, `g` and `G` scroll the description.
 
 Press `enter` on a task to open it. Focus moves to the first `task-detail` tile of the tab, which shows the task. A tab without a `task-detail` tile opens the task in a box over the tab. The box takes every key until `esc` closes it and focus goes back to the tile that had it. While the box is open, the bottom bar shows only its status segment.
 
@@ -48,7 +50,7 @@ The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/
           {
             "arrangement": "side-by-side",
             "children": [
-              { "view": "task-list" },
+              { "view": "task-board" },
               { "view": "task-detail" }
             ]
           }
@@ -63,7 +65,7 @@ The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/
 }
 ```
 
-The left side of the bottom bar shows a status segment for each tile of the tab, in layout order. A `task-list` tile shows the row of its cursor and its task count, like `12/200`. While its filter is open, the filter comes first, like `/retry 1/3`. A `drudger-list` tile says how long ago the Drudgers were checked, like `checked 12s ago`. A `task-detail` tile shows the short ID of its task and how far the description is scrolled, like `3f9a1c2e 40%`. Set `showStatus` to `false` on a tile to hide its segment. Load errors and warnings follow the segments. `? help` sits on the right and is hidden while a filter is open. When the bar is too narrow, the segments are cut first.
+The left side of the bottom bar shows a status segment for each tile of the tab, in layout order. A `task-list` tile shows the row of its cursor and its task count, like `12/200`. While its filter is open, the filter comes first, like `/retry 1/3`. A `task-board` tile shows the status of its cursor column, the row of its cursor and the task count of the column, like `todo 2/5`. A `drudger-list` tile says how long ago the Drudgers were checked, like `checked 12s ago`. A `task-detail` tile shows the short ID of its task and how far the description is scrolled, like `3f9a1c2e 40%`. Set `showStatus` to `false` on a tile to hide its segment. Load errors and warnings follow the segments. `? help` sits on the right and is hidden while a filter is open. When the bar is too narrow, the segments are cut first.
 
 One tile of a tab has focus. Its title starts with `▸` and the keys you press go to it. Each tab keeps its own focused tile when you switch tabs. `z` zooms the focused tile to fill the tab and adds `[zoom]` to its title. Press `z` again to go back to the tiles. While a tile is zoomed, the bottom bar shows only the status segment of that tile.
 
@@ -77,6 +79,8 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `k` or `↑` | Moves the cursor up, or scrolls a list without a cursor |
 | `g` or `home` | Jumps to the top |
 | `G` or `end` | Jumps to the bottom |
+| `h` or `←` | Moves the cursor of a board to the column on the left |
+| `l` or `→` | Moves the cursor of a board to the column on the right |
 | `enter` | Opens the task under the cursor |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it |
@@ -90,6 +94,6 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `?` | Lists every key, `esc` or `?` closes the list |
 | `q` or `ctrl+c` | Quits |
 
-`drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. The wheel scrolls the tile under the pointer, focused or not. The mouse does nothing while the help or the task overlay is open. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
+`drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. A click on a column header of a board moves the cursor to that column. The wheel scrolls the tile under the pointer, focused or not. The mouse does nothing while the help or the task overlay is open. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
 
 Colors come from the [theme]({{< relref "/docs/configuration/theme" >}}). An override in the theme file that is not a color shows as a warning in the bottom bar.
