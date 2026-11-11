@@ -332,18 +332,26 @@ func (model *Model) handleOverlayKey(top Overlay, msg tea.KeyPressMsg) tea.Cmd {
 
 // pushHelp opens the help with the keys that work on the screen right now.
 func (model *Model) pushHelp() {
-	model.push(newHelpOverlay(model.help, model.styles.HelpBox, model.helpColumns()))
+	model.push(newHelpOverlay(model.help, model.styles, model.helpSections()))
 }
 
-// helpColumns returns the keys the help lists. With no overlay open they are
-// the keys of the focused View and the root keys. With an overlay on top they
+// helpSections returns the keys the help lists, each section titled by what
+// the keys act on. With no overlay open they are the keys of the focused View
+// under the title of its Tile and the root keys. With an overlay on top they
 // are the keys of the overlay and the keys that close it and open the help.
-func (model *Model) helpColumns() [][]key.Binding {
+func (model *Model) helpSections() []helpSection {
 	if top, ok := model.topOverlay(); ok {
-		return [][]key.Binding{top.Keys(), overlayBindings}
+		return []helpSection{
+			{title: top.Title(), keys: top.Keys()},
+			{title: globalHelpTitle, keys: overlayBindings},
+		}
 	}
-	kind, _ := findViewKind(model.ActiveTab().FocusedTile().view.Name())
-	return [][]key.Binding{kind.keys, rootBindings}
+	focusedTile := model.ActiveTab().FocusedTile()
+	kind, _ := findViewKind(focusedTile.view.Name())
+	return []helpSection{
+		{title: focusedTile.title, keys: kind.keys},
+		{title: globalHelpTitle, keys: rootBindings},
+	}
 }
 
 // handleMouse takes only left clicks and turns of the wheel. It passes them to

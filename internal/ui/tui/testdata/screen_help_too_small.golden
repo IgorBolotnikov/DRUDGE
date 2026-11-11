@@ -1,8 +1,8 @@
 ╭─────────────────────────────
-│ j/k   move            z
-│ g/G   top/bottom      1-9
-│ enter open task       [/]
-│ /     filter          ctrl+h
-│ esc   clear filter    tab/sh
-│                       ?
-│                       q
+│ task-list
+│ j/k   move
+│ g/G   top/bottom
+│ enter open task
+│ /     filter
+│ esc   clear filter
+│

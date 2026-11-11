@@ -71,7 +71,7 @@ One tile of a tab has focus. Its title starts with `▸`, its border takes the p
 
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger or zoom a tile with `z`.
 
-`?` opens a box over the tabs that lists the keys of the focused tile and the keys of the whole dashboard. Over the task box, it lists the keys of the task box. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
+`?` opens a box over the tabs that lists the keys in two sections, one above the other. The first section carries the title of the focused tile and lists the keys of its view. The `Global` section below it lists the keys that work everywhere on the dashboard. Over the task box, the first section lists the keys of the task box and `Global` lists `esc` and `?`. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
 
 | Key | Does |
 | --- | --- |

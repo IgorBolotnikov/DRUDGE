@@ -22,6 +22,12 @@ var (
 // closeOverlayKey closes the overlay on top.
 var closeOverlayKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close"))
 
+// globalHelpTitle heads the keys of the root in the help.
+const globalHelpTitle = "Global"
+
+// helpOverlayTitle is the title of the help among the open overlays.
+const helpOverlayTitle = "Help"
+
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
 var rootBindings = []key.Binding{zoomKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}

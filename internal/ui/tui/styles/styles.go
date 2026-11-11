@@ -29,6 +29,7 @@ type Styles struct {
 	HealthLabels map[string]lipgloss.Style
 	Help         help.Styles
 	HelpBox      lipgloss.Style
+	HelpTitle    lipgloss.Style
 }
 
 // New builds the styles of the screen from the roles of palette.
@@ -66,7 +67,8 @@ func New(palette *theme.Theme) *Styles {
 			FullSeparator:  muted,
 			Ellipsis:       muted,
 		},
-		HelpBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(primary.GetForeground()).Padding(0, 1),
+		HelpBox:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(primary.GetForeground()).Padding(0, 1),
+		HelpTitle: primary.Bold(true),
 	}
 }
 

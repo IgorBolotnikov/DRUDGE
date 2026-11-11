@@ -22,6 +22,8 @@ type Overlay interface {
 	// Mouse gets mouse events in the cells of the screen. The overlay ignores
 	// the ones outside its box.
 	Mouse(msg tea.MouseMsg) tea.Cmd
+	// Title heads the keys of the overlay in the help.
+	Title() string
 	// Keys are the keys the help lists while the overlay is on top.
 	Keys() []key.Binding
 	// ShortHelp is the hint the bottom bar shows while the overlay is on top.
@@ -101,6 +103,10 @@ func (overlay *viewOverlay) Mouse(msg tea.MouseMsg) tea.Cmd {
 	return overlay.tile.view.Update(inView)
 }
 
+func (overlay *viewOverlay) Title() string {
+	return overlay.tile.title
+}
+
 // Keys returns the keys the registry lists for the View, or none for a View
 // it does not know.
 func (overlay *viewOverlay) Keys() []key.Binding {
@@ -120,18 +126,31 @@ func (overlay *viewOverlay) Feeds() []views.Feed {
 	return viewFeeds(overlay.tile.view)
 }
 
-// helpOverlay is the box that lists keys in columns, centered over the whole
-// screen. It ignores keys and the mouse, and the root closes it.
+// helpSection is one titled list of keys in the help.
+type helpSection struct {
+	title string
+	keys  []key.Binding
+}
+
+// helpOverlay is the box that lists keys in titled sections one above
+// another, centered over the whole screen. It ignores keys and the mouse, and the root
+// closes it.
 type helpOverlay struct {
 	help         help.Model
 	boxStyle     lipgloss.Style
-	columns      [][]key.Binding
+	titleStyle   lipgloss.Style
+	sections     []helpSection
 	screenWidth  int
 	screenHeight int
 }
 
-func newHelpOverlay(keyHelp help.Model, boxStyle lipgloss.Style, columns [][]key.Binding) *helpOverlay {
-	return &helpOverlay{help: keyHelp, boxStyle: boxStyle, columns: columns}
+func newHelpOverlay(keyHelp help.Model, overlayStyles *styles.Styles, sections []helpSection) *helpOverlay {
+	return &helpOverlay{
+		help:       keyHelp,
+		boxStyle:   overlayStyles.HelpBox,
+		titleStyle: overlayStyles.HelpTitle,
+		sections:   sections,
+	}
 }
 
 func (overlay *helpOverlay) SetSize(screenWidth, screenHeight int) {
@@ -146,10 +165,30 @@ func (overlay *helpOverlay) Update(msg tea.Msg) tea.Cmd {
 // Render centers the box on the screen. A box bigger than the screen starts
 // at the top left corner.
 func (overlay *helpOverlay) Render() (box string, x, y int) {
-	box = overlay.boxStyle.Render(overlay.help.FullHelpView(overlay.columns))
+	box = overlay.boxStyle.Render(overlay.renderSections())
 	x = max((overlay.screenWidth-lipgloss.Width(box))/2, 0)
 	y = max((overlay.screenHeight-lipgloss.Height(box))/2, 0)
 	return box, x, y
+}
+
+// renderSections renders each section with keys as its title over its keys,
+// with a blank line between two sections. A section without keys is left out.
+func (overlay *helpOverlay) renderSections() string {
+	var blocks []string
+	for _, section := range overlay.sections {
+		if len(section.keys) == 0 {
+			continue
+		}
+		if len(blocks) > 0 {
+			blocks = append(blocks, "")
+		}
+		blocks = append(blocks, overlay.titleStyle.Render(section.title), overlay.help.FullHelpView([][]key.Binding{section.keys}))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, blocks...)
+}
+
+func (overlay *helpOverlay) Title() string {
+	return helpOverlayTitle
 }
 
 func (overlay *helpOverlay) Mouse(msg tea.MouseMsg) tea.Cmd {
