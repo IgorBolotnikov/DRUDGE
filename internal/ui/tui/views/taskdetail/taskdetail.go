@@ -63,6 +63,14 @@ const (
 	finishedLabel     = "Finished"
 )
 
+// fieldLabels holds the label of every field a task may have. The label
+// column takes the width of the widest of them, so it keeps its width from
+// task to task.
+var fieldLabels = []string{
+	titleLabel, idLabel, statusLabel, ticketLabel, parentLabel, blockedByLabel,
+	repositoriesLabel, pullRequestsLabel, createdLabel, updatedLabel, startedLabel, finishedLabel,
+}
+
 // Keys of the task detail. The scroll up key and the top key carry the help of
 // their pair.
 var (
@@ -241,16 +249,21 @@ func (view *View) renderFields(shown *task.Task) []string {
 	if len(fields)+minDescriptionLines > view.height {
 		return []string{view.renderFoldedFields(fields)}
 	}
-	labelWidth := 0
-	for _, entry := range fields {
-		labelWidth = max(labelWidth, ansi.StringWidth(entry.label))
-	}
+	labelWidth := labelColumnWidth()
 	lines := make([]string, 0, len(fields))
 	for _, entry := range fields {
 		label := view.styles.Muted.Render(cells.Fit(entry.label, labelWidth))
 		lines = append(lines, ansi.Truncate(label+labelGap+view.renderValue(entry), view.width, cells.Ellipsis))
 	}
 	return lines
+}
+
+func labelColumnWidth() int {
+	width := 0
+	for _, label := range fieldLabels {
+		width = max(width, ansi.StringWidth(label))
+	}
+	return width
 }
 
 // renderFoldedFields renders the values of every field on one line, cut at

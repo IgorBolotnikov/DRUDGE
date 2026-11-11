@@ -1,12 +1,12 @@
-Title         Add retry to uploader
-ID            3f9a1c2e
-Status        in-progress
-Ticket        UP-12
-Parent        5b20d7aa
-Blocked by    7c1e4f90, 9d8b2a11
-Repositories  api
-Created       2026-11-03 09:30
-Started       2026-11-03 10:30
+Title          Add retry to uploader
+ID             3f9a1c2e
+Status         in-progress
+Ticket         UP-12
+Parent         5b20d7aa
+Blocked by     7c1e4f90, 9d8b2a11
+Repositories   api
+Created        2026-11-03 09:30
+Started        2026-11-03 10:30
  Retry uploads                                                                                      
                                                                                                     
 The uploader gives up on the first network error. Retry it with a backoff.                          

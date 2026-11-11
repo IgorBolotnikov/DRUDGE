@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
@@ -141,6 +142,31 @@ func TestView_Status(t *testing.T) {
 			}
 			if got := view.Status(); got != testCase.want {
 				t.Errorf("expected status %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestView_LabelColumnKeepsWidth(t *testing.T) {
+	const wantValueCell = len("Pull requests") + len(labelGap)
+	cases := []struct {
+		name      string
+		taskID    task.TaskID
+		wantTitle string
+	}{
+		{name: "task with every field", taskID: shownTaskID, wantTitle: "Add retry to uploader"},
+		{name: "task with few fields", taskID: "a01f3b55-0000-0000-0000-000000000005", wantTitle: "Draft the release notes"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(100, 24)
+			view.Update(views.TasksLoadedMsg{Tasks: detailTasks()})
+			view.ShowTask(testCase.taskID)
+
+			titleLine, _, _ := strings.Cut(ansi.Strip(view.Render()), "\n")
+			if got := strings.Index(titleLine, testCase.wantTitle); got != wantValueCell {
+				t.Errorf("expected the title at cell %d, got it at %d in %q", wantValueCell, got, titleLine)
 			}
 		})
 	}
