@@ -340,10 +340,10 @@ func TestModel_Filter(t *testing.T) {
 		wantQuit      bool
 		golden        string
 	}{
-		{name: "matching ignores case", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR")), wantActiveTab: "Tasks", wantStatuses: []string{"/RETR 1/2"}, golden: "screen_filtered"},
-		{name: "a digit goes to the filter", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("2")), wantActiveTab: "Tasks", wantStatuses: []string{"/2 0/0"}},
-		{name: "root keys go to the filter", keys: []tea.Msg{tuitest.KeyFilter, keyQuit, keyNextTab, keyPreviousTab, keyRefresh, keyZoom}, wantActiveTab: "Tasks", wantStatuses: []string{"/q][rz 0/0"}},
-		{name: "ctrl+c quits from the filter", keys: []tea.Msg{tuitest.KeyFilter, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantActiveTab: "Tasks", wantStatuses: []string{"/ 1/5"}, wantQuit: true},
+		{name: "matching ignores case", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR")), wantActiveTab: "Tasks", wantStatuses: []string{"1/2"}, golden: "screen_filtered"},
+		{name: "a digit goes to the filter", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("2")), wantActiveTab: "Tasks", wantStatuses: []string{"0/0"}},
+		{name: "root keys go to the filter", keys: []tea.Msg{tuitest.KeyFilter, keyQuit, keyNextTab, keyPreviousTab, keyRefresh, keyZoom}, wantActiveTab: "Tasks", wantStatuses: []string{"0/0"}},
+		{name: "ctrl+c quits from the filter", keys: []tea.Msg{tuitest.KeyFilter, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantActiveTab: "Tasks", wantStatuses: []string{"1/5"}, wantQuit: true},
 		{name: "esc restores the full list", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR"), []tea.Msg{tuitest.KeyEscape}), wantActiveTab: "Tasks", wantStatuses: []string{"1/5"}},
 		{name: "a digit switches tabs after esc", keys: []tea.Msg{tuitest.KeyFilter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Board", wantStatuses: []string{"1/5"}},
 	}
@@ -365,7 +365,7 @@ func TestModel_Filter(t *testing.T) {
 			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
 				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
 			}
-			if got := model.ActiveTab().Statuses(); !slices.Equal(got, testCase.wantStatuses) {
+			if got := tileStatuses(model.ActiveTab()); !slices.Equal(got, testCase.wantStatuses) {
 				t.Errorf("expected statuses %q, got %q", testCase.wantStatuses, got)
 			}
 			if testCase.golden != "" {
@@ -752,7 +752,7 @@ func TestModel_Mouse(t *testing.T) {
 		{name: "a click on a scrolled tile counts from the first row in sight", msgs: []tea.Msg{wheelDownTop, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "3/5", "1/5", "1/5"}},
 		{name: "the wheel stops at the last row", msgs: []tea.Msg{wheelDownTop, wheelDownTop, wheelDownTop, clickTopFirstLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "2/5", "1/5", "1/5"}},
 		{name: "the wheel scrolls back up", msgs: []tea.Msg{wheelDownTop, wheelUpTop, clickTopFirstLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
-		{name: "a click at the cell of another tile goes to the zoomed tile", msgs: []tea.Msg{keyZoom, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"2/5"}},
+		{name: "a click at the cell of another tile goes to the zoomed tile", msgs: []tea.Msg{keyZoom, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"2/5", "1/5", "1/5", "1/5"}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -770,7 +770,7 @@ func TestModel_Mouse(t *testing.T) {
 			if got := activeTab.FocusedTile().title; got != testCase.wantFocusedTile {
 				t.Errorf("expected focus on tile %q, got %q", testCase.wantFocusedTile, got)
 			}
-			if got := activeTab.Statuses(); !slices.Equal(got, testCase.wantStatuses) {
+			if got := tileStatuses(activeTab); !slices.Equal(got, testCase.wantStatuses) {
 				t.Errorf("expected statuses %q, got %q", testCase.wantStatuses, got)
 			}
 			if testCase.golden != "" {
@@ -956,45 +956,27 @@ func TestModel_SuccessfulLoadClearsError(t *testing.T) {
 }
 
 func TestModel_BottomBar(t *testing.T) {
-	threeTiles := func(middleShowStatus *bool) Config {
-		return oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
-			{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: tasklist.Name, ShowStatus: middleShowStatus}}},
-			taskListNode(),
-		}})
-	}
 	cases := []struct {
 		name         string
 		width        int
-		config       Config
 		failFromCall int
 		warnings     []string
 		keys         []tea.KeyPressMsg
 	}{
-		{name: "bottom_bar_segments", width: 140, config: threeTiles(nil), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
-		{name: "bottom_bar_status_hidden", width: 140, config: threeTiles(new(false)), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+		{name: "bottom_bar_hint", width: 140, keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+		{name: "bottom_bar_filter_hides_hint", width: 140, keys: []tea.KeyPressMsg{tuitest.KeyFilter}},
 		{
 			name:         "bottom_bar_errors_and_warnings",
 			width:        240,
-			config:       threeTiles(nil),
 			failFromCall: 2,
 			warnings:     []string{`theme.json: "red" is not a color for role error, using the theme's own`},
 		},
-		{name: "bottom_bar_overflow_cuts_segments", width: 124, config: threeTiles(nil), failFromCall: 2},
-		{name: "bottom_bar_overflow_cuts_errors", width: 100, config: threeTiles(nil), failFromCall: 2},
-		{
-			name:         "bottom_bar_zoomed",
-			width:        280,
-			config:       threeTiles(nil),
-			failFromCall: 2,
-			warnings:     []string{`theme.json: "red" is not a color for role error, using the theme's own`},
-			keys:         []tea.KeyPressMsg{keyNextTile, tuitest.KeyDown, keyZoom},
-		},
-		{name: "bottom_bar_zoomed_status_hidden", width: 140, config: threeTiles(new(false)), keys: []tea.KeyPressMsg{keyNextTile, keyZoom}},
+		{name: "bottom_bar_overflow_cuts_errors", width: 60, failFromCall: 2},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: testCase.failFromCall}
-			model := newTestModelWithSource(t, source, buildTestTabs(t, testCase.config), testRefreshInterval, testCase.warnings)
+			model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, testCase.warnings)
 			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: 24})
 			refreshNow(model)
 			refreshNow(model)
@@ -1005,6 +987,43 @@ func TestModel_BottomBar(t *testing.T) {
 			tuitest.AssertGolden(t, testCase.name, lines[len(lines)-1])
 		})
 	}
+}
+
+func TestModel_TileStatuses(t *testing.T) {
+	threeTiles := func(middleShowStatus *bool) Config {
+		return oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{
+			{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: tasklist.Name, ShowStatus: middleShowStatus}}},
+			taskListNode(),
+		}})
+	}
+	cases := []struct {
+		name   string
+		config Config
+		keys   []tea.KeyPressMsg
+	}{
+		{name: "screen_tile_statuses", config: threeTiles(nil), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+		{name: "screen_tile_status_hidden", config: threeTiles(new(false)), keys: []tea.KeyPressMsg{tuitest.KeyDown, tuitest.KeyDown}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+			refreshNow(model)
+			for _, keyPress := range testCase.keys {
+				model.Update(keyPress)
+			}
+			tuitest.AssertGolden(t, testCase.name, model.View().Content)
+		})
+	}
+}
+
+// tileStatuses returns the status of every Tile of a Tab in tree order.
+func tileStatuses(tab *Tab) []string {
+	statuses := make([]string, 0, len(tab.tiles))
+	for _, tile := range tab.tiles {
+		statuses = append(statuses, tile.Status())
+	}
+	return statuses
 }
 
 func TestNewModel_NoTabs(t *testing.T) {

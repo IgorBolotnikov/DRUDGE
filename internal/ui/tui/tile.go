@@ -32,7 +32,8 @@ const (
 )
 
 // Tile is one rectangle of a Tab and a leaf of its layout. It draws a border
-// with its title in the top edge and clips the View to the space inside.
+// with its title in the top edge and the status of its View in the bottom
+// edge, and clips the View to the space inside.
 type Tile struct {
 	view          views.View
 	title         string
@@ -134,9 +135,36 @@ func (tile *Tile) Render() string {
 		}
 		lines = append(lines, left+cells.Fit(line, innerWidth)+right)
 	}
-	bottom := border.BottomLeft + strings.Repeat(border.Bottom, innerWidth) + border.BottomRight
-	lines = append(lines, borderStyle.Render(bottom))
+	lines = append(lines, tile.renderBottomEdge(border, innerWidth))
 	return strings.Join(lines, "\n")
+}
+
+// renderBottomEdge returns the bottom border with the status of the Tile in
+// it, one border cell before the corner. A status wider than the edge is cut
+// from the start.
+func (tile *Tile) renderBottomEdge(border lipgloss.Border, innerWidth int) string {
+	borderStyle := tile.borderStyle()
+	status := tile.Status()
+	if status == "" {
+		return borderStyle.Render(border.BottomLeft + strings.Repeat(border.Bottom, innerWidth) + border.BottomRight)
+	}
+	trail := ansi.Truncate(border.Bottom, innerWidth, "")
+	trailWidth := ansi.StringWidth(trail)
+	status = cutStart(" "+status+" ", innerWidth-trailWidth)
+	statusWidth := ansi.StringWidth(status)
+	rest := strings.Repeat(border.Bottom, innerWidth-trailWidth-statusWidth)
+	return borderStyle.Render(border.BottomLeft+rest) +
+		tile.styles.Muted.Render(status) +
+		borderStyle.Render(trail+border.BottomRight)
+}
+
+// cutStart cuts cells from the start of text until it fits in width.
+func cutStart(text string, width int) string {
+	overflow := ansi.StringWidth(text) - width
+	if overflow <= 0 {
+		return text
+	}
+	return ansi.TruncateLeft(text, overflow, "")
 }
 
 // borderStyle returns the style of the border. A focused Tile takes the focus

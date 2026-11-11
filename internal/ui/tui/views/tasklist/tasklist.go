@@ -58,11 +58,10 @@ const (
 )
 
 // Status segments of the task list: the number of the cursor row and the
-// task count, after the filter while it is open.
+// task count.
 const (
-	statusFormat         = "%d/%d"
-	noTasksStatus        = "0/0"
-	filteredStatusFormat = "%s%s %s"
+	statusFormat  = "%d/%d"
+	noTasksStatus = "0/0"
 )
 
 // Lines above the rows: the filter while it is open and the header.
@@ -182,22 +181,17 @@ func (view *View) TakesAllKeys() bool {
 	return view.isFiltering
 }
 
-// Status returns the number of the cursor row and the row count, like 12/200,
-// after the filter while it is open, like /retry 1/3. It is empty until the
-// tasks load.
+// Status returns the number of the cursor row and the count of the rows that
+// pass the filter, like 12/200. It is empty until the tasks load.
 func (view *View) Status() string {
 	if !view.hasTasks {
 		return ""
 	}
-	position := noTasksStatus
-	if len(view.rows) > 0 {
-		cursorNumber := view.cursor + 1
-		position = fmt.Sprintf(statusFormat, cursorNumber, len(view.rows))
+	if len(view.rows) == 0 {
+		return noTasksStatus
 	}
-	if view.isFiltering {
-		return fmt.Sprintf(filteredStatusFormat, filterPrompt, view.filter.Value(), position)
-	}
-	return position
+	cursorNumber := view.cursor + 1
+	return fmt.Sprintf(statusFormat, cursorNumber, len(view.rows))
 }
 
 func (view *View) SetSize(width, height int) {

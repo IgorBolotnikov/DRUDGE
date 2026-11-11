@@ -224,23 +224,6 @@ func (tab *Tab) OpenTask(id task.TaskID) (isShown bool) {
 	return false
 }
 
-// Statuses returns the status segments of the Tiles in tree order. It leaves
-// out the empty ones. A zoomed Tab returns only the segment of the focused
-// Tile.
-func (tab *Tab) Statuses() []string {
-	shownTiles := tab.tiles
-	if tab.isZoomed {
-		shownTiles = []*Tile{tab.FocusedTile()}
-	}
-	var statuses []string
-	for _, tile := range shownTiles {
-		if status := tile.Status(); status != "" {
-			statuses = append(statuses, status)
-		}
-	}
-	return statuses
-}
-
 // HasRoomForTiles reports whether every Tile shown got space for its View at
 // the size the Tab last got. A zoomed Tab shows only the focused Tile.
 func (tab *Tab) HasRoomForTiles() bool {

@@ -48,12 +48,8 @@ const loadErrorFormat = "could not load %s: %v"
 // checkErrorFormat is the error of the last Drudger check in the bottom bar.
 const checkErrorFormat = "could not check Drudgers: %v"
 
-// warningSeparator joins the load errors and the warnings of the bottom bar,
-// and puts them after the status segments.
+// warningSeparator joins the load errors and the warnings of the bottom bar.
 const warningSeparator = "  "
-
-// statusSeparator joins the status segments of the bottom bar.
-const statusSeparator = " · "
 
 // spreadGap is how many spaces a bar keeps between its left and its right
 // part.
@@ -611,22 +607,15 @@ func renderTabLabel(index int, title string) string {
 	return fmt.Sprintf(tabLabelFormat, title)
 }
 
-// renderBottomBar shows the status segments of the active Tab, the load
-// errors and the warnings on the left and the help hint on the right. The hint
-// is left out while the focused View takes all keys, since the help key goes
-// to the View then. While the task overlay is open, the bar shows the segment
-// of the overlay in place of the segments of the Tab and the key that closes
-// the overlay as the hint.
+// renderBottomBar shows the load errors and the warnings on the left and the
+// help hint on the right. The hint is left out while the focused View takes
+// all keys, since the help key goes to the View then. While the task overlay
+// is open, the hint is the key that closes the overlay.
 func (model *Model) renderBottomBar() string {
 	hints := ""
-	shownStatuses := model.ActiveTab().Statuses()
 	switch {
 	case model.taskOverlay.isOpen:
 		hints = model.help.ShortHelpView([]key.Binding{closeTaskKey})
-		shownStatuses = nil
-		if status := model.taskOverlay.tile.Status(); status != "" {
-			shownStatuses = []string{status}
-		}
 	case !model.ActiveTab().TakesAllKeys():
 		hints = model.help.ShortHelpView(model.keyMap().ShortHelp())
 	}
@@ -634,13 +623,7 @@ func (model *Model) renderBottomBar() string {
 	for _, warning := range model.warnings {
 		notices = append(notices, model.renderWarning(warning))
 	}
-	statuses := ""
-	if len(shownStatuses) > 0 {
-		statuses = model.styles.Muted.Render(strings.Join(shownStatuses, statusSeparator))
-	}
-	room := model.width - ansi.StringWidth(hints) - spreadGap
-	left := joinStatusLine(statuses, strings.Join(notices, warningSeparator), room)
-	return spread(left, hints, model.width)
+	return spread(strings.Join(notices, warningSeparator), hints, model.width)
 }
 
 // renderLoadErrors returns the errors of the last loads of the project, in
@@ -665,24 +648,6 @@ func (model *Model) renderLoadError(message string) string {
 
 func (model *Model) renderWarning(warning string) string {
 	return model.styles.Warning.Render(warningPrefix + warning)
-}
-
-// joinStatusLine puts the notices after the status segments within room
-// cells. It cuts the status segments from the end first and drops them when
-// the notices alone do not fit. It leaves the notices whole for the bar to
-// cut.
-func joinStatusLine(statuses, notices string, room int) string {
-	switch {
-	case statuses == "":
-		return notices
-	case notices == "":
-		return statuses
-	}
-	statusRoom := room - ansi.StringWidth(notices) - len(warningSeparator)
-	if statusRoom <= 0 {
-		return notices
-	}
-	return ansi.Truncate(statuses, statusRoom, cells.Ellipsis) + warningSeparator + notices
 }
 
 // spread lays out one line with one text at its start and another at its end.

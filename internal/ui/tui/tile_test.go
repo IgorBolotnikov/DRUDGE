@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 )
 
@@ -79,6 +81,32 @@ func TestTile_RenderBorderStyle(t *testing.T) {
 			hasFocusBorder := ok && strings.HasPrefix(got, "╰")
 			if hasFocusBorder != testCase.wantFocusLine {
 				t.Errorf("expected the focus border on the bottom edge to be %v, got %v in %q", testCase.wantFocusLine, hasFocusBorder, bottomEdge)
+			}
+		})
+	}
+}
+
+func TestTile_RenderBottomEdge(t *testing.T) {
+	cases := []struct {
+		name          string
+		status        string
+		width         int
+		isStatusShown bool
+		want          string
+	}{
+		{name: "status before the corner", status: "1/5", width: 12, isStatusShown: true, want: "╰──── 1/5 ─╯"},
+		{name: "status cut from the start", status: "3f9a1c2e 40%", width: 12, isStatusShown: true, want: "╰1c2e 40% ─╯"},
+		{name: "empty status", status: "", width: 12, isStatusShown: true, want: "╰──────────╯"},
+		{name: "hidden status", status: "1/5", width: 12, isStatusShown: false, want: "╰──────────╯"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tile := NewTile(&sizeView{name: testCase.status}, "a", tuitest.Styles(), 1, testCase.isStatusShown)
+			tile.SetSize(testCase.width, 5)
+
+			lines := strings.Split(tile.Render(), "\n")
+			if got := ansi.Strip(lines[len(lines)-1]); got != testCase.want {
+				t.Errorf("expected the bottom edge %q, got %q", testCase.want, got)
 			}
 		})
 	}

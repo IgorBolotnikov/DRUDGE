@@ -86,7 +86,7 @@ type TabConfig struct {
 // NodeConfig describes one node of a layout. A split sets Arrangement and
 // Children. A Tile sets View and may set Title, ShowStatus and ViewOptions. A
 // weight of 0 is the default weight. A Tile with no status setting shows its
-// status segment. ViewOptions holds the options of the View as decoded from
+// status. ViewOptions holds the options of the View as decoded from
 // JSON, by option name.
 type NodeConfig struct {
 	Arrangement Arrangement
@@ -197,7 +197,7 @@ func buildSplit(nodeConfig NodeConfig, weight float64, path string, screenStyles
 		return nil, fmt.Errorf("%s.title: only a tile has a title, move it to a tile of the split", path)
 	}
 	if nodeConfig.ShowStatus != nil {
-		return nil, fmt.Errorf("%s.showStatus: only a tile has a status segment, move it to a tile of the split", path)
+		return nil, fmt.Errorf("%s.showStatus: only a tile has a status, move it to a tile of the split", path)
 	}
 	if nodeConfig.ViewOptions != nil {
 		return nil, fmt.Errorf("%s.viewOptions: only a tile has view options, move them to a tile of the split", path)

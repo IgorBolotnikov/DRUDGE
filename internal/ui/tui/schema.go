@@ -91,7 +91,7 @@ const schemaTemplate = `{
           "default": 1
         },
         "showStatus": {
-          "description": "Whether the tile shows its status segment on the left of the bottom bar. Only a tile has a status segment.",
+          "description": "Whether the tile shows the status of its view in its bottom border. Only a tile has a status.",
           "type": "boolean",
           "default": true
         },

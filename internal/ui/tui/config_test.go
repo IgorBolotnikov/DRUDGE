@@ -68,7 +68,7 @@ func TestBuildTabs_RefusesConfig(t *testing.T) {
 			name:       "split with a status setting",
 			config:     oneTabConfig(NodeConfig{Arrangement: Stacked, ShowStatus: new(false), Children: []NodeConfig{taskListNode(), taskListNode()}}),
 			wantPath:   "tabs[0].layout.showStatus: ",
-			wantReason: "only a tile has a status segment",
+			wantReason: "only a tile has a status",
 		},
 		{
 			name:       "split with one child",

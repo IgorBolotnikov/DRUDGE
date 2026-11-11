@@ -1,0 +1,24 @@
+ 1 Tab                                                                                              
+╭─ ▸ task-list ──────────────────────────────────╮╭─ task-list ────────────────────────────────────╮
+│  STATUS         ID        TITLE                ││  STATUS         ID        TITLE                │
+│  in-progress    3f9a1c2e  Add retry to uploader││▸ in-progress    3f9a1c2e  Add retry to uploader│
+│    done         5b20d7aa    Write the backoff  ││    done         5b20d7aa    Write the backoff  │
+│▸ todo           7c1e4f90  Wire retries into th…││  todo           7c1e4f90  Wire retries into th…│
+│  fucked-up      9d8b2a11  Fix the flaky upload…││  fucked-up      9d8b2a11  Fix the flaky upload…│
+│  draft          a01f3b55  Draft the release no…││  draft          a01f3b55  Draft the release no…│
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+╰────────────────────────────────────────── 3/5 ─╯╰────────────────────────────────────────────────╯
+╭─ task-list ──────────────────────────────────────────────────────────────────────────────────────╮
+│  STATUS         ID        TITLE                                      BLOCKED BY  TICKET  PARENT  │
+│▸ in-progress    3f9a1c2e  Add retry to uploader                                  UP-12           │
+│    done         5b20d7aa    Write the backoff                                            3f9a1c2e│
+│  todo           7c1e4f90  Wire retries into the CLI                  3f9a1c2e                    │
+│  fucked-up      9d8b2a11  Fix the flaky upload test that fails on …              UP-7            │
+│  draft          a01f3b55  Draft the release notes                                                │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────── 1/5 ─╯
+                                                                                              ? help

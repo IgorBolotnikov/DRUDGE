@@ -8,5 +8,5 @@
 │  draft          a01f3b55  Draft the release notes                                                │
 │                                                                                                  │
 │                                                                                                  │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-1/5  ! theme.json: "red" is not a color for role error, using the theme's own                 ? help
+╰──────────────────────────────────────────────────────────────────────────────────────────── 1/5 ─╯
+! theme.json: "red" is not a color for role error, using the theme's own                      ? help

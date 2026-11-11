@@ -21,8 +21,8 @@ type View interface {
 	// TakesAllKeys reports whether the View gets every key, the keys of the
 	// root among them, like while a filter input is open.
 	TakesAllKeys() bool
-	// Status is a short plain-text segment the bottom bar shows for the Tile
-	// of the View. An empty string shows nothing.
+	// Status is a short plain-text segment the Tile of the View shows in its
+	// bottom border. An empty string shows nothing.
 	Status() string
 }
 
