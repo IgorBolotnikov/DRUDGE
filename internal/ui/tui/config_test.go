@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"maps"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -168,39 +171,26 @@ func TestBuildTabs_ViewOptions(t *testing.T) {
 	}
 }
 
-func TestConfig_RefreshInterval(t *testing.T) {
-	cases := []struct {
-		name               string
-		dataRefreshSeconds float64
-		want               time.Duration
-	}{
-		{name: "unset gives the default", want: 2 * time.Second},
-		{name: "whole seconds", dataRefreshSeconds: 5, want: 5 * time.Second},
-		{name: "a fraction", dataRefreshSeconds: 0.25, want: 250 * time.Millisecond},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			config := Config{DataRefreshSeconds: testCase.dataRefreshSeconds}
-			if got := config.RefreshInterval(); got != testCase.want {
-				t.Errorf("expected %s, got %s", testCase.want, got)
-			}
-		})
-	}
-}
-
 func TestConfig_Intervals(t *testing.T) {
 	cases := []struct {
 		name   string
 		config Config
-		want   Intervals
+		want   map[views.FeedName]time.Duration
 	}{
-		{name: "unset gives the defaults", want: Intervals{Refresh: 2 * time.Second, DrudgerCheck: 30 * time.Second}},
-		{name: "both set", config: Config{DataRefreshSeconds: 0.5, DrudgerCheckSeconds: 10}, want: Intervals{Refresh: 500 * time.Millisecond, DrudgerCheck: 10 * time.Second}},
+		{
+			name: "unset gives the defaults",
+			want: map[views.FeedName]time.Duration{views.TasksFeed: 2 * time.Second, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 30 * time.Second, views.SessionsFeed: 5 * time.Second},
+		},
+		{
+			name:   "a missing feed takes its default",
+			config: Config{RefreshSeconds: map[views.FeedName]float64{views.TasksFeed: 0.25, views.DrudgerCheckFeed: 10}},
+			want:   map[views.FeedName]time.Duration{views.TasksFeed: 250 * time.Millisecond, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 10 * time.Second, views.SessionsFeed: 5 * time.Second},
+		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := testCase.config.Intervals(); got != testCase.want {
-				t.Errorf("expected %+v, got %+v", testCase.want, got)
+			if got := testCase.config.Intervals(); !maps.Equal(got, testCase.want) {
+				t.Errorf("expected %v, got %v", testCase.want, got)
 			}
 		})
 	}
@@ -220,7 +210,7 @@ func TestConfig_MouseMode(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := oneTabConfig(taskListNode())
 			config.CaptureMouse = testCase.captureMouse
-			model, err := NewModel(testProject, Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil)
+			model, err := NewModel(testProject, feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -284,8 +274,8 @@ func TestBuildTabs_Screen(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
-			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
 )
 
@@ -46,29 +47,24 @@ func TestParseConfig(t *testing.T) {
 			want: Config{Tabs: []TabConfig{{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name}}}},
 		},
 		{
-			name: "a data refresh in whole seconds",
-			data: `{"dataRefreshSeconds": 5}`,
-			want: Config{DataRefreshSeconds: 5},
+			name: "a refresh in whole seconds",
+			data: `{"refreshSeconds": {"tasks": 5}}`,
+			want: Config{RefreshSeconds: map[views.FeedName]float64{views.TasksFeed: 5}},
 		},
 		{
-			name: "a data refresh that is a fraction",
-			data: `{"dataRefreshSeconds": 0.5}`,
-			want: Config{DataRefreshSeconds: 0.5},
+			name: "refreshes that are fractions",
+			data: `{"refreshSeconds": {"tasks": 0.5, "drudgers": 0.25, "drudgerCheck": 1.5, "sessions": 2.5}}`,
+			want: Config{RefreshSeconds: map[views.FeedName]float64{views.TasksFeed: 0.5, views.DrudgersFeed: 0.25, views.DrudgerCheckFeed: 1.5, views.SessionsFeed: 2.5}},
 		},
 		{
-			name: "a data refresh at the minimum",
-			data: `{"dataRefreshSeconds": 0.1}`,
-			want: Config{DataRefreshSeconds: 0.1},
+			name: "refreshes at their minimums",
+			data: `{"refreshSeconds": {"tasks": 0.1, "drudgerCheck": 1}}`,
+			want: Config{RefreshSeconds: map[views.FeedName]float64{views.TasksFeed: 0.1, views.DrudgerCheckFeed: 1}},
 		},
 		{
-			name: "a Drudger check",
-			data: `{"drudgerCheckSeconds": 60}`,
-			want: Config{DrudgerCheckSeconds: 60},
-		},
-		{
-			name: "a Drudger check at the minimum",
-			data: `{"drudgerCheckSeconds": 1}`,
-			want: Config{DrudgerCheckSeconds: 1},
+			name: "an empty refresh object",
+			data: `{"refreshSeconds": {}}`,
+			want: Config{RefreshSeconds: map[views.FeedName]float64{}},
 		},
 		{
 			name: "mouse capture off",
@@ -101,34 +97,34 @@ func TestParseConfig(t *testing.T) {
 			wantErr: "tabs[0].layout.viewOptions: expected an object, got an array",
 		},
 		{
-			name:    "a data refresh below the minimum",
-			data:    `{"dataRefreshSeconds": 0.05}`,
-			wantErr: "dataRefreshSeconds: 0.05 is below the minimum of 0.1, use 0.1 or more seconds",
+			name:    "a refresh below the minimum",
+			data:    `{"refreshSeconds": {"tasks": 0.05}}`,
+			wantErr: "refreshSeconds.tasks: 0.05 is below the minimum of 0.1, use 0.1 or more seconds",
 		},
 		{
-			name:    "a data refresh of 0",
-			data:    `{"dataRefreshSeconds": 0}`,
-			wantErr: "dataRefreshSeconds: 0 is below the minimum of 0.1, use 0.1 or more seconds",
+			name:    "a refresh of 0",
+			data:    `{"refreshSeconds": {"sessions": 0}}`,
+			wantErr: "refreshSeconds.sessions: 0 is below the minimum of 0.1, use 0.1 or more seconds",
 		},
 		{
-			name:    "a data refresh that is a string",
-			data:    `{"dataRefreshSeconds": "2"}`,
-			wantErr: "dataRefreshSeconds: expected a number, got a string",
+			name:    "a Drudger check below its own minimum",
+			data:    `{"refreshSeconds": {"drudgerCheck": 0.5}}`,
+			wantErr: "refreshSeconds.drudgerCheck: 0.5 is below the minimum of 1, use 1 or more seconds",
 		},
 		{
-			name:    "a Drudger check below the minimum",
-			data:    `{"drudgerCheckSeconds": 0}`,
-			wantErr: "drudgerCheckSeconds: 0 is below the minimum of 1, use 1 or more seconds",
+			name:    "a refresh of a feed no kind has",
+			data:    `{"refreshSeconds": {"logs": 1}}`,
+			wantErr: "refreshSeconds.logs: unknown key, use one of: tasks, drudgers, drudgerCheck, sessions",
 		},
 		{
-			name:    "a Drudger check that is a fraction",
-			data:    `{"drudgerCheckSeconds": 2.5}`,
-			wantErr: "drudgerCheckSeconds: 2.5 is not a whole number, use whole seconds like 30",
+			name:    "a refresh that is a string",
+			data:    `{"refreshSeconds": {"tasks": "2"}}`,
+			wantErr: "refreshSeconds.tasks: expected a number, got a string",
 		},
 		{
-			name:    "a Drudger check that is a string",
-			data:    `{"drudgerCheckSeconds": "30"}`,
-			wantErr: "drudgerCheckSeconds: expected a number, got a string",
+			name:    "refreshes that are a number",
+			data:    `{"refreshSeconds": 2}`,
+			wantErr: "refreshSeconds: expected an object, got a number",
 		},
 		{
 			name:    "a mouse capture that is a string",
@@ -158,7 +154,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "an unknown key at the top",
 			data:    `{"tab": []}`,
-			wantErr: "tab: unknown key, use one of: $schema, tabs, dataRefreshSeconds, drudgerCheckSeconds, captureMouse",
+			wantErr: "tab: unknown key, use one of: $schema, tabs, refreshSeconds, captureMouse",
 		},
 		{
 			name:    "an unknown key in a tab",

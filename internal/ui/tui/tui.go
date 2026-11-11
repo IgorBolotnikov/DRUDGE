@@ -9,29 +9,10 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
-	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 )
-
-// TaskSource lists the tasks of a project.
-type TaskSource interface {
-	ListTasks(projectSlug string, filter task.ListTasksFilter, page int, size int) (common.Page[task.ListedTask], error)
-}
-
-// DrudgerSource reads the Drudgers of a project as the Drudger file records
-// them, and checks them the way drg drudger list does.
-type DrudgerSource interface {
-	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
-	ListDrudgers(projectSlug string, page int, size int) (common.Page[*drudger.Drudger], error)
-}
-
-// Sources are the services the root reads its data from.
-type Sources struct {
-	Tasks    TaskSource
-	Drudgers DrudgerSource
-}
 
 // silentProgress drops every event a service reports.
 type silentProgress struct{}
@@ -69,7 +50,7 @@ func Run() error {
 	if !palette.IsColorOn(theme.Stdout) {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
-	sources := Sources{Tasks: services.Tasks, Drudgers: services.Drudgers}
+	sources := feeds.Sources{Tasks: services.Tasks, Drudgers: services.Drudgers}
 	model, err := NewModel(shownProject, sources, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
 	if err != nil {
 		return err

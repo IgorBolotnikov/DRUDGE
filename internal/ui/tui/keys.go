@@ -7,8 +7,6 @@ var (
 	helpKey         = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help"))
 	quitKey         = key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit"))
 	interruptKey    = key.NewBinding(key.WithKeys("ctrl+c"))
-	refreshKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
-	checkKey        = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "check drudgers"))
 	tabNumberKey    = key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"), key.WithHelp("1-9", "tab"))
 	nextTabKey      = key.NewBinding(key.WithKeys("]"), key.WithHelp("[/]", "prev/next tab"))
 	previousTabKey  = key.NewBinding(key.WithKeys("["))
@@ -26,7 +24,7 @@ var closeOverlayKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "c
 
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
-var rootBindings = []key.Binding{zoomKey, refreshKey, checkKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
+var rootBindings = []key.Binding{zoomKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
 
 // overlayBindings are the keys of the root the help lists while an overlay is
 // on top.

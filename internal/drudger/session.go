@@ -42,6 +42,13 @@ const (
 // TODO: move it to the config
 const sessionStaleAfter = 5 * time.Minute
 
+// A check of every Session of a project lists the in-progress tasks on one
+// page.
+const (
+	firstPage    = 1
+	allOnOnePage = 0
+)
+
 // errNoRunDirectory reports a task that has no run directory,
 // and therefore no Session to check.
 var errNoRunDirectory = errors.New("no run directory")
@@ -105,10 +112,54 @@ func (service *DrudgerService) SessionStatus(projectSlug string, requestedID tas
 		return nil, err
 	}
 
-	report, err := readSessionReport(service.runReader(), layout, tracked.ID, time.Now().UTC())
+	session, err := service.checkSession(projectSlug, tracked, layout)
 	if errors.Is(err, errNoRunDirectory) {
 		return nil, fmt.Errorf("task %s is %q and has no run to report on, run it first", tracked.ID, tracked.Status)
 	}
+	return session, err
+}
+
+// SessionCheckFailed reports an in-progress task whose Session could not be
+// checked. The check goes on with the other tasks.
+type SessionCheckFailed struct {
+	TaskID task.TaskID
+	Err    error
+}
+
+// RecordFinishedSessions checks the last Session of every in-progress task of
+// a project the way SessionStatus does, and records the outcome of each one
+// that finished. It reports a task it cannot check and goes on with the
+// others. It returns the IDs of the tasks whose status changed.
+func (service *DrudgerService) RecordFinishedSessions(projectSlug string) ([]task.TaskID, error) {
+	inProgress := task.StatusInProgress
+	listed, err := service.tasks.ListTasks(projectSlug, task.ListTasksFilter{Status: &inProgress}, firstPage, allOnOnePage)
+	if err != nil {
+		return nil, err
+	}
+
+	layout, err := service.layout()
+	if err != nil {
+		return nil, err
+	}
+
+	var changedIDs []task.TaskID
+	for _, row := range listed.Items {
+		session, err := service.checkSession(projectSlug, row.Task, layout)
+		if err != nil {
+			service.progress.Report(SessionCheckFailed{TaskID: row.Task.ID, Err: err})
+			continue
+		}
+		if session.Task.Status != inProgress {
+			changedIDs = append(changedIDs, row.Task.ID)
+		}
+	}
+	return changedIDs, nil
+}
+
+// checkSession reads the run of a task and records the outcome of its
+// Session when it finished.
+func (service *DrudgerService) checkSession(projectSlug string, tracked *task.Task, layout projectLayout) (*TaskSession, error) {
+	report, err := readSessionReport(service.runReader(), layout, tracked.ID, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}

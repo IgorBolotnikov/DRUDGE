@@ -9,6 +9,11 @@ import (
 	"charm.land/bubbles/v2/key"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgercheck"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgers"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/sessions"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/tasks"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
@@ -66,6 +71,35 @@ var viewKinds = []viewKind{
 			return tasklist.New(viewStyles, task.TaskStatus(options[tasklist.StatusOption]))
 		},
 	},
+}
+
+// feedKinds lists every kind of feed a View can subscribe to. The bottom bar
+// shows the errors of the feeds in this order.
+var feedKinds = []feeds.Kind{
+	tasks.Kind,
+	drudgers.Kind,
+	drudgercheck.Kind,
+	sessions.Kind,
+}
+
+// findFeedKind returns the kind of feed called name. ok is false for a name
+// no feed has.
+func findFeedKind(name views.FeedName) (kind feeds.Kind, ok bool) {
+	for _, kind := range feedKinds {
+		if kind.Name == name {
+			return kind, true
+		}
+	}
+	return feeds.Kind{}, false
+}
+
+// feedKindNames returns the names of every kind of feed.
+func feedKindNames() []string {
+	names := make([]string, 0, len(feedKinds))
+	for _, kind := range feedKinds {
+		names = append(names, string(kind.Name))
+	}
+	return names
 }
 
 // findViewKind returns the kind of View called name. ok is false for a name no

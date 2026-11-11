@@ -1,6 +1,6 @@
 // Package views holds what the View of every Tile has in common: the View
-// interface, the options of a View and the messages that carry data to
-// Views. Each View lives in a package of its own below it.
+// interface, the options of a View, the feeds a View subscribes to and the
+// messages that carry data to Views. Each View lives in a package of its own below it.
 package views
 
 import (
@@ -10,8 +10,8 @@ import (
 )
 
 // View is what a Tile shows. It renders within the size it last got and
-// never calls a service. The root model sends it the data it shows as
-// messages.
+// never calls a service. The root model sends it the data of the feeds it
+// subscribes to as messages.
 type View interface {
 	// Name is the kind of the View, shown as the title of its Tile.
 	Name() string
@@ -39,4 +39,11 @@ type Opener interface {
 	// Open shows what msg asks for. isShown is false for a message the View
 	// can't show.
 	Open(msg OpenMsg) (isShown bool)
+}
+
+// Subscriber is a View that shows the data of feeds.
+type Subscriber interface {
+	View
+	// Feeds returns the feeds the View shows right now.
+	Feeds() []Feed
 }

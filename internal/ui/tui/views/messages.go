@@ -32,6 +32,14 @@ type DrudgersCheckedMsg struct {
 	Err         error
 }
 
+// SessionsCheckedMsg carries the tasks whose status a check of the Sessions
+// of a project changed, or the error the check failed with.
+type SessionsCheckedMsg struct {
+	ProjectSlug    string
+	ChangedTaskIDs []task.TaskID
+	Err            error
+}
+
 // TaskSelectedMsg tells the Tab of a View that the cursor of the View moved
 // onto a task.
 type TaskSelectedMsg struct {

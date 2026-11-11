@@ -2,6 +2,7 @@ package drudger
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -843,4 +844,109 @@ func TestDrudgerService_SessionStatus_ReportsWithoutRecordingOnAHeldTask(t *test
 	if !recorded.FinishedAt.IsZero() {
 		t.Error("expected nothing to be recorded on a task another command holds")
 	}
+}
+
+func TestDrudgerService_RecordFinishedSessions(t *testing.T) {
+	// sessionRun is the run of one task. A nil stream stands for a task with
+	// no run directory.
+	type sessionRun struct {
+		id     task.TaskID
+		status task.TaskStatus
+		stream []string
+		exit   string
+	}
+	cases := []struct {
+		name string
+		runs []sessionRun
+
+		wantStatuses   map[task.TaskID]task.TaskStatus
+		wantChangedIDs []task.TaskID
+		wantFailedIDs  []task.TaskID
+	}{
+		{
+			name: "a finished Session gets recorded",
+			runs: []sessionRun{
+				{id: "task-1", status: task.StatusInProgress, stream: []string{initEvent, resultEvent}, exit: "0\n"},
+			},
+			wantStatuses:   map[task.TaskID]task.TaskStatus{"task-1": task.StatusDone},
+			wantChangedIDs: []task.TaskID{"task-1"},
+		},
+		{
+			name: "a running Session is left alone",
+			runs: []sessionRun{
+				{id: "task-1", status: task.StatusInProgress, stream: []string{initEvent, assistantEvent}, exit: noExitFile},
+			},
+			wantStatuses: map[task.TaskID]task.TaskStatus{"task-1": task.StatusInProgress},
+		},
+		{
+			name: "a task that is not in progress is left alone",
+			runs: []sessionRun{
+				{id: "task-1", status: task.StatusFuckedUp, stream: []string{initEvent, resultEvent}, exit: "0\n"},
+			},
+			wantStatuses: map[task.TaskID]task.TaskStatus{"task-1": task.StatusFuckedUp},
+		},
+		{
+			name: "a run that can't be read is reported and the others go on",
+			runs: []sessionRun{
+				{id: "task-1", status: task.StatusInProgress, stream: []string{initEvent}, exit: "killed\n"},
+				{id: "task-2", status: task.StatusInProgress},
+				{id: "task-3", status: task.StatusInProgress, stream: []string{initEvent}, exit: "1\n"},
+			},
+			wantStatuses: map[task.TaskID]task.TaskStatus{
+				"task-1": task.StatusInProgress,
+				"task-2": task.StatusInProgress,
+				"task-3": task.StatusFuckedUp,
+			},
+			wantChangedIDs: []task.TaskID{"task-3"},
+			wantFailedIDs:  []task.TaskID{"task-1", "task-2"},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			tasks := make([]*task.Task, 0, len(testCase.runs))
+			for _, run := range testCase.runs {
+				tracked := runningTask()
+				tracked.ID = run.id
+				tracked.Status = run.status
+				tasks = append(tasks, tracked)
+			}
+			service := newTestService(tasks...)
+			for _, run := range testCase.runs {
+				if run.stream == nil {
+					continue
+				}
+				service.runs.writeStream(run.id, run.stream...)
+				if run.exit != noExitFile {
+					service.runs.writeExit(run.id, run.exit)
+				}
+			}
+
+			changedIDs, err := service.RecordFinishedSessions(testProjectSlug)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !slices.Equal(sortedIDs(changedIDs), testCase.wantChangedIDs) {
+				t.Errorf("expected changed tasks %v, got %v", testCase.wantChangedIDs, changedIDs)
+			}
+			var failedIDs []task.TaskID
+			for _, failed := range reportedEvents[SessionCheckFailed](service.progress) {
+				failedIDs = append(failedIDs, failed.TaskID)
+			}
+			if !slices.Equal(sortedIDs(failedIDs), testCase.wantFailedIDs) {
+				t.Errorf("expected failed checks of %v, got %v", testCase.wantFailedIDs, failedIDs)
+			}
+			for id, wantStatus := range testCase.wantStatuses {
+				if stored := service.taskRepo.stored(id); stored.Status != wantStatus {
+					t.Errorf("expected task %s %q, got %q", id, wantStatus, stored.Status)
+				}
+			}
+		})
+	}
+}
+
+func sortedIDs(ids []task.TaskID) []task.TaskID {
+	return slices.Sorted(slices.Values(ids))
 }

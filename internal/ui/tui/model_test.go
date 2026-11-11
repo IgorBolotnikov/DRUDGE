@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -16,8 +17,10 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
@@ -27,11 +30,17 @@ var testProject = &project.Project{Slug: "uploader", Name: "Uploader"}
 
 var errDiskOnFire = errors.New("disk on fire")
 
-// testRefreshInterval is long enough that no tick comes during a test that
-// refreshes with the refresh key.
-const testRefreshInterval = time.Hour
+// Intervals of the feeds in the tests. A test that runs commands itself
+// drops every tick, so its feeds tick right away. A feed of a running program
+// ticks after the long interval, or several times during a test after the
+// short one.
+const (
+	instantInterval = time.Nanosecond
+	longInterval    = time.Hour
+	shortInterval   = 10 * time.Millisecond
+)
 
-// waitTimeout caps how long a test waits for a load of a running program.
+// waitTimeout caps how long a test waits for a run of a running program.
 const waitTimeout = 5 * time.Second
 
 // fakeTaskSource lists its tasks. The call numbered failFromCall and every
@@ -59,18 +68,19 @@ func (source *fakeTaskSource) ListTasks(projectSlug string, filter task.ListTask
 	return common.Paginate(source.tasks, page, size)
 }
 
-// fakeDrudgerSource reads and checks its Drudgers. A read sends its number on
-// startedReads and a check sends its number on startedChecks when they are
-// set. A check waits for releaseChecks when it is set. A check fails with
-// checkErr.
+// fakeDrudgerSource reads and checks its Drudgers and checks the Sessions.
+// Each call sends its number on its started channel when it is set. A check
+// waits for releaseChecks when it is set. A check fails with checkErr.
 type fakeDrudgerSource struct {
-	drudgers      []*drudger.Drudger
-	checkErr      error
-	startedReads  chan int
-	startedChecks chan int
-	releaseChecks chan struct{}
-	readCount     atomic.Int32
-	checkCount    atomic.Int32
+	drudgers             []*drudger.Drudger
+	checkErr             error
+	startedReads         chan int
+	startedChecks        chan int
+	startedSessionChecks chan int
+	releaseChecks        chan struct{}
+	readCount            atomic.Int32
+	checkCount           atomic.Int32
+	sessionCheckCount    atomic.Int32
 }
 
 func (source *fakeDrudgerSource) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
@@ -95,11 +105,17 @@ func (source *fakeDrudgerSource) ListDrudgers(projectSlug string, page int, size
 	return common.Paginate(source.drudgers, page, size)
 }
 
+func (source *fakeDrudgerSource) RecordFinishedSessions(projectSlug string) ([]task.TaskID, error) {
+	checkNumber := int(source.sessionCheckCount.Add(1))
+	if source.startedSessionChecks != nil {
+		source.startedSessionChecks <- checkNumber
+	}
+	return nil, nil
+}
+
 var (
-	keyRefresh = tea.KeyPressMsg{Code: 'r', Text: "r"}
-	keyCheck   = tea.KeyPressMsg{Code: 'r', Text: "R", Mod: tea.ModShift}
-	keyQuit    = tea.KeyPressMsg{Code: 'q', Text: "q"}
-	keyHelp    = tea.KeyPressMsg{Code: '?', Text: "?"}
+	keyQuit = tea.KeyPressMsg{Code: 'q', Text: "q"}
+	keyHelp = tea.KeyPressMsg{Code: '?', Text: "?"}
 )
 
 var (
@@ -149,19 +165,18 @@ func buildTestTabs(t *testing.T, config Config) []*Tab {
 // tasks.
 func newTestModel(t *testing.T, tabs []*Tab, warnings []string) *Model {
 	t.Helper()
-	return newTestModelWithSource(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, tabs, testRefreshInterval, warnings)
+	return newTestModelWithSource(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, tabs, warnings)
 }
 
 // newTestModelWithSource returns a Model of the test project that lists the
-// tasks of source and has no Drudgers. Its Drudger check waits for the test
-// refresh interval.
-func newTestModelWithSource(t *testing.T, source TaskSource, tabs []*Tab, refreshInterval time.Duration, warnings []string) *Model {
+// tasks of source and has no Drudgers.
+func newTestModelWithSource(t *testing.T, source feeds.TaskSource, tabs []*Tab, warnings []string) *Model {
 	t.Helper()
-	sources := Sources{Tasks: source, Drudgers: &fakeDrudgerSource{}}
-	return newTestModelWithSources(t, sources, tabs, Intervals{Refresh: refreshInterval, DrudgerCheck: testRefreshInterval}, warnings)
+	sources := feeds.Sources{Tasks: source, Drudgers: &fakeDrudgerSource{}}
+	return newTestModelWithSources(t, sources, tabs, intervalsOf(instantInterval), warnings)
 }
 
-func newTestModelWithSources(t *testing.T, sources Sources, tabs []*Tab, intervals Intervals, warnings []string) *Model {
+func newTestModelWithSources(t *testing.T, sources feeds.Sources, tabs []*Tab, intervals map[views.FeedName]time.Duration, warnings []string) *Model {
 	t.Helper()
 	model, err := NewModel(testProject, sources, tuitest.Styles(), tabs, intervals, true, warnings)
 	if err != nil {
@@ -170,27 +185,43 @@ func newTestModelWithSources(t *testing.T, sources Sources, tabs []*Tab, interva
 	return model
 }
 
-// refreshNow presses the refresh key and runs the loads it starts.
-func refreshNow(model *Model) {
-	_, cmd := model.Update(keyRefresh)
+// intervalsOf returns one interval for every feed.
+func intervalsOf(interval time.Duration) map[views.FeedName]time.Duration {
+	intervals := map[views.FeedName]time.Duration{}
+	for _, kind := range feedKinds {
+		intervals[kind.Name] = interval
+	}
+	return intervals
+}
+
+// startFeeds starts the feeds of the visible Views and runs their first runs.
+// It starts nothing after an update started the feeds.
+func startFeeds(model *Model) {
+	runCommand(model, model.Init())
+}
+
+// update sends a message to the model and runs the commands it leads to.
+func update(model *Model, msg tea.Msg) {
+	_, cmd := model.Update(msg)
 	runCommand(model, cmd)
 }
 
-// runCommand runs a command and every command its messages lead to. It never
-// gets a refresh tick, since a tick waits for the refresh interval.
+// runCommand runs a command and every command its messages lead to. It drops
+// the ticks of the feeds, so each feed runs once when it starts.
 func runCommand(model *Model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
 	}
-	msg := cmd()
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		for _, batched := range batch {
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, batched := range msg {
 			runCommand(model, batched)
 		}
-		return
+	case feeds.TickMsg:
+	default:
+		_, next := model.Update(msg)
+		runCommand(model, next)
 	}
-	_, next := model.Update(msg)
-	runCommand(model, next)
 }
 
 // startProgram runs a model in a program with no terminal and quits it when
@@ -260,8 +291,8 @@ func TestModel(t *testing.T) {
 				tabTitles = []string{"Tasks"}
 			}
 			model := newTestModel(t, testTabs(t, tabTitles...), testCase.warnings)
-			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}
@@ -293,6 +324,7 @@ func TestModel_Quits(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, testTabs(t, "Tasks"), nil)
+			startFeeds(model)
 			_, cmd := model.Update(testCase.keyPress)
 			if cmd == nil {
 				t.Fatal("expected a command")
@@ -321,6 +353,7 @@ func TestModel_SwitchesTabs(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, testTabs(t, "Tasks", "Board", "Drudgers"), nil)
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				if _, cmd := model.Update(keyPress); cmd != nil {
 					t.Errorf("expected no command from %q", keyPress.String())
@@ -344,7 +377,7 @@ func TestModel_Filter(t *testing.T) {
 	}{
 		{name: "matching ignores case", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR")), wantActiveTab: "Tasks", wantStatuses: []string{"1/2"}, golden: "screen_filtered"},
 		{name: "a digit goes to the filter", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("2")), wantActiveTab: "Tasks", wantStatuses: []string{"0/0"}},
-		{name: "root keys go to the filter", keys: []tea.Msg{tuitest.KeyFilter, keyQuit, keyNextTab, keyPreviousTab, keyRefresh, keyZoom}, wantActiveTab: "Tasks", wantStatuses: []string{"0/0"}},
+		{name: "root keys go to the filter", keys: []tea.Msg{tuitest.KeyFilter, keyQuit, keyNextTab, keyPreviousTab, keyZoom}, wantActiveTab: "Tasks", wantStatuses: []string{"0/0"}},
 		{name: "ctrl+c quits from the filter", keys: []tea.Msg{tuitest.KeyFilter, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantActiveTab: "Tasks", wantStatuses: []string{"1/5"}, wantQuit: true},
 		{name: "esc restores the full list", keys: slices.Concat([]tea.Msg{tuitest.KeyFilter}, tuitest.Type("RETR"), []tea.Msg{tuitest.KeyEscape}), wantActiveTab: "Tasks", wantStatuses: []string{"1/5"}},
 		{name: "a digit switches tabs after esc", keys: []tea.Msg{tuitest.KeyFilter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Board", wantStatuses: []string{"1/5"}},
@@ -352,8 +385,8 @@ func TestModel_Filter(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, testTabs(t, "Tasks", "Board"), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
 			didQuit := false
 			for _, msg := range testCase.keys {
 				_, cmd := model.Update(msg)
@@ -412,8 +445,8 @@ func TestModel_HelpOverlay(t *testing.T) {
 			}}
 			config.Tabs[0].Title = "First"
 			model := newTestModel(t, buildTestTabs(t, config), nil)
-			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: testCase.width, Height: testCase.height})
+			startFeeds(model)
 			for _, msg := range testCase.keys {
 				_, cmd := model.Update(msg)
 				if isQuit(cmd) {
@@ -490,8 +523,8 @@ func TestModel_SelectionStaysInItsTab(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := Config{Tabs: []TabConfig{listAndDetailTab("First"), listAndDetailTab("Second")}}
 			model := newTestModel(t, buildTestTabs(t, config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
 			pressKeys(model, testCase.keys)
 			if got := model.tabs[0].SelectedTaskID(); got != testCase.wantFirstTabTask {
 				t.Errorf("expected task %q selected in the first tab, got %q", testCase.wantFirstTabTask, got)
@@ -525,8 +558,8 @@ func TestModel_BoardDrivesTaskDetail(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{{View: taskboard.Name}, {View: taskdetail.Name}}})
 			model := newTestModel(t, buildTestTabs(t, config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 120, Height: 16})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 120, Height: 16})
+			startFeeds(model)
 			pressKeys(model, testCase.keys)
 			detail := model.ActiveTab().tiles[1].view.(*taskdetail.View)
 			if got := detail.Status(); got != task.ShortID(testCase.wantTask) {
@@ -568,8 +601,8 @@ func TestModel_OpensTask(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
 			for _, msg := range testCase.keys {
 				_, cmd := model.Update(msg)
 				if isQuit(cmd) {
@@ -624,8 +657,8 @@ const recordingViewName = "recorder"
 func pushRecordingView(t *testing.T, isTakingAllKeys bool) (*Model, *recordingView) {
 	t.Helper()
 	model := newTestModel(t, testTabs(t, "Tasks"), nil)
-	model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-	refreshNow(model)
+	update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+	startFeeds(model)
 	view := &recordingView{sizeView: sizeView{name: recordingViewName}, isTakingAllKeys: isTakingAllKeys}
 	model.push(newViewOverlay(view, tuitest.Styles()))
 	return model, view
@@ -639,7 +672,7 @@ func TestModel_OverlayViewThatTakesAllKeys(t *testing.T) {
 		wantQuit bool
 	}{
 		{name: "esc and the help key go to the view", keys: []tea.Msg{tuitest.KeyEscape, keyHelp}, wantKeys: []string{"esc", "?"}},
-		{name: "root keys go to the view", keys: []tea.Msg{keyQuit, keyTabTwo, keyRefresh}, wantKeys: []string{"q", "2", "r"}},
+		{name: "root keys go to the view", keys: []tea.Msg{keyQuit, keyTabTwo}, wantKeys: []string{"q", "2"}},
 		{name: "ctrl+c quits", keys: []tea.Msg{tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantQuit: true},
 	}
 	for _, testCase := range cases {
@@ -675,8 +708,8 @@ func TestModel_OpensFromOverlay(t *testing.T) {
 
 func TestModel_OverlayShowsLoadedTask(t *testing.T) {
 	model := newTestModel(t, testTabs(t, "Tasks"), nil)
-	model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-	refreshNow(model)
+	update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+	startFeeds(model)
 	pressKeys(model, []tea.Msg{tuitest.KeyEnter})
 	top, ok := model.topOverlay()
 	if !ok {
@@ -704,8 +737,8 @@ func TestModel_OpenNoViewShows(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, testTabs(t, "Tasks"), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
 			before := model.View().Content
 			_, cmd := model.Update(testCase.msg(model))
 			runCommand(model, cmd)
@@ -744,9 +777,9 @@ func TestModel_OverlayMouse(t *testing.T) {
 			config := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), taskListNode()}})
 			config.Tabs = append(config.Tabs, TabConfig{Title: "Second", Layout: taskListNode()})
 			source := &fakeTaskSource{tasks: longDescriptionTasks()}
-			model := newTestModelWithSource(t, source, buildTestTabs(t, config), testRefreshInterval, nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-			refreshNow(model)
+			model := newTestModelWithSource(t, source, buildTestTabs(t, config), nil)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
 			pressKeys(model, slices.Concat([]tea.Msg{tuitest.KeyEnter}, testCase.msgs))
 			top, ok := model.topOverlay()
 			if !ok {
@@ -791,8 +824,8 @@ func TestModel_TwoTaskDetails(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, twoDetailsConfig()), nil)
-			model.Update(tea.WindowSizeMsg{Width: 150, Height: 24})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 150, Height: 24})
+			startFeeds(model)
 			pressKeys(model, testCase.keys)
 			for _, tileIndex := range []int{1, 2} {
 				if got := model.ActiveTab().tiles[tileIndex].view.Status(); got != task.ShortID(secondID) {
@@ -851,7 +884,8 @@ func probeState(t *testing.T, program *tea.Program) probedState {
 }
 
 func TestModel_HelpOverlayTakesKeysInProgram(t *testing.T) {
-	program := startProgram(t, probedModel{newTestModel(t, testTabs(t, "Tasks", "Board"), nil)})
+	sources := feeds.Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: &fakeDrudgerSource{}}
+	program := startProgram(t, probedModel{newTestModelWithSources(t, sources, testTabs(t, "Tasks", "Board"), intervalsOf(longInterval), nil)})
 
 	program.Send(keyHelp)
 	if state := probeState(t, program); !state.isHelpOpen {
@@ -922,8 +956,8 @@ func TestModel_MovesFocusAndZooms(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, Config{Tabs: []TabConfig{tallLeftConfig("Tab")}}), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 24})
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				if _, cmd := model.Update(keyPress); cmd != nil {
 					t.Errorf("expected no command from %q", keyPress.String())
@@ -1003,8 +1037,8 @@ func TestModel_Mouse(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := Config{Tabs: []TabConfig{tallLeftConfig("First"), tallLeftConfig("Second")}}
 			model := newTestModel(t, buildTestTabs(t, config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 24})
+			startFeeds(model)
 			for _, msg := range testCase.msgs {
 				model.Update(msg)
 			}
@@ -1039,7 +1073,7 @@ func TestModel_ClickOnScrolledTabBar(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, testTabs(t, "Tasks", "Board", "Drudgers", "Backlog"), nil)
-			model.Update(tea.WindowSizeMsg{Width: 30, Height: 8})
+			update(model, tea.WindowSizeMsg{Width: 30, Height: 8})
 			model.Update(keyPreviousTab)
 			model.Update(leftClick(testCase.x, 0))
 			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
@@ -1052,7 +1086,7 @@ func TestModel_ClickOnScrolledTabBar(t *testing.T) {
 func TestModel_TabsKeepFocusedTile(t *testing.T) {
 	config := Config{Tabs: []TabConfig{tallLeftConfig("First"), tallLeftConfig("Second")}}
 	model := newTestModel(t, buildTestTabs(t, config), nil)
-	model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	update(model, tea.WindowSizeMsg{Width: 100, Height: 24})
 	keys := []tea.KeyPressMsg{keyFocusRight, keyFocusDown, keyNextTab, keyNextTile, keyPreviousTab}
 	for _, keyPress := range keys {
 		model.Update(keyPress)
@@ -1074,52 +1108,59 @@ func TestModel_TabsKeepFocusedTile(t *testing.T) {
 	}
 }
 
-func TestModel_SkipsRefreshWhileLoadRuns(t *testing.T) {
+func TestModel_TickWhileRunGoesStartsNoSecondRun(t *testing.T) {
 	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), startedCalls: make(chan int, 100), release: make(chan struct{})}
-	refreshInterval := time.Duration(minDataRefreshSeconds * float64(time.Second))
-	program := startProgram(t, newTestModelWithSource(t, source, testTabs(t, "Tasks"), refreshInterval, nil))
+	intervals := intervalsOf(longInterval)
+	intervals[views.TasksFeed] = shortInterval
+	sources := feeds.Sources{Tasks: source, Drudgers: &fakeDrudgerSource{}}
+	startProgram(t, newTestModelWithSources(t, sources, testTabs(t, "Tasks"), intervals, nil))
 
 	waitForCall(t, source.startedCalls, 1)
-	program.Send(keyRefresh)
 	select {
 	case number := <-source.startedCalls:
 		t.Fatalf("call %d started while call 1 still ran", number)
-	case <-time.After(4 * refreshInterval):
+	case <-time.After(4 * shortInterval):
 	}
 
 	close(source.release)
 	waitForCall(t, source.startedCalls, 2)
 }
 
-func TestModel_DrudgerSchedule(t *testing.T) {
-	const shortInterval = 10 * time.Millisecond
+func TestModel_FeedsFollowTheirIntervals(t *testing.T) {
 	cases := []struct {
 		name      string
-		intervals Intervals
-		keys      []tea.KeyPressMsg
-		// wantReads and wantChecks are the calls each source starts. A count
-		// above 1 comes from the ticks of its interval or from the keys.
-		wantReads  int
-		wantChecks int
+		shortFeed views.FeedName
+		// wantTasks, wantReads, wantChecks and wantSessionChecks are the calls
+		// each feed starts. A count above 1 comes from the ticks of its
+		// interval.
+		wantTasks         int
+		wantReads         int
+		wantChecks        int
+		wantSessionChecks int
 	}{
-		{name: "reads follow the data refresh", intervals: Intervals{Refresh: shortInterval, DrudgerCheck: testRefreshInterval}, wantReads: 3, wantChecks: 1},
-		{name: "checks follow the Drudger check", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: shortInterval}, wantReads: 1, wantChecks: 3},
-		{name: "R checks right away", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, keys: []tea.KeyPressMsg{keyCheck}, wantReads: 1, wantChecks: 2},
-		{name: "r reads and does not check", intervals: Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, keys: []tea.KeyPressMsg{keyRefresh}, wantReads: 2, wantChecks: 1},
+		{name: "tasks follow their interval", shortFeed: views.TasksFeed, wantTasks: 3, wantReads: 1, wantChecks: 1, wantSessionChecks: 1},
+		{name: "reads follow their interval", shortFeed: views.DrudgersFeed, wantTasks: 1, wantReads: 3, wantChecks: 1, wantSessionChecks: 1},
+		{name: "checks follow their interval", shortFeed: views.DrudgerCheckFeed, wantTasks: 1, wantReads: 1, wantChecks: 3, wantSessionChecks: 1},
+		{name: "Session checks follow their interval", shortFeed: views.SessionsFeed, wantTasks: 1, wantReads: 1, wantChecks: 1, wantSessionChecks: 3},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			drudgers := &fakeDrudgerSource{startedReads: make(chan int, 100), startedChecks: make(chan int, 100)}
-			sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
-			program := startProgram(t, newTestModelWithSources(t, sources, testTabs(t, "Tasks"), testCase.intervals, nil))
+			tasks := &fakeTaskSource{tasks: tuitest.ListedTasks(), startedCalls: make(chan int, 100)}
+			drudgers := &fakeDrudgerSource{startedReads: make(chan int, 100), startedChecks: make(chan int, 100), startedSessionChecks: make(chan int, 100)}
+			intervals := intervalsOf(longInterval)
+			intervals[testCase.shortFeed] = shortInterval
+			config := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: drudgerlist.Name}}})
+			sources := feeds.Sources{Tasks: tasks, Drudgers: drudgers}
+			startProgram(t, newTestModelWithSources(t, sources, buildTestTabs(t, config), intervals, nil))
 
+			waitForCall(t, tasks.startedCalls, 1)
 			waitForCall(t, drudgers.startedReads, 1)
 			waitForCall(t, drudgers.startedChecks, 1)
-			for _, keyPress := range testCase.keys {
-				program.Send(keyPress)
-			}
+			waitForCall(t, drudgers.startedSessionChecks, 1)
+			assertCalls(t, "task lists", tasks.startedCalls, &tasks.callCount, testCase.wantTasks)
 			assertCalls(t, "reads", drudgers.startedReads, &drudgers.readCount, testCase.wantReads)
 			assertCalls(t, "checks", drudgers.startedChecks, &drudgers.checkCount, testCase.wantChecks)
+			assertCalls(t, "Session checks", drudgers.startedSessionChecks, &drudgers.sessionCheckCount, testCase.wantSessionChecks)
 		})
 	}
 }
@@ -1137,66 +1178,252 @@ func assertCalls(t *testing.T, name string, startedCalls chan int, callCount *at
 	}
 }
 
-func TestModel_SkipsCheckWhileCheckRuns(t *testing.T) {
-	drudgers := &fakeDrudgerSource{startedChecks: make(chan int, 100), releaseChecks: make(chan struct{})}
-	sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
-	checkInterval := 10 * time.Millisecond
-	program := startProgram(t, newTestModelWithSources(t, sources, testTabs(t, "Tasks"), Intervals{Refresh: testRefreshInterval, DrudgerCheck: checkInterval}, nil))
+// Tabs of the feed tests: one with a task list and one with a Drudger list.
+var (
+	taskListTab    = TabConfig{Title: "Tasks", Layout: NodeConfig{View: tasklist.Name}}
+	drudgerListTab = TabConfig{Title: "Drudgers", Layout: NodeConfig{View: drudgerlist.Name}}
+	taskBoardTab   = TabConfig{Title: "Board", Layout: NodeConfig{View: taskboard.Name}}
+)
 
-	waitForCall(t, drudgers.startedChecks, 1)
-	program.Send(keyCheck)
-	select {
-	case number := <-drudgers.startedChecks:
-		t.Fatalf("check %d started while check 1 still ran", number)
-	case <-time.After(4 * checkInterval):
-	}
-
-	close(drudgers.releaseChecks)
-	waitForCall(t, drudgers.startedChecks, 2)
+// openTask returns a message that opens the first test task from the active
+// Tab.
+func openTask(model *Model) tea.Msg {
+	return tabMsg{tab: model.ActiveTab(), msg: views.OpenTaskMsg{TaskID: tuitest.ListedTasks()[0].Task.ID}}
 }
 
-func TestModel_FailedCheckShowsError(t *testing.T) {
-	drudgers := &fakeDrudgerSource{checkErr: errDiskOnFire}
-	sources := Sources{Tasks: &fakeTaskSource{tasks: tuitest.ListedTasks()}, Drudgers: drudgers}
-	model := newTestModelWithSources(t, sources, testTabs(t, "Tasks"), Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, nil)
-	model.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
+func TestModel_RunsFeedsOfVisibleViews(t *testing.T) {
+	cases := []struct {
+		name string
+		tabs []TabConfig
+		// msgs are sent after the feeds started.
+		msgs              []func(model *Model) tea.Msg
+		wantTasks         int
+		wantReads         int
+		wantChecks        int
+		wantSessionChecks int
+	}{
+		{name: "a drudger list reads and checks the Drudgers and lists no tasks", tabs: []TabConfig{drudgerListTab}, wantReads: 1, wantChecks: 1},
+		{name: "a task board lists the tasks and checks the Sessions", tabs: []TabConfig{taskBoardTab}, wantTasks: 1, wantSessionChecks: 1},
+		{name: "an inactive tab runs no feed", tabs: []TabConfig{taskListTab, drudgerListTab}, wantTasks: 1, wantSessionChecks: 1},
+		{
+			name:              "switching tabs starts the feeds of the new tab",
+			tabs:              []TabConfig{taskListTab, drudgerListTab},
+			msgs:              []func(model *Model) tea.Msg{pressed(keyTabTwo)},
+			wantTasks:         1,
+			wantReads:         1,
+			wantChecks:        1,
+			wantSessionChecks: 1,
+		},
+		{
+			name:              "switching back starts the feeds of the old tab again",
+			tabs:              []TabConfig{taskListTab, drudgerListTab},
+			msgs:              []func(model *Model) tea.Msg{pressed(keyTabTwo), pressed(keyTabOne)},
+			wantTasks:         2,
+			wantReads:         1,
+			wantChecks:        1,
+			wantSessionChecks: 2,
+		},
+		{
+			name:              "switching between tabs with the same feeds starts nothing",
+			tabs:              []TabConfig{taskListTab, taskBoardTab},
+			msgs:              []func(model *Model) tea.Msg{pressed(keyTabTwo), pressed(keyTabOne)},
+			wantTasks:         1,
+			wantSessionChecks: 1,
+		},
+		{
+			name:              "an overlay starts the feeds of its view",
+			tabs:              []TabConfig{drudgerListTab},
+			msgs:              []func(model *Model) tea.Msg{openTask},
+			wantTasks:         1,
+			wantReads:         1,
+			wantChecks:        1,
+			wantSessionChecks: 1,
+		},
+		{
+			name:              "closing an overlay stops the feeds of its view",
+			tabs:              []TabConfig{drudgerListTab},
+			msgs:              []func(model *Model) tea.Msg{openTask, pressed(tuitest.KeyEscape), openTask},
+			wantTasks:         2,
+			wantReads:         1,
+			wantChecks:        1,
+			wantSessionChecks: 2,
+		},
+		{
+			name:              "closing an overlay keeps the feeds the tab shows",
+			tabs:              []TabConfig{taskListTab},
+			msgs:              []func(model *Model) tea.Msg{openTask, pressed(tuitest.KeyEscape)},
+			wantTasks:         1,
+			wantSessionChecks: 1,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tasks := &fakeTaskSource{tasks: tuitest.ListedTasks()}
+			drudgers := &fakeDrudgerSource{}
+			sources := feeds.Sources{Tasks: tasks, Drudgers: drudgers}
+			model := newTestModelWithSources(t, sources, buildTestTabs(t, Config{Tabs: testCase.tabs}), intervalsOf(instantInterval), nil)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
+			for _, msg := range testCase.msgs {
+				_, cmd := model.Update(msg(model))
+				runCommand(model, cmd)
+			}
 
-	_, cmd := model.Update(keyCheck)
-	runCommand(model, cmd)
-
-	if wantError := "✗ could not check Drudgers: disk on fire"; !strings.Contains(model.View().Content, wantError) {
-		t.Errorf("expected the screen to show %q, got:\n%s", wantError, model.View().Content)
+			if got := int(tasks.callCount.Load()); got != testCase.wantTasks {
+				t.Errorf("expected %d task lists, got %d", testCase.wantTasks, got)
+			}
+			if got := int(drudgers.readCount.Load()); got != testCase.wantReads {
+				t.Errorf("expected %d reads of the Drudgers, got %d", testCase.wantReads, got)
+			}
+			if got := int(drudgers.checkCount.Load()); got != testCase.wantChecks {
+				t.Errorf("expected %d checks of the Drudgers, got %d", testCase.wantChecks, got)
+			}
+			if got := int(drudgers.sessionCheckCount.Load()); got != testCase.wantSessionChecks {
+				t.Errorf("expected %d checks of the Sessions, got %d", testCase.wantSessionChecks, got)
+			}
+		})
 	}
 }
 
-func TestModel_FailedLoadKeepsLastData(t *testing.T) {
-	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 2}
-	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
-	model.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
+// pressed returns a key press for the feed tests.
+func pressed(keyPress tea.KeyPressMsg) func(model *Model) tea.Msg {
+	return func(*Model) tea.Msg { return keyPress }
+}
 
-	refreshNow(model)
-	refreshNow(model)
+// subscriberView is a View that shows feeds and records the messages it gets.
+type subscriberView struct {
+	sizeView
+	feeds    []views.Feed
+	messages []tea.Msg
+}
 
-	content := model.View().Content
-	if wantTask := "Add retry to uploader"; !strings.Contains(content, wantTask) {
-		t.Errorf("expected the tasks of the first load to stay on screen, got:\n%s", content)
+func (view *subscriberView) Feeds() []views.Feed { return view.feeds }
+
+func (view *subscriberView) Update(msg tea.Msg) tea.Cmd {
+	view.messages = append(view.messages, msg)
+	return nil
+}
+
+// messageTypes returns the type of every message a View got, in order.
+func messageTypes(messages []tea.Msg) []string {
+	types := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		types = append(types, fmt.Sprintf("%T", msg))
 	}
-	if wantError := "✗ could not load tasks: disk on fire"; !strings.Contains(content, wantError) {
-		t.Errorf("expected the screen to show %q, got:\n%s", wantError, content)
+	return types
+}
+
+func TestModel_DeliversToSubscribers(t *testing.T) {
+	tasksFeed := []views.Feed{{Name: views.TasksFeed}}
+	drudgersFeed := []views.Feed{{Name: views.DrudgersFeed}}
+	tasksLoaded := fmt.Sprintf("%T", views.TasksLoadedMsg{})
+	drudgersLoaded := fmt.Sprintf("%T", views.DrudgersLoadedMsg{})
+	cases := []struct {
+		name string
+		view *subscriberView
+		// isInActiveTab puts the View in the active Tab beside a task list and
+		// a Drudger list. Otherwise it is in a second Tab.
+		isInActiveTab bool
+		wantMessages  []string
+	}{
+		{name: "a view of the tasks feed gets the tasks", view: &subscriberView{feeds: tasksFeed}, isInActiveTab: true, wantMessages: []string{tasksLoaded}},
+		{name: "a view of the Drudgers feed gets the Drudgers", view: &subscriberView{feeds: drudgersFeed}, isInActiveTab: true, wantMessages: []string{drudgersLoaded}},
+		{name: "a view of no feed gets nothing", view: &subscriberView{}, isInActiveTab: true, wantMessages: []string{}},
+		{name: "a view in an inactive tab gets the data of a visible view", view: &subscriberView{feeds: tasksFeed}, wantMessages: []string{tasksLoaded}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			screenStyles := tuitest.Styles()
+			subscriberTile := NewTile(testCase.view, "", screenStyles, 1, true)
+			activeTiles := []Node{
+				NewTile(tasklist.New(screenStyles, ""), "", screenStyles, 1, true),
+				NewTile(drudgerlist.New(screenStyles), "", screenStyles, 1, true),
+			}
+			secondLayout := Node(NewTile(&sizeView{name: "other"}, "", screenStyles, 1, true))
+			if testCase.isInActiveTab {
+				activeTiles = append(activeTiles, subscriberTile)
+			} else {
+				secondLayout = subscriberTile
+			}
+			activeTab, err := NewTab("First", NewSplit(SideBySide, 1, activeTiles...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			secondTab, err := NewTab("Second", secondLayout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := newTestModel(t, []*Tab{activeTab, secondTab}, nil)
+			startFeeds(model)
+
+			if got := messageTypes(testCase.view.messages); !slices.Equal(got, testCase.wantMessages) {
+				t.Errorf("expected the view to get %q, got %q", testCase.wantMessages, got)
+			}
+		})
 	}
 }
 
-func TestModel_SuccessfulLoadClearsError(t *testing.T) {
-	source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: 1}
-	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, nil)
-	model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+func TestModel_FailedRunShowsError(t *testing.T) {
+	cases := []struct {
+		name          string
+		tabs          []TabConfig
+		failFromCall  int
+		checkErr      error
+		keys          []tea.KeyPressMsg
+		wantContent   []string
+		wantNoContent []string
+	}{
+		{
+			name:         "a failed list shows its error",
+			tabs:         []TabConfig{taskListTab},
+			failFromCall: 1,
+			wantContent:  []string{"✗ disk on fire"},
+		},
+		{
+			name:        "a failed check shows its error",
+			tabs:        []TabConfig{drudgerListTab},
+			checkErr:    errDiskOnFire,
+			wantContent: []string{"✗ disk on fire"},
+		},
+		{
+			name:         "a failed list keeps the last data on screen",
+			tabs:         []TabConfig{taskListTab, drudgerListTab},
+			failFromCall: 2,
+			keys:         []tea.KeyPressMsg{keyTabTwo, keyTabOne},
+			wantContent:  []string{"Add retry to uploader", "✗ disk on fire"},
+		},
+		{
+			name:          "the error goes away when its feed stops",
+			tabs:          []TabConfig{taskListTab, drudgerListTab},
+			failFromCall:  1,
+			keys:          []tea.KeyPressMsg{keyTabTwo},
+			wantNoContent: []string{"disk on fire"},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tasks := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: testCase.failFromCall}
+			sources := feeds.Sources{Tasks: tasks, Drudgers: &fakeDrudgerSource{checkErr: testCase.checkErr}}
+			model := newTestModelWithSources(t, sources, buildTestTabs(t, Config{Tabs: testCase.tabs}), intervalsOf(instantInterval), nil)
+			update(model, tea.WindowSizeMsg{Width: 140, Height: 12})
+			startFeeds(model)
+			for _, keyPress := range testCase.keys {
+				_, cmd := model.Update(keyPress)
+				runCommand(model, cmd)
+			}
 
-	refreshNow(model)
-	source.failFromCall = 0
-	refreshNow(model)
-
-	if content := model.View().Content; strings.Contains(content, "could not load") {
-		t.Errorf("expected no load error after a load that worked, got:\n%s", content)
+			content := model.View().Content
+			for _, want := range testCase.wantContent {
+				if !strings.Contains(content, want) {
+					t.Errorf("expected the screen to show %q, got:\n%s", want, content)
+				}
+			}
+			for _, unwanted := range testCase.wantNoContent {
+				if strings.Contains(content, unwanted) {
+					t.Errorf("expected the screen not to show %q, got:\n%s", unwanted, content)
+				}
+			}
+		})
 	}
 }
 
@@ -1213,18 +1440,17 @@ func TestModel_BottomBar(t *testing.T) {
 		{
 			name:         "bottom_bar_errors_and_warnings",
 			width:        240,
-			failFromCall: 2,
+			failFromCall: 1,
 			warnings:     []string{`theme.json: "red" is not a color for role error, using the theme's own`},
 		},
-		{name: "bottom_bar_overflow_cuts_errors", width: 60, failFromCall: 2},
+		{name: "bottom_bar_overflow_cuts_errors", width: 60, failFromCall: 1},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			source := &fakeTaskSource{tasks: tuitest.ListedTasks(), failFromCall: testCase.failFromCall}
-			model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testRefreshInterval, testCase.warnings)
-			model.Update(tea.WindowSizeMsg{Width: testCase.width, Height: 24})
-			refreshNow(model)
-			refreshNow(model)
+			model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), testCase.warnings)
+			update(model, tea.WindowSizeMsg{Width: testCase.width, Height: 24})
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}
@@ -1252,8 +1478,8 @@ func TestModel_TileStatuses(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
-			model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
-			refreshNow(model)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 24})
+			startFeeds(model)
 			for _, keyPress := range testCase.keys {
 				model.Update(keyPress)
 			}
@@ -1272,8 +1498,8 @@ func tileStatuses(tab *Tab) []string {
 }
 
 func TestNewModel_NoTabs(t *testing.T) {
-	sources := Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
-	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, Intervals{Refresh: testRefreshInterval, DrudgerCheck: testRefreshInterval}, true, nil)
+	sources := feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
+	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, intervalsOf(instantInterval), true, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

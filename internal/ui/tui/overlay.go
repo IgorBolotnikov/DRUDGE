@@ -29,6 +29,8 @@ type Overlay interface {
 	// TakesAllKeys reports whether the overlay gets every key but ctrl+c, esc
 	// and ? included, like while a text input is open.
 	TakesAllKeys() bool
+	// Feeds returns the feeds the overlay shows.
+	Feeds() []views.Feed
 }
 
 // overlayMsg is a message of a command of an overlay.
@@ -114,6 +116,10 @@ func (overlay *viewOverlay) TakesAllKeys() bool {
 	return overlay.tile.view.TakesAllKeys()
 }
 
+func (overlay *viewOverlay) Feeds() []views.Feed {
+	return viewFeeds(overlay.tile.view)
+}
+
 // helpOverlay is the box that lists keys in columns, centered over the whole
 // screen. It ignores keys and the mouse, and the root closes it.
 type helpOverlay struct {
@@ -160,4 +166,8 @@ func (overlay *helpOverlay) ShortHelp() []key.Binding {
 
 func (overlay *helpOverlay) TakesAllKeys() bool {
 	return false
+}
+
+func (overlay *helpOverlay) Feeds() []views.Feed {
+	return nil
 }

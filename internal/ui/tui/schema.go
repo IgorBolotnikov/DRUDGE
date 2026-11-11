@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
 // schemaTemplate is the hand-written base of the JSON schema of the TUI config
-// file. The description and the enum of the view key and the view options of
-// each View fill its verbs.
+// file. The interval of each feed, the description and the enum of the view
+// key and the view options of each View fill its verbs.
 const schemaTemplate = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DRUDGE TUI Configuration",
-  "description": "Configures the tabs of drg tui, the layout of each tab, how often drg tui reloads its data, how often it checks the Drudgers and whether it captures the mouse.",
+  "description": "Configures the tabs of drg tui, the layout of each tab, how often drg tui runs each feed and whether it captures the mouse.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -40,18 +42,7 @@ const schemaTemplate = `{
         "additionalProperties": false
       }
     },
-    "dataRefreshSeconds": {
-      "description": "How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5.",
-      "type": "number",
-      "minimum": 0.1,
-      "default": 2
-    },
-    "drudgerCheckSeconds": {
-      "description": "How often drg tui checks the Drudgers with what drg drudger list does, in whole seconds. A check never starts while the last one runs.",
-      "type": "integer",
-      "minimum": 1,
-      "default": 30
-    },
+    "refreshSeconds": %s,
     "captureMouse": {
       "description": "Whether drg tui captures the mouse. A click focuses a tile, switches tabs or moves the cursor, and the wheel scrolls the tile under the pointer. When it is false, the terminal keeps its native text selection.",
       "type": "boolean",
@@ -106,16 +97,21 @@ const schemaTemplate = `{
   }
 }`
 
-// schemaIndent indents the view options of each View to their place in the
-// schema template.
+// Indents of the generated parts at their place in the schema template.
 const (
-	schemaIndentPrefix = "      "
-	schemaIndent       = "  "
+	refreshSecondsIndentPrefix = "    "
+	schemaIndentPrefix         = "      "
+	schemaIndent               = "  "
 )
 
-// Schema returns the bundled JSON schema of the TUI config file. The views it
-// allows and the view options of each View come from the View registry.
+// Schema returns the bundled JSON schema of the TUI config file. The feeds it
+// sets intervals for come from the feed registry. The views it allows and the
+// view options of each View come from the View registry.
 func Schema() []byte {
+	refreshSeconds, err := json.MarshalIndent(refreshSecondsSchema(), refreshSecondsIndentPrefix, schemaIndent)
+	if err != nil {
+		panic(fmt.Sprintf("could not encode the feed intervals: %v", err))
+	}
 	descriptions := []string{"What the tile shows."}
 	for _, kind := range viewKinds {
 		descriptions = append(descriptions, fmt.Sprintf("`%s`: %s", kind.name, kind.description))
@@ -132,7 +128,7 @@ func Schema() []byte {
 	if err != nil {
 		panic(fmt.Sprintf("could not encode the view options: %v", err))
 	}
-	return fmt.Appendf(nil, schemaTemplate, viewDescription, viewNames, viewOptions)
+	return fmt.Appendf(nil, schemaTemplate, refreshSeconds, viewDescription, viewNames, viewOptions)
 }
 
 // schemaNode is the part of JSON schema the view options of a View need.
@@ -153,8 +149,11 @@ type schemaCondition struct {
 	Then schemaNode `json:"then"`
 }
 
-// schemaObjectType is the JSON schema type of an object.
-const schemaObjectType = "object"
+// JSON schema types of the generated parts.
+const (
+	schemaObjectType = "object"
+	schemaNumberType = "number"
+)
 
 // viewOptionsSchema returns one condition per View. Each condition gives a
 // node whose view is that View the options of the View and refuses any other.
@@ -185,4 +184,67 @@ func viewOptionsSchema() []schemaCondition {
 		})
 	}
 	return conditions
+}
+
+// refreshSecondsNode is the part of JSON schema the feed intervals need. It
+// lists the feeds in the order of the feed registry.
+type refreshSecondsNode struct {
+	Description          string            `json:"description"`
+	Type                 string            `json:"type"`
+	Properties           feedIntervalNodes `json:"properties"`
+	AdditionalProperties bool              `json:"additionalProperties"`
+}
+
+// feedIntervalNode is the schema of the interval of one feed, in seconds.
+type feedIntervalNode struct {
+	name        views.FeedName
+	Description string  `json:"description"`
+	Type        string  `json:"type"`
+	Minimum     float64 `json:"minimum"`
+	Default     float64 `json:"default"`
+}
+
+// feedIntervalNodes encodes as a JSON object that keeps the order of its
+// nodes.
+type feedIntervalNodes []feedIntervalNode
+
+func (nodes feedIntervalNodes) MarshalJSON() ([]byte, error) {
+	encoded := []byte("{")
+	for index, node := range nodes {
+		if index > 0 {
+			encoded = append(encoded, ',')
+		}
+		name, err := json.Marshal(node.name)
+		if err != nil {
+			return nil, err
+		}
+		value, err := json.Marshal(node)
+		if err != nil {
+			return nil, err
+		}
+		encoded = append(encoded, name...)
+		encoded = append(encoded, ':')
+		encoded = append(encoded, value...)
+	}
+	return append(encoded, '}'), nil
+}
+
+// refreshSecondsSchema returns the interval of every feed with its default
+// and its minimum.
+func refreshSecondsSchema() refreshSecondsNode {
+	nodes := make(feedIntervalNodes, 0, len(feedKinds))
+	for _, kind := range feedKinds {
+		nodes = append(nodes, feedIntervalNode{
+			name:        kind.Name,
+			Description: kind.Description,
+			Type:        schemaNumberType,
+			Minimum:     kind.MinInterval.Seconds(),
+			Default:     kind.DefaultInterval.Seconds(),
+		})
+	}
+	return refreshSecondsNode{
+		Description: "The seconds between two runs of each feed. A tile runs only the feeds of what it shows. A run never starts while the last run of its feed is going. Each value may be a fraction, like 0.5.",
+		Type:        schemaObjectType,
+		Properties:  nodes,
+	}
 }

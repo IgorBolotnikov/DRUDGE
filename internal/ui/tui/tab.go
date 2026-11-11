@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"slices"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -152,13 +154,35 @@ func (tab *Tab) tileAt(x, y int) (tileIndex int, rect Rect, ok bool) {
 	return 0, Rect{}, false
 }
 
-// Broadcast sends a message to the View of every Tile.
-func (tab *Tab) Broadcast(msg tea.Msg) tea.Cmd {
-	commands := make([]tea.Cmd, 0, len(tab.tiles))
+// Feeds returns the feeds the View of every Tile shows.
+func (tab *Tab) Feeds() []views.Feed {
+	var feeds []views.Feed
 	for _, tile := range tab.tiles {
-		commands = append(commands, tab.tag(tile.view.Update(msg)))
+		feeds = append(feeds, viewFeeds(tile.view)...)
+	}
+	return feeds
+}
+
+// Deliver sends the message of a feed to the View of every Tile that shows the
+// feed.
+func (tab *Tab) Deliver(feed views.Feed, msg tea.Msg) tea.Cmd {
+	var commands []tea.Cmd
+	for _, tile := range tab.tiles {
+		if slices.Contains(viewFeeds(tile.view), feed) {
+			commands = append(commands, tab.tag(tile.view.Update(msg)))
+		}
 	}
 	return tea.Batch(commands...)
+}
+
+// viewFeeds returns the feeds a View shows, or none for a View that shows no
+// feed.
+func viewFeeds(view views.View) []views.Feed {
+	subscriber, ok := view.(views.Subscriber)
+	if !ok {
+		return nil
+	}
+	return subscriber.Feeds()
 }
 
 // TakesAllKeys reports whether the View of the focused Tile takes all keys.

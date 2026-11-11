@@ -23,9 +23,7 @@ Press `enter` on a task to open it. Every `task-detail` tile of the tab shows th
 
 Press `/` to filter the focused list by title, in any case. While the filter is open, every key goes to it, `q`, `1` to `9`, `[` and `]` included, `↑` and `↓` move the cursor and `ctrl+c` still quits. `esc` closes the filter and shows every task again.
 
-`drg tui` reloads its data every 2 seconds. Set `dataRefreshSeconds` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to change that, or press `r` to reload right away. A load that fails leaves the last data on screen and shows the error in the bottom bar.
-
-A reload reads the Drudgers as DRUDGE last recorded them and asks no sandbox. Every 30 seconds `drg tui` also checks the Drudgers the way [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) does, in the background. Set `drudgerCheckSeconds` to change that, or press `R` to check right away. A check never starts while the last one runs.
+A tile gets its data from feeds, and runs only the feeds of what it shows. A `task-list`, a `task-board` and a `task-detail` tile list the tasks and check the [Sessions]({{< relref "/docs/concepts/sessions" >}}). A `drudger-list` tile reads the Drudgers as DRUDGE last recorded them, which asks no sandbox, and checks them the way [`drg drudger list`]({{< relref "/docs/cli/drudger/list" >}}) does. The feeds of other tabs pause until you switch back, and a tab you switch back to shows its last data right away. Each feed runs again at its own interval, which `refreshSeconds` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) sets. A run never starts while the last run of its feed is going. A run that fails leaves the last data on screen and shows its error in the bottom bar until a run works or the feed pauses. The Sessions feed records each finished Session on its task the way [`drg task status`]({{< relref "/docs/cli/task/status" >}}) does, so `drg tui` runs [close-out]({{< relref "/docs/concepts/close-out" >}}) and opens pull requests while it is open.
 
 It sets the title of the terminal window to `DRUDGE | <project name>`. Terminals that don't support window titles ignore it.
 
@@ -67,7 +65,7 @@ The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/
 
 The bottom border of each tile shows its status on the right. A `task-list` tile shows the row of its cursor and its task count, like `12/200`. While its filter is open, the count is the count of the tasks that match. A `task-board` tile shows the status of its cursor column, the row of its cursor and the task count of the column, like `todo 2/5`. A `drudger-list` tile says how long ago the Drudgers were checked, like `checked 12s ago`. A `task-detail` tile shows the short ID of its task and how far the description is scrolled, like `3f9a1c2e 40%`. A status wider than the border is cut from the start. Set `showStatus` to `false` on a tile to hide its status.
 
-The bottom bar shows load errors and warnings on the left and `? help` on the right. `? help` is hidden while a filter is open. When the bar is too narrow, the errors and warnings are cut with `…`.
+The bottom bar shows the errors of the feeds and warnings on the left and `? help` on the right. `? help` is hidden while a filter is open. When the bar is too narrow, the errors and warnings are cut with `…`.
 
 One tile of a tab has focus. Its title starts with `▸`, its border takes the primary color of the theme and the keys you press go to it. While the help or the task overlay is open, the overlay takes that border and the tile under it draws as unfocused. Each tab keeps its own focused tile when you switch tabs. `z` zooms the focused tile to fill the tab and adds `[zoom]` to its title. Press `z` again to go back to the tiles.
 
@@ -86,8 +84,6 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `enter` | Opens the task under the cursor |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it, or closes the top box |
-| `r` | Reloads the data |
-| `R` | Checks the Drudgers |
 | `1` to `9` | Goes to that tab |
 | `[` or `]` | Goes to the previous or next tab |
 | `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |

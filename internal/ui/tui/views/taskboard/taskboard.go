@@ -119,6 +119,13 @@ func (view *View) Status() string {
 	return fmt.Sprintf(statusFormat, cursorColumn.status, rowNumber, len(cursorColumn.tasks))
 }
 
+// Feeds returns the tasks feed and the Sessions feed. The View ignores the
+// messages of the Sessions feed, which records the outcome of each finished
+// Session on its task for the tasks feed to show.
+func (view *View) Feeds() []views.Feed {
+	return []views.Feed{{Name: views.TasksFeed}, {Name: views.SessionsFeed}}
+}
+
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height

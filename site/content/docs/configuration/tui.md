@@ -37,8 +37,11 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout.weight` | number | `1` | above 0 | The share of the space of its split the node takes, relative to the other children of the split. It may be a fraction. |
 | `tabs[].layout.showStatus` | boolean | `true` |  | Whether the tile shows the status of its view in its bottom border. Only a tile has a status. |
 | `tabs[].layout.viewOptions` | object |  |  | The options of the view of the tile. Each view takes its own options. Only a tile has view options. |
-| `dataRefreshSeconds` | number | `2` | minimum 0.1 | How often drg tui reloads its data, in seconds. It is the only key in DRUDGE ending in Seconds that takes a fraction, like 0.5. |
-| `drudgerCheckSeconds` | integer | `30` | minimum 1 | How often drg tui checks the Drudgers with what drg drudger list does, in whole seconds. A check never starts while the last one runs. |
+| `refreshSeconds` | object |  |  | The seconds between two runs of each feed. A tile runs only the feeds of what it shows. A run never starts while the last run of its feed is going. Each value may be a fraction, like 0.5. |
+| `refreshSeconds.tasks` | number | `2` | minimum 0.1 | How often drg tui lists the tasks. |
+| `refreshSeconds.drudgers` | number | `2` | minimum 0.1 | How often drg tui reads the Drudgers as DRUDGE last recorded them. A read asks no sandbox. |
+| `refreshSeconds.drudgerCheck` | number | `30` | minimum 1 | How often drg tui checks the Drudgers with what drg drudger list does. |
+| `refreshSeconds.sessions` | number | `5` | minimum 0.1 | How often drg tui checks the Sessions of the in-progress tasks and records the outcome of each finished one with what drg task status does. |
 | `captureMouse` | boolean | `true` |  | Whether drg tui captures the mouse. A click focuses a tile, switches tabs or moves the cursor, and the wheel scrolls the tile under the pointer. When it is false, the terminal keeps its native text selection. |
 
 <!-- END GENERATED -->

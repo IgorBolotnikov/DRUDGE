@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/drudgerlist"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
@@ -25,56 +26,32 @@ const tabsPath = "tabs"
 // viewNameSeparator joins the names of the known Views in an error.
 const viewNameSeparator = ", "
 
-// Seconds between two loads of the TUI data. A config may set a fraction.
-const (
-	defaultDataRefreshSeconds = 2
-	minDataRefreshSeconds     = 0.1
-)
-
-// Seconds between two checks of the Drudgers. A config sets whole seconds.
-const (
-	defaultDrudgerCheckSeconds = 30
-	minDrudgerCheckSeconds     = 1
-)
-
-// Config describes the Tabs of the TUI, the layout of each Tab, how often the
-// TUI reloads its data, how often it checks the Drudgers and whether it
-// captures the mouse. It holds only plain values, so building it again gives
-// fresh Tabs. A data refresh or a Drudger check of 0 is the default. A TUI
-// with no mouse setting captures the mouse.
+// Config describes the Tabs of the TUI, the layout of each Tab, the seconds
+// between two runs of each feed and whether the TUI captures the mouse. It
+// holds only plain values, so building it again gives fresh Tabs. A feed with
+// no refresh setting runs at the default interval of its kind. A TUI with no
+// mouse setting captures the mouse.
 type Config struct {
-	Tabs                []TabConfig
-	DataRefreshSeconds  float64
-	DrudgerCheckSeconds int
-	CaptureMouse        *bool
+	Tabs           []TabConfig
+	RefreshSeconds map[views.FeedName]float64
+	CaptureMouse   *bool
 }
 
-// Intervals returns how long the TUI waits between two loads of its data and
-// between two checks of the Drudgers.
-func (config Config) Intervals() Intervals {
-	checkSeconds := config.DrudgerCheckSeconds
-	if checkSeconds == 0 {
-		checkSeconds = defaultDrudgerCheckSeconds
+// Intervals returns how long the TUI waits between two runs of each feed.
+func (config Config) Intervals() map[views.FeedName]time.Duration {
+	intervals := make(map[views.FeedName]time.Duration, len(feedKinds))
+	for _, kind := range feedKinds {
+		intervals[kind.Name] = kind.DefaultInterval
+		if seconds, ok := config.RefreshSeconds[kind.Name]; ok {
+			intervals[kind.Name] = time.Duration(seconds * float64(time.Second))
+		}
 	}
-	return Intervals{
-		Refresh:      config.RefreshInterval(),
-		DrudgerCheck: time.Duration(checkSeconds) * time.Second,
-	}
+	return intervals
 }
 
 // IsMouseCaptured reports whether the TUI takes the mouse from the terminal.
 func (config Config) IsMouseCaptured() bool {
 	return config.CaptureMouse == nil || *config.CaptureMouse
-}
-
-// RefreshInterval returns how long the TUI waits between two loads of its
-// data.
-func (config Config) RefreshInterval() time.Duration {
-	seconds := config.DataRefreshSeconds
-	if seconds == 0 {
-		seconds = defaultDataRefreshSeconds
-	}
-	return time.Duration(seconds * float64(time.Second))
 }
 
 // TabConfig describes one Tab.

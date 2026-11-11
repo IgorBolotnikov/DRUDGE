@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +15,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
-	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
@@ -36,27 +37,15 @@ const warningPrefix = "! "
 // Tiles.
 const tooSmallFormat = "terminal too small for tab %q, zoom with z or resize"
 
-// loadErrorPrefix starts a load error in the bottom bar.
-const loadErrorPrefix = "✗ "
+// feedErrorPrefix starts the error of a feed in the bottom bar.
+const feedErrorPrefix = "✗ "
 
-// loadErrorFormat is the load error of one source in the bottom bar.
-const loadErrorFormat = "could not load %s: %v"
-
-// checkErrorFormat is the error of the last Drudger check in the bottom bar.
-const checkErrorFormat = "could not check Drudgers: %v"
-
-// warningSeparator joins the load errors and the warnings of the bottom bar.
+// warningSeparator joins the feed errors and the warnings of the bottom bar.
 const warningSeparator = "  "
 
 // spreadGap is how many spaces a bar keeps between its left and its right
 // part.
 const spreadGap = 1
-
-// The task list loads every task of the project on one page.
-const (
-	firstPage    = 1
-	allOnOnePage = 0
-)
 
 const windowTitleFormat = "DRUDGE | %s"
 
@@ -67,69 +56,17 @@ const (
 	numberedTabCount       = 9
 )
 
-// Names of the data sources in load errors.
-const (
-	tasksSourceName    = "tasks"
-	drudgersSourceName = "Drudgers"
-)
-
-// dataSource is one kind of data the root loads for the Views. load returns
-// the message for the Views and the error the load failed with.
-type dataSource struct {
-	name string
-	load func(projectSlug string) (tea.Msg, error)
-}
-
-// loadKey names the data of one source for one project.
-type loadKey struct {
-	projectSlug string
-	sourceName  string
-}
-
-// refreshTickMsg starts the loads of a refresh.
-type refreshTickMsg struct{}
-
-// drudgerCheckTickMsg starts a check of the Drudgers.
-type drudgerCheckTickMsg struct{}
-
-// drudgersCheckedMsg carries the end of a Drudger check to the root.
-type drudgersCheckedMsg struct {
-	viewMsg views.DrudgersCheckedMsg
-}
-
-// Intervals are how long the root waits between two loads of its data and
-// between two checks of the Drudgers.
-type Intervals struct {
-	Refresh      time.Duration
-	DrudgerCheck time.Duration
-}
-
-// dataLoadedMsg carries the result of one load to the root.
-type dataLoadedMsg struct {
-	key     loadKey
-	viewMsg tea.Msg
-	err     error
-}
-
 // Model is the root of the screen: a top bar, the active Tab, a bottom bar and
-// a stack of overlays over them. It loads the data on every refresh, checks the
-// Drudgers on every Drudger check and sends both to the Views of every Tab and
-// to every overlay.
+// a stack of overlays over them. It runs the feeds the visible Views show and
+// sends the message of each feed to the Views of every Tab and every overlay
+// that show the feed.
 type Model struct {
 	project         *project.Project
-	sources         Sources
 	styles          *styles.Styles
 	warnings        []string
 	tabs            []*Tab
-	dataSources     []dataSource
 	activeTabIndex  int
-	intervals       Intervals
-	runningLoads    map[loadKey]bool
-	loadErrors      map[loadKey]error
-	lastLoaded      map[loadKey]tea.Msg
-	isChecking      bool
-	checkErr        error
-	lastChecked     tea.Msg
+	feedRunner      *feeds.Runner
 	isMouseCaptured bool
 	help            help.Model
 	overlays        []Overlay
@@ -137,154 +74,86 @@ type Model struct {
 	height          int
 }
 
-// NewModel returns the screen of a project with the first Tab active. It
-// reloads the data and checks the Drudgers at the intervals, shows the
-// warnings in the bottom bar, takes the mouse from the terminal when it is
-// captured and refuses an empty list of Tabs.
-func NewModel(shownProject *project.Project, sources Sources, screenStyles *styles.Styles, tabs []*Tab, intervals Intervals, isMouseCaptured bool, warnings []string) (*Model, error) {
+// NewModel returns the screen of a project with the first Tab active. It runs
+// each feed at its interval, shows the warnings in the bottom bar, takes the
+// mouse from the terminal when it is captured and refuses an empty list of
+// Tabs.
+func NewModel(shownProject *project.Project, sources feeds.Sources, screenStyles *styles.Styles, tabs []*Tab, intervals map[views.FeedName]time.Duration, isMouseCaptured bool, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
 	keyHelp := help.New()
 	keyHelp.Styles = screenStyles.Help
-	model := &Model{
+	return &Model{
 		project:         shownProject,
-		sources:         sources,
 		styles:          screenStyles,
 		warnings:        warnings,
 		tabs:            tabs,
-		intervals:       intervals,
-		runningLoads:    map[loadKey]bool{},
-		loadErrors:      map[loadKey]error{},
-		lastLoaded:      map[loadKey]tea.Msg{},
+		feedRunner:      feeds.NewRunner(sources, shownProject.Slug, feedKinds, intervals),
 		help:            keyHelp,
 		isMouseCaptured: isMouseCaptured,
-	}
-	model.dataSources = []dataSource{
-		{name: tasksSourceName, load: model.loadTasks},
-		{name: drudgersSourceName, load: model.loadDrudgers},
-	}
-	return model, nil
+	}, nil
 }
 
-// Init loads the data, checks the Drudgers and starts the ticks of both.
+// Init starts the feeds of the visible Views.
 func (model *Model) Init() tea.Cmd {
-	return tea.Batch(model.refresh(), model.nextTick(), model.checkDrudgers(), model.nextCheckTick())
+	return model.syncFeeds()
 }
 
+// Update handles a message and then starts the feeds the visible Views show
+// now and stops the ones they no longer show.
 func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := model.handleMsg(msg)
+	return model, tea.Batch(cmd, model.syncFeeds())
+}
+
+func (model *Model) handleMsg(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		model.handleResize(msg)
-		return model, nil
 	case tea.KeyPressMsg:
-		return model, model.handleKey(msg)
+		return model.handleKey(msg)
 	case tea.MouseMsg:
-		return model, model.handleMouse(msg)
-	case refreshTickMsg:
-		return model, tea.Batch(model.refresh(), model.nextTick())
-	case dataLoadedMsg:
-		return model, model.handleDataLoaded(msg)
-	case drudgerCheckTickMsg:
-		return model, tea.Batch(model.checkDrudgers(), model.nextCheckTick())
-	case drudgersCheckedMsg:
-		return model, model.handleDrudgersChecked(msg)
+		return model.handleMouse(msg)
+	case feeds.TickMsg:
+		return model.feedRunner.HandleTick(msg)
+	case feeds.DoneMsg:
+		return model.deliver(model.feedRunner.HandleDone(msg))
 	case tabMsg:
-		return model, model.handleTabMsg(msg)
+		return model.handleTabMsg(msg)
 	case overlayMsg:
-		return model, model.handleOverlayMsg(msg)
+		return model.handleOverlayMsg(msg)
 	}
-	return model, nil
+	return nil
 }
 
-func (model *Model) nextTick() tea.Cmd {
-	return tea.Tick(model.intervals.Refresh, func(time.Time) tea.Msg { return refreshTickMsg{} })
-}
-
-func (model *Model) nextCheckTick() tea.Cmd {
-	return tea.Tick(model.intervals.DrudgerCheck, func(time.Time) tea.Msg { return drudgerCheckTickMsg{} })
-}
-
-// refresh starts one load of every source of the project. It skips a source
-// whose last load still runs.
-func (model *Model) refresh() tea.Cmd {
-	var commands []tea.Cmd
-	for _, source := range model.dataSources {
-		dataKey := loadKey{projectSlug: model.project.Slug, sourceName: source.name}
-		if model.runningLoads[dataKey] {
-			continue
-		}
-		model.runningLoads[dataKey] = true
-		commands = append(commands, func() tea.Msg {
-			viewMsg, err := source.load(dataKey.projectSlug)
-			return dataLoadedMsg{key: dataKey, viewMsg: viewMsg, err: err}
-		})
+// syncFeeds runs the feeds the visible Views show: the Tiles of the active
+// Tab and the Views of every overlay. The active Tab stays visible around
+// the margins of an overlay.
+func (model *Model) syncFeeds() tea.Cmd {
+	wanted := model.ActiveTab().Feeds()
+	for _, overlay := range model.overlays {
+		wanted = append(wanted, overlay.Feeds()...)
 	}
-	return tea.Batch(commands...)
+	return model.feedRunner.Sync(wanted)
 }
 
-func (model *Model) loadTasks(projectSlug string) (tea.Msg, error) {
-	listed, err := model.sources.Tasks.ListTasks(projectSlug, task.ListTasksFilter{}, firstPage, allOnOnePage)
-	return views.TasksLoadedMsg{ProjectSlug: projectSlug, Tasks: listed.Items, Err: err}, err
-}
-
-func (model *Model) loadDrudgers(projectSlug string) (tea.Msg, error) {
-	drudgers, err := model.sources.Drudgers.ReadDrudgers(projectSlug)
-	return views.DrudgersLoadedMsg{ProjectSlug: projectSlug, Drudgers: drudgers, ReadAt: time.Now(), Err: err}, err
-}
-
-// checkDrudgers starts a check of the Drudgers of the project. It skips the
-// check while the last one runs.
-func (model *Model) checkDrudgers() tea.Cmd {
-	if model.isChecking {
+// deliver sends the message of a feed to the Views of every Tab and every
+// overlay that show the feed. A nil message reaches no View.
+func (model *Model) deliver(feed views.Feed, msg tea.Msg) tea.Cmd {
+	if msg == nil {
 		return nil
 	}
-	model.isChecking = true
-	projectSlug := model.project.Slug
-	return func() tea.Msg {
-		_, err := model.sources.Drudgers.ListDrudgers(projectSlug, firstPage, allOnOnePage)
-		return drudgersCheckedMsg{viewMsg: views.DrudgersCheckedMsg{ProjectSlug: projectSlug, CheckedAt: time.Now(), Err: err}}
+	commands := make([]tea.Cmd, 0, len(model.tabs)+len(model.overlays))
+	for _, tab := range model.tabs {
+		commands = append(commands, tab.Deliver(feed, msg))
 	}
-}
-
-// handleDrudgersChecked ends a check, keeps its error for the bottom bar, keeps
-// its message for the Views of overlays opened later and sends it to every Tab
-// and every overlay.
-func (model *Model) handleDrudgersChecked(msg drudgersCheckedMsg) tea.Cmd {
-	model.isChecking = false
-	model.checkErr = msg.viewMsg.Err
-	model.lastChecked = msg.viewMsg
-	return model.broadcast(msg.viewMsg)
-}
-
-// handleDataLoaded ends a load, keeps its error for the bottom bar and sends
-// its message to every Tab and every overlay. It keeps the message of a load
-// that worked for the Views of overlays opened later.
-func (model *Model) handleDataLoaded(msg dataLoadedMsg) tea.Cmd {
-	delete(model.runningLoads, msg.key)
-	if msg.err != nil {
-		model.loadErrors[msg.key] = msg.err
-	} else {
-		delete(model.loadErrors, msg.key)
-		model.lastLoaded[msg.key] = msg.viewMsg
-	}
-	return model.broadcast(msg.viewMsg)
-}
-
-// lastData returns the message of the last load of every source that worked,
-// in the order of the sources, and the message of the last Drudger check.
-func (model *Model) lastData() []tea.Msg {
-	var messages []tea.Msg
-	for _, source := range model.dataSources {
-		loaded, ok := model.lastLoaded[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
-		if ok {
-			messages = append(messages, loaded)
+	for _, overlay := range model.overlays {
+		if slices.Contains(overlay.Feeds(), feed) {
+			commands = append(commands, tagOverlay(overlay.Update(msg)))
 		}
 	}
-	if model.lastChecked != nil {
-		messages = append(messages, model.lastChecked)
-	}
-	return messages
+	return tea.Batch(commands...)
 }
 
 // handleTabMsg handles a message of a command of a View of a Tab. A selection
@@ -337,8 +206,8 @@ func (model *Model) handleOverlayMsg(msg overlayMsg) tea.Cmd {
 
 // openInOverlay builds every View of the registry in order with the default
 // values of its options and pushes the first one that shows the open message
-// in an overlay. The View gets the last data before it is pushed. Nothing
-// opens when no View shows the message.
+// in an overlay. The View gets the last messages of its feeds before it is
+// pushed. Nothing opens when no View shows the message.
 func (model *Model) openInOverlay(msg views.OpenMsg) tea.Cmd {
 	for _, kind := range viewKinds {
 		opener, ok := kind.newView(model.styles, kind.defaultOptionValues()).(views.Opener)
@@ -346,10 +215,10 @@ func (model *Model) openInOverlay(msg views.OpenMsg) tea.Cmd {
 			continue
 		}
 		overlay := newViewOverlay(opener, model.styles)
-		lastData := model.lastData()
-		commands := make([]tea.Cmd, 0, len(lastData))
-		for _, data := range lastData {
-			commands = append(commands, tagOverlay(overlay.Update(data)))
+		lastMessages := model.feedRunner.LastMessages(overlay.Feeds())
+		commands := make([]tea.Cmd, 0, len(lastMessages))
+		for _, lastMsg := range lastMessages {
+			commands = append(commands, tagOverlay(overlay.Update(lastMsg)))
 		}
 		model.push(overlay)
 		return tea.Batch(commands...)
@@ -392,8 +261,7 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 }
 
 // handleKey quits on ctrl+c and passes every other key to the overlay on top
-// while one is open. With no overlay open it refreshes, checks the Drudgers,
-// opens the help, switches Tabs, moves focus between the Tiles of the active
+// while one is open. With no overlay open it opens the help, switches Tabs, moves focus between the Tiles of the active
 // Tab, zooms the focused Tile or passes the key to the active Tab. A number key
 // with no Tab behind it does nothing. A Tab that takes all keys gets every key
 // but ctrl+c.
@@ -411,10 +279,6 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, quitKey):
 		return tea.Quit
-	case key.Matches(msg, refreshKey):
-		return model.refresh()
-	case key.Matches(msg, checkKey):
-		return model.checkDrudgers()
 	case key.Matches(msg, helpKey):
 		model.pushHelp()
 	case key.Matches(msg, nextTabKey):
@@ -558,18 +422,6 @@ func (model *Model) previousTab() {
 	model.activeTabIndex--
 }
 
-// broadcast sends a message to the Views of every Tab and to every overlay.
-func (model *Model) broadcast(msg tea.Msg) tea.Cmd {
-	commands := make([]tea.Cmd, 0, len(model.tabs)+len(model.overlays))
-	for _, tab := range model.tabs {
-		commands = append(commands, tab.Broadcast(msg))
-	}
-	for _, overlay := range model.overlays {
-		commands = append(commands, tagOverlay(overlay.Update(msg)))
-	}
-	return tea.Batch(commands...)
-}
-
 // ActiveTab returns the Tab the screen shows.
 func (model *Model) ActiveTab() *Tab {
 	return model.tabs[model.activeTabIndex]
@@ -702,7 +554,7 @@ func renderTabLabel(index int, title string) string {
 	return fmt.Sprintf(tabLabelFormat, title)
 }
 
-// renderBottomBar shows the load errors and the warnings on the left and the
+// renderBottomBar shows the feed errors and the warnings on the left and the
 // help hint on the right. While an overlay is open, the hint is the hint of the
 // overlay on top. The hint is left out while the focused View or the overlay
 // on top takes all keys, since the keys of the hint go to it then.
@@ -717,31 +569,22 @@ func (model *Model) renderBottomBar() string {
 	if !isTakingAllKeys {
 		hints = model.help.ShortHelpView(shortHelp)
 	}
-	notices := model.renderLoadErrors()
+	notices := model.renderFeedErrors()
 	for _, warning := range model.warnings {
 		notices = append(notices, model.renderWarning(warning))
 	}
 	return spread(strings.Join(notices, warningSeparator), hints, model.width)
 }
 
-// renderLoadErrors returns the errors of the last loads of the project, in
-// the order of its sources, and the error of the last Drudger check.
-func (model *Model) renderLoadErrors() []string {
-	var rendered []string
-	for _, source := range model.dataSources {
-		err, ok := model.loadErrors[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
-		if ok {
-			rendered = append(rendered, model.renderLoadError(fmt.Sprintf(loadErrorFormat, source.name, err)))
-		}
-	}
-	if model.checkErr != nil {
-		rendered = append(rendered, model.renderLoadError(fmt.Sprintf(checkErrorFormat, model.checkErr)))
+// renderFeedErrors returns the error of every running feed whose last run
+// failed.
+func (model *Model) renderFeedErrors() []string {
+	errs := model.feedRunner.Errors()
+	rendered := make([]string, 0, len(errs))
+	for _, err := range errs {
+		rendered = append(rendered, model.styles.Error.Render(feedErrorPrefix+err.Error()))
 	}
 	return rendered
-}
-
-func (model *Model) renderLoadError(message string) string {
-	return model.styles.Error.Render(loadErrorPrefix + message)
 }
 
 func (model *Model) renderWarning(warning string) string {

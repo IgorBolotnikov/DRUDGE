@@ -88,7 +88,7 @@ func (service *TaskService) listRows(projectSlug string, filter ListTasksFilter)
 
 	tasks, err := service.repo.ListTasks(projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("could not list tasks: %w", err)
+		return nil, fmt.Errorf("could not list the tasks of project %s: %w", projectSlug, err)
 	}
 	tasksByID := indexTasks(tasks)
 

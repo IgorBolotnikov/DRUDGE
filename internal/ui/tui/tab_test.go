@@ -14,10 +14,9 @@ import (
 // sizeView is a View that shows its name and the size it got, so a golden
 // shows how a layout divides the space.
 type sizeView struct {
-	name          string
-	width         int
-	height        int
-	receivedCount int
+	name   string
+	width  int
+	height int
 }
 
 func (view *sizeView) Name() string { return view.name }
@@ -28,7 +27,6 @@ func (view *sizeView) SetSize(width, height int) {
 }
 
 func (view *sizeView) Update(msg tea.Msg) tea.Cmd {
-	view.receivedCount++
 	return nil
 }
 
@@ -173,24 +171,6 @@ func TestNewTab_FocusesFirstTile(t *testing.T) {
 	}
 	if tab.FocusedTile() != first {
 		t.Errorf("expected focus on the first tile, got the tile of %q", tab.FocusedTile().view.Name())
-	}
-}
-
-func TestTab_BroadcastReachesEveryTile(t *testing.T) {
-	views := []*sizeView{{name: "a"}, {name: "b"}, {name: "c"}}
-	screenStyles := tuitest.Styles()
-	tab, err := NewTab("Tab", NewSplit(Stacked, 1,
-		NewSplit(SideBySide, 1, NewTile(views[0], "", screenStyles, 1, true), NewTile(views[1], "", screenStyles, 1, true)),
-		NewTile(views[2], "", screenStyles, 1, true),
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tab.Broadcast("message")
-	for _, view := range views {
-		if view.receivedCount != 1 {
-			t.Errorf("expected view %q to get the message once, got it %d times", view.name, view.receivedCount)
-		}
 	}
 }
 

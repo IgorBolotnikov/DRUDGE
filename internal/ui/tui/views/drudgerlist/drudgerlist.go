@@ -127,6 +127,11 @@ func (view *View) Status() string {
 	return fmt.Sprintf(checkedStatusFormat, formatAgo(view.checkedAt, view.now))
 }
 
+// Feeds returns the Drudgers feed and the Drudger check feed.
+func (view *View) Feeds() []views.Feed {
+	return []views.Feed{{Name: views.DrudgersFeed}, {Name: views.DrudgerCheckFeed}}
+}
+
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
