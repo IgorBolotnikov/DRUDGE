@@ -32,6 +32,10 @@ const Description = "Shows the fields and the description of the task selected i
 // the fields. A View that cannot keep them folds the fields into one line.
 const minDescriptionLines = 3
 
+// descriptionGapLines is how many blank lines sit between the fields and the
+// description. They stay in place while the description scrolls.
+const descriptionGapLines = 1
+
 // fieldTimeLayout is how the View shows a time field.
 const fieldTimeLayout = "2006-01-02 15:04"
 
@@ -242,18 +246,22 @@ func (view *View) Render() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderFields returns a line per field of the task, or one line with every
-// field when the View is too short to keep the description lines below them.
+// renderFields returns a line per field of the task and the blank lines below
+// them. A View too short to keep the description lines below them gets one
+// line with every field and no blank lines.
 func (view *View) renderFields(shown *task.Task) []string {
 	fields := taskFields(shown)
-	if len(fields)+minDescriptionLines > view.height {
+	if len(fields)+descriptionGapLines+minDescriptionLines > view.height {
 		return []string{view.renderFoldedFields(fields)}
 	}
 	labelWidth := labelColumnWidth()
-	lines := make([]string, 0, len(fields))
+	lines := make([]string, 0, len(fields)+descriptionGapLines)
 	for _, entry := range fields {
 		label := view.styles.Muted.Render(cells.Fit(entry.label, labelWidth))
 		lines = append(lines, ansi.Truncate(label+labelGap+view.renderValue(entry), view.width, cells.Ellipsis))
+	}
+	for range descriptionGapLines {
+		lines = append(lines, "")
 	}
 	return lines
 }

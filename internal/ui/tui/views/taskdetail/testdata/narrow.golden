@@ -7,6 +7,7 @@ Blocked by     7c1e4f90, 9d8b…
 Repositories   api
 Created        2026-11-03 09:…
 Started        2026-11-03 10:…
+
  Retry uploads                
                               
 The uploader gives up on the  
@@ -21,4 +22,3 @@ error that caused it
                               
 Run  go test                  
 ./internal/upload  before you 
-finish.                       

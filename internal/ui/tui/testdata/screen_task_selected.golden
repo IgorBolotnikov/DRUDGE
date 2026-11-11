@@ -4,8 +4,8 @@
 │  in-progress    3f9a1c2e  Add retry to uploader││ID             5b20d7aa                         │
 │▸   done         5b20d7aa    Write the backoff  ││Status         done                             │
 │  todo           7c1e4f90  Wire retries into th…││Parent         3f9a1c2e                         │
-│  fucked-up      9d8b2a11  Fix the flaky upload…││No description                                  │
-│  draft          a01f3b55  Draft the release no…││                                                │
+│  fucked-up      9d8b2a11  Fix the flaky upload…││                                                │
+│  draft          a01f3b55  Draft the release no…││No description                                  │
 │                                                ││                                                │
 │                                                ││                                                │
 ╰────────────────────────────────────────── 2/5 ─╯╰───────────────────────────────────── 5b20d7aa ─╯

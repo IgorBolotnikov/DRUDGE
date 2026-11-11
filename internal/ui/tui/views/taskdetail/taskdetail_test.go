@@ -171,3 +171,42 @@ func TestView_LabelColumnKeepsWidth(t *testing.T) {
 		})
 	}
 }
+
+func TestView_DescriptionGap(t *testing.T) {
+	const fieldCount = 9
+	cases := []struct {
+		name         string
+		height       int
+		wantFolded   bool
+		wantGapIndex int
+	}{
+		{name: "room for the fields, the gap and the description", height: fieldCount + descriptionGapLines + minDescriptionLines, wantGapIndex: fieldCount},
+		{name: "one line short folds the fields with no gap", height: fieldCount + descriptionGapLines + minDescriptionLines - 1, wantFolded: true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(100, testCase.height)
+			view.Update(views.TasksLoadedMsg{Tasks: detailTasks()})
+			view.ShowTask(shownTaskID)
+
+			lines := strings.Split(ansi.Strip(view.Render()), "\n")
+			isFolded := strings.Contains(lines[0], foldedSeparator)
+			if isFolded != testCase.wantFolded {
+				t.Fatalf("expected folded fields to be %v, got %v in %q", testCase.wantFolded, isFolded, lines[0])
+			}
+			if testCase.wantFolded {
+				if strings.TrimSpace(lines[1]) == "" {
+					t.Errorf("expected the description right below the folded fields, got a blank line")
+				}
+				return
+			}
+			if lines[testCase.wantGapIndex] != "" {
+				t.Errorf("expected a blank line below the fields, got %q", lines[testCase.wantGapIndex])
+			}
+			if strings.TrimSpace(lines[testCase.wantGapIndex+1]) == "" {
+				t.Errorf("expected the description right below the gap, got a blank line")
+			}
+		})
+	}
+}
