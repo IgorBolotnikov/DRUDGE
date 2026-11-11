@@ -38,8 +38,14 @@ type TaskSelectedMsg struct {
 	TaskID task.TaskID
 }
 
-// OpenTaskMsg asks the Tab of a View to show a task in a View that can show
-// one.
+// OpenMsg asks to show something in a View that can show it.
+type OpenMsg interface {
+	isOpenMsg()
+}
+
+// OpenTaskMsg asks to show a task in a View that can show one.
 type OpenTaskMsg struct {
 	TaskID task.TaskID
 }
+
+func (OpenTaskMsg) isOpenMsg() {}

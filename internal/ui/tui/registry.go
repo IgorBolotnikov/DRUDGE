@@ -93,10 +93,7 @@ func viewKindNames() []string {
 // does not have, a value of the wrong type and a value outside the allowed
 // values. An error starts with path, the path of the view options.
 func (kind viewKind) optionValues(rawOptions map[string]any, path string) (views.OptionValues, error) {
-	values := make(views.OptionValues, len(kind.options))
-	for _, option := range kind.options {
-		values[option.Name] = option.Default
-	}
+	values := kind.defaultOptionValues()
 	for _, name := range slices.Sorted(maps.Keys(rawOptions)) {
 		optionPath := joinKeyPath(path, name)
 		option, ok := kind.findOption(name)
@@ -110,6 +107,15 @@ func (kind viewKind) optionValues(rawOptions map[string]any, path string) (views
 		values[name] = value
 	}
 	return values, nil
+}
+
+// defaultOptionValues returns the default value of every option of the View.
+func (kind viewKind) defaultOptionValues() views.OptionValues {
+	values := make(views.OptionValues, len(kind.options))
+	for _, option := range kind.options {
+		values[option.Name] = option.Default
+	}
+	return values
 }
 
 func (kind viewKind) findOption(name string) (option views.Option, ok bool) {

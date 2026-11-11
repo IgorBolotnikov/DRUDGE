@@ -127,6 +127,8 @@ func TestView_Status(t *testing.T) {
 		{name: "task not loaded", messages: []tea.Msg{showMsg{shownTaskID}}, want: ""},
 		{name: "at the top", messages: []tea.Msg{loaded, showMsg{shownTaskID}}, want: "3f9a1c2e 0%"},
 		{name: "at the bottom", messages: []tea.Msg{loaded, showMsg{shownTaskID}, tuitest.KeyBottom}, want: "3f9a1c2e 100%"},
+		{name: "the wheel scrolls down", messages: []tea.Msg{loaded, showMsg{shownTaskID}, tea.MouseWheelMsg{Button: tea.MouseWheelDown}}, want: "3f9a1c2e 50%"},
+		{name: "the wheel scrolls back up", messages: []tea.Msg{loaded, showMsg{shownTaskID}, tea.MouseWheelMsg{Button: tea.MouseWheelDown}, tea.MouseWheelMsg{Button: tea.MouseWheelUp}}, want: "3f9a1c2e 0%"},
 		{name: "another task starts at the top", messages: []tea.Msg{loaded, showMsg{shownTaskID}, tuitest.KeyBottom, showMsg{"a01f3b55-0000-0000-0000-000000000005"}}, want: "a01f3b55"},
 	}
 	for _, testCase := range cases {
@@ -206,6 +208,37 @@ func TestView_DescriptionGap(t *testing.T) {
 			}
 			if strings.TrimSpace(lines[testCase.wantGapIndex+1]) == "" {
 				t.Errorf("expected the description right below the gap, got a blank line")
+			}
+		})
+	}
+}
+
+// unknownOpenMsg is an open message the View can't show.
+type unknownOpenMsg struct {
+	views.OpenMsg
+}
+
+func TestView_Open(t *testing.T) {
+	cases := []struct {
+		name        string
+		msg         views.OpenMsg
+		wantIsShown bool
+		wantStatus  string
+	}{
+		{name: "open task shows the task from the top", msg: views.OpenTaskMsg{TaskID: shownTaskID}, wantIsShown: true, wantStatus: "3f9a1c2e 0%"},
+		{name: "another open message is refused", msg: unknownOpenMsg{}, wantIsShown: false, wantStatus: "a01f3b55"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(100, 8)
+			view.Update(views.TasksLoadedMsg{Tasks: detailTasks()})
+			view.ShowTask("a01f3b55-0000-0000-0000-000000000005")
+			if got := view.Open(testCase.msg); got != testCase.wantIsShown {
+				t.Errorf("expected shown %t, got %t", testCase.wantIsShown, got)
+			}
+			if got := view.Status(); got != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
 			}
 		})
 	}

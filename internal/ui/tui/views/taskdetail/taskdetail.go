@@ -86,7 +86,8 @@ var (
 	scrollBottomKey = key.NewBinding(key.WithKeys("G", "end"))
 )
 
-// scrollLineCount is how many lines the scroll keys move the description.
+// scrollLineCount is how many lines the scroll keys and one turn of the wheel
+// move the description.
 const scrollLineCount = 1
 
 // Keys are the keys of the task detail the help lists.
@@ -153,13 +154,25 @@ func (view *View) ShowTask(id task.TaskID) {
 	view.layOut()
 }
 
+// Open shows the task of an open task message from the top of its
+// description. It refuses every other open message.
+func (view *View) Open(msg views.OpenMsg) (isShown bool) {
+	openTask, ok := msg.(views.OpenTaskMsg)
+	if !ok {
+		return false
+	}
+	view.ShowTask(openTask.TaskID)
+	return true
+}
+
 func (view *View) SetSize(width, height int) {
 	view.width = width
 	view.height = height
 	view.layOut()
 }
 
-// Update takes the loaded tasks and scrolls the description on keys.
+// Update takes the loaded tasks and scrolls the description on keys and on the
+// wheel.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -173,8 +186,19 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 		}
 	case tea.KeyPressMsg:
 		view.scroll(msg)
+	case tea.MouseWheelMsg:
+		view.handleWheel(msg)
 	}
 	return nil
+}
+
+func (view *View) handleWheel(msg tea.MouseWheelMsg) {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		view.description.ScrollUp(scrollLineCount)
+	case tea.MouseWheelDown:
+		view.description.ScrollDown(scrollLineCount)
+	}
 }
 
 func (view *View) scroll(msg tea.KeyPressMsg) {

@@ -1,82 +1,176 @@
 package tui
 
 import (
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
-	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-// helpOverlay is the box with every key of the screen, drawn over the Tabs.
-// While it is open it takes every key.
-type helpOverlay struct {
-	isOpen bool
+// Overlay is a box drawn over the screen. Overlays stack, and only the top one
+// gets keys and the mouse.
+type Overlay interface {
+	// SetSize gives the overlay the size of the whole screen.
+	SetSize(screenWidth, screenHeight int)
+	Update(msg tea.Msg) tea.Cmd
+	// Render returns the box and the cell of the screen its top left corner
+	// sits on. An empty box draws nothing.
+	Render() (box string, x, y int)
+	// Click and Wheel get mouse events in the cells of the screen. The overlay
+	// ignores the ones outside its box.
+	Click(msg tea.MouseClickMsg) tea.Cmd
+	Wheel(msg tea.MouseWheelMsg) tea.Cmd
+	// Keys are the keys the help lists while the overlay is on top.
+	Keys() []key.Binding
+	// ShortHelp is the hint the bottom bar shows while the overlay is on top.
+	ShortHelp() []key.Binding
+	// TakesAllKeys reports whether the overlay gets every key but ctrl+c, esc
+	// and ? included, like while a text input is open.
+	TakesAllKeys() bool
 }
 
-func (overlay *helpOverlay) open() {
-	overlay.isOpen = true
+// overlayMsg is a message of a command of an overlay.
+type overlayMsg struct {
+	msg tea.Msg
 }
 
-// TakesAllKeys reports whether the overlay is open.
-func (overlay *helpOverlay) TakesAllKeys() bool {
-	return overlay.isOpen
-}
-
-// Update closes the overlay on esc and on the help key. Every other key does
-// nothing.
-func (overlay *helpOverlay) Update(msg tea.Msg) tea.Cmd {
-	keyPress, ok := msg.(tea.KeyPressMsg)
-	if ok && key.Matches(keyPress, closeHelpKey, helpKey) {
-		overlay.isOpen = false
+// tagOverlay returns a command that runs cmd and wraps its message as a
+// message of an overlay.
+func tagOverlay(cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
 	}
+	return func() tea.Msg {
+		return overlayMsg{msg: cmd()}
+	}
+}
+
+// Space a View overlay leaves around it in the space of a Tab.
+const (
+	viewOverlayMarginX = 2
+	viewOverlayMarginY = 1
+)
+
+// viewOverlay is a Tile with a View, drawn over the space of the Tab. Its Tile
+// always has focus. It never takes focus from a Tile of the Tab.
+type viewOverlay struct {
+	tile         *Tile
+	screenHeight int
+}
+
+func newViewOverlay(view views.View, overlayStyles *styles.Styles) *viewOverlay {
+	tile := NewTile(view, "", overlayStyles, defaultWeight, true)
+	tile.SetFocused(true)
+	return &viewOverlay{tile: tile}
+}
+
+// SetSize fits the Tile in the space of a Tab within the margins.
+func (overlay *viewOverlay) SetSize(screenWidth, screenHeight int) {
+	overlay.screenHeight = screenHeight
+	tabHeight := max(screenHeight-barHeight, 0)
+	overlay.tile.SetSize(max(screenWidth-2*viewOverlayMarginX, 0), max(tabHeight-2*viewOverlayMarginY, 0))
+}
+
+func (overlay *viewOverlay) Update(msg tea.Msg) tea.Cmd {
+	return overlay.tile.view.Update(msg)
+}
+
+// Render returns an empty box while the screen has no room for a Tab.
+func (overlay *viewOverlay) Render() (box string, x, y int) {
+	if overlay.screenHeight <= barHeight {
+		return "", 0, 0
+	}
+	rect := overlay.rect()
+	return overlay.tile.Render(), rect.X, rect.Y
+}
+
+// rect returns the cells of the screen the Tile takes.
+func (overlay *viewOverlay) rect() Rect {
+	return Rect{X: viewOverlayMarginX, Y: tabTop + viewOverlayMarginY, Width: overlay.tile.width, Height: overlay.tile.height}
+}
+
+func (overlay *viewOverlay) Click(msg tea.MouseClickMsg) tea.Cmd {
+	inView, ok := viewMouse(tea.Mouse(msg), overlay.rect())
+	if !ok {
+		return nil
+	}
+	return overlay.tile.view.Update(tea.MouseClickMsg(inView))
+}
+
+func (overlay *viewOverlay) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
+	inView, ok := viewMouse(tea.Mouse(msg), overlay.rect())
+	if !ok {
+		return nil
+	}
+	return overlay.tile.view.Update(tea.MouseWheelMsg(inView))
+}
+
+// Keys returns the keys the registry lists for the View, or none for a View
+// it does not know.
+func (overlay *viewOverlay) Keys() []key.Binding {
+	kind, _ := findViewKind(overlay.tile.view.Name())
+	return kind.keys
+}
+
+func (overlay *viewOverlay) ShortHelp() []key.Binding {
+	return []key.Binding{closeOverlayKey, helpKey}
+}
+
+func (overlay *viewOverlay) TakesAllKeys() bool {
+	return overlay.tile.view.TakesAllKeys()
+}
+
+// helpOverlay is the box that lists keys in columns, centered over the whole
+// screen. It ignores keys and the mouse, and the root closes it.
+type helpOverlay struct {
+	help         help.Model
+	boxStyle     lipgloss.Style
+	columns      [][]key.Binding
+	screenWidth  int
+	screenHeight int
+}
+
+func newHelpOverlay(keyHelp help.Model, boxStyle lipgloss.Style, columns [][]key.Binding) *helpOverlay {
+	return &helpOverlay{help: keyHelp, boxStyle: boxStyle, columns: columns}
+}
+
+func (overlay *helpOverlay) SetSize(screenWidth, screenHeight int) {
+	overlay.screenWidth = screenWidth
+	overlay.screenHeight = screenHeight
+}
+
+func (overlay *helpOverlay) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// Space the task overlay leaves around it on the screen of the Tab.
-const (
-	taskOverlayMarginX = 2
-	taskOverlayMarginY = 1
-)
-
-// taskOverlay is a Tile with a task detail, drawn over the active Tab. While
-// it is open it takes every key. It never takes focus from a Tile of the Tab.
-type taskOverlay struct {
-	view   *taskdetail.View
-	tile   *Tile
-	isOpen bool
+// Render centers the box on the screen. A box bigger than the screen starts
+// at the top left corner.
+func (overlay *helpOverlay) Render() (box string, x, y int) {
+	box = overlay.boxStyle.Render(overlay.help.FullHelpView(overlay.columns))
+	x = max((overlay.screenWidth-lipgloss.Width(box))/2, 0)
+	y = max((overlay.screenHeight-lipgloss.Height(box))/2, 0)
+	return box, x, y
 }
 
-func newTaskOverlay(overlayStyles *styles.Styles) taskOverlay {
-	view := taskdetail.New(overlayStyles)
-	tile := NewTile(view, "", overlayStyles, defaultWeight, true)
-	tile.SetFocused(true)
-	return taskOverlay{view: view, tile: tile}
+func (overlay *helpOverlay) Click(msg tea.MouseClickMsg) tea.Cmd {
+	return nil
 }
 
-// open shows the task from the top of its description.
-func (overlay *taskOverlay) open(id task.TaskID) {
-	overlay.view.ShowTask(id)
-	overlay.isOpen = true
+func (overlay *helpOverlay) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
+	return nil
 }
 
-// SetSize fits the overlay in the space of a Tab within the margins.
-func (overlay *taskOverlay) SetSize(tabWidth, tabHeight int) {
-	overlay.tile.SetSize(max(tabWidth-2*taskOverlayMarginX, 0), max(tabHeight-2*taskOverlayMarginY, 0))
+func (overlay *helpOverlay) Keys() []key.Binding {
+	return nil
 }
 
-// TakesAllKeys reports whether the overlay is open.
-func (overlay *taskOverlay) TakesAllKeys() bool {
-	return overlay.isOpen
+func (overlay *helpOverlay) ShortHelp() []key.Binding {
+	return []key.Binding{closeOverlayKey}
 }
 
-// Update closes the overlay on esc and gives every other key to its View.
-func (overlay *taskOverlay) Update(msg tea.Msg) tea.Cmd {
-	keyPress, ok := msg.(tea.KeyPressMsg)
-	if ok && key.Matches(keyPress, closeTaskKey) {
-		overlay.isOpen = false
-		return nil
-	}
-	return overlay.view.Update(msg)
+func (overlay *helpOverlay) TakesAllKeys() bool {
+	return false
 }

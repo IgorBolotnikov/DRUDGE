@@ -17,9 +17,9 @@ Each `drudger-list` tile shows the [Drudgers]({{< relref "/docs/concepts/drudger
 
 Each `task-board` tile shows the tasks on a board with one column per status, in the order of `draft`, `todo`, `in-progress`, `fucked-up`, `unmerged` and `done`. The header of a column shows its status and its task count. The header of the column under the cursor is drawn in reverse, so the cursor stays visible in an empty column. `h` and `l` or `←` and `→` move between columns, and a title that does not fit is cut with `…`. When the columns would get narrower than 15 cells of title, the board turns compact: every status shows as a header with its count, and only the column under the cursor lists its tasks. A task with a status DRUDGE does not know shows in no column.
 
-A `task-detail` tile shows the fields of one task and its description rendered as markdown. Moving the cursor of a list or a board onto a task selects it, and every `task-detail` tile of the same tab shows it. Other tabs keep their own selection. Until you select a task, the tile says `Nothing selected`. The values of the fields start at the same column for every task. A blank line separates the fields from the description. When the tile is too short for the fields, the blank line and three lines of the description, the fields fold into one line with no blank line below. `j`, `k`, `u`, `d`, `g` and `G` scroll the description.
+A `task-detail` tile shows the fields of one task and its description rendered as markdown. Moving the cursor of a list or a board onto a task selects it, and every `task-detail` tile of the same tab shows it. Other tabs keep their own selection. Until you select a task, the tile says `Nothing selected`. The values of the fields start at the same column for every task. A blank line separates the fields from the description. When the tile is too short for the fields, the blank line and three lines of the description, the fields fold into one line with no blank line below. `j`, `k`, `u`, `d`, `g`, `G` and the wheel scroll the description.
 
-Press `enter` on a task to open it. Focus moves to the first `task-detail` tile of the tab, which shows the task. A tab without a `task-detail` tile opens the task in a box over the tab. The box takes every key until `esc` closes it and focus goes back to the tile that had it. The box shows its status in its bottom border and the bottom bar shows `esc close` as the hint.
+Press `enter` on a task to open it. Every `task-detail` tile of the tab shows the task, and focus moves to the first one. A tab without a `task-detail` tile opens the task in a box over the tab. The box takes every key but `?` until `esc` closes it and focus goes back to the tile that had it. The box shows its status in its bottom border and the bottom bar shows `esc close` and `? help` as the hint.
 
 Press `/` to filter the focused list by title, in any case. While the filter is open, every key goes to it, `q`, `1` to `9`, `[` and `]` included, `↑` and `↓` move the cursor and `ctrl+c` still quits. `esc` closes the filter and shows every task again.
 
@@ -73,7 +73,7 @@ One tile of a tab has focus. Its title starts with `▸`, its border takes the p
 
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger or zoom a tile with `z`.
 
-`?` opens a box over the tabs that lists the keys of the focused tile and the keys of the whole dashboard. While the box is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
+`?` opens a box over the tabs that lists the keys of the focused tile and the keys of the whole dashboard. Over the task box, it lists the keys of the task box. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
 
 | Key | Does |
 | --- | --- |
@@ -85,7 +85,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `l` or `→` | Moves the cursor of a board to the column on the right |
 | `enter` | Opens the task under the cursor |
 | `/` | Opens the filter of the focused list |
-| `esc` | Closes the filter and clears it |
+| `esc` | Closes the filter and clears it, or closes the top box |
 | `r` | Reloads the data |
 | `R` | Checks the Drudgers |
 | `1` to `9` | Goes to that tab |
@@ -93,9 +93,9 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |
 | `tab` or `shift+tab` | Moves focus to the next or previous tile in layout order |
 | `z` | Zooms the focused tile or restores the tiles |
-| `?` | Lists every key, `esc` or `?` closes the list |
+| `?` | Lists the keys of the focused tile or of the top box, `esc` or `?` closes the list |
 | `q` or `ctrl+c` | Quits |
 
-`drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. A click on a column header of a board moves the cursor to that column. The wheel scrolls the tile under the pointer, focused or not. The mouse does nothing while the help or the task overlay is open. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
+`drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. A click on a column header of a board moves the cursor to that column. The wheel scrolls the tile under the pointer, focused or not. While a box is open, the wheel and clicks go to the top box and the tabs under it get nothing. The wheel scrolls the task box. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
 
 Colors come from the [theme]({{< relref "/docs/configuration/theme" >}}). An override in the theme file that is not a color shows as a warning in the bottom bar.

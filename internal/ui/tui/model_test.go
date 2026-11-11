@@ -10,12 +10,14 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
@@ -381,13 +383,13 @@ func TestModel_HelpOverlay(t *testing.T) {
 		width         int
 		height        int
 		keys          []tea.Msg
-		wantHelpOpen  bool
+		wantOverlays  []string
 		wantActiveTab string
 		golden        string
 	}{
-		{name: "help opens", width: 100, height: 24, keys: []tea.Msg{keyHelp}, wantHelpOpen: true, wantActiveTab: "First", golden: "screen_help"},
-		{name: "help in a terminal smaller than the box", width: 30, height: 8, keys: []tea.Msg{keyHelp}, wantHelpOpen: true, wantActiveTab: "First", golden: "screen_help_too_small"},
-		{name: "help lists the keys of the focused view", width: 100, height: 24, keys: []tea.Msg{keyNextTile, keyHelp}, wantHelpOpen: true, wantActiveTab: "First"},
+		{name: "help opens", width: 100, height: 24, keys: []tea.Msg{keyHelp}, wantOverlays: []string{helpOverlayName}, wantActiveTab: "First", golden: "screen_help"},
+		{name: "help in a terminal smaller than the box", width: 30, height: 8, keys: []tea.Msg{keyHelp}, wantOverlays: []string{helpOverlayName}, wantActiveTab: "First", golden: "screen_help_too_small"},
+		{name: "help lists the keys of the focused view", width: 100, height: 24, keys: []tea.Msg{keyNextTile, keyHelp}, wantOverlays: []string{helpOverlayName}, wantActiveTab: "First"},
 		{name: "esc closes help", width: 100, height: 24, keys: []tea.Msg{keyHelp, tuitest.KeyEscape}, wantActiveTab: "First"},
 		{name: "help key closes help", width: 100, height: 24, keys: []tea.Msg{keyHelp, keyHelp}, wantActiveTab: "First"},
 		{
@@ -395,7 +397,7 @@ func TestModel_HelpOverlay(t *testing.T) {
 			width:         100,
 			height:        24,
 			keys:          []tea.Msg{keyHelp, keyNextTab, keyPreviousTab, keyTabTwo, keyZoom, keyNextTile, tuitest.KeyDown, tuitest.KeyFilter},
-			wantHelpOpen:  true,
+			wantOverlays:  []string{helpOverlayName},
 			wantActiveTab: "First",
 			golden:        "screen_help_takes_keys",
 		},
@@ -418,8 +420,8 @@ func TestModel_HelpOverlay(t *testing.T) {
 					t.Fatalf("expected no quit from %v", msg)
 				}
 			}
-			if got := model.helpOverlay.isOpen; got != testCase.wantHelpOpen {
-				t.Errorf("expected help open %t, got %t", testCase.wantHelpOpen, got)
+			if got := overlayNames(model); !slices.Equal(got, testCase.wantOverlays) {
+				t.Errorf("expected overlays %q, got %q", testCase.wantOverlays, got)
 			}
 			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
 				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
@@ -433,6 +435,24 @@ func TestModel_HelpOverlay(t *testing.T) {
 			}
 		})
 	}
+}
+
+// helpOverlayName stands for the help in the names of the open overlays.
+const helpOverlayName = "help"
+
+// overlayNames returns the open overlays from the bottom of the stack up: the
+// name of the View of a View overlay, or the help overlay name.
+func overlayNames(model *Model) []string {
+	var names []string
+	for _, overlay := range model.overlays {
+		switch overlay := overlay.(type) {
+		case *helpOverlay:
+			names = append(names, helpOverlayName)
+		case *viewOverlay:
+			names = append(names, overlay.tile.view.Name())
+		}
+	}
+	return names
 }
 
 // pressKeys presses each key and runs the commands it starts.
@@ -527,15 +547,21 @@ func TestModel_OpensTask(t *testing.T) {
 		name                 string
 		config               Config
 		keys                 []tea.Msg
-		wantOverlayOpen      bool
+		wantOverlays         []string
 		wantFocusedTileIndex int
 		wantActiveTab        string
 		golden               string
 	}{
 		{name: "enter focuses the task detail", config: listAndDetail, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyEnter}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_opened_in_tile"},
 		{name: "esc in the task detail keeps focus", config: listAndDetail, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab"},
-		{name: "enter opens the overlay without a task detail", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlayOpen: true, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay"},
-		{name: "overlay takes every key", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyTabTwo, keyNextTile, keyQuit, keyHelp, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlayOpen: true, wantActiveTab: "Tab"},
+		{name: "enter opens the overlay without a task detail", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay"},
+		{name: "overlay takes the root keys", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyTabTwo, keyNextTile, keyQuit, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
+		{name: "help opens over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp}, wantOverlays: []string{taskdetail.Name, helpOverlayName}, wantActiveTab: "Tab", golden: "screen_help_over_task_overlay"},
+		{name: "help takes the keys over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, keyTabTwo, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name, helpOverlayName}, wantActiveTab: "Tab"},
+		{name: "help key closes the help over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, keyHelp}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
+		{name: "esc closes the help over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
+		{name: "esc closes the help then the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape, tuitest.KeyEscape}, wantActiveTab: "Tab"},
+		{name: "esc with nothing open does nothing", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape, tuitest.KeyEscape, tuitest.KeyEscape}, wantActiveTab: "Tab"},
 		{name: "esc closes the overlay and keeps focus", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay_closed"},
 		{name: "keys work again after the overlay closes", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Second"},
 	}
@@ -551,8 +577,8 @@ func TestModel_OpensTask(t *testing.T) {
 				}
 				runCommand(model, cmd)
 			}
-			if got := model.taskOverlay.isOpen; got != testCase.wantOverlayOpen {
-				t.Errorf("expected task overlay open %t, got %t", testCase.wantOverlayOpen, got)
+			if got := overlayNames(model); !slices.Equal(got, testCase.wantOverlays) {
+				t.Errorf("expected overlays %q, got %q", testCase.wantOverlays, got)
 			}
 			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
 				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
@@ -562,6 +588,222 @@ func TestModel_OpensTask(t *testing.T) {
 			}
 			if testCase.golden != "" {
 				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
+			}
+		})
+	}
+}
+
+// recordingView is a View that records the keys it gets. Enter opens the
+// first test task.
+type recordingView struct {
+	sizeView
+	isTakingAllKeys bool
+	keys            []string
+}
+
+func (view *recordingView) TakesAllKeys() bool { return view.isTakingAllKeys }
+
+func (view *recordingView) Update(msg tea.Msg) tea.Cmd {
+	keyPress, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	view.keys = append(view.keys, keyPress.String())
+	if keyPress.Code != tea.KeyEnter {
+		return nil
+	}
+	openedID := tuitest.ListedTasks()[0].Task.ID
+	return func() tea.Msg { return views.OpenTaskMsg{TaskID: openedID} }
+}
+
+// recordingViewName is the name of the recording View in the tests.
+const recordingViewName = "recorder"
+
+// pushRecordingView opens a recording View in an overlay of a model with the
+// test tasks loaded.
+func pushRecordingView(t *testing.T, isTakingAllKeys bool) (*Model, *recordingView) {
+	t.Helper()
+	model := newTestModel(t, testTabs(t, "Tasks"), nil)
+	model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	refreshNow(model)
+	view := &recordingView{sizeView: sizeView{name: recordingViewName}, isTakingAllKeys: isTakingAllKeys}
+	model.push(newViewOverlay(view, tuitest.Styles()))
+	return model, view
+}
+
+func TestModel_OverlayViewThatTakesAllKeys(t *testing.T) {
+	cases := []struct {
+		name     string
+		keys     []tea.Msg
+		wantKeys []string
+		wantQuit bool
+	}{
+		{name: "esc and the help key go to the view", keys: []tea.Msg{tuitest.KeyEscape, keyHelp}, wantKeys: []string{"esc", "?"}},
+		{name: "root keys go to the view", keys: []tea.Msg{keyQuit, keyTabTwo, keyRefresh}, wantKeys: []string{"q", "2", "r"}},
+		{name: "ctrl+c quits", keys: []tea.Msg{tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}}, wantQuit: true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model, view := pushRecordingView(t, true)
+			didQuit := false
+			for _, msg := range testCase.keys {
+				_, cmd := model.Update(msg)
+				if isQuit(cmd) {
+					didQuit = true
+				}
+			}
+			if didQuit != testCase.wantQuit {
+				t.Errorf("expected quit %t, got %t", testCase.wantQuit, didQuit)
+			}
+			if !slices.Equal(view.keys, testCase.wantKeys) {
+				t.Errorf("expected the view to get %q, got %q", testCase.wantKeys, view.keys)
+			}
+			if got, want := overlayNames(model), []string{recordingViewName}; !slices.Equal(got, want) {
+				t.Errorf("expected overlays %q, got %q", want, got)
+			}
+		})
+	}
+}
+
+func TestModel_OpensFromOverlay(t *testing.T) {
+	model, _ := pushRecordingView(t, false)
+	pressKeys(model, []tea.Msg{tuitest.KeyEnter})
+	if got, want := overlayNames(model), []string{recordingViewName, taskdetail.Name}; !slices.Equal(got, want) {
+		t.Errorf("expected overlays %q, got %q", want, got)
+	}
+}
+
+func TestModel_OverlayShowsLoadedTask(t *testing.T) {
+	model := newTestModel(t, testTabs(t, "Tasks"), nil)
+	model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	refreshNow(model)
+	pressKeys(model, []tea.Msg{tuitest.KeyEnter})
+	top, ok := model.topOverlay()
+	if !ok {
+		t.Fatal("expected enter to open an overlay")
+	}
+	box, _, _ := top.Render()
+	if want := task.ShortID(tuitest.ListedTasks()[0].Task.ID); !strings.Contains(ansi.Strip(box), want) {
+		t.Errorf("expected the overlay to show task %q, got\n%s", want, ansi.Strip(box))
+	}
+}
+
+// unknownOpenMsg is an open message no View shows.
+type unknownOpenMsg struct {
+	views.OpenMsg
+}
+
+func TestModel_OpenNoViewShows(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  func(model *Model) tea.Msg
+	}{
+		{name: "from a tab", msg: func(model *Model) tea.Msg { return tabMsg{tab: model.ActiveTab(), msg: unknownOpenMsg{}} }},
+		{name: "from an overlay", msg: func(model *Model) tea.Msg { return overlayMsg{msg: unknownOpenMsg{}} }},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, testTabs(t, "Tasks"), nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			refreshNow(model)
+			before := model.View().Content
+			_, cmd := model.Update(testCase.msg(model))
+			runCommand(model, cmd)
+			if got := overlayNames(model); len(got) != 0 {
+				t.Errorf("expected no overlay, got %q", got)
+			}
+			if after := model.View().Content; after != before {
+				t.Errorf("expected the screen to stay the same, got:\n%s", after)
+			}
+		})
+	}
+}
+
+// longDescriptionTasks returns the test tasks with a description on the first
+// one that is too long for the task overlay.
+func longDescriptionTasks() []task.ListedTask {
+	tasks := tuitest.ListedTasks()
+	tasks[0].Task.Description = strings.Repeat("Retry the upload.\n\n", 20)
+	return tasks
+}
+
+func TestModel_OverlayMouse(t *testing.T) {
+	cases := []struct {
+		name          string
+		msgs          []tea.Msg
+		wantStatus    string
+		wantActiveTab string
+	}{
+		{name: "the wheel scrolls the overlay", msgs: []tea.Msg{wheelDown(50, 5)}, wantStatus: "3f9a1c2e 3%", wantActiveTab: "Tab"},
+		{name: "the wheel outside the overlay does nothing", msgs: []tea.Msg{wheelDown(0, 5)}, wantStatus: "3f9a1c2e 0%", wantActiveTab: "Tab"},
+		{name: "the wheel on the border of the overlay does nothing", msgs: []tea.Msg{wheelDown(2, 5)}, wantStatus: "3f9a1c2e 0%", wantActiveTab: "Tab"},
+		{name: "a click outside the overlay does nothing", msgs: []tea.Msg{leftClick(99, 5), leftClick(12, 0)}, wantStatus: "3f9a1c2e 0%", wantActiveTab: "Tab"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), taskListNode()}})
+			config.Tabs = append(config.Tabs, TabConfig{Title: "Second", Layout: taskListNode()})
+			source := &fakeTaskSource{tasks: longDescriptionTasks()}
+			model := newTestModelWithSource(t, source, buildTestTabs(t, config), testRefreshInterval, nil)
+			model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+			refreshNow(model)
+			pressKeys(model, slices.Concat([]tea.Msg{tuitest.KeyEnter}, testCase.msgs))
+			top, ok := model.topOverlay()
+			if !ok {
+				t.Fatal("expected the task overlay to stay open")
+			}
+			overlay, ok := top.(*viewOverlay)
+			if !ok {
+				t.Fatalf("expected a view overlay on top, got %T", top)
+			}
+			if got := overlay.tile.Status(); got != testCase.wantStatus {
+				t.Errorf("expected overlay status %q, got %q", testCase.wantStatus, got)
+			}
+			if got := model.ActiveTab().Title; got != testCase.wantActiveTab {
+				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
+			}
+			if got := model.ActiveTab().focusedTileIndex; got != 0 {
+				t.Errorf("expected the first tile to keep focus, got tile %d", got)
+			}
+		})
+	}
+}
+
+// twoDetailsConfig describes a Tab with a task list and two task details.
+func twoDetailsConfig() Config {
+	return oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{
+		taskListNode(),
+		{View: taskdetail.Name},
+		{View: taskdetail.Name},
+	}})
+}
+
+func TestModel_TwoTaskDetails(t *testing.T) {
+	secondID := tuitest.ListedTasks()[1].Task.ID
+	cases := []struct {
+		name                 string
+		keys                 []tea.Msg
+		wantFocusedTileIndex int
+	}{
+		{name: "a selection shows the task in both", keys: []tea.Msg{tuitest.KeyDown}, wantFocusedTileIndex: 0},
+		{name: "enter shows the task in both and focuses the first", keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyEnter}, wantFocusedTileIndex: 1},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, buildTestTabs(t, twoDetailsConfig()), nil)
+			model.Update(tea.WindowSizeMsg{Width: 150, Height: 24})
+			refreshNow(model)
+			pressKeys(model, testCase.keys)
+			for _, tileIndex := range []int{1, 2} {
+				if got := model.ActiveTab().tiles[tileIndex].view.Status(); got != task.ShortID(secondID) {
+					t.Errorf("expected tile %d to show task %q, got status %q", tileIndex, secondID, got)
+				}
+			}
+			if got := model.ActiveTab().focusedTileIndex; got != testCase.wantFocusedTileIndex {
+				t.Errorf("expected tile %d focused, got %d", testCase.wantFocusedTileIndex, got)
+			}
+			if got := overlayNames(model); len(got) != 0 {
+				t.Errorf("expected no overlay, got %q", got)
 			}
 		})
 	}
@@ -584,7 +826,8 @@ type probedModel struct {
 
 func (probed probedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if probe, ok := msg.(stateProbe); ok {
-		probe.reply <- probedState{activeTab: probed.ActiveTab().Title, isHelpOpen: probed.helpOverlay.isOpen}
+		isHelpOpen := slices.Equal(overlayNames(probed.Model), []string{helpOverlayName})
+		probe.reply <- probedState{activeTab: probed.ActiveTab().Title, isHelpOpen: isHelpOpen}
 		return probed, nil
 	}
 	_, cmd := probed.Model.Update(msg)

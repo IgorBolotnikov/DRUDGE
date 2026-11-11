@@ -21,29 +21,13 @@ var (
 	zoomKey         = key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "zoom"))
 )
 
-// closeHelpKey closes the help overlay, as the help key does.
-var closeHelpKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close help"))
-
-// closeTaskKey closes the task overlay.
-var closeTaskKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close"))
+// closeOverlayKey closes the overlay on top.
+var closeOverlayKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close"))
 
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
 var rootBindings = []key.Binding{zoomKey, refreshKey, checkKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
 
-// keyMap is the keys of the screen while a Tile has focus: the keys of its
-// View and the root keys.
-type keyMap struct {
-	viewKeys []key.Binding
-}
-
-// ShortHelp returns the help key alone, the one hint the bottom bar shows.
-func (keys keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{helpKey}
-}
-
-// FullHelp returns a column with the keys of the View and a column with the
-// root keys.
-func (keys keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{keys.viewKeys, rootBindings}
-}
+// overlayBindings are the keys of the root the help lists while an overlay is
+// on top.
+var overlayBindings = []key.Binding{closeOverlayKey, helpKey}

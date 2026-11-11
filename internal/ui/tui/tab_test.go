@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 )
 
 // sizeView is a View that shows its name and the size it got, so a golden
@@ -190,5 +191,34 @@ func TestTab_BroadcastReachesEveryTile(t *testing.T) {
 		if view.receivedCount != 1 {
 			t.Errorf("expected view %q to get the message once, got it %d times", view.name, view.receivedCount)
 		}
+	}
+}
+
+func TestTab_Open(t *testing.T) {
+	cases := []struct {
+		name        string
+		layout      func() Node
+		wantIsShown bool
+	}{
+		{name: "no tile is an opener", layout: func() Node {
+			return NewSplit(SideBySide, 1, sizeTile("a", 1), sizeTile("b", 1))
+		}, wantIsShown: false},
+		{name: "no opener shows the message", layout: func() Node {
+			return NewSplit(SideBySide, 1, sizeTile("a", 1), NewTile(taskdetail.New(tuitest.Styles()), "", tuitest.Styles(), 1, true))
+		}, wantIsShown: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tab, err := NewTab("Tab", testCase.layout())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := tab.Open(unknownOpenMsg{}); got != testCase.wantIsShown {
+				t.Errorf("expected shown %t, got %t", testCase.wantIsShown, got)
+			}
+			if got := tab.focusedTileIndex; got != 0 {
+				t.Errorf("expected the first tile to keep focus, got tile %d", got)
+			}
+		})
 	}
 }

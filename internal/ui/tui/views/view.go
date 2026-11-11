@@ -26,9 +26,17 @@ type View interface {
 	Status() string
 }
 
-// TaskShower is a View that shows one task. Its Tab hands it the selected task
-// and the task to open.
+// TaskShower is a View that shows one task. Its Tab hands it the selected
+// task.
 type TaskShower interface {
 	View
 	ShowTask(id task.TaskID)
+}
+
+// Opener is a View that can show what some open messages ask for.
+type Opener interface {
+	View
+	// Open shows what msg asks for. isShown is false for a message the View
+	// can't show.
+	Open(msg OpenMsg) (isShown bool)
 }

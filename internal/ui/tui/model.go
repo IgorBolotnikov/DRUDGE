@@ -20,9 +20,6 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-// overlayZ puts an overlay above the screen.
-const overlayZ = 1
-
 // tabTop is the line of the screen the Tab starts on, below the top bar.
 const tabTop = 1
 
@@ -70,12 +67,6 @@ const (
 	numberedTabCount       = 9
 )
 
-// keyTaker is a part of the screen that may take every key but ctrl+c.
-type keyTaker interface {
-	TakesAllKeys() bool
-	Update(msg tea.Msg) tea.Cmd
-}
-
 // Names of the data sources in load errors.
 const (
 	tasksSourceName    = "tasks"
@@ -120,9 +111,10 @@ type dataLoadedMsg struct {
 	err     error
 }
 
-// Model is the root of the screen: a top bar, the active Tab and a bottom bar.
-// It loads the data on every refresh, checks the Drudgers on every Drudger
-// check and sends both to the Views of every Tab and of the task overlay.
+// Model is the root of the screen: a top bar, the active Tab, a bottom bar and
+// a stack of overlays over them. It loads the data on every refresh, checks the
+// Drudgers on every Drudger check and sends both to the Views of every Tab and
+// to every overlay.
 type Model struct {
 	project         *project.Project
 	sources         Sources
@@ -134,12 +126,13 @@ type Model struct {
 	intervals       Intervals
 	runningLoads    map[loadKey]bool
 	loadErrors      map[loadKey]error
+	lastLoaded      map[loadKey]tea.Msg
 	isChecking      bool
 	checkErr        error
+	lastChecked     tea.Msg
 	isMouseCaptured bool
 	help            help.Model
-	helpOverlay     helpOverlay
-	taskOverlay     taskOverlay
+	overlays        []Overlay
 	width           int
 	height          int
 }
@@ -163,9 +156,9 @@ func NewModel(shownProject *project.Project, sources Sources, screenStyles *styl
 		intervals:       intervals,
 		runningLoads:    map[loadKey]bool{},
 		loadErrors:      map[loadKey]error{},
+		lastLoaded:      map[loadKey]tea.Msg{},
 		help:            keyHelp,
 		isMouseCaptured: isMouseCaptured,
-		taskOverlay:     newTaskOverlay(screenStyles),
 	}
 	model.dataSources = []dataSource{
 		{name: tasksSourceName, load: model.loadTasks},
@@ -200,6 +193,8 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, model.handleDrudgersChecked(msg)
 	case tabMsg:
 		return model, model.handleTabMsg(msg)
+	case overlayMsg:
+		return model, model.handleOverlayMsg(msg)
 	}
 	return model, nil
 }
@@ -254,30 +249,50 @@ func (model *Model) checkDrudgers() tea.Cmd {
 	}
 }
 
-// handleDrudgersChecked ends a check, keeps its error for the bottom bar and
-// sends its message to the Views of every Tab.
+// handleDrudgersChecked ends a check, keeps its error for the bottom bar, keeps
+// its message for the Views of overlays opened later and sends it to every Tab
+// and every overlay.
 func (model *Model) handleDrudgersChecked(msg drudgersCheckedMsg) tea.Cmd {
 	model.isChecking = false
 	model.checkErr = msg.viewMsg.Err
+	model.lastChecked = msg.viewMsg
 	return model.broadcast(msg.viewMsg)
 }
 
 // handleDataLoaded ends a load, keeps its error for the bottom bar and sends
-// its message to the Views of every Tab.
+// its message to every Tab and every overlay. It keeps the message of a load
+// that worked for the Views of overlays opened later.
 func (model *Model) handleDataLoaded(msg dataLoadedMsg) tea.Cmd {
 	delete(model.runningLoads, msg.key)
 	if msg.err != nil {
 		model.loadErrors[msg.key] = msg.err
 	} else {
 		delete(model.loadErrors, msg.key)
+		model.lastLoaded[msg.key] = msg.viewMsg
 	}
 	return model.broadcast(msg.viewMsg)
 }
 
+// lastData returns the message of the last load of every source that worked,
+// in the order of the sources, and the message of the last Drudger check.
+func (model *Model) lastData() []tea.Msg {
+	var messages []tea.Msg
+	for _, source := range model.dataSources {
+		loaded, ok := model.lastLoaded[loadKey{projectSlug: model.project.Slug, sourceName: source.name}]
+		if ok {
+			messages = append(messages, loaded)
+		}
+	}
+	if model.lastChecked != nil {
+		messages = append(messages, model.lastChecked)
+	}
+	return messages
+}
+
 // handleTabMsg handles a message of a command of a View of a Tab. A selection
-// goes to the Tab. A task the Tab has no View to show opens in the task
-// overlay. Each command of a batch gets the tag of the Tab, and every other
-// message goes back to the program untagged.
+// goes to the Tab. An open message goes to the Tab, and opens in an overlay
+// when no View of the Tab shows it. Each command of a batch gets the tag of the
+// Tab, and every other message goes back to the program untagged.
 func (model *Model) handleTabMsg(msg tabMsg) tea.Cmd {
 	switch tabbed := msg.msg.(type) {
 	case nil:
@@ -285,9 +300,9 @@ func (model *Model) handleTabMsg(msg tabMsg) tea.Cmd {
 	case views.TaskSelectedMsg:
 		msg.tab.SelectTask(tabbed.TaskID)
 		return nil
-	case views.OpenTaskMsg:
-		if !msg.tab.OpenTask(tabbed.TaskID) {
-			model.taskOverlay.open(tabbed.TaskID)
+	case views.OpenMsg:
+		if !msg.tab.Open(tabbed) {
+			return model.openInOverlay(tabbed)
 		}
 		return nil
 	case tea.BatchMsg:
@@ -301,6 +316,71 @@ func (model *Model) handleTabMsg(msg tabMsg) tea.Cmd {
 	}
 }
 
+// handleOverlayMsg handles a message of a command of an overlay. An open
+// message opens in a new overlay and a selection is dropped. Each command of a
+// batch gets the tag of the overlay, and every other message goes back to the
+// program untagged.
+func (model *Model) handleOverlayMsg(msg overlayMsg) tea.Cmd {
+	switch inner := msg.msg.(type) {
+	case nil, views.TaskSelectedMsg:
+		return nil
+	case views.OpenMsg:
+		return model.openInOverlay(inner)
+	case tea.BatchMsg:
+		commands := make([]tea.Cmd, 0, len(inner))
+		for _, cmd := range inner {
+			commands = append(commands, tagOverlay(cmd))
+		}
+		return tea.Batch(commands...)
+	default:
+		return func() tea.Msg { return inner }
+	}
+}
+
+// openInOverlay builds every View of the registry in order with the default
+// values of its options and pushes the first one that shows the open message
+// in an overlay. The View gets the last data before it is pushed. Nothing
+// opens when no View shows the message.
+func (model *Model) openInOverlay(msg views.OpenMsg) tea.Cmd {
+	for _, kind := range viewKinds {
+		opener, ok := kind.newView(model.styles, kind.defaultOptionValues()).(views.Opener)
+		if !ok || !opener.Open(msg) {
+			continue
+		}
+		overlay := newViewOverlay(opener, model.styles)
+		lastData := model.lastData()
+		commands := make([]tea.Cmd, 0, len(lastData))
+		for _, data := range lastData {
+			commands = append(commands, tagOverlay(overlay.Update(data)))
+		}
+		model.push(overlay)
+		return tea.Batch(commands...)
+	}
+	return nil
+}
+
+// push sizes an overlay to the screen and puts it on top of the stack.
+func (model *Model) push(overlay Overlay) {
+	overlay.SetSize(model.width, model.height)
+	model.overlays = append(model.overlays, overlay)
+}
+
+// pop takes the overlay on top off the stack.
+func (model *Model) pop() {
+	if len(model.overlays) > 0 {
+		model.overlays = model.overlays[:len(model.overlays)-1]
+	}
+}
+
+// topOverlay returns the overlay on top of the stack. ok is false while no
+// overlay is open.
+func (model *Model) topOverlay() (top Overlay, ok bool) {
+	if len(model.overlays) == 0 {
+		return nil, false
+	}
+	return model.overlays[len(model.overlays)-1], true
+}
+
 func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	model.width = msg.Width
 	model.height = msg.Height
@@ -308,22 +388,28 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 	for _, tab := range model.tabs {
 		tab.SetSize(msg.Width, tabHeight)
 	}
-	model.taskOverlay.SetSize(msg.Width, tabHeight)
+	for _, overlay := range model.overlays {
+		overlay.SetSize(msg.Width, msg.Height)
+	}
 }
 
-// handleKey quits, refreshes, checks the Drudgers, opens the help overlay,
-// switches Tabs, moves focus between the Tiles of the active Tab, zooms the
-// focused Tile or passes the key to the active Tab. A number key with no Tab
-// behind it does nothing. The part of the screen that takes all keys gets
-// every key but ctrl+c.
+// handleKey quits on ctrl+c and passes every other key to the overlay on top
+// while one is open. With no overlay open it refreshes, checks the Drudgers,
+// opens the help, switches Tabs, moves focus between the Tiles of the active
+// Tab, zooms the focused Tile or passes the key to the active Tab. A number key
+// with no Tab behind it does nothing. A Tab that takes all keys gets every key
+// but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key.Matches(msg, interruptKey) {
 		return tea.Quit
 	}
-	if taker, ok := model.allKeysTaker(); ok {
-		return taker.Update(msg)
+	if top, ok := model.topOverlay(); ok {
+		return model.handleOverlayKey(top, msg)
 	}
 	activeTab := model.ActiveTab()
+	if activeTab.TakesAllKeys() {
+		return activeTab.Update(msg)
+	}
 	switch {
 	case key.Matches(msg, quitKey):
 		return tea.Quit
@@ -332,7 +418,7 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, checkKey):
 		return model.checkDrudgers()
 	case key.Matches(msg, helpKey):
-		model.helpOverlay.open()
+		model.pushHelp()
 	case key.Matches(msg, nextTabKey):
 		model.nextTab()
 	case key.Matches(msg, previousTabKey):
@@ -362,12 +448,52 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// handleClick switches to the Tab of a label in the top bar, or gives focus to
+// handleOverlayKey passes a key to the overlay on top when it takes all keys.
+// Otherwise esc closes the overlay, the help key closes the help or opens it
+// over the overlay, and every other key goes to the overlay.
+func (model *Model) handleOverlayKey(top Overlay, msg tea.KeyPressMsg) tea.Cmd {
+	_, isHelp := top.(*helpOverlay)
+	switch {
+	case top.TakesAllKeys():
+		return tagOverlay(top.Update(msg))
+	case key.Matches(msg, closeOverlayKey):
+		model.pop()
+	case key.Matches(msg, helpKey) && isHelp:
+		model.pop()
+	case key.Matches(msg, helpKey):
+		model.pushHelp()
+	default:
+		return tagOverlay(top.Update(msg))
+	}
+	return nil
+}
+
+// pushHelp opens the help with the keys that work on the screen right now.
+func (model *Model) pushHelp() {
+	model.push(newHelpOverlay(model.help, model.styles.HelpBox, model.helpColumns()))
+}
+
+// helpColumns returns the keys the help lists. With no overlay open they are
+// the keys of the focused View and the root keys. With an overlay on top they
+// are the keys of the overlay and the keys that close it and open the help.
+func (model *Model) helpColumns() [][]key.Binding {
+	if top, ok := model.topOverlay(); ok {
+		return [][]key.Binding{top.Keys(), overlayBindings}
+	}
+	kind, _ := findViewKind(model.ActiveTab().FocusedTile().view.Name())
+	return [][]key.Binding{kind.keys, rootBindings}
+}
+
+// handleClick passes a click to the overlay on top while one is open.
+// Otherwise it switches to the Tab of a label in the top bar, or gives focus to
 // the Tile under the pointer and passes the click to its View. It takes only
-// the left button and does nothing while an overlay is open.
+// the left button.
 func (model *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	if msg.Button != tea.MouseLeft || model.isOverlayOpen() {
+	if msg.Button != tea.MouseLeft {
 		return nil
+	}
+	if top, ok := model.topOverlay(); ok {
+		return tagOverlay(top.Click(msg))
 	}
 	if msg.Y < topBarHeight {
 		if tabIndex, ok := model.tabAt(msg.X); ok {
@@ -382,21 +508,18 @@ func (model *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	return model.ActiveTab().Click(tea.MouseClickMsg(inTab))
 }
 
-// handleWheel passes a turn of the wheel to the View of the Tile under the
-// pointer, focused or not. It does nothing while an overlay is open.
+// handleWheel passes a turn of the wheel to the overlay on top while one is
+// open. Otherwise it passes it to the View of the Tile under the pointer,
+// focused or not.
 func (model *Model) handleWheel(msg tea.MouseWheelMsg) tea.Cmd {
-	if model.isOverlayOpen() {
-		return nil
+	if top, ok := model.topOverlay(); ok {
+		return tagOverlay(top.Wheel(msg))
 	}
 	inTab, ok := model.tabMouse(tea.Mouse(msg))
 	if !ok {
 		return nil
 	}
 	return model.ActiveTab().Wheel(tea.MouseWheelMsg(inTab))
-}
-
-func (model *Model) isOverlayOpen() bool {
-	return model.helpOverlay.isOpen || model.taskOverlay.isOpen
 }
 
 // tabMouse moves a mouse event on the screen into the cells of the active Tab.
@@ -423,24 +546,6 @@ func (model *Model) tabAt(x int) (tabIndex int, ok bool) {
 	return 0, false
 }
 
-// allKeysTaker returns the part of the screen that takes all keys: the open
-// help overlay, the open task overlay, then the active Tab. ok is false when
-// none does.
-func (model *Model) allKeysTaker() (taker keyTaker, ok bool) {
-	for _, candidate := range []keyTaker{&model.helpOverlay, &model.taskOverlay, model.ActiveTab()} {
-		if candidate.TakesAllKeys() {
-			return candidate, true
-		}
-	}
-	return nil, false
-}
-
-// keyMap returns the keys of the focused View and the root keys.
-func (model *Model) keyMap() keyMap {
-	kind, _ := findViewKind(model.ActiveTab().FocusedTile().view.Name())
-	return keyMap{viewKeys: kind.keys}
-}
-
 // nextTab makes the next Tab active. The last Tab wraps to the first.
 func (model *Model) nextTab() {
 	model.activeTabIndex++
@@ -457,14 +562,15 @@ func (model *Model) previousTab() {
 	model.activeTabIndex--
 }
 
-// broadcast sends a message to the Views of every Tab and to the task
-// overlay.
+// broadcast sends a message to the Views of every Tab and to every overlay.
 func (model *Model) broadcast(msg tea.Msg) tea.Cmd {
-	commands := make([]tea.Cmd, 0, len(model.tabs)+1)
+	commands := make([]tea.Cmd, 0, len(model.tabs)+len(model.overlays))
 	for _, tab := range model.tabs {
 		commands = append(commands, tab.Broadcast(msg))
 	}
-	commands = append(commands, model.taskOverlay.Update(msg))
+	for _, overlay := range model.overlays {
+		commands = append(commands, tagOverlay(overlay.Update(msg)))
+	}
 	return tea.Batch(commands...)
 }
 
@@ -484,40 +590,33 @@ func (model *Model) View() tea.View {
 		return view
 	}
 	lines := []string{model.renderTopBar()}
-	model.ActiveTab().SetFocusHidden(model.isOverlayOpen())
+	_, isOverlayOpen := model.topOverlay()
+	model.ActiveTab().SetFocusHidden(isOverlayOpen)
 	if model.height > barHeight {
 		lines = append(lines, model.renderActiveTab())
 	}
 	if model.height > 1 {
 		lines = append(lines, model.renderBottomBar())
 	}
-	view.Content = strings.Join(lines, "\n")
-	if model.taskOverlay.isOpen && model.height > barHeight {
-		view.Content = model.drawOver(view.Content, model.taskOverlay.tile.Render(), taskOverlayMarginX, tabTop+taskOverlayMarginY)
-	}
-	if model.helpOverlay.isOpen {
-		view.Content = model.renderHelpOverlay(view.Content)
-	}
+	view.Content = model.drawOverlays(strings.Join(lines, "\n"))
 	return view
 }
 
-// renderHelpOverlay draws the help box centered over the screen. A box bigger
-// than the screen starts at the top left corner.
-func (model *Model) renderHelpOverlay(screen string) string {
-	box := model.styles.HelpBox.Render(model.help.FullHelpView(model.keyMap().FullHelp()))
-	boxX := max((model.width-lipgloss.Width(box))/2, 0)
-	boxY := max((model.height-lipgloss.Height(box))/2, 0)
-	return model.drawOver(screen, box, boxX, boxY)
-}
-
-// drawOver draws a box over the screen with its top left corner at x and y.
-// The screen under the box keeps its layout. A box that reaches past the
-// screen is cut at the right and the bottom edge.
-func (model *Model) drawOver(screen, box string, x, y int) string {
-	compositor := lipgloss.NewCompositor(
-		lipgloss.NewLayer(screen),
-		lipgloss.NewLayer(box).X(x).Y(y).Z(overlayZ),
-	)
+// drawOverlays draws every overlay over the screen, each one above the one
+// below it in the stack. The screen under an overlay keeps its layout. A box
+// that reaches past the screen is cut at the right and the bottom edge.
+func (model *Model) drawOverlays(screen string) string {
+	if len(model.overlays) == 0 {
+		return screen
+	}
+	layers := []*lipgloss.Layer{lipgloss.NewLayer(screen)}
+	for index, overlay := range model.overlays {
+		box, x, y := overlay.Render()
+		if box != "" {
+			layers = append(layers, lipgloss.NewLayer(box).X(x).Y(y).Z(index+1))
+		}
+	}
+	compositor := lipgloss.NewCompositor(layers...)
 	return lipgloss.NewCanvas(model.width, model.height).Compose(compositor).Render()
 }
 
@@ -608,16 +707,19 @@ func renderTabLabel(index int, title string) string {
 }
 
 // renderBottomBar shows the load errors and the warnings on the left and the
-// help hint on the right. The hint is left out while the focused View takes
-// all keys, since the help key goes to the View then. While the task overlay
-// is open, the hint is the key that closes the overlay.
+// help hint on the right. While an overlay is open, the hint is the hint of the
+// overlay on top. The hint is left out while the focused View or the overlay
+// on top takes all keys, since the keys of the hint go to it then.
 func (model *Model) renderBottomBar() string {
+	shortHelp := []key.Binding{helpKey}
+	isTakingAllKeys := model.ActiveTab().TakesAllKeys()
+	if top, ok := model.topOverlay(); ok {
+		shortHelp = top.ShortHelp()
+		isTakingAllKeys = top.TakesAllKeys()
+	}
 	hints := ""
-	switch {
-	case model.taskOverlay.isOpen:
-		hints = model.help.ShortHelpView([]key.Binding{closeTaskKey})
-	case !model.ActiveTab().TakesAllKeys():
-		hints = model.help.ShortHelpView(model.keyMap().ShortHelp())
+	if !isTakingAllKeys {
+		hints = model.help.ShortHelpView(shortHelp)
 	}
 	notices := model.renderLoadErrors()
 	for _, warning := range model.warnings {

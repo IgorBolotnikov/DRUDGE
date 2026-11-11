@@ -210,18 +210,21 @@ func (tab *Tab) SelectedTaskID() task.TaskID {
 	return tab.selectedTaskID
 }
 
-// OpenTask hands the task to the first View in tree order that shows a task
-// and gives focus to its Tile. isShown is false when no View of the Tab shows
-// a task.
-func (tab *Tab) OpenTask(id task.TaskID) (isShown bool) {
+// Open hands an open message to the View of every Tile that is an opener and
+// gives focus to the Tile of the first View in tree order that shows it.
+// isShown is false when no View of the Tab shows it.
+func (tab *Tab) Open(msg views.OpenMsg) (isShown bool) {
 	for index, tile := range tab.tiles {
-		if shower, ok := tile.view.(views.TaskShower); ok {
-			shower.ShowTask(id)
-			tab.focus(index)
-			return true
+		opener, ok := tile.view.(views.Opener)
+		if !ok || !opener.Open(msg) {
+			continue
 		}
+		if !isShown {
+			tab.focus(index)
+		}
+		isShown = true
 	}
-	return false
+	return isShown
 }
 
 // HasRoomForTiles reports whether every Tile shown got space for its View at
