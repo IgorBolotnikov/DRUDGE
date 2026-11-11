@@ -117,34 +117,23 @@ func (tab *Tab) focus(index int) {
 	tab.SetSize(tab.width, tab.height)
 }
 
-// Click gives focus to the Tile at a cell of the Tab and passes the click to
-// its View in the cells of the View. A click on the border of a Tile only
-// gives it focus.
-func (tab *Tab) Click(msg tea.MouseClickMsg) tea.Cmd {
-	tileIndex, rect, ok := tab.tileAt(msg.X, msg.Y)
+// Mouse passes a mouse event at a cell of the Tab to the View of the Tile
+// there, focused or not, in the cells of the View. A click also gives focus to
+// the Tile, and a click on its border only gives it focus.
+func (tab *Tab) Mouse(msg tea.MouseMsg) tea.Cmd {
+	mouse := msg.Mouse()
+	tileIndex, rect, ok := tab.tileAt(mouse.X, mouse.Y)
 	if !ok {
 		return nil
 	}
-	tab.focus(tileIndex)
-	inView, ok := viewMouse(tea.Mouse(msg), rect)
+	if _, isClick := msg.(tea.MouseClickMsg); isClick {
+		tab.focus(tileIndex)
+	}
+	inView, ok := viewMouse(msg, rect)
 	if !ok {
 		return nil
 	}
-	return tab.tag(tab.FocusedTile().view.Update(tea.MouseClickMsg(inView)))
-}
-
-// Wheel passes a turn of the wheel at a cell of the Tab to the View of the
-// Tile there, focused or not, in the cells of the View.
-func (tab *Tab) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
-	tileIndex, rect, ok := tab.tileAt(msg.X, msg.Y)
-	if !ok {
-		return nil
-	}
-	inView, ok := viewMouse(tea.Mouse(msg), rect)
-	if !ok {
-		return nil
-	}
-	return tab.tag(tab.tiles[tileIndex].view.Update(tea.MouseWheelMsg(inView)))
+	return tab.tag(tab.tiles[tileIndex].view.Update(inView))
 }
 
 // tileAt returns the index and the Rect of the Tile shown at a cell of the

@@ -19,10 +19,9 @@ type Overlay interface {
 	// Render returns the box and the cell of the screen its top left corner
 	// sits on. An empty box draws nothing.
 	Render() (box string, x, y int)
-	// Click and Wheel get mouse events in the cells of the screen. The overlay
-	// ignores the ones outside its box.
-	Click(msg tea.MouseClickMsg) tea.Cmd
-	Wheel(msg tea.MouseWheelMsg) tea.Cmd
+	// Mouse gets mouse events in the cells of the screen. The overlay ignores
+	// the ones outside its box.
+	Mouse(msg tea.MouseMsg) tea.Cmd
 	// Keys are the keys the help lists while the overlay is on top.
 	Keys() []key.Binding
 	// ShortHelp is the hint the bottom bar shows while the overlay is on top.
@@ -92,20 +91,12 @@ func (overlay *viewOverlay) rect() Rect {
 	return Rect{X: viewOverlayMarginX, Y: tabTop + viewOverlayMarginY, Width: overlay.tile.width, Height: overlay.tile.height}
 }
 
-func (overlay *viewOverlay) Click(msg tea.MouseClickMsg) tea.Cmd {
-	inView, ok := viewMouse(tea.Mouse(msg), overlay.rect())
+func (overlay *viewOverlay) Mouse(msg tea.MouseMsg) tea.Cmd {
+	inView, ok := viewMouse(msg, overlay.rect())
 	if !ok {
 		return nil
 	}
-	return overlay.tile.view.Update(tea.MouseClickMsg(inView))
-}
-
-func (overlay *viewOverlay) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
-	inView, ok := viewMouse(tea.Mouse(msg), overlay.rect())
-	if !ok {
-		return nil
-	}
-	return overlay.tile.view.Update(tea.MouseWheelMsg(inView))
+	return overlay.tile.view.Update(inView)
 }
 
 // Keys returns the keys the registry lists for the View, or none for a View
@@ -155,11 +146,7 @@ func (overlay *helpOverlay) Render() (box string, x, y int) {
 	return box, x, y
 }
 
-func (overlay *helpOverlay) Click(msg tea.MouseClickMsg) tea.Cmd {
-	return nil
-}
-
-func (overlay *helpOverlay) Wheel(msg tea.MouseWheelMsg) tea.Cmd {
+func (overlay *helpOverlay) Mouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 

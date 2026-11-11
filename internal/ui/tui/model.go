@@ -179,10 +179,8 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case tea.KeyPressMsg:
 		return model, model.handleKey(msg)
-	case tea.MouseClickMsg:
-		return model, model.handleClick(msg)
-	case tea.MouseWheelMsg:
-		return model, model.handleWheel(msg)
+	case tea.MouseMsg:
+		return model, model.handleMouse(msg)
 	case refreshTickMsg:
 		return model, tea.Batch(model.refresh(), model.nextTick())
 	case dataLoadedMsg:
@@ -484,55 +482,53 @@ func (model *Model) helpColumns() [][]key.Binding {
 	return [][]key.Binding{kind.keys, rootBindings}
 }
 
-// handleClick passes a click to the overlay on top while one is open.
-// Otherwise it switches to the Tab of a label in the top bar, or gives focus to
-// the Tile under the pointer and passes the click to its View. It takes only
-// the left button.
-func (model *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	if msg.Button != tea.MouseLeft {
+// handleMouse takes only left clicks and turns of the wheel. It passes them to
+// the overlay on top while one is open. Otherwise a click on a label in the top
+// bar switches to its Tab, and every other event goes to the active Tab.
+func (model *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+	if !isLeftClickOrWheel(msg) {
 		return nil
 	}
 	if top, ok := model.topOverlay(); ok {
-		return tagOverlay(top.Click(msg))
+		return tagOverlay(top.Mouse(msg))
 	}
-	if msg.Y < topBarHeight {
-		if tabIndex, ok := model.tabAt(msg.X); ok {
+	mouse := msg.Mouse()
+	if _, isClick := msg.(tea.MouseClickMsg); isClick && mouse.Y < topBarHeight {
+		if tabIndex, ok := model.tabAt(mouse.X); ok {
 			model.activeTabIndex = tabIndex
 		}
 		return nil
 	}
-	inTab, ok := model.tabMouse(tea.Mouse(msg))
+	inTab, ok := model.tabMouse(msg)
 	if !ok {
 		return nil
 	}
-	return model.ActiveTab().Click(tea.MouseClickMsg(inTab))
+	return model.ActiveTab().Mouse(inTab)
 }
 
-// handleWheel passes a turn of the wheel to the overlay on top while one is
-// open. Otherwise it passes it to the View of the Tile under the pointer,
-// focused or not.
-func (model *Model) handleWheel(msg tea.MouseWheelMsg) tea.Cmd {
-	if top, ok := model.topOverlay(); ok {
-		return tagOverlay(top.Wheel(msg))
+// isLeftClickOrWheel reports whether a mouse event is a click of the left
+// button or a turn of the wheel.
+func isLeftClickOrWheel(msg tea.MouseMsg) bool {
+	switch msg := msg.(type) {
+	case tea.MouseClickMsg:
+		return msg.Button == tea.MouseLeft
+	case tea.MouseWheelMsg:
+		return true
 	}
-	inTab, ok := model.tabMouse(tea.Mouse(msg))
-	if !ok {
-		return nil
-	}
-	return model.ActiveTab().Wheel(tea.MouseWheelMsg(inTab))
+	return false
 }
 
 // tabMouse moves a mouse event on the screen into the cells of the active Tab.
 // ok is false outside the Tab and while the Tab shows a warning in place of
 // its Tiles.
-func (model *Model) tabMouse(mouse tea.Mouse) (moved tea.Mouse, ok bool) {
+func (model *Model) tabMouse(msg tea.MouseMsg) (moved tea.MouseMsg, ok bool) {
 	tabHeight := model.height - barHeight
-	mouse.Y -= topBarHeight
-	isInTab := mouse.Y >= 0 && mouse.Y < tabHeight
+	inTabY := msg.Mouse().Y - topBarHeight
+	isInTab := inTabY >= 0 && inTabY < tabHeight
 	if !isInTab || !model.ActiveTab().HasRoomForTiles() {
-		return tea.Mouse{}, false
+		return nil, false
 	}
-	return mouse, true
+	return moveMouse(msg, 0, -topBarHeight), true
 }
 
 // tabAt returns the index of the Tab whose label the top bar shows at a

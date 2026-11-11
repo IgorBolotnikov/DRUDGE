@@ -88,19 +88,18 @@ func (tile *Tile) hasRoomForView() bool {
 
 // viewMouse moves a mouse event at a cell of the Tab into the cells of the
 // View of the Tile at rect. ok is false for a cell on the border.
-func viewMouse(mouse tea.Mouse, rect Rect) (moved tea.Mouse, ok bool) {
+func viewMouse(msg tea.MouseMsg, rect Rect) (moved tea.MouseMsg, ok bool) {
 	viewRect := Rect{
 		X:      rect.X + tileEdge,
 		Y:      rect.Y + tileEdge,
 		Width:  rect.Width - tileBorder,
 		Height: rect.Height - tileBorder,
 	}
+	mouse := msg.Mouse()
 	if !viewRect.contains(mouse.X, mouse.Y) {
-		return tea.Mouse{}, false
+		return nil, false
 	}
-	mouse.X -= viewRect.X
-	mouse.Y -= viewRect.Y
-	return mouse, true
+	return moveMouse(msg, -viewRect.X, -viewRect.Y), true
 }
 
 // SetFocused sets whether the Tile has focus.

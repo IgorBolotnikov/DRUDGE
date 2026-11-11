@@ -967,6 +967,7 @@ var (
 	wheelDownTop        = wheelDown(60, 4)
 	wheelUpTop          = wheelUp(60, 4)
 	rightClickTop       = tea.MouseClickMsg{X: 60, Y: 4, Button: tea.MouseRight}
+	releaseTop          = tea.MouseReleaseMsg{X: 60, Y: 4, Button: tea.MouseLeft}
 	clickMiddleHeader   = leftClick(60, 9)
 	clickMiddleThirdRow = leftClick(60, 12)
 	clickLeftSecondRow  = leftClick(10, 4)
@@ -990,6 +991,7 @@ func TestModel_Mouse(t *testing.T) {
 		{name: "a click on a row of the focused tile", msgs: []tea.Msg{clickLeftSecondRow}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"2/5", "1/5", "1/5", "1/5"}},
 		{name: "a click on the bottom bar does nothing", msgs: []tea.Msg{clickBottomBar}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
 		{name: "a right click does nothing", msgs: []tea.Msg{rightClickTop}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
+		{name: "a mouse release does nothing", msgs: []tea.Msg{releaseTop}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
 		{name: "a click while the help is open does nothing", msgs: []tea.Msg{keyHelp, clickMiddleThirdRow, clickSecondTabLabel}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "1/5", "1/5", "1/5"}},
 		{name: "the wheel scrolls an unfocused tile", msgs: []tea.Msg{wheelDownTop}, wantActiveTab: "First", wantFocusedTile: "Left", wantStatuses: []string{"1/5", "2/5", "1/5", "1/5"}, golden: "screen_mouse_wheel_scrolled"},
 		{name: "a click on a scrolled tile counts from the first row in sight", msgs: []tea.Msg{wheelDownTop, clickTopSecondLine}, wantActiveTab: "First", wantFocusedTile: "Top", wantStatuses: []string{"1/5", "3/5", "1/5", "1/5"}},
