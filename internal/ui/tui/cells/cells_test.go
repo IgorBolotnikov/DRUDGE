@@ -44,6 +44,29 @@ func TestFitEllipsis(t *testing.T) {
 	}
 }
 
+func TestCenterEllipsis(t *testing.T) {
+	cases := []struct {
+		name  string
+		text  string
+		width int
+		want  string
+	}{
+		{name: "centers short text", text: "ab", width: 6, want: "  ab  "},
+		{name: "puts the odd cell on the right", text: "ab", width: 5, want: " ab  "},
+		{name: "keeps text of the exact width", text: "abcd", width: 4, want: "abcd"},
+		{name: "ends cut text with an ellipsis", text: "abcdef", width: 4, want: "abc…"},
+		{name: "counts a wide character as two cells", text: "日本", width: 6, want: " 日本 "},
+		{name: "zero width", text: "abc", width: 0, want: ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := CenterEllipsis(testCase.text, testCase.width); got != testCase.want {
+				t.Errorf("expected %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestBlankLines(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -21,6 +21,14 @@ func FitEllipsis(text string, width int) string {
 	return pad(ansi.Truncate(text, width, Ellipsis), width)
 }
 
+// CenterEllipsis is FitEllipsis that centers text in width cells. An odd
+// cell left over goes to the right.
+func CenterEllipsis(text string, width int) string {
+	cut := ansi.Truncate(text, width, Ellipsis)
+	leftPadding := max(width-ansi.StringWidth(cut), 0) / 2
+	return pad(strings.Repeat(" ", leftPadding)+cut, width)
+}
+
 // BlankLines returns height lines of width spaces.
 func BlankLines(width, height int) string {
 	if height <= 0 {

@@ -464,8 +464,8 @@ func (view *View) renderCompact() string {
 	return strings.Join(lines[:min(len(lines), view.height)], "\n")
 }
 
-// renderHeader renders the status of a column and the count of its tasks in
-// the style of the status. The header of the cursor column is reversed, so an
+// renderHeader renders the status of a column and the count of its tasks
+// centered, in the style of the status. The header of the cursor column is reversed, so an
 // empty cursor column still shows the cursor.
 func (view *View) renderHeader(columnIndex int, width int) string {
 	boardColumn := view.columns[columnIndex]
@@ -474,7 +474,7 @@ func (view *View) renderHeader(columnIndex int, width int) string {
 	if columnIndex == view.columnIndex {
 		headerStyle = headerStyle.Reverse(true)
 	}
-	return headerStyle.Render(cells.FitEllipsis(header, width))
+	return headerStyle.Render(cells.CenterEllipsis(header, width))
 }
 
 // renderTask renders the title of the task at a line, cut to width. The cursor

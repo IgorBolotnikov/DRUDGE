@@ -2,6 +2,7 @@ package taskboard
 
 import (
 	"errors"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -177,7 +178,8 @@ func TestView_CursorColumnHeader(t *testing.T) {
 
 			for _, status := range task.Statuses {
 				reversedOpening, _, _ := strings.Cut(screenStyles.Status(status).Bold(true).Reverse(true).Render("x"), "x")
-				isReversed := strings.Contains(rendered, reversedOpening+string(status)+" ")
+				reversedHeader := regexp.MustCompile(regexp.QuoteMeta(reversedOpening) + " *" + regexp.QuoteMeta(string(status)) + " ")
+				isReversed := reversedHeader.MatchString(rendered)
 				wantReversed := status == testCase.wantReversed
 				if isReversed != wantReversed {
 					t.Errorf("expected the header of %s reversed to be %v, got %v", status, wantReversed, isReversed)
