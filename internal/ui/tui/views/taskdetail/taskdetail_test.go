@@ -245,14 +245,17 @@ func TestView_Open(t *testing.T) {
 	}
 }
 
-func TestView_OpensRunLog(t *testing.T) {
+func TestView_TaskKeys(t *testing.T) {
 	cases := []struct {
 		name   string
 		taskID task.TaskID
+		input  tea.KeyPressMsg
 		want   []tea.Msg
 	}{
-		{name: "L opens the runlog of the shown task", taskID: shownTaskID, want: []tea.Msg{views.OpenRunLogMsg{TaskID: shownTaskID}}},
-		{name: "L with no task does nothing"},
+		{name: "L opens the runlog of the shown task", taskID: shownTaskID, input: tuitest.KeyRunLog, want: []tea.Msg{views.OpenRunLogMsg{TaskID: shownTaskID}}},
+		{name: "L with no task does nothing", input: tuitest.KeyRunLog},
+		{name: "r runs the shown task", taskID: shownTaskID, input: tuitest.KeyRun, want: []tea.Msg{views.RunTaskMsg{TaskID: shownTaskID}}},
+		{name: "r with no task does nothing", input: tuitest.KeyRun},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -262,7 +265,7 @@ func TestView_OpensRunLog(t *testing.T) {
 			if testCase.taskID != "" {
 				view.ShowTask(testCase.taskID)
 			}
-			got := tuitest.Messages(view.Update(tuitest.KeyRunLog))
+			got := tuitest.Messages(view.Update(testCase.input))
 			if !slices.Equal(got, testCase.want) {
 				t.Errorf("expected messages %v, got %v", testCase.want, got)
 			}

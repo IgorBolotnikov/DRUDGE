@@ -47,6 +47,9 @@ var KeyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 // KeyRunLog opens the runlog of the task under a cursor.
 var KeyRunLog = tea.KeyPressMsg{Code: 'l', Text: "L", Mod: tea.ModShift}
 
+// KeyRun asks to run the task under a cursor.
+var KeyRun = tea.KeyPressMsg{Code: 'r', Text: "r"}
+
 // Type returns the key presses that type text.
 func Type(text string) []tea.Msg {
 	keyPresses := make([]tea.Msg, 0, len(text))

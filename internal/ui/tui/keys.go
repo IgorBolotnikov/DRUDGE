@@ -17,6 +17,8 @@ var (
 	nextTileKey     = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/shift+tab", "next/prev tile"))
 	previousTileKey = key.NewBinding(key.WithKeys("shift+tab"))
 	zoomKey         = key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "zoom"))
+	eventLogKey     = key.NewBinding(key.WithKeys("!"), key.WithHelp("!", "event log"))
+	clearErrorKey   = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear error"))
 )
 
 // closeOverlayKey closes the overlay on top.
@@ -30,7 +32,7 @@ const helpOverlayTitle = "Help"
 
 // rootBindings are the root keys the help lists. A key that carries the help of
 // its pair stands for both.
-var rootBindings = []key.Binding{zoomKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, helpKey, quitKey}
+var rootBindings = []key.Binding{zoomKey, tabNumberKey, nextTabKey, focusLeftKey, nextTileKey, eventLogKey, clearErrorKey, helpKey, quitKey}
 
 // overlayBindings are the keys of the root the help lists while an overlay is
 // on top.

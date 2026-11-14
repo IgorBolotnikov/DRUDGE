@@ -10,11 +10,13 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 )
 
-// silentProgress drops every event a service reports.
+// silentProgress drops every event a service reports. The feeds and the
+// project lookup report to it.
 type silentProgress struct{}
 
 func (silentProgress) Report(any) {}
@@ -41,7 +43,14 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	services, err := app.NewServices(configs, silentProgress{})
+	feedServices, err := app.NewServices(configs, silentProgress{})
+	if err != nil {
+		return err
+	}
+	// Commands get services of their own, so the event log and the bottom bar
+	// show only the events of commands.
+	progress := &actions.Progress{}
+	commandServices, err := app.NewServices(configs, progress)
 	if err != nil {
 		return err
 	}
@@ -50,12 +59,15 @@ func Run() error {
 	if !palette.IsColorOn(theme.Stdout) {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
-	sources := feeds.Sources{Tasks: services.Tasks, Drudgers: services.Drudgers}
-	model, err := NewModel(shownProject, sources, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
+	sources := feeds.Sources{Tasks: feedServices.Tasks, Drudgers: feedServices.Drudgers}
+	commands := actions.New(actions.Services{Drudgers: commandServices.Drudgers}, shownProject.Slug)
+	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
 	if err != nil {
 		return err
 	}
-	_, err = tea.NewProgram(model, options...).Run()
+	program := tea.NewProgram(model, options...)
+	progress.Attach(program)
+	_, err = program.Run()
 	return err
 }
 

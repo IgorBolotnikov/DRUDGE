@@ -87,8 +87,10 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `l` or `→` | Moves the cursor of a board to the column on the right |
 | `enter` | Opens the task under the cursor |
 | `L` | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail |
+| `r` | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog |
 | `/` | Opens the filter of the focused list |
-| `esc` | Closes the filter and clears it, or closes the top box |
+| `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
+| `!` | Opens the event log |
 | `1` to `9` | Goes to that tab |
 | `[` or `]` | Goes to the previous or next tab |
 | `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |
@@ -97,6 +99,14 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `?` | Lists the keys of the focused tile or of the top box, `esc`, `q` or `?` closes the list |
 | `q` | Closes the top box, or quits when no box is open |
 | `ctrl+c` | Quits |
+
+Some keys run a command on a task, like `r` that hands the task to a coding agent the way [`drg task run`]({{< relref "/docs/cli/task/run" >}}) does. The [views page]({{< relref "/docs/tui/views" >}}) lists the command keys of each view. A command works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. DRUDGE checks a command the way the CLI does. A command it refuses, like `r` on a task that is not `todo`, shows the error of the CLI.
+
+While a command runs, the bottom bar shows a spinner, the short ID of the task and the latest step, like `⠹ 7c1e4f90: Creating sandbox drudge-uploader-2…`. When the command works, the bar shows its verdict, like `✓ 7c1e4f90 handed to Drudger 2`, for 5 seconds. When it fails, the bar shows the error until the next command or until you press `esc`. When the command reported warnings, the line ends with their count, like `· 2 warnings, ! to see`. The tiles it touched load their data again right away.
+
+One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
+
+`!` opens the event log in a box over the tab. It lists the warnings and the errors of every command since `drg tui` started, up to the latest 1000, each with its time, its command and its task, like `14:05  run 7c1e4f90  Could not fetch main of api: exit status 128`. `j` and `k` scroll it and `esc` or `q` closes it.
 
 `drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. A click on a column header of a board moves the cursor to that column. The wheel scrolls the tile under the pointer, focused or not. While a box is open, the wheel and clicks go to the top box and the tabs under it get nothing. The wheel scrolls the task box. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
 

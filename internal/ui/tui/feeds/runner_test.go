@@ -117,7 +117,7 @@ func syncAndFinish(runner *feeds.Runner, wanted ...views.Feed) ([]feeds.TickMsg,
 func finish(runner *feeds.Runner, dones []feeds.DoneMsg) []tea.Msg {
 	var viewMessages []tea.Msg
 	for _, done := range dones {
-		if _, viewMsg := runner.HandleDone(done); viewMsg != nil {
+		if _, viewMsg, _ := runner.HandleDone(done); viewMsg != nil {
 			viewMessages = append(viewMessages, viewMsg)
 		}
 	}
@@ -240,6 +240,45 @@ func TestRunner_HandleTick(t *testing.T) {
 			}
 			if got := len(handled.ticks); got != testCase.wantTicks {
 				t.Errorf("expected %d ticks armed, got %d", testCase.wantTicks, got)
+			}
+		})
+	}
+}
+
+func TestRunner_Refresh(t *testing.T) {
+	cases := []struct {
+		name  string
+		names []views.FeedName
+		// isFirstRunDone is whether the first run of the feed ends before the
+		// refresh.
+		isFirstRunDone bool
+		wantRuns       int
+	}{
+		{name: "a refreshed feed runs right away", names: []views.FeedName{firstFeedName}, isFirstRunDone: true, wantRuns: 2},
+		{name: "a feed of another name does not run", names: []views.FeedName{secondFeedName}, isFirstRunDone: true, wantRuns: 1},
+		{name: "a refreshed feed whose run is going runs again when it ends", names: []views.FeedName{firstFeedName}, wantRuns: 2},
+		{name: "a feed whose run is going and is not refreshed runs once", names: []views.FeedName{secondFeedName}, wantRuns: 1},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fake := &fakeFeed{name: firstFeedName}
+			runner := newTestRunner(fake, &fakeFeed{name: secondFeedName})
+			started := splitMessages(runAll(runner.Sync([]views.Feed{firstFeed})))
+			if testCase.isFirstRunDone {
+				runner.HandleDone(started.dones[0])
+			}
+
+			refreshed := splitMessages(runAll(runner.Refresh(testCase.names)))
+			if !testCase.isFirstRunDone {
+				_, _, rerun := runner.HandleDone(started.dones[0])
+				refreshed = splitMessages(runAll(rerun))
+			}
+
+			if got := len(fake.states); got != testCase.wantRuns {
+				t.Errorf("expected %d runs, got %d", testCase.wantRuns, got)
+			}
+			if got := len(refreshed.ticks); got != 0 {
+				t.Errorf("expected a refresh to arm no tick, got %d", got)
 			}
 		})
 	}

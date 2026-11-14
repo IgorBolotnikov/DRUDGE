@@ -10,11 +10,13 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
@@ -59,7 +61,7 @@ const (
 // Model is the root of the screen: a top bar, the active Tab, a bottom bar and
 // a stack of overlays over them. It runs the feeds the visible Views show and
 // sends the message of each feed to the Views of every Tab and every overlay
-// that show the feed.
+// that show the feed. It runs the commands the Views ask for one at a time.
 type Model struct {
 	project         *project.Project
 	styles          *styles.Styles
@@ -67,6 +69,13 @@ type Model struct {
 	tabs            []*Tab
 	activeTabIndex  int
 	feedRunner      *feeds.Runner
+	commands        *actions.Actions
+	running         *runningCommand
+	spinner         spinner.Model
+	verdict         *verdict
+	verdictCount    int
+	events          *eventLog
+	startTimer      timerFunc
 	isMouseCaptured bool
 	help            help.Model
 	overlays        []Overlay
@@ -75,10 +84,10 @@ type Model struct {
 }
 
 // NewModel returns the screen of a project with the first Tab active. It runs
-// each feed at its interval, shows the warnings in the bottom bar, takes the
-// mouse from the terminal when it is captured and refuses an empty list of
-// Tabs.
-func NewModel(shownProject *project.Project, sources feeds.Sources, screenStyles *styles.Styles, tabs []*Tab, intervals map[views.FeedName]time.Duration, isMouseCaptured bool, warnings []string) (*Model, error) {
+// each feed at its interval and each command on commands, shows the warnings
+// in the bottom bar, takes the mouse from the terminal when it is captured and
+// refuses an empty list of Tabs.
+func NewModel(shownProject *project.Project, sources feeds.Sources, commands *actions.Actions, screenStyles *styles.Styles, tabs []*Tab, intervals map[views.FeedName]time.Duration, isMouseCaptured bool, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
@@ -90,6 +99,10 @@ func NewModel(shownProject *project.Project, sources feeds.Sources, screenStyles
 		warnings:        warnings,
 		tabs:            tabs,
 		feedRunner:      feeds.NewRunner(sources, shownProject.Slug, feedKinds, intervals),
+		commands:        commands,
+		spinner:         spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(screenStyles.Spinner)),
+		events:          &eventLog{},
+		startTimer:      tea.Tick,
 		help:            keyHelp,
 		isMouseCaptured: isMouseCaptured,
 	}, nil
@@ -118,7 +131,18 @@ func (model *Model) handleMsg(msg tea.Msg) tea.Cmd {
 	case feeds.TickMsg:
 		return model.feedRunner.HandleTick(msg)
 	case feeds.DoneMsg:
-		return model.deliver(model.feedRunner.HandleDone(msg))
+		feed, feedMsg, rerun := model.feedRunner.HandleDone(msg)
+		return tea.Batch(model.deliver(feed, feedMsg), rerun)
+	case views.CommandMsg:
+		return model.handleCommand(msg)
+	case actions.ProgressMsg:
+		model.handleProgress(msg)
+	case actions.DoneMsg:
+		return model.handleCommandDone(msg)
+	case verdictExpiredMsg:
+		model.handleVerdictExpired(msg)
+	case spinner.TickMsg:
+		return model.handleSpinnerTick(msg)
 	case tabMsg:
 		return model.handleTabMsg(msg)
 	case overlayMsg:
@@ -261,10 +285,11 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 }
 
 // handleKey quits on ctrl+c and passes every other key to the overlay on top
-// while one is open. With no overlay open it opens the help, switches Tabs, moves focus between the Tiles of the active
-// Tab, zooms the focused Tile or passes the key to the active Tab. A number key
-// with no Tab behind it does nothing. A Tab that takes all keys gets every key
-// but ctrl+c.
+// while one is open. With no overlay open it opens the help or the event log,
+// switches Tabs, moves focus between the Tiles of the active Tab, zooms the
+// focused Tile, clears the error of a command on esc or passes the key to the
+// active Tab. A number key with no Tab behind it does nothing. A Tab that takes
+// all keys gets every key but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key.Matches(msg, interruptKey) {
 		return tea.Quit
@@ -281,6 +306,10 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case key.Matches(msg, helpKey):
 		model.pushHelp()
+	case key.Matches(msg, eventLogKey):
+		model.push(newEventLogOverlay(model.events, model.styles))
+	case key.Matches(msg, clearErrorKey) && model.isErrorShown():
+		model.verdict = nil
 	case key.Matches(msg, nextTabKey):
 		model.nextTab()
 	case key.Matches(msg, previousTabKey):
@@ -562,10 +591,11 @@ func renderTabLabel(index int, title string) string {
 	return fmt.Sprintf(tabLabelFormat, title)
 }
 
-// renderBottomBar shows the feed errors and the warnings on the left and the
-// help hint on the right. While an overlay is open, the hint is the hint of the
-// overlay on top. The hint is left out while the focused View or the overlay
-// on top takes all keys, since the keys of the hint go to it then.
+// renderBottomBar shows the line of commands, the feed errors and the warnings
+// on the left and the help hint on the right. While an overlay is open, the
+// hint is the hint of the overlay on top. The hint is left out while the
+// focused View or the overlay on top takes all keys, since the keys of the
+// hint go to it then.
 func (model *Model) renderBottomBar() string {
 	shortHelp := []key.Binding{helpKey}
 	isTakingAllKeys := model.ActiveTab().TakesAllKeys()
@@ -577,7 +607,11 @@ func (model *Model) renderBottomBar() string {
 	if !isTakingAllKeys {
 		hints = model.help.ShortHelpView(shortHelp)
 	}
-	notices := model.renderFeedErrors()
+	var notices []string
+	if commandLine := model.renderCommandLine(); commandLine != "" {
+		notices = append(notices, commandLine)
+	}
+	notices = append(notices, model.renderFeedErrors()...)
 	for _, warning := range model.warnings {
 		notices = append(notices, model.renderWarning(warning))
 	}

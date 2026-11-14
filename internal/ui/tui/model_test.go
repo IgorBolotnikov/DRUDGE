@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -189,7 +190,7 @@ func newTestModelWithSource(t *testing.T, source feeds.TaskSource, tabs []*Tab, 
 
 func newTestModelWithSources(t *testing.T, sources feeds.Sources, tabs []*Tab, intervals map[views.FeedName]time.Duration, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProject, sources, tuitest.Styles(), tabs, intervals, true, warnings)
+	model, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), tabs, intervals, true, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +219,8 @@ func update(model *Model, msg tea.Msg) {
 }
 
 // runCommand runs a command and every command its messages lead to. It drops
-// the ticks of the feeds, so each feed runs once when it starts.
+// the ticks of the feeds, so each feed runs once when it starts, and the ticks
+// of the spinner.
 func runCommand(model *Model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
@@ -228,7 +230,7 @@ func runCommand(model *Model, cmd tea.Cmd) {
 		for _, batched := range msg {
 			runCommand(model, batched)
 		}
-	case feeds.TickMsg:
+	case feeds.TickMsg, spinner.TickMsg:
 	default:
 		_, next := model.Update(msg)
 		runCommand(model, next)
@@ -1613,7 +1615,7 @@ func tileStatuses(tab *Tab) []string {
 
 func TestNewModel_NoTabs(t *testing.T) {
 	sources := feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
-	_, err := NewModel(testProject, sources, tuitest.Styles(), nil, intervalsOf(instantInterval), true, nil)
+	_, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), nil, intervalsOf(instantInterval), true, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

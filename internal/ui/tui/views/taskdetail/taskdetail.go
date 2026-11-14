@@ -5,6 +5,7 @@ package taskdetail
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -92,7 +93,7 @@ var (
 const scrollLineCount = 1
 
 // Keys are the keys of the task detail the help lists.
-var Keys = []key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey, openRunLogKey}
+var Keys = slices.Concat([]key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey, openRunLogKey}, views.TaskCommandKeys)
 
 // field is one labelled value of a task.
 type field struct {
@@ -180,7 +181,8 @@ func (view *View) SetSize(width, height int) {
 }
 
 // Update takes the loaded tasks and scrolls the description on keys and on the
-// wheel. L opens the runlog of the shown task.
+// wheel. L opens the runlog of the shown task and the task command keys ask
+// for their command on it.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -195,6 +197,9 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		if key.Matches(msg, openRunLogKey) {
 			return view.openRunLog()
+		}
+		if cmd := views.TaskCommand(msg, view.taskID); cmd != nil {
+			return cmd
 		}
 		view.scroll(msg)
 	case tea.MouseWheelMsg:

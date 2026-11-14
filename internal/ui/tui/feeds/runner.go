@@ -35,10 +35,13 @@ type runningFeed struct {
 	isRunning bool
 	// hasRun is whether a run of this generation ended. The last message of
 	// an earlier generation is older than any such run.
-	hasRun     bool
-	err        error
-	state      any
-	generation int
+	hasRun bool
+	// isRefreshDue is whether the feed runs once more when its going run
+	// ends.
+	isRefreshDue bool
+	err          error
+	state        any
+	generation   int
 }
 
 // Runner runs the feeds the Views want. Each running feed runs right away and
@@ -156,21 +159,39 @@ func (runner *Runner) HandleTick(msg TickMsg) tea.Cmd {
 	return tea.Batch(runner.run(msg.feed, running), nextTick)
 }
 
+// Refresh runs every running feed of names right away. A feed whose run is
+// going runs once more when that run ends, since that run may have read its
+// data before the change the refresh is for.
+func (runner *Runner) Refresh(names []views.FeedName) tea.Cmd {
+	var commands []tea.Cmd
+	for feed, running := range runner.running {
+		if !slices.Contains(names, feed.Name) {
+			continue
+		}
+		if running.isRunning {
+			running.isRefreshDue = true
+			continue
+		}
+		commands = append(commands, runner.run(feed, running))
+	}
+	return tea.Batch(commands...)
+}
+
 // HandleDone ends a run of a feed. It keeps the error and the state of the
 // run, and the message of a run that worked. It returns the feed and the
-// message for the Views of the feed. The message is nil for a run of a feed
-// that stopped since, and for the last message of a feed that has run again
-// since.
-func (runner *Runner) HandleDone(msg DoneMsg) (views.Feed, tea.Msg) {
+// message for the Views of the feed, and the next run of a feed with a
+// refresh due. The message is nil for a run of a feed that stopped since, and
+// for the last message of a feed that has run again since.
+func (runner *Runner) HandleDone(msg DoneMsg) (feed views.Feed, viewMsg tea.Msg, rerun tea.Cmd) {
 	running, ok := runner.current(msg.feed, msg.generation)
 	if !ok {
-		return msg.feed, nil
+		return msg.feed, nil, nil
 	}
 	if msg.isReplay {
 		if running.hasRun {
-			return msg.feed, nil
+			return msg.feed, nil, nil
 		}
-		return msg.feed, msg.msg
+		return msg.feed, msg.msg, nil
 	}
 	running.isRunning = false
 	running.hasRun = true
@@ -179,7 +200,11 @@ func (runner *Runner) HandleDone(msg DoneMsg) (views.Feed, tea.Msg) {
 	if msg.err == nil && msg.msg != nil {
 		runner.lastMessages[msg.feed] = msg.msg
 	}
-	return msg.feed, msg.msg
+	if running.isRefreshDue {
+		running.isRefreshDue = false
+		rerun = runner.run(msg.feed, running)
+	}
+	return msg.feed, msg.msg, rerun
 }
 
 // current returns the running feed a message of a generation belongs to. ok

@@ -56,7 +56,7 @@ var (
 const scrollLineCount = 1
 
 // Keys are the keys of the runlog the help lists.
-var Keys = []key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey}
+var Keys = slices.Concat([]key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey}, views.TaskCommandKeys)
 
 // View shows the steps and the stderr lines of the latest run of a task. It
 // appends what each read of the runlog feed found. It follows the run at the
@@ -176,12 +176,16 @@ func (view *View) SetSize(width, height int) {
 	}
 }
 
-// Update takes the reads of the run and scrolls on keys and on the wheel.
+// Update takes the reads of the run and scrolls on keys and on the wheel. The
+// task command keys ask for their command on the shown task.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.RunStepsReadMsg:
 		view.handleRead(msg)
 	case tea.KeyPressMsg:
+		if cmd := views.TaskCommand(msg, view.taskID); cmd != nil {
+			return cmd
+		}
 		view.handleKey(msg)
 	case tea.MouseWheelMsg:
 		view.handleWheel(msg)

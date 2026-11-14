@@ -29,13 +29,16 @@ type Styles struct {
 	ShortID     lipgloss.Style
 	Selection   lipgloss.Style
 	Muted       lipgloss.Style
+	Success     lipgloss.Style
 	Error       lipgloss.Style
 	Warning     lipgloss.Style
 	Statuses    map[task.TaskStatus]lipgloss.Style
 	// HealthLabels holds the style of each Drudger health label.
 	HealthLabels map[string]lipgloss.Style
 	// Roles holds the style of each role text is painted in by role name.
-	Roles     map[string]lipgloss.Style
+	Roles map[string]lipgloss.Style
+	// Spinner turns in the bottom bar while a command runs.
+	Spinner   lipgloss.Style
 	Help      help.Styles
 	HelpBox   lipgloss.Style
 	HelpTitle lipgloss.Style
@@ -67,11 +70,13 @@ func New(palette *theme.Theme) *Styles {
 		ShortID:      lipgloss.NewStyle().Bold(true),
 		Selection:    roleBackgroundStyle(palette, theme.RoleSelection),
 		Muted:        muted,
+		Success:      roleStyle(palette, theme.RoleSuccess),
 		Error:        roleStyle(palette, theme.RoleError),
 		Warning:      roleStyle(palette, theme.RoleWarning),
 		Statuses:     statuses,
 		HealthLabels: healthLabels,
 		Roles:        roles,
+		Spinner:      primary,
 		Help: help.Styles{
 			ShortKey:       lipgloss.NewStyle().Bold(true),
 			ShortDesc:      muted,

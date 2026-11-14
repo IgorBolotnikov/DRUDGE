@@ -210,7 +210,7 @@ func TestConfig_MouseMode(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := oneTabConfig(taskListNode())
 			config.CaptureMouse = testCase.captureMouse
-			model, err := NewModel(testProject, feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil)
+			model, err := NewModel(testProject, feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, newTestCommands(&fakeCommandService{}), tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

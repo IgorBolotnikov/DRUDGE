@@ -119,7 +119,7 @@ var (
 )
 
 // Keys are the keys of the task list the help lists.
-var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, openFilterKey, closeFilterKey}
+var Keys = slices.Concat([]key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, openFilterKey, closeFilterKey}, views.TaskCommandKeys)
 
 // columns of the task list. The status and the title always stay. The parent
 // drops first, then the ticket, the blockers and the ID.
@@ -213,7 +213,8 @@ func (view *View) SetSize(width, height int) {
 // Update takes the loaded tasks, moves the cursor and edits the filter on
 // keys, moves the cursor to a clicked row and scrolls on the wheel. Moving
 // the cursor onto another task selects that task. Enter opens the task under
-// the cursor and L opens its runlog.
+// the cursor, L opens its runlog and the task command keys ask for their
+// command on it.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -320,6 +321,9 @@ func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return view.filter.Focus()
 	case key.Matches(msg, openRunLogKey):
 		return view.openRunLog()
+	}
+	if cmd := views.TaskCommand(msg, view.cursorTaskID()); cmd != nil {
+		return cmd
 	}
 	view.moveCursor(msg)
 	return nil

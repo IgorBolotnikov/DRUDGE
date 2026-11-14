@@ -401,6 +401,29 @@ func TestView_Open(t *testing.T) {
 	}
 }
 
+func TestView_RunsShownTask(t *testing.T) {
+	cases := []struct {
+		name   string
+		taskID task.TaskID
+		want   []tea.Msg
+	}{
+		{name: "r runs the shown task", taskID: shownTaskID, want: []tea.Msg{views.RunTaskMsg{TaskID: shownTaskID}}},
+		{name: "r with no task does nothing"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			if testCase.taskID != "" {
+				view.ShowTask(testCase.taskID)
+			}
+			got := tuitest.Messages(view.Update(tuitest.KeyRun))
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("expected messages %v, got %v", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestView_ShowTask(t *testing.T) {
 	const otherTaskID task.TaskID = "5b20d7aa-0000-0000-0000-000000000002"
 	cases := []struct {
