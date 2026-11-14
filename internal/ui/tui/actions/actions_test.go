@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
@@ -152,6 +154,45 @@ func TestActions_MarkDone(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestActions_StartsEveryTaskCommand sends the key of every task command
+// through a View's key handling and starts its message. A command message the
+// actions do not know panics in the TUI on the first key press.
+func TestActions_StartsEveryTaskCommand(t *testing.T) {
+	commands := actions.New(actions.Services{Drudgers: &fakeDrudgerService{}}, testProjectSlug)
+	for _, binding := range views.TaskCommandKeys {
+		keyName := binding.Keys()[0]
+		t.Run(keyName, func(t *testing.T) {
+			cmd := views.TaskCommand(keyPress(t, keyName), testTaskID)
+			if cmd == nil {
+				t.Fatalf("expected key %q to send a command message, it sends nothing", keyName)
+			}
+			commandMsg, ok := cmd().(views.CommandMsg)
+			if !ok {
+				t.Fatalf("expected key %q to send a command message, got %T", keyName, cmd())
+			}
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("expected the actions to start %T, add it to Start: %v", commandMsg, recovered)
+				}
+			}()
+			command, _ := commands.Start(commandMsg)
+			if command.Target != task.ShortID(testTaskID) {
+				t.Errorf("expected the command to work on %s, got %q", task.ShortID(testTaskID), command.Target)
+			}
+		})
+	}
+}
+
+// keyPress returns the press of a key named by one printable character.
+func keyPress(t *testing.T, keyName string) tea.KeyPressMsg {
+	t.Helper()
+	characters := []rune(keyName)
+	if len(characters) != 1 {
+		t.Fatalf("key %q is not one character, teach keyPress to build its press", keyName)
+	}
+	return tea.KeyPressMsg{Code: characters[0], Text: keyName}
 }
 
 func TestCommand_String(t *testing.T) {
