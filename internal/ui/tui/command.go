@@ -23,6 +23,7 @@ const (
 	runningFormat        = "%s %s: %s…"
 	refusalFormat        = "wait, still running %s"
 	successVerdictPrefix = "✓ "
+	skippedVerdictPrefix = "· "
 	errorVerdictPrefix   = "✗ "
 	warningCountFormat   = " · %s, ! to see"
 )
@@ -43,8 +44,11 @@ type runningCommand struct {
 
 // verdict is the outcome of the command that ran last.
 type verdict struct {
-	text         string
-	isError      bool
+	text    string
+	isError bool
+	// isSkipped is whether the command did nothing, like a new task whose
+	// draft is unchanged.
+	isSkipped    bool
 	warningCount int
 	// number tells the timer of this verdict from the timers of earlier ones.
 	number int
@@ -96,6 +100,9 @@ func (model *Model) handleProgress(msg actions.ProgressMsg) {
 // the feeds it touched. The verdict of a command that worked clears after its
 // lifetime. The error of a command that failed goes to the event log too.
 func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
+	if msg.Command.Name == views.NewTaskCommand {
+		msg = model.closeDraft(msg)
+	}
 	warningCount := 0
 	if model.running != nil {
 		warningCount = model.running.warningCount
@@ -151,9 +158,13 @@ func (model *Model) renderCommandLine() string {
 	}
 	line := successVerdictPrefix + model.verdict.text
 	lineStyle := model.styles.Success
-	if model.verdict.isError {
+	switch {
+	case model.verdict.isError:
 		line = errorVerdictPrefix + model.verdict.text
 		lineStyle = model.styles.Error
+	case model.verdict.isSkipped:
+		line = skippedVerdictPrefix + model.verdict.text
+		lineStyle = model.styles.Muted
 	}
 	if model.verdict.warningCount > 0 {
 		line += fmt.Sprintf(warningCountFormat, formatWarningCount(model.verdict.warningCount))

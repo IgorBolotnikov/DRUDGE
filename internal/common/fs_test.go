@@ -759,3 +759,73 @@ func TestWriteJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatFrontMatterInOrder(t *testing.T) {
+	cases := []struct {
+		name     string
+		metadata map[string]string
+		keys     []string
+		want     string
+	}{
+		{name: "keys in the given order", metadata: map[string]string{"b": "2", "a": "1"}, keys: []string{"b", "a"}, want: "---\nb: 2\na: 1\n---\n"},
+		{name: "missing key gets an empty value", metadata: map[string]string{"a": "1"}, keys: []string{"a", "b"}, want: "---\na: 1\nb: \n---\n"},
+		{name: "value with a line break stays on one line", metadata: map[string]string{"a": "x\ny"}, keys: []string{"a"}, want: "---\na: x\\ny\n---\n"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := FormatFrontMatterInOrder(testCase.metadata, testCase.keys); got != testCase.want {
+				t.Errorf("expected %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestParseFrontMatterFields(t *testing.T) {
+	cases := []struct {
+		name        string
+		data        string
+		wantFields  []FrontMatterField
+		wantContent string
+		wantErr     string
+	}{
+		{
+			name:        "fields and content",
+			data:        "---\ntitle: Fix login\nrepos: api, web\n---\n\nThe body\n",
+			wantFields:  []FrontMatterField{{LineNumber: 2, Key: "title", Value: "Fix login"}, {LineNumber: 3, Key: "repos", Value: "api, web"}},
+			wantContent: "The body",
+		},
+		{
+			name:       "empty values with and without the trailing space",
+			data:       "---\ntitle: \nrepos:\n---\n",
+			wantFields: []FrontMatterField{{LineNumber: 2, Key: "title"}, {LineNumber: 3, Key: "repos"}},
+		},
+		{name: "blank lines are skipped", data: "---\n\ntitle: x\n---\n", wantFields: []FrontMatterField{{LineNumber: 3, Key: "title", Value: "x"}}},
+		{name: "value keeps its colons", data: "---\nurl: https://example.com\n---\n", wantFields: []FrontMatterField{{LineNumber: 2, Key: "url", Value: "https://example.com"}}},
+		{name: "escaped value is read back", data: "---\ntitle: a\\nb\n---\n", wantFields: []FrontMatterField{{LineNumber: 2, Key: "title", Value: "a\nb"}}},
+		{name: "no opening line", data: "title: x\n", wantErr: "line 1: expected ---, start the file with a --- line above the fields"},
+		{name: "no closing line", data: "---\ntitle: x\n", wantErr: "line 3: the fields have no closing --- line, add one below the last field"},
+		{name: "line without a key", data: "---\njust words\n---\n", wantErr: `line 2: "just words" is not a key: value line, write it as key: value`},
+		{name: "key with a space", data: "---\nthe title: x\n---\n", wantErr: `line 2: "the title: x" is not a key: value line, write it as key: value`},
+		{name: "empty key", data: "---\n: x\n---\n", wantErr: `line 2: ": x" is not a key: value line, write it as key: value`},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fields, content, err := ParseFrontMatterFields(testCase.data)
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("expected error %q, got %v", testCase.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if !slices.Equal(fields, testCase.wantFields) {
+				t.Errorf("expected fields %+v, got %+v", testCase.wantFields, fields)
+			}
+			if content != testCase.wantContent {
+				t.Errorf("expected content %q, got %q", testCase.wantContent, content)
+			}
+		})
+	}
+}

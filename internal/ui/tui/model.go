@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
@@ -76,6 +77,8 @@ type Model struct {
 	verdictCount    int
 	events          *eventLog
 	startTimer      timerFunc
+	draft           draftFile
+	runEditor       editorFunc
 	isMouseCaptured bool
 	help            help.Model
 	overlays        []Overlay
@@ -86,8 +89,9 @@ type Model struct {
 // NewModel returns the screen of a project with the first Tab active. It runs
 // each feed at its interval and each command on commands, shows the warnings
 // in the bottom bar, takes the mouse from the terminal when it is captured and
-// refuses an empty list of Tabs.
-func NewModel(shownProject *project.Project, sources feeds.Sources, commands *actions.Actions, screenStyles *styles.Styles, tabs []*Tab, intervals map[views.FeedName]time.Duration, isMouseCaptured bool, warnings []string) (*Model, error) {
+// refuses an empty list of Tabs. The draft of a new task starts with
+// defaultStatus.
+func NewModel(shownProject *project.Project, sources feeds.Sources, commands *actions.Actions, screenStyles *styles.Styles, tabs []*Tab, intervals map[views.FeedName]time.Duration, isMouseCaptured bool, defaultStatus task.TaskStatus, warnings []string) (*Model, error) {
 	if len(tabs) == 0 {
 		return nil, errors.New("the TUI needs at least one tab to show")
 	}
@@ -103,6 +107,8 @@ func NewModel(shownProject *project.Project, sources feeds.Sources, commands *ac
 		spinner:         spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(screenStyles.Spinner)),
 		events:          &eventLog{},
 		startTimer:      tea.Tick,
+		draft:           newDraftFile(shownProject.Slug, defaultStatus),
+		runEditor:       execEditor,
 		help:            keyHelp,
 		isMouseCaptured: isMouseCaptured,
 	}, nil
@@ -135,6 +141,10 @@ func (model *Model) handleMsg(msg tea.Msg) tea.Cmd {
 		return tea.Batch(model.deliver(feed, feedMsg), rerun)
 	case views.CommandMsg:
 		return model.handleCommand(msg)
+	case views.EditDraftMsg:
+		return model.handleEditDraft()
+	case draftEditedMsg:
+		return model.handleDraftEdited(msg)
 	case actions.ProgressMsg:
 		model.handleProgress(msg)
 	case actions.DoneMsg:

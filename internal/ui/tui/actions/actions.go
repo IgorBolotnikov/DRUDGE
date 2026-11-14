@@ -23,9 +23,15 @@ type DrudgerService interface {
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 
+// TaskService adds a task the way drg task new does.
+type TaskService interface {
+	CreateTask(dto task.CreateTaskDto) (*task.Task, error)
+}
+
 // Services are the services commands run.
 type Services struct {
 	Drudgers DrudgerService
+	Tasks    TaskService
 }
 
 // Command names a command and what it works on, like run 3f9a1c2e.

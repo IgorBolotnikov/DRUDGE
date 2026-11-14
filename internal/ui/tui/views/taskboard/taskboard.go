@@ -59,7 +59,7 @@ var (
 )
 
 // Keys are the keys of the board the help lists.
-var Keys = slices.Concat([]key.Binding{moveLeftKey, moveUpKey, jumpTopKey, openTaskKey, openRunLogKey}, views.TaskCommandKeys)
+var Keys = slices.Concat([]key.Binding{moveLeftKey, moveUpKey, jumpTopKey, openTaskKey, openRunLogKey}, views.TaskCommandKeys, []key.Binding{views.NewTaskKey})
 
 // column holds the tasks of one status in the order of the listing.
 type column struct {
@@ -136,7 +136,8 @@ func (view *View) SetSize(width, height int) {
 // Update takes the loaded tasks, moves the cursor on keys, to a clicked task
 // or column and along the column on the wheel. Moving the cursor onto another
 // task selects that task. Enter opens the task under the cursor, L opens its
-// runlog and the task command keys ask for their command on it.
+// runlog, the task command keys ask for their command on it and n asks for a
+// new task.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -150,6 +151,8 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			return view.openTask()
 		case key.Matches(msg, openRunLogKey):
 			return view.openRunLog()
+		case key.Matches(msg, views.NewTaskKey):
+			return views.EditDraft
 		}
 		if cmd := views.TaskCommand(msg, view.cursorTaskID()); cmd != nil {
 			return cmd

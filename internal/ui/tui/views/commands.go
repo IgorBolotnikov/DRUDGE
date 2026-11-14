@@ -14,6 +14,7 @@ type CommandName string
 const (
 	RunTaskCommand  CommandName = "run"
 	MarkDoneCommand CommandName = "done"
+	NewTaskCommand  CommandName = "new"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -43,6 +44,29 @@ type MarkDoneMsg struct {
 func (MarkDoneMsg) CommandName() CommandName { return MarkDoneCommand }
 
 func (msg MarkDoneMsg) Target() string { return task.ShortID(msg.TaskID) }
+
+// NewTaskMsg asks to add the task a draft describes the way drg task new
+// does.
+type NewTaskMsg struct {
+	Draft task.Draft
+}
+
+func (NewTaskMsg) CommandName() CommandName { return NewTaskCommand }
+
+func (msg NewTaskMsg) Target() string { return msg.Draft.Title }
+
+// EditDraftMsg asks the root to open the draft of a new task in the editor.
+// The root sends the new task command once the editor exits.
+type EditDraftMsg struct{}
+
+// NewTaskKey asks to add a task. It acts on the project, so the Views that
+// list the tasks of the project bind it.
+var NewTaskKey = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new task"))
+
+// EditDraft sends the message that opens the draft of a new task.
+func EditDraft() tea.Msg {
+	return EditDraftMsg{}
+}
 
 var (
 	runTaskKey  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))

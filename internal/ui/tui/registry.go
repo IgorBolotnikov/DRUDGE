@@ -11,6 +11,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/markdone"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/newtask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/runtask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgercheck"
@@ -99,6 +100,7 @@ var feedKinds = []feeds.Kind{
 // commandKinds lists every kind of command a View can ask for.
 var commandKinds = []actions.Kind{
 	markdone.Kind,
+	newtask.Kind,
 	runtask.Kind,
 }
 

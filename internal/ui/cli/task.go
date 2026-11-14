@@ -228,10 +228,6 @@ const stdinPath = "-"
 
 var errTwoDescriptions = errors.New("--description and --description-file cannot be used together")
 
-// listSeparator splits a flag value holding several task ids, URLs or
-// repository paths.
-const listSeparator = ","
-
 // taskRerunCommand is what a user types to start a task over. Other commands
 // name it when starting a task over is the next step.
 const taskRerunCommand = "drg task rerun"
@@ -252,20 +248,8 @@ func optionalList[Value ~string](flagValue optionalString) *[]Value {
 	if flagValue.value == nil {
 		return nil
 	}
-	values := parseList[Value](*flagValue.value)
+	values := task.ParseList[Value](*flagValue.value)
 	return &values
-}
-
-// parseList reads the comma-separated list a flag was given. Blank entries are
-// dropped, so an empty value reads as an empty list.
-func parseList[Value ~string](value string) []Value {
-	values := []Value{}
-	for _, text := range strings.Split(value, listSeparator) {
-		if text = strings.TrimSpace(text); text != "" {
-			values = append(values, Value(text))
-		}
-	}
-	return values
 }
 
 // readDescriptionFile reads a description from the file at path, or from stdin
@@ -356,9 +340,9 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 		Description:  description,
 		Status:       status,
 		TicketID:     flags.ticket.get(),
-		BlockedBy:    parseList[task.TaskID](flags.blockedBy.get()),
-		PullRequests: parseList[string](flags.pullRequests.get()),
-		Repositories: parseList[string](flags.repos.get()),
+		BlockedBy:    task.ParseList[task.TaskID](flags.blockedBy.get()),
+		PullRequests: task.ParseList[string](flags.pullRequests.get()),
+		Repositories: task.ParseList[string](flags.repos.get()),
 		ParentTaskID: task.TaskID(flags.parent.get()),
 	}, nil
 }

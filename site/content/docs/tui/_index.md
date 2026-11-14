@@ -89,6 +89,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `L` | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail |
 | `r` | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog |
 | `m` | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done |
+| `n` | Adds a task from a draft in `$EDITOR`, in a list or a board |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
 | `!` | Opens the event log |
@@ -104,6 +105,26 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 Some keys run a command on a task, like `r` that hands the task to a coding agent the way [`drg task run`]({{< relref "/docs/cli/task/run" >}}) does. `m` marks an `unmerged` task done the way [`drg task done`]({{< relref "/docs/cli/task/done" >}}) does, and its verdict names the tasks that became runnable, like `✓ 1a2b3c4d done · 2 tasks runnable: 4d5e6f70, 7a8b9c0d`. The [views page]({{< relref "/docs/tui/views" >}}) lists the command keys of each view. A command works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. DRUDGE checks a command the way the CLI does. A command it refuses, like `r` on a task that is not `todo`, shows the error of the CLI.
 
 While a command runs, the bottom bar shows a spinner, the short ID of the task and the latest step, like `⠹ 7c1e4f90: Creating sandbox drudge-uploader-2…`. When the command works, the bar shows its verdict, like `✓ 7c1e4f90 handed to Drudger 2`, for 5 seconds. When it fails, the bar shows the error until the next command or until you press `esc`. When the command reported warnings, the line ends with their count, like `· 2 warnings, ! to see`. The tiles it touched load their data again right away.
+
+`n` in a `task-list` or `task-board` tile adds a task the way [`drg task new`]({{< relref "/docs/cli/task/new" >}}) does. It suspends the dashboard and opens a draft in `$EDITOR`, or in `vi` when `$EDITOR` is unset. The draft is a header of `key: value` lines between two `---` lines, with the description below it:
+
+```markdown
+---
+title: Add retry to uploader
+status: todo
+ticket: UP-12
+parent:
+blocked-by:
+repos: api, web
+pull-requests:
+---
+
+Retry a failed upload three times with a backoff.
+```
+
+The header takes the keys `title`, `status`, `ticket`, `parent`, `blocked-by`, `repos` and `pull-requests`. Lists are comma-separated, like the flags of `drg task new`. The status starts as `task.defaultStatus` from the [config]({{< relref "/docs/configuration/config" >}}), `todo` when it is unset. An empty `repos` means every repository of the project. Save and quit the editor to add the task. The verdict names it, like `✓ 3f9a1c2e  Add retry to uploader added`. Quitting without a change, or leaving the title and the description empty, adds nothing and the bar says `· nothing changed`.
+
+A draft with an unknown key, a line that is not `key: value` or a header without its `---` lines shows an error that names the line, like `✗ line 3: a draft has no key "tilte", …`. A draft DRUDGE refuses, like one blocked by a task that does not exist, shows the error of the CLI. In both cases DRUDGE keeps the draft, the error ends with `n to reopen your draft`, and the next `n` opens it again with your text. The draft lives in the temp directory of the system as `drudge-<project>-draft.md`, and DRUDGE deletes it once the task is added.
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

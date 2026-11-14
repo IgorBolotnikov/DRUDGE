@@ -33,6 +33,10 @@ const (
 const (
 	frontMatterDelimiter = "---"
 	frontMatterSeparator = ": "
+	// frontMatterKeyEnd ends the key of a line. A strict parse cuts on it
+	// alone, so a line with an empty value whose trailing space an editor
+	// stripped still reads.
+	frontMatterKeyEnd = ":"
 )
 
 // frontMatterEscaper folds a value onto a single line. The backslash is
@@ -273,13 +277,20 @@ func RemoveAll(path string) error {
 // Keys are sorted alphabetically for reproducibility. Values are escaped, so
 // one holding line breaks stays on its own line and cannot break the block.
 func FormatFrontMatter(metadata map[string]string) string {
-	var buf strings.Builder
-	buf.WriteString(frontMatterDelimiter + "\n")
 	keys := make([]string, 0, len(metadata))
 	for k := range metadata {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	return FormatFrontMatterInOrder(metadata, keys)
+}
+
+// FormatFrontMatterInOrder serializes metadata like FormatFrontMatter, with
+// one line per key in the order of keys. A key metadata lacks gets an empty
+// value.
+func FormatFrontMatterInOrder(metadata map[string]string, keys []string) string {
+	var buf strings.Builder
+	buf.WriteString(frontMatterDelimiter + "\n")
 	for _, k := range keys {
 		fmt.Fprintf(&buf, "%s%s%s\n", k, frontMatterSeparator, escapeFrontMatterValue(metadata[k]))
 	}
@@ -343,6 +354,46 @@ func ParseFrontMatter(data string) (map[string]string, string) {
 	}
 
 	return result, content
+}
+
+// FrontMatterField is one key: value line of a front matter block.
+type FrontMatterField struct {
+	// LineNumber is the 1-based number of the line in the data.
+	LineNumber int
+	Key        string
+	Value      string
+}
+
+// ParseFrontMatterFields reads the front matter block at the beginning of data
+// line by line and returns its fields in order and the content after it. A
+// value may be empty and blank lines in the block are skipped. It refuses data
+// that does not open a block on its first line, a block with no closing
+// delimiter line and a line that is not key: value. An error names the number
+// of the line.
+func ParseFrontMatterFields(data string) ([]FrontMatterField, string, error) {
+	lines := strings.Split(data, "\n")
+	if strings.TrimSpace(lines[0]) != frontMatterDelimiter {
+		return nil, "", fmt.Errorf("line 1: expected %s, start the file with a %s line above the fields", frontMatterDelimiter, frontMatterDelimiter)
+	}
+
+	var fields []FrontMatterField
+	for index := 1; index < len(lines); index++ {
+		lineNumber := index + 1
+		line := strings.TrimSpace(lines[index])
+		switch {
+		case line == frontMatterDelimiter:
+			return fields, strings.TrimSpace(strings.Join(lines[index+1:], "\n")), nil
+		case line == "":
+			continue
+		}
+		key, value, ok := strings.Cut(line, frontMatterKeyEnd)
+		key = strings.TrimSpace(key)
+		if !ok || key == "" || strings.ContainsAny(key, " \t") {
+			return nil, "", fmt.Errorf("line %d: %q is not a key: value line, write it as key: value", lineNumber, line)
+		}
+		fields = append(fields, FrontMatterField{LineNumber: lineNumber, Key: key, Value: unescapeFrontMatterValue(strings.TrimSpace(value))})
+	}
+	return nil, "", fmt.Errorf("line %d: the fields have no closing %s line, add one below the last field", len(lines), frontMatterDelimiter)
 }
 
 // cutFrontMatterBlock splits data into the lines of its front matter block and
