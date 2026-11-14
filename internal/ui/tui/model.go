@@ -311,7 +311,7 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // handleOverlayKey passes a key to the overlay on top when it takes all keys.
-// Otherwise esc closes the overlay, the help key closes the help or opens it
+// Otherwise esc or q closes the overlay, the help key closes the help or opens it
 // over the overlay, and every other key goes to the overlay.
 func (model *Model) handleOverlayKey(top Overlay, msg tea.KeyPressMsg) tea.Cmd {
 	_, isHelp := top.(*helpOverlay)

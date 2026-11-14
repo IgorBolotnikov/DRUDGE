@@ -19,9 +19,9 @@ Each `task-board` tile shows the tasks on a board with one column per status, in
 
 A `task-detail` tile shows the fields of one task and its description rendered as markdown. Moving the cursor of a list or a board onto a task, or onto a Drudger that works on one, selects it, and every `task-detail` tile of the same tab shows it. Other tabs keep their own selection. Until you select a task, the tile says `Nothing selected`. The values of the fields start at the same column for every task. A blank line separates the fields from the description. When the tile is too short for the fields, the blank line and three lines of the description, the fields fold into one line with no blank line below. `j`, `k`, `u`, `d`, `g`, `G` and the wheel scroll the description.
 
-Press `enter` on a task to open it. Every `task-detail` tile of the tab shows the task, and focus moves to the first one. A tab without a `task-detail` tile opens the task in a box over the tab. The box takes every key but `?` until `esc` closes it and focus goes back to the tile that had it. The box shows its status in its bottom border and the bottom bar shows `esc close` and `? help` as the hint.
+Press `enter` on a task to open it. Every `task-detail` tile of the tab shows the task, and focus moves to the first one. A tab without a `task-detail` tile opens the task in a box over the tab. The box takes every key but `?`, `esc` and `q`. `esc` or `q` closes it and focus goes back to the tile that had it. The box shows its status in its bottom border and the bottom bar shows `esc/q close` and `? help` as the hint.
 
-Press `L` on a task of a `task-list` or `task-board` tile, or in a `task-detail` tile or box, to open its runlog in a box over the tab. From a task box the runlog opens over it, and `esc` goes back to the task box. The box shows the latest run of the task the way [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) does and adds what the run writes after the box opened. It opens at the bottom and follows new steps. Scrolling up pauses it, and scrolling back to the bottom or `G` follows again. The bottom border says `following` or `paused`. When the task runs again, the box shows the new run. A task with no run says so until a run starts. A line wider than the box wraps at spaces, and the lines of a tool call wrap under the start of its summary. Resizing the box wraps the lines again and keeps the step at the top in place while the box is paused.
+Press `L` on a task of a `task-list` or `task-board` tile, or in a `task-detail` tile or box, to open its runlog in a box over the tab. From a task box the runlog opens over it, and `esc` or `q` goes back to the task box. The box shows the latest run of the task the way [`drg task runlog`]({{< relref "/docs/cli/task/runlog" >}}) does and adds what the run writes after the box opened. It opens at the bottom and follows new steps. Scrolling up pauses it, and scrolling back to the bottom or `G` follows again. The bottom border says `following` or `paused`. When the task runs again, the box shows the new run. A task with no run says so until a run starts. A line wider than the box wraps at spaces, and the lines of a tool call wrap under the start of its summary. Resizing the box wraps the lines again and keeps the step at the top in place while the box is paused.
 
 A `task-runlog` tile shows the runlog of the task selected in a list or a board of the same tab, the way a `task-detail` tile shows the task. Selecting another task drops the steps of the last one and shows the run of the new one from the bottom, following it. Until you select a task, the tile says `No task selected`. When a tab has a `task-runlog` tile, `L` shows the task in the tile and focuses it.
 
@@ -75,7 +75,7 @@ One tile of a tab has focus. Its title starts with `▸`, its border takes the p
 
 When the terminal is too small to show every tile of a tab, the tab shows a warning in place of its tiles. Make the terminal bigger or zoom a tile with `z`.
 
-`?` opens a box over the tabs that lists the keys in two sections, one above the other. The first section carries the title of the focused tile and lists the keys of its view. The `Global` section below it lists the keys that work everywhere on the dashboard. Over the task box, the first section lists the keys of the task box and `Global` lists `esc` and `?`. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
+`?` opens a box over the tabs that lists the keys in two sections, one above the other. The first section carries the title of the focused tile and lists the keys of its view. The `Global` section below it lists the keys that work everywhere on the dashboard. Over the task box, the first section lists the keys of the task box and `Global` lists `esc/q` and `?`. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc`, `q` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
 
 | Key | Does |
 | --- | --- |
@@ -94,8 +94,9 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |
 | `tab` or `shift+tab` | Moves focus to the next or previous tile in layout order |
 | `z` | Zooms the focused tile or restores the tiles |
-| `?` | Lists the keys of the focused tile or of the top box, `esc` or `?` closes the list |
-| `q` or `ctrl+c` | Quits |
+| `?` | Lists the keys of the focused tile or of the top box, `esc`, `q` or `?` closes the list |
+| `q` | Closes the top box, or quits when no box is open |
+| `ctrl+c` | Quits |
 
 `drg tui` captures the mouse. A click on a tab in the top bar goes to that tab. A click on a tile gives it focus, and a click on a row moves the cursor there. A click on a column header of a board moves the cursor to that column. The wheel scrolls the tile under the pointer, focused or not. While a box is open, the wheel and clicks go to the top box and the tabs under it get nothing. The wheel scrolls the task box. Tiles take their sizes from the config and never resize by dragging. While the mouse is captured, most terminals select text with `shift`+drag. Set `captureMouse` to `false` in the [TUI config]({{< relref "/docs/configuration/tui" >}}) to keep the native text selection of the terminal.
 

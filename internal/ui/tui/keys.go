@@ -20,7 +20,7 @@ var (
 )
 
 // closeOverlayKey closes the overlay on top.
-var closeOverlayKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close"))
+var closeOverlayKey = key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "close"))
 
 // globalHelpTitle heads the keys of the root in the help.
 const globalHelpTitle = "Global"

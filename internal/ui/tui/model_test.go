@@ -591,13 +591,15 @@ func TestModel_OpensTask(t *testing.T) {
 		{name: "enter focuses the task detail", config: listAndDetail, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyEnter}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_opened_in_tile"},
 		{name: "esc in the task detail keeps focus", config: listAndDetail, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab"},
 		{name: "enter opens the overlay without a task detail", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay"},
-		{name: "overlay takes the root keys", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyTabTwo, keyNextTile, keyQuit, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
+		{name: "overlay takes the root keys", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyTabTwo, keyNextTile, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
 		{name: "help opens over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp}, wantOverlays: []string{taskdetail.Name, helpOverlayTitle}, wantActiveTab: "Tab", golden: "screen_help_over_task_overlay"},
 		{name: "help takes the keys over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, keyTabTwo, tuitest.KeyDown, tuitest.KeyEnter}, wantOverlays: []string{taskdetail.Name, helpOverlayTitle}, wantActiveTab: "Tab"},
 		{name: "help key closes the help over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, keyHelp}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
 		{name: "esc closes the help over the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape}, wantOverlays: []string{taskdetail.Name}, wantActiveTab: "Tab"},
 		{name: "esc closes the help then the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape, tuitest.KeyEscape}, wantActiveTab: "Tab"},
 		{name: "esc with nothing open does nothing", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, tuitest.KeyEscape, tuitest.KeyEscape, tuitest.KeyEscape}, wantActiveTab: "Tab"},
+		{name: "q closes the help then the overlay", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, keyHelp, keyQuit, keyQuit}, wantActiveTab: "Tab"},
+		{name: "q closes the overlay and keeps focus", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyEnter, keyQuit}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay_closed"},
 		{name: "esc closes the overlay and keeps focus", config: twoLists, keys: []tea.Msg{keyNextTile, tuitest.KeyEnter, tuitest.KeyEscape}, wantFocusedTileIndex: 1, wantActiveTab: "Tab", golden: "screen_task_overlay_closed"},
 		{name: "keys work again after the overlay closes", config: twoLists, keys: []tea.Msg{tuitest.KeyEnter, tuitest.KeyEscape, keyTabTwo}, wantActiveTab: "Second"},
 	}
@@ -1005,7 +1007,6 @@ func TestModel_HelpOverlayTakesKeysInProgram(t *testing.T) {
 		t.Fatal("expected the help key to open the help")
 	}
 
-	program.Send(keyQuit)
 	program.Send(keyTabTwo)
 	state := probeState(t, program)
 	if !state.isHelpOpen {
