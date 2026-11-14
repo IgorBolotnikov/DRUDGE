@@ -19,8 +19,10 @@ The view takes no options.
 
 | Key | Does |
 | --- | --- |
-| `j/k` | scroll |
+| `j/k` | move |
 | `g/G` | top/bottom |
+| `enter` | open task |
+| `L` | runlog |
 
 ## `task-board`
 
