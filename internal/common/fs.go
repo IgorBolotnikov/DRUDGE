@@ -44,11 +44,12 @@ var frontMatterEscaper = strings.NewReplacer(
 )
 
 // Files of a task's run directory. The agent writes all of them but the
-// prompt, the harness and the setup log, which drudge writes before the agent
-// starts. The launcher writes the pid file.
+// prompt, the harness, the run ID and the setup log, which drudge writes
+// before the agent starts. The launcher writes the pid file.
 const (
 	RunPromptName   = "prompt.txt"
 	RunHarnessName  = "harness"
+	RunIDName       = "run-id"
 	RunSetupLogName = "setup.log"
 	RunStreamName   = "stream.jsonl"
 	RunStderrName   = "stderr.log"
@@ -453,6 +454,12 @@ func RunPromptPath(runDir string) string {
 // run directory.
 func RunHarnessPath(runDir string) string {
 	return filepath.Join(runDir, RunHarnessName)
+}
+
+// RunIDPath returns the path to the file holding the ID of the run of a run
+// directory.
+func RunIDPath(runDir string) string {
+	return filepath.Join(runDir, RunIDName)
 }
 
 // RunSetupLogPath returns the path to the output of the repository setup

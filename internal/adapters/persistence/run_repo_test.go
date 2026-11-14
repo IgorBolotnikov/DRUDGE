@@ -78,7 +78,7 @@ func TestFileRunRepository_PrepareRun(t *testing.T) {
 			for _, entry := range entries {
 				names = append(names, entry.Name())
 			}
-			wantNames := []string{common.RunHarnessName, common.RunPromptName}
+			wantNames := []string{common.RunHarnessName, common.RunPromptName, common.RunIDName}
 			if !slices.Equal(names, wantNames) {
 				t.Errorf("expected the run directory to hold only %v, got %v", wantNames, names)
 			}
@@ -96,7 +96,125 @@ func TestFileRunRepository_PrepareRun(t *testing.T) {
 			if !isPresent || harness != drudger.HarnessClaudeCode {
 				t.Errorf("expected harness %q, got %q (present %v)", drudger.HarnessClaudeCode, harness, isPresent)
 			}
+			runID, err := repo.ReadRunID(runTestTaskID)
+			if err != nil {
+				t.Fatalf("ReadRunID: %v", err)
+			}
+			if !common.IsUUID(runID) {
+				t.Errorf("expected a UUID run ID, got %q", runID)
+			}
 		})
+	}
+}
+
+func TestFileRunRepository_PrepareRun_NewRunID(t *testing.T) {
+	repo, _ := setupRunRepo(t, nil)
+
+	var runIDs []string
+	for range 2 {
+		if err := repo.PrepareRun(runTestTaskID, "prompt", drudger.HarnessClaudeCode); err != nil {
+			t.Fatalf("PrepareRun: %v", err)
+		}
+		runID, err := repo.ReadRunID(runTestTaskID)
+		if err != nil {
+			t.Fatalf("ReadRunID: %v", err)
+		}
+		runIDs = append(runIDs, runID)
+	}
+
+	if runIDs[0] == runIDs[1] {
+		t.Errorf("expected each run to get its own ID, got %q twice", runIDs[0])
+	}
+}
+
+func TestFileRunRepository_ReadRunID(t *testing.T) {
+	cases := []struct {
+		name  string
+		files runFiles
+		want  string
+	}{
+		{name: "a task with no run"},
+		{name: "a run from before runs recorded their ID", files: runFiles{common.RunPromptName: "prompt"}},
+		{name: "a run with an ID", files: runFiles{common.RunIDName: "the-run-id"}, want: "the-run-id"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo, _ := setupRunRepo(t, testCase.files)
+
+			got, err := repo.ReadRunID(runTestTaskID)
+			if err != nil {
+				t.Fatalf("ReadRunID: %v", err)
+			}
+			if got != testCase.want {
+				t.Errorf("expected run ID %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+// TestFileRunRepository_ReadFilesFrom covers every method that reads one file
+// of a run from a byte offset.
+func TestFileRunRepository_ReadFilesFrom(t *testing.T) {
+	readers := []struct {
+		name     string
+		fileName string
+		read     func(repo *FileRunRepository, offset int64) ([]byte, bool, error)
+	}{
+		{
+			name:     "ReadStreamFrom",
+			fileName: common.RunStreamName,
+			read: func(repo *FileRunRepository, offset int64) ([]byte, bool, error) {
+				return repo.ReadStreamFrom(runTestTaskID, offset)
+			},
+		},
+		{
+			name:     "ReadStderrFrom",
+			fileName: common.RunStderrName,
+			read: func(repo *FileRunRepository, offset int64) ([]byte, bool, error) {
+				return repo.ReadStderrFrom(runTestTaskID, offset)
+			},
+		},
+	}
+
+	cases := []struct {
+		name string
+		// content is what the file holds. A nil one stands for a file that is
+		// not there.
+		content     *string
+		offset      int64
+		want        string
+		wantPresent bool
+	}{
+		{name: "a missing file"},
+		{name: "a missing file past offset zero", offset: 10},
+		{name: "the start of a file", content: ptr("first\nsecond\n"), want: "first\nsecond\n", wantPresent: true},
+		{name: "the middle of a file", content: ptr("first\nsecond\n"), offset: 6, want: "second\n", wantPresent: true},
+		{name: "the end of a file", content: ptr("first\n"), offset: 6, wantPresent: true},
+		{name: "past the end of a file", content: ptr("first\n"), offset: 100, wantPresent: true},
+	}
+
+	for _, reader := range readers {
+		for _, testCase := range cases {
+			t.Run(reader.name+"/"+testCase.name, func(t *testing.T) {
+				files := runFiles{common.RunPromptName: "prompt"}
+				if testCase.content != nil {
+					files[reader.fileName] = *testCase.content
+				}
+				repo, _ := setupRunRepo(t, files)
+
+				got, isPresent, err := reader.read(repo, testCase.offset)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if isPresent != testCase.wantPresent {
+					t.Errorf("expected the file present %v, got %v", testCase.wantPresent, isPresent)
+				}
+				if string(got) != testCase.want {
+					t.Errorf("expected %q, got %q", testCase.want, got)
+				}
+			})
+		}
 	}
 }
 

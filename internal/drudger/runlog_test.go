@@ -259,3 +259,149 @@ func TestDrudgerService_RunSteps(t *testing.T) {
 		})
 	}
 }
+
+// runRound is one round of a run read in parts: what the run gets written,
+// then what a read with the cursor of the round before finds.
+type runRound struct {
+	// isRerun prepares the run again before the writes.
+	isRerun bool
+	stream  string
+	stderr  string
+
+	wantStreamLines   []string
+	wantStderrLines   []string
+	wantStreamMissing bool
+	wantReset         bool
+}
+
+func TestDrudgerService_RunStepsFrom(t *testing.T) {
+	cases := []struct {
+		name string
+		// isLegacyRun stands for a run directory with no run ID file.
+		isLegacyRun bool
+		rounds      []runRound
+	}{
+		{
+			name: "complete lines appended between reads",
+			rounds: []runRound{
+				{stream: initEvent + "\n", stderr: "first\n", wantStreamLines: []string{initEvent}, wantStderrLines: []string{"first"}},
+				{stream: assistantEvent + "\n" + resultEvent + "\n", wantStreamLines: []string{assistantEvent, resultEvent}},
+				{},
+			},
+		},
+		{
+			name: "a line split across two writes",
+			rounds: []runRound{
+				{stream: initEvent + "\n" + resultEvent[:20], stderr: "half", wantStreamLines: []string{initEvent}},
+				{stream: resultEvent[20:], stderr: " a line"},
+				{stream: "\n", stderr: "\n", wantStreamLines: []string{resultEvent}, wantStderrLines: []string{"half a line"}},
+			},
+		},
+		{
+			name: "stderr growing on its own",
+			rounds: []runRound{
+				{stderr: "first\n", wantStderrLines: []string{"first"}, wantStreamMissing: true},
+				{stderr: "second\nthird\n", wantStderrLines: []string{"second", "third"}, wantStreamMissing: true},
+				{stream: initEvent + "\n", wantStreamLines: []string{initEvent}},
+			},
+		},
+		{
+			name: "a rerun starts over",
+			rounds: []runRound{
+				{stream: initEvent + "\n" + resultEvent + "\n", stderr: "old\n", wantStreamLines: []string{initEvent, resultEvent}, wantStderrLines: []string{"old"}},
+				{isRerun: true, stream: initEvent + "\n", stderr: "new\n", wantStreamLines: []string{initEvent}, wantStderrLines: []string{"new"}, wantReset: true},
+				{stream: assistantEvent + "\n", wantStreamLines: []string{assistantEvent}},
+			},
+		},
+		{
+			name: "a rerun before the first read is no reset",
+			rounds: []runRound{
+				{isRerun: true, stream: initEvent + "\n", wantStreamLines: []string{initEvent}},
+			},
+		},
+		{
+			name:        "a run without a run ID file",
+			isLegacyRun: true,
+			rounds: []runRound{
+				{stream: initEvent + "\n", wantStreamLines: []string{initEvent}},
+				{stream: resultEvent + "\n", stderr: "late\n", wantStreamLines: []string{resultEvent}, wantStderrLines: []string{"late"}},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupProjectDir(t)
+			tracked := todoTask()
+			service := newTestService(tracked)
+			if testCase.isLegacyRun {
+				service.runs.write(tracked.ID, common.RunPromptName, "prompt")
+			} else if err := service.runs.PrepareRun(tracked.ID, "prompt", HarnessClaudeCode); err != nil {
+				t.Fatalf("PrepareRun: %v", err)
+			}
+
+			var cursor RunCursor
+			for index, round := range testCase.rounds {
+				if round.isRerun {
+					if err := service.runs.PrepareRun(tracked.ID, "prompt", HarnessClaudeCode); err != nil {
+						t.Fatalf("round %d: PrepareRun: %v", index, err)
+					}
+				}
+				if round.stream != "" {
+					service.runs.appendFile(tracked.ID, common.RunStreamName, round.stream)
+				}
+				if round.stderr != "" {
+					service.runs.appendFile(tracked.ID, common.RunStderrName, round.stderr)
+				}
+
+				read, err := service.RunStepsFrom(testProjectSlug, tracked.ID, cursor)
+				if err != nil {
+					t.Fatalf("round %d: unexpected error: %v", index, err)
+				}
+				if !read.HasRun {
+					t.Fatalf("round %d: expected the task to have a run", index)
+				}
+				if read.IsReset != round.wantReset {
+					t.Errorf("round %d: expected reset %v, got %v", index, round.wantReset, read.IsReset)
+				}
+				if read.IsStreamMissing != round.wantStreamMissing {
+					t.Errorf("round %d: expected the stream missing %v, got %v", index, round.wantStreamMissing, read.IsStreamMissing)
+				}
+				var wantSteps []Step
+				for _, line := range round.wantStreamLines {
+					wantSteps = append(wantSteps, fakeStreamReader{}.Decode(line)...)
+				}
+				if !reflect.DeepEqual(read.Steps, wantSteps) {
+					t.Errorf("round %d: expected steps %+v, got %+v", index, wantSteps, read.Steps)
+				}
+				if !reflect.DeepEqual(read.Stderr, round.wantStderrLines) {
+					t.Errorf("round %d: expected stderr lines %q, got %q", index, round.wantStderrLines, read.Stderr)
+				}
+				cursor = read.Next
+			}
+		})
+	}
+}
+
+func TestDrudgerService_RunStepsFrom_NoRun(t *testing.T) {
+	setupProjectDir(t)
+	tracked := todoTask()
+	service := newTestService(tracked)
+
+	read, err := service.RunStepsFrom(testProjectSlug, tracked.ID, RunCursor{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if read.HasRun {
+		t.Error("expected a task with no run")
+	}
+	if read.Task.ID != tracked.ID {
+		t.Errorf("expected task %q, got %q", tracked.ID, read.Task.ID)
+	}
+	if len(read.Steps) != 0 || len(read.Stderr) != 0 {
+		t.Errorf("expected nothing read, got steps %+v and stderr %q", read.Steps, read.Stderr)
+	}
+	if !reflect.DeepEqual(read.Next, RunCursor{}) {
+		t.Errorf("expected the zero cursor, got %+v", read.Next)
+	}
+}

@@ -31,7 +31,7 @@ type DrudgerRepository interface {
 // repository name.
 type RunRepository interface {
 	// PrepareRun deletes whatever an earlier run of a task left and stores the
-	// prompt and the harness of a fresh run.
+	// prompt, the harness and a new run ID of a fresh run.
 	PrepareRun(taskID task.TaskID, prompt string, harness Harness) error
 	// WriteSetupLog stores the output of the repository setup commands of a
 	// run, replacing what it held. It refuses a task with no run.
@@ -41,9 +41,16 @@ type RunRepository interface {
 	// ReadHarness returns the harness a run was launched with. isPresent is
 	// false for a run prepared before runs recorded their harness.
 	ReadHarness(taskID task.TaskID) (harness Harness, isPresent bool, err error)
+	// ReadRunID returns the ID of the run of a task. It is empty for a task
+	// with no run and for a run prepared before runs recorded their ID.
+	ReadRunID(taskID task.TaskID) (string, error)
 	// ReadStream returns the event stream of a run as far as the agent has
 	// written it. isPresent is false while the agent has not created it.
 	ReadStream(taskID task.TaskID) (content []byte, isPresent bool, err error)
+	// ReadStreamFrom returns the event stream of a run from a byte offset to
+	// its end. An offset at or past the end gives no content. isPresent is
+	// false while the agent has not created the stream.
+	ReadStreamFrom(taskID task.TaskID, offset int64) (content []byte, isPresent bool, err error)
 	// LastWrite returns when the event stream of a run was last written, or
 	// when the run was prepared if the agent has not created the stream. It
 	// refuses a task with no run.
@@ -54,6 +61,10 @@ type RunRepository interface {
 	// ReadStderr returns the stderr log of a run. isPresent is false while the
 	// agent has not created it.
 	ReadStderr(taskID task.TaskID) (content []byte, isPresent bool, err error)
+	// ReadStderrFrom returns the stderr log of a run from a byte offset to its
+	// end. An offset at or past the end gives no content. isPresent is false
+	// while the agent has not created it.
+	ReadStderrFrom(taskID task.TaskID, offset int64) (content []byte, isPresent bool, err error)
 	// WritePullRequest stores the pull request description of one repository.
 	// It refuses a task with no run.
 	WritePullRequest(taskID task.TaskID, repository string, description string) error

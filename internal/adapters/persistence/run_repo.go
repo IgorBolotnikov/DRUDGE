@@ -3,6 +3,7 @@ package persistence
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func NewFileRunRepository(projectDir string) *FileRunRepository {
 }
 
 // PrepareRun deletes the run directory of a task and creates it again holding
-// only the prompt and the harness.
+// only the prompt, the harness and a new run ID.
 func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string, harness drudger.Harness) error {
 	runDir, err := repo.runDir(taskID)
 	if err != nil {
@@ -45,7 +46,14 @@ func (repo *FileRunRepository) PrepareRun(taskID task.TaskID, prompt string, har
 	if err := common.WriteFile(common.RunPromptPath(runDir), prompt); err != nil {
 		return err
 	}
-	return common.WriteFile(common.RunHarnessPath(runDir), string(harness))
+	if err := common.WriteFile(common.RunHarnessPath(runDir), string(harness)); err != nil {
+		return err
+	}
+	runID, err := common.GenerateUUID()
+	if err != nil {
+		return fmt.Errorf("could not generate the ID of the run of task %s: %w", taskID, err)
+	}
+	return common.WriteFile(common.RunIDPath(runDir), runID)
 }
 
 // WriteSetupLog writes the setup log of the run directory of a task. A task
@@ -77,6 +85,16 @@ func (repo *FileRunRepository) ReadHarness(taskID task.TaskID) (drudger.Harness,
 	return drudger.Harness(content), isPresent, err
 }
 
+// ReadRunID reads the run ID file of a run. A missing file gives an empty ID.
+func (repo *FileRunRepository) ReadRunID(taskID task.TaskID) (string, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return "", err
+	}
+	content, _, err := readRunFile(common.RunIDPath(runDir))
+	return string(content), err
+}
+
 // ReadStream reads the event stream file of a run.
 func (repo *FileRunRepository) ReadStream(taskID task.TaskID) ([]byte, bool, error) {
 	runDir, err := repo.runDir(taskID)
@@ -84,6 +102,15 @@ func (repo *FileRunRepository) ReadStream(taskID task.TaskID) ([]byte, bool, err
 		return nil, false, err
 	}
 	return readRunFile(common.RunStreamPath(runDir))
+}
+
+// ReadStreamFrom reads the event stream file of a run from a byte offset.
+func (repo *FileRunRepository) ReadStreamFrom(taskID task.TaskID, offset int64) ([]byte, bool, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	return readRunFileFrom(common.RunStreamPath(runDir), offset)
 }
 
 // LastWrite returns the modification time of the event stream file, or of the
@@ -126,6 +153,15 @@ func (repo *FileRunRepository) ReadStderr(taskID task.TaskID) ([]byte, bool, err
 		return nil, false, err
 	}
 	return readRunFile(common.RunStderrPath(runDir))
+}
+
+// ReadStderrFrom reads the stderr log file of a run from a byte offset.
+func (repo *FileRunRepository) ReadStderrFrom(taskID task.TaskID, offset int64) ([]byte, bool, error) {
+	runDir, err := repo.runDir(taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	return readRunFileFrom(common.RunStderrPath(runDir), offset)
 }
 
 // WritePullRequest stores the pull request description of one repository in
@@ -248,6 +284,28 @@ func readRunFile(path string) (content []byte, isPresent bool, err error) {
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
 	}
+	if err != nil {
+		return nil, false, fmt.Errorf("could not read %s: %w", path, err)
+	}
+	return content, true, nil
+}
+
+// readRunFileFrom reads one file of a run directory from a byte offset to its
+// end. isPresent is false when the file does not exist.
+func readRunFileFrom(path string, offset int64) (content []byte, isPresent bool, err error) {
+	file, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("could not open %s: %w", path, err)
+	}
+	defer file.Close()
+
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return nil, false, fmt.Errorf("could not seek to byte %d of %s: %w", offset, path, err)
+	}
+	content, err = io.ReadAll(file)
 	if err != nil {
 		return nil, false, fmt.Errorf("could not read %s: %w", path, err)
 	}

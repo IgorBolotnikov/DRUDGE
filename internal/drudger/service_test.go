@@ -777,7 +777,11 @@ func newFakeRunRepo() *fakeRunRepo {
 }
 
 func (repo *fakeRunRepo) PrepareRun(taskID task.TaskID, prompt string, harness Harness) error {
-	files := map[string]string{common.RunPromptName: prompt, common.RunHarnessName: string(harness)}
+	runID, err := common.GenerateUUID()
+	if err != nil {
+		return err
+	}
+	files := map[string]string{common.RunPromptName: prompt, common.RunHarnessName: string(harness), common.RunIDName: runID}
 	repo.runs[taskID] = &fakeRun{files: files, lastWrite: time.Now()}
 	return nil
 }
@@ -809,6 +813,16 @@ func (repo *fakeRunRepo) ReadStream(taskID task.TaskID) ([]byte, bool, error) {
 	return []byte(content), isPresent, nil
 }
 
+func (repo *fakeRunRepo) ReadRunID(taskID task.TaskID) (string, error) {
+	content, _ := repo.file(taskID, common.RunIDName)
+	return content, nil
+}
+
+func (repo *fakeRunRepo) ReadStreamFrom(taskID task.TaskID, offset int64) ([]byte, bool, error) {
+	content, isPresent, err := repo.ReadStream(taskID)
+	return bytesFrom(content, offset), isPresent, err
+}
+
 func (repo *fakeRunRepo) LastWrite(taskID task.TaskID) (time.Time, error) {
 	run, ok := repo.runs[taskID]
 	if !ok {
@@ -825,6 +839,20 @@ func (repo *fakeRunRepo) ReadExit(taskID task.TaskID) (string, bool, error) {
 func (repo *fakeRunRepo) ReadStderr(taskID task.TaskID) ([]byte, bool, error) {
 	content, isPresent := repo.file(taskID, common.RunStderrName)
 	return []byte(content), isPresent, nil
+}
+
+func (repo *fakeRunRepo) ReadStderrFrom(taskID task.TaskID, offset int64) ([]byte, bool, error) {
+	content, isPresent, err := repo.ReadStderr(taskID)
+	return bytesFrom(content, offset), isPresent, err
+}
+
+// bytesFrom returns the content from a byte offset, empty for an offset past
+// its end.
+func bytesFrom(content []byte, offset int64) []byte {
+	if offset >= int64(len(content)) {
+		return nil
+	}
+	return content[offset:]
 }
 
 func (repo *fakeRunRepo) RemoveRun(taskID task.TaskID) (bool, error) {
@@ -918,6 +946,13 @@ func (repo *fakeRunRepo) writeExit(taskID task.TaskID, contents string) {
 // finishSession puts the exit file of a clean exit in a run.
 func (repo *fakeRunRepo) finishSession(taskID task.TaskID) {
 	repo.writeExit(taskID, "0\n")
+}
+
+// appendFile adds content to the end of one file of a run, creating the run
+// and the file if the test has not.
+func (repo *fakeRunRepo) appendFile(taskID task.TaskID, name string, content string) {
+	existing, _ := repo.file(taskID, name)
+	repo.write(taskID, name, existing+content)
 }
 
 // writeStderr puts the stderr log in a run.
