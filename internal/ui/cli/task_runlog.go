@@ -10,47 +10,15 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
 const (
-	notWrittenYetLabel = "not written yet"
+	notWrittenYetLabel = style.NotWrittenYetLabel
+	stderrHeading      = style.StderrHeading
 	emptyLogLabel      = "empty"
 	logLineIndent      = "  "
 )
-
-// stderrHeading opens the stderr log of a compact view. It only shows when
-// the log holds something.
-const stderrHeading = "stderr:"
-
-// noDecoderNote heads a compact view of a run whose harness has no decoder.
-// It takes the harness name.
-const noDecoderNote = "harness %s has no decoder, showing its raw output"
-
-// depthIndent is how far a compact view indents a step for each level of
-// subagent nesting it ran at.
-const depthIndent = "  "
-
-// toolColumnWidth is how wide a tool name sits before the summary of a tool
-// call.
-const toolColumnWidth = 7
-
-// toolErrorIndent puts a tool error under the tool call it belongs to.
-const toolErrorIndent = "  "
-
-// Tool names whose summary is a path.
-const (
-	toolRead  = "Read"
-	toolEdit  = "Edit"
-	toolWrite = "Write"
-)
-
-// pathSummaryTools are the tools whose summary is a path, colored RolePath
-// instead of RoleSecondary.
-var pathSummaryTools = map[string]bool{
-	toolRead:  true,
-	toolEdit:  true,
-	toolWrite: true,
-}
 
 // taskRunlog prints the latest run of a task: a compact view of its steps by
 // default, or the raw files the agent wrote with isRaw.
@@ -88,13 +56,13 @@ func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
 	}
 
 	if !runSteps.IsDecoded {
-		lines = append(lines, palette.Paint(theme.Stdout, theme.RoleMuted, fmt.Sprintf(noDecoderNote, runSteps.Harness)))
+		lines = append(lines, palette.Paint(theme.Stdout, theme.RoleMuted, fmt.Sprintf(style.NoDecoderNote, runSteps.Harness)))
 	}
 	if runSteps.IsStreamMissing {
 		lines = append(lines, notWrittenYetLabel)
 	}
 	for _, step := range runSteps.Steps {
-		lines = append(lines, indentStepLine(compactStepLine(palette, step), step.Depth))
+		lines = append(lines, compactStepLine(palette, step))
 	}
 
 	if len(runSteps.Stderr) > 0 {
@@ -107,57 +75,16 @@ func printRunSteps(out *printer.Printer, runSteps *drudger.TaskRunSteps) {
 	out.View(lines)
 }
 
-// compactStepLine renders one Step as the single line a compact view shows
-// for it.
+// compactStepLine paints the segments of one Step into the line a compact
+// view shows for it. Every line of agent text is indented by the depth of the
+// step.
 func compactStepLine(palette *theme.Theme, step drudger.Step) string {
-	switch step.Kind {
-	case drudger.StepInit:
-		return palette.Paint(theme.Stdout, theme.RoleMuted, step.Summary)
-	case drudger.StepUnrecognized:
-		return palette.Paint(theme.Stdout, theme.RoleMuted, step.Raw)
-	case drudger.StepAgentText:
-		return step.Summary
-	case drudger.StepToolCall:
-		return toolStepLine(palette, step)
-	case drudger.StepToolError:
-		return toolErrorIndent + palette.Paint(theme.Stdout, theme.RoleError, printer.FailedGlyph+" "+step.Summary)
-	case drudger.StepFinalResult:
-		return finalResultLine(palette, step)
-	default:
-		return step.Summary
+	var line strings.Builder
+	for _, segment := range style.StepSegments(step) {
+		line.WriteString(palette.Paint(theme.Stdout, segment.Role, segment.Text))
 	}
-}
-
-// indentStepLine indents every line of a rendered step by its depth. Agent
-// text can span several lines.
-func indentStepLine(line string, depth int) string {
-	indent := strings.Repeat(depthIndent, depth)
-	return indent + strings.ReplaceAll(line, "\n", "\n"+indent)
-}
-
-// toolStepLine renders a tool call: the tool name padded to a column followed
-// by its summary, or the name alone when there is no summary to pad against.
-func toolStepLine(palette *theme.Theme, step drudger.Step) string {
-	summaryRole := theme.RoleSecondary
-	if pathSummaryTools[step.Tool] {
-		summaryRole = theme.RolePath
-	}
-
-	if step.Summary == "" {
-		return palette.Paint(theme.Stdout, theme.RolePrimary, step.Tool)
-	}
-	summary := palette.Paint(theme.Stdout, summaryRole, step.Summary)
-	tool := palette.Paint(theme.Stdout, theme.RolePrimary, fmt.Sprintf("%-*s", toolColumnWidth, step.Tool))
-	return tool + " " + summary
-}
-
-// finalResultLine colors the terminal line of a run by its verdict.
-func finalResultLine(palette *theme.Theme, step drudger.Step) string {
-	role := theme.RoleError
-	if strings.HasPrefix(step.Summary, string(drudger.StatusGotShitDone)) {
-		role = theme.RoleSuccess
-	}
-	return palette.Paint(theme.Stdout, role, step.Summary)
+	indent := style.StepIndent(step.Depth)
+	return indent + strings.ReplaceAll(line.String(), "\n", "\n"+indent)
 }
 
 // printRunLogs prints every log of a run under a heading naming its file.

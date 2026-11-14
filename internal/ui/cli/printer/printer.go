@@ -98,6 +98,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
 const (
@@ -107,9 +108,8 @@ const (
 	warnGlyph = "!"
 )
 
-// FailedGlyph starts a line about work that failed. A view that formats its
-// own lines uses it too.
-const FailedGlyph = "✗"
+// failedGlyph starts a line about work that failed.
+const failedGlyph = style.FailedGlyph
 
 // stepEnding ends the line of a step that started.
 const stepEnding = "…"
@@ -187,7 +187,7 @@ func (p *Printer) Step(format string, args ...any) {
 
 // Failed prints a line about work that failed.
 func (p *Printer) Failed(format string, args ...any) {
-	p.glyphLine(theme.RoleError, FailedGlyph, format, args...)
+	p.glyphLine(theme.RoleError, failedGlyph, format, args...)
 }
 
 // Detail prints a dimmed line one level deeper than the lines around it. The
