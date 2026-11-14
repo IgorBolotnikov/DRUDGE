@@ -84,6 +84,7 @@ var (
 	halfPageDownKey = key.NewBinding(key.WithKeys("d", "pgdown"))
 	scrollTopKey    = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
 	scrollBottomKey = key.NewBinding(key.WithKeys("G", "end"))
+	openRunLogKey   = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "runlog"))
 )
 
 // scrollLineCount is how many lines the scroll keys and one turn of the wheel
@@ -91,7 +92,7 @@ var (
 const scrollLineCount = 1
 
 // Keys are the keys of the task detail the help lists.
-var Keys = []key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey}
+var Keys = []key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey, openRunLogKey}
 
 // field is one labelled value of a task.
 type field struct {
@@ -179,7 +180,7 @@ func (view *View) SetSize(width, height int) {
 }
 
 // Update takes the loaded tasks and scrolls the description on keys and on the
-// wheel.
+// wheel. L opens the runlog of the shown task.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -192,11 +193,24 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			view.layOut()
 		}
 	case tea.KeyPressMsg:
+		if key.Matches(msg, openRunLogKey) {
+			return view.openRunLog()
+		}
 		view.scroll(msg)
 	case tea.MouseWheelMsg:
 		view.handleWheel(msg)
 	}
 	return nil
+}
+
+// openRunLog asks to open the runlog of the shown task. It does nothing while
+// no task is handed.
+func (view *View) openRunLog() tea.Cmd {
+	taskID := view.taskID
+	if taskID == "" {
+		return nil
+	}
+	return func() tea.Msg { return views.OpenRunLogMsg{TaskID: taskID} }
 }
 
 func (view *View) handleWheel(msg tea.MouseWheelMsg) {

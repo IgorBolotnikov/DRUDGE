@@ -400,3 +400,68 @@ func TestView_Open(t *testing.T) {
 		})
 	}
 }
+
+func TestView_ShowTask(t *testing.T) {
+	const otherTaskID task.TaskID = "5b20d7aa-0000-0000-0000-000000000002"
+	cases := []struct {
+		name          string
+		messages      []tea.Msg
+		taskID        task.TaskID
+		wantFeeds     []views.Feed
+		wantTitle     string
+		wantStatus    string
+		wantFirstLine string
+	}{
+		{
+			name:          "another task drops the steps and swaps the feed",
+			messages:      []tea.Msg{firstRead(runRead(numberedSteps("step", 20))), tuitest.KeyTop},
+			taskID:        otherTaskID,
+			wantFeeds:     []views.Feed{{Name: views.RunLogFeed, TaskID: otherTaskID}},
+			wantTitle:     "task-runlog [5b20d7aa]",
+			wantStatus:    followingStatus,
+			wantFirstLine: "Reading the run…",
+		},
+		{
+			name:          "the shown task keeps its steps",
+			messages:      []tea.Msg{firstRead(runRead(numberedSteps("step", 20))), tuitest.KeyTop},
+			taskID:        shownTaskID,
+			wantFeeds:     []views.Feed{{Name: views.RunLogFeed, TaskID: shownTaskID}},
+			wantTitle:     "task-runlog [3f9a1c2e] Add retry to uploader",
+			wantStatus:    pausedStatus,
+			wantFirstLine: shownRunDir,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(80, 5)
+			view.ShowTask(shownTaskID)
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			view.ShowTask(testCase.taskID)
+			if got := view.Feeds(); !slices.Equal(got, testCase.wantFeeds) {
+				t.Errorf("expected feeds %v, got %v", testCase.wantFeeds, got)
+			}
+			if got := view.Title(); got != testCase.wantTitle {
+				t.Errorf("expected title %q, got %q", testCase.wantTitle, got)
+			}
+			if got := view.Status(); got != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
+			}
+			firstLine, _, _ := strings.Cut(ansi.Strip(view.Render()), "\n")
+			if got := strings.TrimSpace(firstLine); got != testCase.wantFirstLine {
+				t.Errorf("expected the first line %q, got %q", testCase.wantFirstLine, got)
+			}
+		})
+	}
+}
+
+func TestView_NoTaskSelected(t *testing.T) {
+	view := New(tuitest.Styles())
+	view.SetSize(80, 5)
+	if got := view.Feeds(); got != nil {
+		t.Errorf("expected no feeds, got %v", got)
+	}
+	tuitest.AssertGolden(t, "no_task_selected", view.Render())
+}

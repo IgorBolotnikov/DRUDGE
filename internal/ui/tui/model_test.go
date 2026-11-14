@@ -24,6 +24,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskrunlog"
 )
 
 var testProject = &project.Project{Slug: "uploader", Name: "Uploader"}
@@ -657,6 +658,82 @@ func TestModel_OpensRunLog(t *testing.T) {
 			}
 			if testCase.golden != "" {
 				tuitest.AssertGolden(t, testCase.golden, screen)
+			}
+		})
+	}
+}
+
+// runLogTitle returns the title of the runlog of a test task once it read
+// the run.
+func runLogTitle(listed task.ListedTask) string {
+	return fmt.Sprintf("%s [%s] %s", taskrunlog.Name, task.ShortID(listed.Task.ID), listed.Task.Title)
+}
+
+func TestModel_OpensRunLogFromBoardAndDetail(t *testing.T) {
+	keyNextColumn := tea.KeyPressMsg{Code: 'l', Text: "l"}
+	board := oneTabConfig(NodeConfig{View: taskboard.Name})
+	listAndDetail := oneTabConfig(NodeConfig{Arrangement: SideBySide, Children: []NodeConfig{taskListNode(), {View: taskdetail.Name}}})
+	list := oneTabConfig(taskListNode())
+	todoTask := tuitest.ListedTasks()[2]
+	secondTask := tuitest.ListedTasks()[1]
+	cases := []struct {
+		name         string
+		config       Config
+		keys         []tea.Msg
+		wantOverlays []string
+	}{
+		{name: "L on the board opens the runlog of the cursor task", config: board, keys: []tea.Msg{keyNextColumn, tuitest.KeyRunLog}, wantOverlays: []string{runLogTitle(todoTask)}},
+		{name: "L on an empty column of the board does nothing", config: board, keys: []tea.Msg{keyNextColumn, keyNextColumn, keyNextColumn, keyNextColumn, tuitest.KeyRunLog}},
+		{name: "L on the detail opens the runlog of the shown task", config: listAndDetail, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyEnter, tuitest.KeyRunLog}, wantOverlays: []string{runLogTitle(secondTask)}},
+		{name: "L on the detail with no task does nothing", config: listAndDetail, keys: []tea.Msg{keyNextTile, tuitest.KeyRunLog}},
+		{name: "L on a detail overlay stacks the runlog on it", config: list, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyEnter, tuitest.KeyRunLog}, wantOverlays: []string{taskdetail.Name, runLogTitle(secondTask)}},
+		{name: "esc goes back to the detail overlay", config: list, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyEnter, tuitest.KeyRunLog, tuitest.KeyEscape}, wantOverlays: []string{taskdetail.Name}},
+		{name: "esc twice goes back to the tab", config: list, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyEnter, tuitest.KeyRunLog, tuitest.KeyEscape, tuitest.KeyEscape}},
+		{name: "L in the runlog does nothing", config: list, keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyRunLog, tuitest.KeyRunLog}, wantOverlays: []string{runLogTitle(secondTask)}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModel(t, buildTestTabs(t, testCase.config), nil)
+			update(model, tea.WindowSizeMsg{Width: 120, Height: 16})
+			startFeeds(model)
+			pressKeys(model, testCase.keys)
+			if got := overlayTitles(model); !slices.Equal(got, testCase.wantOverlays) {
+				t.Errorf("expected overlays %q, got %q", testCase.wantOverlays, got)
+			}
+		})
+	}
+}
+
+func TestModel_RunLogTileFollowsSelection(t *testing.T) {
+	secondTask := tuitest.ListedTasks()[1]
+	thirdTask := tuitest.ListedTasks()[2]
+	cases := []struct {
+		name      string
+		keys      []tea.Msg
+		wantTitle string
+		wantFeeds []views.Feed
+		golden    string
+	}{
+		{name: "nothing selected at start", wantTitle: taskrunlog.Name, golden: "screen_runlog_tile_nothing_selected"},
+		{name: "a selection shows the run of the task", keys: []tea.Msg{tuitest.KeyDown}, wantTitle: runLogTitle(secondTask), wantFeeds: []views.Feed{{Name: views.RunLogFeed, TaskID: secondTask.Task.ID}}},
+		{name: "another selection switches to the task and its feed", keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyDown}, wantTitle: runLogTitle(thirdTask), wantFeeds: []views.Feed{{Name: views.RunLogFeed, TaskID: thirdTask.Task.ID}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := oneTabConfig(NodeConfig{Arrangement: Stacked, Children: []NodeConfig{taskListNode(), {View: taskrunlog.Name}}})
+			model := newTestModel(t, buildTestTabs(t, config), nil)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 16})
+			startFeeds(model)
+			pressKeys(model, testCase.keys)
+			runLogTile := model.ActiveTab().tiles[1]
+			if got := runLogTile.Title(); got != testCase.wantTitle {
+				t.Errorf("expected title %q, got %q", testCase.wantTitle, got)
+			}
+			if got := viewFeeds(runLogTile.view); !slices.Equal(got, testCase.wantFeeds) {
+				t.Errorf("expected feeds %v, got %v", testCase.wantFeeds, got)
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, model.View().Content)
 			}
 		})
 	}

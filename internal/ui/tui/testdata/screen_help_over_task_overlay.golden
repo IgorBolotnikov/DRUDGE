@@ -1,9 +1,9 @@
- 1 Tab  2 Second 
-╭─ task-list ────────────────────────╭───────────────────────╮ ────────────────────────────────────╮
-│ ╭─ ▸ task-detail ──────────────────│ task-detail           │───────────────────────────────────╮ │
-│▸│Add retry to uploader · 3f9a1c2e ·│ j/k scroll            │                                   │r│
-│ │No description                    │ u/d half page up/down │                                   │ │
-│ │                                  │ g/G top/bottom        │                                   │…│
+ 1 Tab  2 Second                     ╭───────────────────────╮
+╭─ task-list ────────────────────────│ task-detail           │ ────────────────────────────────────╮
+│ ╭─ ▸ task-detail ──────────────────│ j/k scroll            │───────────────────────────────────╮ │
+│▸│Add retry to uploader · 3f9a1c2e ·│ u/d half page up/down │                                   │r│
+│ │No description                    │ g/G top/bottom        │                                   │ │
+│ │                                  │ L   runlog            │                                   │…│
 │ │                                  │                       │                                   │…│
 │ │                                  │ Global                │                                   │…│
 │ │                                  │ esc close             │                                   │ │

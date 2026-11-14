@@ -38,6 +38,7 @@ The view takes no options.
 | `j/k` | move |
 | `g/G` | top/bottom |
 | `enter` | open task |
+| `L` | runlog |
 
 ## `task-detail`
 
@@ -54,6 +55,7 @@ The view takes no options.
 | `j/k` | scroll |
 | `u/d` | half page up/down |
 | `g/G` | top/bottom |
+| `L` | runlog |
 
 ## `task-list`
 
@@ -78,7 +80,7 @@ Lists the tasks of the project with the rows of drg task list.
 
 ## `task-runlog`
 
-Shows the compact runlog of a task opened with L from a task list and follows the run while it writes.
+Shows the compact runlog of a task opened with L or selected in a task list or a task board of the same tab, and follows the run while it writes.
 
 ### View options
 

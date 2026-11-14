@@ -2,6 +2,7 @@ package taskdetail
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -239,6 +240,31 @@ func TestView_Open(t *testing.T) {
 			}
 			if got := view.Status(); got != testCase.wantStatus {
 				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
+			}
+		})
+	}
+}
+
+func TestView_OpensRunLog(t *testing.T) {
+	cases := []struct {
+		name   string
+		taskID task.TaskID
+		want   []tea.Msg
+	}{
+		{name: "L opens the runlog of the shown task", taskID: shownTaskID, want: []tea.Msg{views.OpenRunLogMsg{TaskID: shownTaskID}}},
+		{name: "L with no task does nothing"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(100, 8)
+			view.Update(views.TasksLoadedMsg{Tasks: detailTasks()})
+			if testCase.taskID != "" {
+				view.ShowTask(testCase.taskID)
+			}
+			got := tuitest.Messages(view.Update(tuitest.KeyRunLog))
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("expected messages %v, got %v", testCase.want, got)
 			}
 		})
 	}

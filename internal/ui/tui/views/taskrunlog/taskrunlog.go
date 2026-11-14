@@ -25,7 +25,7 @@ import (
 const Name = "task-runlog"
 
 // Description says in one line what the View shows.
-const Description = "Shows the compact runlog of a task opened with L from a task list and follows the run while it writes."
+const Description = "Shows the compact runlog of a task opened with L or selected in a task list or a task board of the same tab, and follows the run while it writes."
 
 // Title of the Tile of the View: the name of the View, the short ID of the
 // task and the title of the task once the View read it.
@@ -114,32 +114,42 @@ func (view *View) TakesAllKeys() bool {
 	return false
 }
 
-// Status returns whether the View follows the run or is paused.
+// Status returns whether the View follows the run or is paused. It is empty
+// while no task is shown.
 func (view *View) Status() string {
-	if view.isFollowing {
+	switch {
+	case view.taskID == "":
+		return ""
+	case view.isFollowing:
 		return followingStatus
 	}
 	return pausedStatus
 }
 
-// Open shows the run of the task of an open runlog message, following it at
-// the bottom. Opening the task it shows keeps what it shows. It refuses every
-// other open message.
+// ShowTask shows the run of the task with id, following it at the bottom. It
+// drops the steps of the task it showed before. Showing the task it shows
+// keeps what it shows.
+func (view *View) ShowTask(id task.TaskID) {
+	if id == view.taskID {
+		return
+	}
+	*view = View{styles: view.styles, taskID: id, content: view.content, isFollowing: true}
+	view.renderContent()
+}
+
+// Open shows the run of the task of an open runlog message the way showing
+// the task does. It refuses every other open message.
 func (view *View) Open(msg views.OpenMsg) (isShown bool) {
 	openRunLog, ok := msg.(views.OpenRunLogMsg)
 	if !ok {
 		return false
 	}
-	if openRunLog.TaskID == view.taskID {
-		return true
-	}
-	*view = View{styles: view.styles, taskID: openRunLog.TaskID, content: view.content, isFollowing: true}
-	view.renderContent()
+	view.ShowTask(openRunLog.TaskID)
 	return true
 }
 
 // Feeds returns the runlog feed of the shown task, or no feed while no task
-// is shown.
+// is shown. Showing another task swaps the feed.
 func (view *View) Feeds() []views.Feed {
 	if view.taskID == "" {
 		return nil
@@ -341,6 +351,8 @@ func wrapLine(line, hangingIndent string, width int) []string {
 // returns the line that says why.
 func (view *View) renderBlocks() []block {
 	switch {
+	case view.taskID == "":
+		return []block{lineBlock(view.styles.Muted.Render("No task selected"))}
 	case !view.hasRead && view.readErr != nil:
 		return []block{lineBlock(view.styles.Error.Render("Could not read the run: " + view.readErr.Error()))}
 	case !view.hasRead:

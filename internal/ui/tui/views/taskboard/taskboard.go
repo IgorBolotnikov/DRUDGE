@@ -55,10 +55,11 @@ var (
 	jumpTopKey    = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
 	jumpBottomKey = key.NewBinding(key.WithKeys("G", "end"))
 	openTaskKey   = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task"))
+	openRunLogKey = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "runlog"))
 )
 
 // Keys are the keys of the board the help lists.
-var Keys = []key.Binding{moveLeftKey, moveUpKey, jumpTopKey, openTaskKey}
+var Keys = []key.Binding{moveLeftKey, moveUpKey, jumpTopKey, openTaskKey, openRunLogKey}
 
 // column holds the tasks of one status in the order of the listing.
 type column struct {
@@ -134,7 +135,8 @@ func (view *View) SetSize(width, height int) {
 
 // Update takes the loaded tasks, moves the cursor on keys, to a clicked task
 // or column and along the column on the wheel. Moving the cursor onto another
-// task selects that task. Enter opens the task under the cursor.
+// task selects that task. Enter opens the task under the cursor and L opens
+// its runlog.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -143,8 +145,11 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			view.showTasks(msg.Tasks)
 		}
 	case tea.KeyPressMsg:
-		if key.Matches(msg, openTaskKey) {
+		switch {
+		case key.Matches(msg, openTaskKey):
 			return view.openTask()
+		case key.Matches(msg, openRunLogKey):
+			return view.openRunLog()
 		}
 		previousTaskID := view.cursorTaskID()
 		view.handleKey(msg)
@@ -288,6 +293,16 @@ func (view *View) openTask() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg { return views.OpenTaskMsg{TaskID: taskID} }
+}
+
+// openRunLog asks to open the runlog of the task under the cursor. It does
+// nothing in an empty column.
+func (view *View) openRunLog() tea.Cmd {
+	taskID := view.cursorTaskID()
+	if taskID == "" {
+		return nil
+	}
+	return func() tea.Msg { return views.OpenRunLogMsg{TaskID: taskID} }
 }
 
 // selectMovedCursor selects the task under the cursor when it is another task
