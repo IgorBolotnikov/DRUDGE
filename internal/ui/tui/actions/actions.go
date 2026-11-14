@@ -6,6 +6,7 @@ package actions
 
 import (
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -14,18 +15,26 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-// RunCommand names the command that hands a task to a coding agent.
-const RunCommand = "run"
+const (
+	// RunCommand names the command that hands a task to a coding agent.
+	RunCommand = "run"
+	// MarkDoneCommand names the command that marks an unmerged task done.
+	MarkDoneCommand = "done"
+)
 
 const (
 	runVerdictFormat          = "%s handed to Drudger %d"
 	runVerdictNoDrudgerFormat = "%s handed to a Drudger"
+	doneVerdictFormat         = "%s done"
+	unblockedVerdictFormat    = " · %s runnable: %s"
+	unblockedSeparator        = ", "
 )
 
-// DrudgerService runs a task the way drg task run does and reads the Drudgers
-// of a project.
+// DrudgerService runs a task the way drg task run does, marks a task done the
+// way drg task done does and reads the Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
+	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 
@@ -73,6 +82,9 @@ func (actions *Actions) Start(msg views.CommandMsg) (Command, tea.Cmd) {
 	case views.RunTaskMsg:
 		command := Command{Name: RunCommand, Target: task.ShortID(msg.TaskID)}
 		return command, func() tea.Msg { return actions.runTask(command, msg.TaskID) }
+	case views.MarkDoneMsg:
+		command := Command{Name: MarkDoneCommand, Target: task.ShortID(msg.TaskID)}
+		return command, func() tea.Msg { return actions.markDone(command, msg.TaskID) }
 	}
 	panic(fmt.Sprintf("a view asked for command %T, which the TUI does not run", msg))
 }
@@ -101,4 +113,36 @@ func (actions *Actions) runVerdict(command Command, taskID task.TaskID) string {
 		}
 	}
 	return fmt.Sprintf(runVerdictNoDrudgerFormat, command.Target)
+}
+
+// markDone marks a task done. Its verdict names the tasks that became
+// runnable.
+func (actions *Actions) markDone(command Command, taskID task.TaskID) DoneMsg {
+	done := DoneMsg{Command: command, Feeds: []views.FeedName{views.TasksFeed}}
+	_, unblocked, err := actions.services.Drudgers.MarkDone(actions.projectSlug, taskID)
+	if err != nil {
+		done.Err = err
+		return done
+	}
+	done.Verdict = doneVerdict(command, unblocked)
+	return done
+}
+
+func doneVerdict(command Command, unblocked []*task.Task) string {
+	verdict := fmt.Sprintf(doneVerdictFormat, command.Target)
+	if len(unblocked) == 0 {
+		return verdict
+	}
+	shortIDs := make([]string, 0, len(unblocked))
+	for _, dependent := range unblocked {
+		shortIDs = append(shortIDs, task.ShortID(dependent.ID))
+	}
+	return verdict + fmt.Sprintf(unblockedVerdictFormat, formatTaskCount(len(unblocked)), strings.Join(shortIDs, unblockedSeparator))
+}
+
+func formatTaskCount(count int) string {
+	if count == 1 {
+		return "1 task"
+	}
+	return fmt.Sprintf("%d tasks", count)
 }

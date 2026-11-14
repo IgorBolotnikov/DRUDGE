@@ -34,6 +34,10 @@ func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.
 	return service.runErr
 }
 
+func (service *fakeCommandService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
+	return nil, nil, errors.New("the command tests mark no task done")
+}
+
 func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	holders := make([]*drudger.Drudger, 0, len(service.runIDs))
 	for index, runID := range service.runIDs {

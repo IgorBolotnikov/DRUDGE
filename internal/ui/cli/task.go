@@ -411,7 +411,7 @@ func taskDone(args []string) error {
 		return err
 	}
 
-	_, err = deps.drudger.MarkDone(deps.localCfg.ProjectSlug, taskID)
+	_, _, err = deps.drudger.MarkDone(deps.localCfg.ProjectSlug, taskID)
 	return err
 }
 

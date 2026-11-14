@@ -143,6 +143,8 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "L in an empty column does nothing", messages: []tea.Msg{loaded, keyRight, keyRight, keyRight, keyRight}, input: tuitest.KeyRunLog},
 		{name: "r runs the task under the cursor", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyRun, want: []tea.Msg{views.RunTaskMsg{TaskID: todoIDs[1]}}},
 		{name: "r in an empty column does nothing", messages: []tea.Msg{loaded, keyRight, keyRight, keyRight, keyRight}, input: tuitest.KeyRun},
+		{name: "m marks the task under the cursor done", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: todoIDs[1]}}},
+		{name: "m in an empty column does nothing", messages: []tea.Msg{loaded, keyRight, keyRight, keyRight, keyRight}, input: tuitest.KeyMarkDone},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

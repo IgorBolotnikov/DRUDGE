@@ -32,29 +32,31 @@ func (service *DrudgerService) EditTask(projectSlug string, id task.TaskID, chan
 }
 
 // MarkDone sets an unmerged task to done, the way task.TaskService.MarkDone
-// does, and reports the tasks it unblocked.
-func (service *DrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, error) {
+// does, and reports the tasks it unblocked. It returns the task as it stands
+// and the tasks it unblocked.
+func (service *DrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	marked, err := service.tasks.MarkDone(projectSlug, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	service.reportUnblocked(projectSlug, marked)
-	return marked, nil
+	unblocked := service.reportUnblocked(projectSlug, marked)
+	return marked, unblocked, nil
 }
 
-// reportUnblocked reports the tasks that became runnable once finished is
-// done. It reports nothing when no task became runnable.
+// reportUnblocked reports and returns the tasks that became runnable once
+// finished is done. It reports nothing when no task became runnable.
 //
-// The task is stored as done by the time this runs, so a failure is reported
-// and the command still succeeds.
-func (service *DrudgerService) reportUnblocked(projectSlug string, finished *task.Task) {
+// The task is stored as done by the time this runs, so a failure is reported,
+// no task is returned and the command still succeeds.
+func (service *DrudgerService) reportUnblocked(projectSlug string, finished *task.Task) []*task.Task {
 	unblocked, err := service.tasks.Unblocked(projectSlug, finished)
 	if err != nil {
 		service.progress.Report(UnblockedLookupFailed{TaskID: finished.ID, Err: err})
-		return
+		return nil
 	}
 	if len(unblocked) == 0 {
-		return
+		return nil
 	}
 	service.progress.Report(DependentsUnblocked{Tasks: unblocked})
+	return unblocked
 }

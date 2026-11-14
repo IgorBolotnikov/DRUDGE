@@ -17,15 +17,21 @@ const testTaskID task.TaskID = "3f9a1c2e-0000-4000-8000-000000000001"
 
 var errNotTodo = errors.New(`task 3f9a1c2e is "in progress", only a task that is "todo" can run`)
 
+var errNotUnmerged = errors.New(`task 3f9a1c2e is "todo", only a task that is "unmerged" can be marked done`)
+
 var errDiskOnFire = errors.New("disk on fire")
 
-// fakeDrudgerService refuses every run with runErr and fails every read with
-// readErr. It records the task of every run.
+// fakeDrudgerService refuses every run with runErr, every mark done with
+// doneErr and fails every read with readErr. A mark done unblocks the
+// unblocked tasks. It records the task of every run and every mark done.
 type fakeDrudgerService struct {
-	drudgers []*drudger.Drudger
-	runErr   error
-	readErr  error
-	runIDs   []task.TaskID
+	drudgers  []*drudger.Drudger
+	unblocked []*task.Task
+	runErr    error
+	doneErr   error
+	readErr   error
+	runIDs    []task.TaskID
+	doneIDs   []task.TaskID
 }
 
 func (service *fakeDrudgerService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
@@ -34,6 +40,17 @@ func (service *fakeDrudgerService) RunTask(projectSlug string, requestedID task.
 	}
 	service.runIDs = append(service.runIDs, requestedID)
 	return service.runErr
+}
+
+func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
+	if projectSlug != testProjectSlug {
+		return nil, nil, errors.New("the mark done went to another project")
+	}
+	service.doneIDs = append(service.doneIDs, id)
+	if service.doneErr != nil {
+		return nil, nil, service.doneErr
+	}
+	return &task.Task{ID: id, Status: task.StatusDone}, service.unblocked, nil
 }
 
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
@@ -83,6 +100,55 @@ func TestActions_RunTask(t *testing.T) {
 			}
 			if !slices.Equal(done.Feeds, runFeeds) {
 				t.Errorf("expected feeds %v, got %v", runFeeds, done.Feeds)
+			}
+		})
+	}
+}
+
+func TestActions_MarkDone(t *testing.T) {
+	oneUnblocked := []*task.Task{{ID: "4d5e6f70-0000-4000-8000-000000000002"}}
+	twoUnblocked := []*task.Task{{ID: "4d5e6f70-0000-4000-8000-000000000002"}, {ID: "7a8b9c0d-0000-4000-8000-000000000003"}}
+	doneFeeds := []views.FeedName{views.TasksFeed}
+	cases := []struct {
+		name        string
+		service     *fakeDrudgerService
+		wantVerdict string
+		wantErr     error
+	}{
+		{name: "done with no task unblocked", service: &fakeDrudgerService{}, wantVerdict: "3f9a1c2e done"},
+		{name: "done with one task unblocked", service: &fakeDrudgerService{unblocked: oneUnblocked}, wantVerdict: "3f9a1c2e done · 1 task runnable: 4d5e6f70"},
+		{name: "done with two tasks unblocked", service: &fakeDrudgerService{unblocked: twoUnblocked}, wantVerdict: "3f9a1c2e done · 2 tasks runnable: 4d5e6f70, 7a8b9c0d"},
+		{name: "refused done carries the error of the service", service: &fakeDrudgerService{doneErr: errNotUnmerged}, wantErr: errNotUnmerged},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			commands := actions.New(actions.Services{Drudgers: testCase.service}, testProjectSlug)
+			command, cmd := commands.Start(views.MarkDoneMsg{TaskID: testTaskID})
+			wantCommand := actions.Command{Name: actions.MarkDoneCommand, Target: "3f9a1c2e"}
+			if command != wantCommand {
+				t.Errorf("expected command %v, got %v", wantCommand, command)
+			}
+			if len(testCase.service.doneIDs) != 0 {
+				t.Fatal("expected the mark done to wait for its command")
+			}
+			done, ok := cmd().(actions.DoneMsg)
+			if !ok {
+				t.Fatal("expected a done message")
+			}
+			if !slices.Equal(testCase.service.doneIDs, []task.TaskID{testTaskID}) {
+				t.Errorf("expected one mark done of %s, got %v", testTaskID, testCase.service.doneIDs)
+			}
+			if done.Command != wantCommand {
+				t.Errorf("expected done command %v, got %v", wantCommand, done.Command)
+			}
+			if done.Verdict != testCase.wantVerdict {
+				t.Errorf("expected verdict %q, got %q", testCase.wantVerdict, done.Verdict)
+			}
+			if !errors.Is(done.Err, testCase.wantErr) {
+				t.Errorf("expected error %v, got %v", testCase.wantErr, done.Err)
+			}
+			if !slices.Equal(done.Feeds, doneFeeds) {
+				t.Errorf("expected feeds %v, got %v", doneFeeds, done.Feeds)
 			}
 		})
 	}

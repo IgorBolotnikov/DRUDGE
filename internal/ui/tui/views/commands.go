@@ -21,11 +21,21 @@ type RunTaskMsg struct {
 
 func (RunTaskMsg) isCommandMsg() {}
 
-var runTaskKey = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
+// MarkDoneMsg asks to mark an unmerged task done the way drg task done does.
+type MarkDoneMsg struct {
+	TaskID task.TaskID
+}
+
+func (MarkDoneMsg) isCommandMsg() {}
+
+var (
+	runTaskKey  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
+	markDoneKey = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
+)
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, markDoneKey}
 
 // TaskCommand returns the command that sends the command message of a key for
 // the task with id. It returns nil for a key of no command and for an empty
@@ -38,6 +48,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 	switch {
 	case key.Matches(msg, runTaskKey):
 		commandMsg = RunTaskMsg{TaskID: id}
+	case key.Matches(msg, markDoneKey):
+		commandMsg = MarkDoneMsg{TaskID: id}
 	default:
 		return nil
 	}

@@ -88,6 +88,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `enter` | Opens the task under the cursor |
 | `L` | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail |
 | `r` | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog |
+| `m` | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
 | `!` | Opens the event log |
@@ -100,7 +101,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `q` | Closes the top box, or quits when no box is open |
 | `ctrl+c` | Quits |
 
-Some keys run a command on a task, like `r` that hands the task to a coding agent the way [`drg task run`]({{< relref "/docs/cli/task/run" >}}) does. The [views page]({{< relref "/docs/tui/views" >}}) lists the command keys of each view. A command works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. DRUDGE checks a command the way the CLI does. A command it refuses, like `r` on a task that is not `todo`, shows the error of the CLI.
+Some keys run a command on a task, like `r` that hands the task to a coding agent the way [`drg task run`]({{< relref "/docs/cli/task/run" >}}) does. `m` marks an `unmerged` task done the way [`drg task done`]({{< relref "/docs/cli/task/done" >}}) does, and its verdict names the tasks that became runnable, like `✓ 1a2b3c4d done · 2 tasks runnable: 4d5e6f70, 7a8b9c0d`. The [views page]({{< relref "/docs/tui/views" >}}) lists the command keys of each view. A command works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. DRUDGE checks a command the way the CLI does. A command it refuses, like `r` on a task that is not `todo`, shows the error of the CLI.
 
 While a command runs, the bottom bar shows a spinner, the short ID of the task and the latest step, like `⠹ 7c1e4f90: Creating sandbox drudge-uploader-2…`. When the command works, the bar shows its verdict, like `✓ 7c1e4f90 handed to Drudger 2`, for 5 seconds. When it fails, the bar shows the error until the next command or until you press `esc`. When the command reported warnings, the line ends with their count, like `· 2 warnings, ! to see`. The tiles it touched load their data again right away.
 

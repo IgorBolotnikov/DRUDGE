@@ -256,6 +256,8 @@ func TestView_TaskKeys(t *testing.T) {
 		{name: "L with no task does nothing", input: tuitest.KeyRunLog},
 		{name: "r runs the shown task", taskID: shownTaskID, input: tuitest.KeyRun, want: []tea.Msg{views.RunTaskMsg{TaskID: shownTaskID}}},
 		{name: "r with no task does nothing", input: tuitest.KeyRun},
+		{name: "m marks the shown task done", taskID: shownTaskID, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: shownTaskID}}},
+		{name: "m with no task does nothing", input: tuitest.KeyMarkDone},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

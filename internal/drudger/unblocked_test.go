@@ -37,7 +37,7 @@ func (finish unblockedFinish) finish(t *testing.T, service *testService, finishe
 	var err error
 	switch {
 	case finish.isMarkDone:
-		_, err = service.MarkDone(testProjectSlug, finished.ID)
+		_, _, err = service.MarkDone(testProjectSlug, finished.ID)
 	case finish.isByHand:
 		changes := task.EditTaskDto{Status: &outcome, AllowsManagedStatus: true}
 		_, err = service.EditTask(testProjectSlug, finished.ID, changes)
@@ -181,12 +181,15 @@ func TestDrudgerService_MarkDone_ReportsDependentsItCouldNotWorkOut(t *testing.T
 	listErr := errors.New("disk full")
 	service.taskRepo.listErr = listErr
 
-	marked, err := service.MarkDone(testProjectSlug, finished.ID)
+	marked, unblocked, err := service.MarkDone(testProjectSlug, finished.ID)
 	if err != nil {
 		t.Fatalf("expected the task to be marked done, got %v", err)
 	}
 	if marked.Status != task.StatusDone {
 		t.Errorf("expected status %q, got %q", task.StatusDone, marked.Status)
+	}
+	if len(unblocked) != 0 {
+		t.Errorf("expected no unblocked tasks, got %+v", unblocked)
 	}
 
 	failed := singleEvent[UnblockedLookupFailed](t, service.progress)
