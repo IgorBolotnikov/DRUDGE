@@ -104,7 +104,7 @@ func (overlay *viewOverlay) Mouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (overlay *viewOverlay) Title() string {
-	return overlay.tile.title
+	return overlay.tile.Title()
 }
 
 // Keys returns the keys the registry lists for the View, or none for a View

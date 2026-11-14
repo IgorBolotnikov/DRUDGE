@@ -72,5 +72,22 @@ Lists the tasks of the project with the rows of drg task list.
 | `j/k` | move |
 | `g/G` | top/bottom |
 | `enter` | open task |
+| `L` | runlog |
 | `/` | filter |
 | `esc` | clear filter |
+
+## `task-runlog`
+
+Shows the compact runlog of a task opened with L from a task list and follows the run while it writes.
+
+### View options
+
+The view takes no options.
+
+### Keys
+
+| Key | Does |
+| --- | --- |
+| `j/k` | scroll |
+| `u/d` | half page up/down |
+| `g/G` | top/bottom |

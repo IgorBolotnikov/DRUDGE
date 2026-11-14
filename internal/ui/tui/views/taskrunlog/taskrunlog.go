@@ -1,0 +1,290 @@
+// Package taskrunlog is the View that shows the latest run of one task the
+// way drg task runlog does and follows it while it runs.
+package taskrunlog
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
+)
+
+// Name is the kind of the View that shows the run of a task.
+const Name = "task-runlog"
+
+// Description says in one line what the View shows.
+const Description = "Shows the compact runlog of a task opened with L from a task list and follows the run while it writes."
+
+// Title of the Tile of the View: the name of the View, the short ID of the
+// task and the title of the task once the View read it.
+const (
+	titleFormat         = "%s [%s]"
+	titleWithTaskFormat = "%s [%s] %s"
+)
+
+// Status segments of the View.
+const (
+	followingStatus = "following"
+	pausedStatus    = "paused"
+)
+
+// Keys of the runlog. The scroll up key and the top key carry the help of
+// their pair.
+var (
+	scrollUpKey     = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("j/k", "scroll"))
+	scrollDownKey   = key.NewBinding(key.WithKeys("j", "down"))
+	halfPageUpKey   = key.NewBinding(key.WithKeys("u", "pgup"), key.WithHelp("u/d", "half page up/down"))
+	halfPageDownKey = key.NewBinding(key.WithKeys("d", "pgdown"))
+	scrollTopKey    = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
+	scrollBottomKey = key.NewBinding(key.WithKeys("G", "end"))
+)
+
+// scrollLineCount is how many lines the scroll keys and one turn of the wheel
+// move the runlog.
+const scrollLineCount = 1
+
+// Keys are the keys of the runlog the help lists.
+var Keys = []key.Binding{scrollUpKey, halfPageUpKey, scrollTopKey}
+
+// View shows the steps and the stderr lines of the latest run of a task. It
+// appends what each read of the runlog feed found. It follows the run at the
+// bottom until it is scrolled up, and follows again once it is scrolled back
+// to the bottom.
+type View struct {
+	styles  *styles.Styles
+	taskID  task.TaskID
+	content viewport.Model
+	// hasRead is whether a read of the run worked. The fields below hold
+	// what the reads found.
+	hasRead bool
+	readErr error
+	shown   *task.Task
+	runDir  string
+	hasRun  bool
+	// harness and isDecoded tell whether DRUDGE decodes the event stream of
+	// the run.
+	harness         drudger.Harness
+	isDecoded       bool
+	isStreamMissing bool
+	steps           []drudger.Step
+	stderr          []string
+	isFollowing     bool
+}
+
+// New returns a runlog that shows nothing until it is opened on a task.
+func New(viewStyles *styles.Styles) *View {
+	return &View{styles: viewStyles, content: viewport.New(), isFollowing: true}
+}
+
+func (view *View) Name() string {
+	return Name
+}
+
+// Title returns the name of the View, the short ID of the task and its title,
+// like task-runlog [3f9a1c2e] Add retry to uploader. The title of the task
+// shows once a read of the run worked.
+func (view *View) Title() string {
+	if view.taskID == "" {
+		return Name
+	}
+	shortID := task.ShortID(view.taskID)
+	if view.shown == nil {
+		return fmt.Sprintf(titleFormat, Name, shortID)
+	}
+	return fmt.Sprintf(titleWithTaskFormat, Name, shortID, view.shown.Title)
+}
+
+// TakesAllKeys reports false. The View has no input that takes keys.
+func (view *View) TakesAllKeys() bool {
+	return false
+}
+
+// Status returns whether the View follows the run or is paused.
+func (view *View) Status() string {
+	if view.isFollowing {
+		return followingStatus
+	}
+	return pausedStatus
+}
+
+// Open shows the run of the task of an open runlog message, following it at
+// the bottom. Opening the task it shows keeps what it shows. It refuses every
+// other open message.
+func (view *View) Open(msg views.OpenMsg) (isShown bool) {
+	openRunLog, ok := msg.(views.OpenRunLogMsg)
+	if !ok {
+		return false
+	}
+	if openRunLog.TaskID == view.taskID {
+		return true
+	}
+	*view = View{styles: view.styles, taskID: openRunLog.TaskID, content: view.content, isFollowing: true}
+	view.renderContent()
+	return true
+}
+
+// Feeds returns the runlog feed of the shown task, or no feed while no task
+// is shown.
+func (view *View) Feeds() []views.Feed {
+	if view.taskID == "" {
+		return nil
+	}
+	return []views.Feed{{Name: views.RunLogFeed, TaskID: view.taskID}}
+}
+
+func (view *View) SetSize(width, height int) {
+	view.content.SetWidth(width)
+	view.content.SetHeight(height)
+	if view.isFollowing {
+		view.content.GotoBottom()
+	}
+}
+
+// Update takes the reads of the run and scrolls on keys and on the wheel.
+func (view *View) Update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case views.RunStepsReadMsg:
+		view.handleRead(msg)
+	case tea.KeyPressMsg:
+		view.handleKey(msg)
+	case tea.MouseWheelMsg:
+		view.handleWheel(msg)
+	}
+	return nil
+}
+
+// handleRead appends what a read of the run found. The first read of the
+// feed and a read of a rerun replace what the View shows. A rerun scrolls to
+// the top while the View is paused. A failed read keeps what the View shows.
+func (view *View) handleRead(msg views.RunStepsReadMsg) {
+	if msg.TaskID != view.taskID {
+		return
+	}
+	view.readErr = msg.Err
+	if msg.Err != nil {
+		view.renderContent()
+		return
+	}
+	read := msg.Read
+	if msg.IsFirstRead || read.IsReset {
+		view.steps = nil
+		view.stderr = nil
+	}
+	view.hasRead = true
+	view.shown = read.Task
+	view.runDir = read.RunDir
+	view.hasRun = read.HasRun
+	view.harness = read.Harness
+	view.isDecoded = read.IsDecoded
+	view.isStreamMissing = read.IsStreamMissing
+	view.steps = slices.Concat(view.steps, read.Steps)
+	view.stderr = slices.Concat(view.stderr, read.Stderr)
+	view.renderContent()
+	if read.IsReset && !view.isFollowing {
+		view.content.GotoTop()
+	}
+}
+
+func (view *View) handleKey(msg tea.KeyPressMsg) {
+	switch {
+	case key.Matches(msg, scrollUpKey):
+		view.content.ScrollUp(scrollLineCount)
+	case key.Matches(msg, scrollDownKey):
+		view.content.ScrollDown(scrollLineCount)
+	case key.Matches(msg, halfPageUpKey):
+		view.content.HalfPageUp()
+	case key.Matches(msg, halfPageDownKey):
+		view.content.HalfPageDown()
+	case key.Matches(msg, scrollTopKey):
+		view.content.GotoTop()
+	case key.Matches(msg, scrollBottomKey):
+		view.content.GotoBottom()
+	default:
+		return
+	}
+	view.isFollowing = view.content.AtBottom()
+}
+
+func (view *View) handleWheel(msg tea.MouseWheelMsg) {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		view.content.ScrollUp(scrollLineCount)
+	case tea.MouseWheelDown:
+		view.content.ScrollDown(scrollLineCount)
+	default:
+		return
+	}
+	view.isFollowing = view.content.AtBottom()
+}
+
+func (view *View) Render() string {
+	return view.content.View()
+}
+
+// renderContent renders the lines of the run into the scrolled content and
+// keeps the bottom in sight while the View follows the run.
+func (view *View) renderContent() {
+	view.content.SetContentLines(view.renderLines())
+	if view.isFollowing {
+		view.content.GotoBottom()
+	}
+}
+
+// renderLines returns the run directory, the notes about the event stream,
+// the lines of every step and the stderr lines below them. A View with no
+// read of the run returns the line that says why.
+func (view *View) renderLines() []string {
+	switch {
+	case !view.hasRead && view.readErr != nil:
+		return []string{view.styles.Error.Render("Could not read the run: " + view.readErr.Error())}
+	case !view.hasRead:
+		return []string{view.styles.Muted.Render("Reading the run" + cells.Ellipsis)}
+	case !view.hasRun:
+		return []string{view.styles.Muted.Render("No run yet, its steps show here once the task runs")}
+	}
+
+	lines := []string{view.styles.Muted.Render(view.runDir)}
+	if !view.isDecoded {
+		lines = append(lines, view.styles.Muted.Render(fmt.Sprintf(style.NoDecoderNote, view.harness)))
+	}
+	if view.isStreamMissing {
+		lines = append(lines, style.NotWrittenYetLabel)
+	}
+	for _, step := range view.steps {
+		lines = append(lines, view.renderStep(step)...)
+	}
+	if len(view.stderr) > 0 {
+		lines = append(lines, "", style.StderrHeading)
+		for _, line := range view.stderr {
+			lines = append(lines, view.styles.Error.Render(line))
+		}
+	}
+	return lines
+}
+
+// renderStep paints the segments of a step into its lines. Every line of
+// agent text is indented by the depth of the step.
+func (view *View) renderStep(step drudger.Step) []string {
+	indent := style.StepIndent(step.Depth)
+	lines := []string{indent}
+	for _, segment := range style.StepSegments(step) {
+		segmentStyle := view.styles.Role(segment.Role)
+		for index, part := range strings.Split(segment.Text, "\n") {
+			if index > 0 {
+				lines = append(lines, indent)
+			}
+			lines[len(lines)-1] += segmentStyle.Render(part)
+		}
+	}
+	return lines
+}

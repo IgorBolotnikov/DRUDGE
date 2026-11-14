@@ -32,7 +32,7 @@ A split divides its space between its children by `weight`. A child with weight 
 | `tabs[].layout` | object |  |  | Required. The node that fills the tab: a tile or a split. |
 | `tabs[].layout.arrangement` | string |  | `"side-by-side"`, `"stacked"` | How the split places its children. |
 | `tabs[].layout.children` | array |  |  | The nodes of the split. Each child has the keys of a layout. |
-| `tabs[].layout.view` | string |  | `"drudger-list"`, `"task-board"`, `"task-detail"`, `"task-list"` | What the tile shows. `drudger-list`: Lists the Drudgers of the project with what DRUDGE last saw of each. `task-board`: Shows the tasks of the project on a board with one column per status. `task-detail`: Shows the fields and the description of the task selected in a task list or a task board of the same tab. `task-list`: Lists the tasks of the project with the rows of drg task list. |
+| `tabs[].layout.view` | string |  | `"drudger-list"`, `"task-board"`, `"task-detail"`, `"task-list"`, `"task-runlog"` | What the tile shows. `drudger-list`: Lists the Drudgers of the project with what DRUDGE last saw of each. `task-board`: Shows the tasks of the project on a board with one column per status. `task-detail`: Shows the fields and the description of the task selected in a task list or a task board of the same tab. `task-list`: Lists the tasks of the project with the rows of drg task list. `task-runlog`: Shows the compact runlog of a task opened with L from a task list and follows the run while it writes. |
 | `tabs[].layout.title` | string |  |  | The title of the tile in its top border. Only a tile has a title. |
 | `tabs[].layout.weight` | number | `1` | above 0 | The share of the space of its split the node takes, relative to the other children of the split. It may be a fraction. |
 | `tabs[].layout.showStatus` | boolean | `true` |  | Whether the tile shows the status of its view in its bottom border. Only a tile has a status. |
@@ -42,6 +42,7 @@ A split divides its space between its children by `weight`. A child with weight 
 | `refreshSeconds.drudgers` | number | `2` | minimum 0.1 | How often drg tui reads the Drudgers as DRUDGE last recorded them. A read asks no sandbox. |
 | `refreshSeconds.drudgerCheck` | number | `30` | minimum 1 | How often drg tui checks the Drudgers with what drg drudger list does. |
 | `refreshSeconds.sessions` | number | `5` | minimum 0.1 | How often drg tui checks the Sessions of the in-progress tasks and records the outcome of each finished one with what drg task status does. |
+| `refreshSeconds.runlog` | number | `1` | minimum 0.1 | How often drg tui reads what the run of a task shown in a runlog wrote since the last read. |
 | `captureMouse` | boolean | `true` |  | Whether drg tui captures the mouse. A click focuses a tile, switches tabs or moves the cursor, and the wheel scrolls the tile under the pointer. When it is false, the terminal keeps its native text selection. |
 
 <!-- END GENERATED -->

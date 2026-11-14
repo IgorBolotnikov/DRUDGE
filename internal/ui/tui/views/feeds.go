@@ -12,6 +12,7 @@ const (
 	DrudgersFeed     FeedName = "drudgers"
 	DrudgerCheckFeed FeedName = "drudgerCheck"
 	SessionsFeed     FeedName = "sessions"
+	RunLogFeed       FeedName = "runlog"
 )
 
 // Feed names one running feed. TaskID is empty for a feed of the whole project.

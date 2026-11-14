@@ -68,9 +68,10 @@ func (source *fakeTaskSource) ListTasks(projectSlug string, filter task.ListTask
 	return common.Paginate(source.tasks, page, size)
 }
 
-// fakeDrudgerSource reads and checks its Drudgers and checks the Sessions.
-// Each call sends its number on its started channel when it is set. A check
-// waits for releaseChecks when it is set. A check fails with checkErr.
+// fakeDrudgerSource reads and checks its Drudgers, checks the Sessions and
+// reads a run of no steps of every test task. Each call sends its number on
+// its started channel when it is set. A check waits for releaseChecks when it
+// is set. A check fails with checkErr.
 type fakeDrudgerSource struct {
 	drudgers             []*drudger.Drudger
 	checkErr             error
@@ -111,6 +112,15 @@ func (source *fakeDrudgerSource) RecordFinishedSessions(projectSlug string) ([]t
 		source.startedSessionChecks <- checkNumber
 	}
 	return nil, nil
+}
+
+func (source *fakeDrudgerSource) RunStepsFrom(projectSlug string, requestedID task.TaskID, cursor drudger.RunCursor) (*drudger.RunStepsRead, error) {
+	for _, entry := range tuitest.ListedTasks() {
+		if entry.Task.ID == requestedID {
+			return &drudger.RunStepsRead{Task: entry.Task, RunDir: ".drudge/runs/" + string(requestedID), HasRun: true, IsDecoded: true}, nil
+		}
+	}
+	return nil, fmt.Errorf("task %s not found", requestedID)
 }
 
 var (
@@ -618,6 +628,40 @@ func TestModel_OpensTask(t *testing.T) {
 	}
 }
 
+func TestModel_OpensRunLog(t *testing.T) {
+	cases := []struct {
+		name         string
+		tasks        []task.ListedTask
+		keys         []tea.Msg
+		wantOverlays []string
+		wantFilter   string
+		golden       string
+	}{
+		{name: "L opens the runlog of the cursor task", tasks: tuitest.ListedTasks(), keys: []tea.Msg{tuitest.KeyDown, tuitest.KeyRunLog}, wantOverlays: []string{"task-runlog [5b20d7aa] Write the backoff"}, golden: "screen_runlog_overlay"},
+		{name: "L with no task under the cursor does nothing", keys: []tea.Msg{tuitest.KeyRunLog}},
+		{name: "L goes into the open filter", tasks: tuitest.ListedTasks(), keys: []tea.Msg{tuitest.KeyFilter, tuitest.KeyRunLog}, wantFilter: "/L"},
+		{name: "esc closes the runlog", tasks: tuitest.ListedTasks(), keys: []tea.Msg{tuitest.KeyRunLog, tuitest.KeyEscape}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := newTestModelWithSource(t, &fakeTaskSource{tasks: testCase.tasks}, testTabs(t, "Tasks"), nil)
+			update(model, tea.WindowSizeMsg{Width: 100, Height: 12})
+			startFeeds(model)
+			pressKeys(model, testCase.keys)
+			if got := overlayTitles(model); !slices.Equal(got, testCase.wantOverlays) {
+				t.Errorf("expected overlays %q, got %q", testCase.wantOverlays, got)
+			}
+			screen := model.View().Content
+			if testCase.wantFilter != "" && !strings.Contains(ansi.Strip(screen), testCase.wantFilter) {
+				t.Errorf("expected the filter %q on the screen, got:\n%s", testCase.wantFilter, ansi.Strip(screen))
+			}
+			if testCase.golden != "" {
+				tuitest.AssertGolden(t, testCase.golden, screen)
+			}
+		})
+	}
+}
+
 // recordingView is a View that records the keys it gets. Enter opens the
 // first test task.
 type recordingView struct {
@@ -956,7 +1000,7 @@ func TestModel_MovesFocusAndZooms(t *testing.T) {
 				}
 			}
 			activeTab := model.ActiveTab()
-			if got := activeTab.FocusedTile().title; got != testCase.wantFocusedTile {
+			if got := activeTab.FocusedTile().Title(); got != testCase.wantFocusedTile {
 				t.Errorf("expected focus on tile %q, got %q", testCase.wantFocusedTile, got)
 			}
 			if got := activeTab.IsZoomed(); got != testCase.wantZoomed {
@@ -1038,7 +1082,7 @@ func TestModel_Mouse(t *testing.T) {
 			if got := activeTab.Title; got != testCase.wantActiveTab {
 				t.Errorf("expected tab %q active, got %q", testCase.wantActiveTab, got)
 			}
-			if got := activeTab.FocusedTile().title; got != testCase.wantFocusedTile {
+			if got := activeTab.FocusedTile().Title(); got != testCase.wantFocusedTile {
 				t.Errorf("expected focus on tile %q, got %q", testCase.wantFocusedTile, got)
 			}
 			if got := tileStatuses(activeTab); !slices.Equal(got, testCase.wantStatuses) {
@@ -1094,7 +1138,7 @@ func TestModel_TabsKeepFocusedTile(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		model.Update(testCase.tabKey)
-		if got := model.ActiveTab().FocusedTile().title; got != testCase.wantFocusedTile {
+		if got := model.ActiveTab().FocusedTile().Title(); got != testCase.wantFocusedTile {
 			t.Errorf("expected tab %q to keep focus on tile %q, got %q", model.ActiveTab().Title, testCase.wantFocusedTile, got)
 		}
 	}

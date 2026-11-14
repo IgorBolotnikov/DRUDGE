@@ -114,7 +114,7 @@ func TestParseConfig(t *testing.T) {
 		{
 			name:    "a refresh of a feed no kind has",
 			data:    `{"refreshSeconds": {"logs": 1}}`,
-			wantErr: "refreshSeconds.logs: unknown key, use one of: tasks, drudgers, drudgerCheck, sessions",
+			wantErr: "refreshSeconds.logs: unknown key, use one of: tasks, drudgers, drudgerCheck, sessions, runlog",
 		},
 		{
 			name:    "a refresh that is a string",

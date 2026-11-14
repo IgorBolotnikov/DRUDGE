@@ -349,7 +349,7 @@ func (model *Model) helpSections() []helpSection {
 	focusedTile := model.ActiveTab().FocusedTile()
 	kind, _ := findViewKind(focusedTile.view.Name())
 	return []helpSection{
-		{title: focusedTile.title, keys: kind.keys},
+		{title: focusedTile.Title(), keys: kind.keys},
 		{title: globalHelpTitle, keys: rootBindings},
 	}
 }

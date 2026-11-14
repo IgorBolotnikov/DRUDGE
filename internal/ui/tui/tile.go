@@ -46,13 +46,21 @@ type Tile struct {
 	height        int
 }
 
-// NewTile places a View in a Tile. A Tile with an empty title shows the name
-// of its View. NewTab checks the weight.
+// NewTile places a View in a Tile. NewTab checks the weight.
 func NewTile(view views.View, title string, tileStyles *styles.Styles, weight float64, isStatusShown bool) *Tile {
-	if title == "" {
-		title = view.Name()
-	}
 	return &Tile{view: view, title: title, styles: tileStyles, weight: weight, isStatusShown: isStatusShown}
+}
+
+// Title returns the title of the Tile. A Tile with an empty title shows the
+// title of its View, or the name of a View with no title.
+func (tile *Tile) Title() string {
+	if tile.title != "" {
+		return tile.title
+	}
+	if titler, ok := tile.view.(views.Titler); ok {
+		return titler.Title()
+	}
+	return tile.view.Name()
 }
 
 // Status returns the status segment of the View, or an empty string when the
@@ -182,7 +190,7 @@ func (tile *Tile) borderStyle() lipgloss.Style {
 func (tile *Tile) renderTopEdge(border lipgloss.Border, innerWidth int) string {
 	borderStyle := tile.borderStyle()
 	titleStyle := borderStyle
-	title := tile.title
+	title := tile.Title()
 	if tile.isFocused {
 		titleStyle = tile.styles.TileTitle
 		title = focusMarker + title

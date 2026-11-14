@@ -12,6 +12,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgercheck"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgers"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/runlog"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/sessions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/tasks"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
@@ -20,6 +21,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskboard"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskdetail"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/tasklist"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views/taskrunlog"
 )
 
 // optionValueSeparator joins the allowed values of an option in an error.
@@ -71,6 +73,14 @@ var viewKinds = []viewKind{
 			return tasklist.New(viewStyles, task.TaskStatus(options[tasklist.StatusOption]))
 		},
 	},
+	{
+		name:        taskrunlog.Name,
+		description: taskrunlog.Description,
+		keys:        taskrunlog.Keys,
+		newView: func(viewStyles *styles.Styles, options views.OptionValues) views.View {
+			return taskrunlog.New(viewStyles)
+		},
+	},
 }
 
 // feedKinds lists every kind of feed a View can subscribe to. The bottom bar
@@ -80,6 +90,7 @@ var feedKinds = []feeds.Kind{
 	drudgers.Kind,
 	drudgercheck.Kind,
 	sessions.Kind,
+	runlog.Kind,
 }
 
 // findFeedKind returns the kind of feed called name. ok is false for a name

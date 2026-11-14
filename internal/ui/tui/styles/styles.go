@@ -10,6 +10,13 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/style"
 )
 
+// paintedRoles are the roles text is painted in by role name, like the steps
+// of a run.
+var paintedRoles = []string{
+	theme.RolePrimary, theme.RoleHeading, theme.RoleSuccess, theme.RoleError, theme.RoleWarning,
+	theme.RoleInfo, theme.RoleMuted, theme.RoleSecondary, theme.RoleBorder, theme.RolePath,
+}
+
 // Styles holds every style of the screen, built once from the theme.
 type Styles struct {
 	Tab       lipgloss.Style
@@ -27,9 +34,11 @@ type Styles struct {
 	Statuses    map[task.TaskStatus]lipgloss.Style
 	// HealthLabels holds the style of each Drudger health label.
 	HealthLabels map[string]lipgloss.Style
-	Help         help.Styles
-	HelpBox      lipgloss.Style
-	HelpTitle    lipgloss.Style
+	// Roles holds the style of each role text is painted in by role name.
+	Roles     map[string]lipgloss.Style
+	Help      help.Styles
+	HelpBox   lipgloss.Style
+	HelpTitle lipgloss.Style
 }
 
 // New builds the styles of the screen from the roles of palette.
@@ -43,6 +52,10 @@ func New(palette *theme.Theme) *Styles {
 	healthLabels := make(map[string]lipgloss.Style, len(style.HealthLabelRoles))
 	for label, role := range style.HealthLabelRoles {
 		healthLabels[label] = roleStyle(palette, role)
+	}
+	roles := make(map[string]lipgloss.Style, len(paintedRoles))
+	for _, role := range paintedRoles {
+		roles[role] = roleStyle(palette, role)
 	}
 	return &Styles{
 		Tab:          muted,
@@ -58,6 +71,7 @@ func New(palette *theme.Theme) *Styles {
 		Warning:      roleStyle(palette, theme.RoleWarning),
 		Statuses:     statuses,
 		HealthLabels: healthLabels,
+		Roles:        roles,
 		Help: help.Styles{
 			ShortKey:       lipgloss.NewStyle().Bold(true),
 			ShortDesc:      muted,
@@ -85,6 +99,14 @@ func (styles *Styles) Status(status task.TaskStatus) lipgloss.Style {
 func (styles *Styles) HealthLabel(label string) lipgloss.Style {
 	if labelStyle, ok := styles.HealthLabels[label]; ok {
 		return labelStyle
+	}
+	return lipgloss.NewStyle()
+}
+
+// Role returns the style of a role. An empty or unknown role is plain.
+func (styles *Styles) Role(role string) lipgloss.Style {
+	if painted, ok := styles.Roles[role]; ok {
+		return painted
 	}
 	return lipgloss.NewStyle()
 }

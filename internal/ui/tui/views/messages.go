@@ -40,6 +40,17 @@ type SessionsCheckedMsg struct {
 	Err            error
 }
 
+// RunStepsReadMsg carries what one read of the latest run of a task found
+// since the read before it, or the error the read failed with.
+type RunStepsReadMsg struct {
+	TaskID task.TaskID
+	// IsFirstRead is true for the first read of the feed. It holds the run
+	// from its start.
+	IsFirstRead bool
+	Read        *drudger.RunStepsRead
+	Err         error
+}
+
 // TaskSelectedMsg tells the Tab of a View that the cursor of the View moved
 // onto a task.
 type TaskSelectedMsg struct {
@@ -57,3 +68,10 @@ type OpenTaskMsg struct {
 }
 
 func (OpenTaskMsg) isOpenMsg() {}
+
+// OpenRunLogMsg asks to show the run of a task in a View that can show one.
+type OpenRunLogMsg struct {
+	TaskID task.TaskID
+}
+
+func (OpenRunLogMsg) isOpenMsg() {}

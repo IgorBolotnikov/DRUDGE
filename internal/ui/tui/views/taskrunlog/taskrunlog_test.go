@@ -1,0 +1,235 @@
+package taskrunlog
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
+	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
+)
+
+const shownTaskID task.TaskID = "3f9a1c2e-0000-0000-0000-000000000001"
+
+const shownRunDir = ".drudge/runs/3f9a1c2e-0000-0000-0000-000000000001"
+
+var errPermissionDenied = errors.New("permission denied")
+
+var shownTask = &task.Task{ID: shownTaskID, Title: "Add retry to uploader", Status: task.StatusInProgress}
+
+// Key presses that scroll the runlog besides the ones of the tuitest package.
+var (
+	keyArrowUp  = tea.KeyPressMsg{Code: tea.KeyUp}
+	keyHalfUp   = tea.KeyPressMsg{Code: 'u', Text: "u"}
+	keyHalfDown = tea.KeyPressMsg{Code: 'd', Text: "d"}
+	keyPageUp   = tea.KeyPressMsg{Code: tea.KeyPgUp}
+	keyPageDown = tea.KeyPressMsg{Code: tea.KeyPgDown}
+	keyHome     = tea.KeyPressMsg{Code: tea.KeyHome}
+	keyEnd      = tea.KeyPressMsg{Code: tea.KeyEnd}
+	wheelUp     = tea.MouseWheelMsg{Button: tea.MouseWheelUp}
+	wheelDown   = tea.MouseWheelMsg{Button: tea.MouseWheelDown}
+)
+
+// runRead returns a read of the run of the shown task with steps and stderr
+// lines.
+func runRead(steps []drudger.Step, stderr ...string) *drudger.RunStepsRead {
+	return &drudger.RunStepsRead{Task: shownTask, RunDir: shownRunDir, HasRun: true, Harness: "claude", IsDecoded: true, Steps: steps, Stderr: stderr}
+}
+
+// firstRead returns the message of the first read of the feed.
+func firstRead(read *drudger.RunStepsRead) views.RunStepsReadMsg {
+	return views.RunStepsReadMsg{TaskID: shownTaskID, IsFirstRead: true, Read: read}
+}
+
+// laterRead returns the message of a read after the first one.
+func laterRead(read *drudger.RunStepsRead) views.RunStepsReadMsg {
+	return views.RunStepsReadMsg{TaskID: shownTaskID, Read: read}
+}
+
+// rerunRead returns the message of a read that found the task ran again.
+func rerunRead(read *drudger.RunStepsRead) views.RunStepsReadMsg {
+	read.IsReset = true
+	return laterRead(read)
+}
+
+// textSteps returns one agent text step per summary.
+func textSteps(summaries ...string) []drudger.Step {
+	steps := make([]drudger.Step, 0, len(summaries))
+	for _, summary := range summaries {
+		steps = append(steps, drudger.Step{Kind: drudger.StepAgentText, Summary: summary})
+	}
+	return steps
+}
+
+// numberedSteps returns count agent text steps named by a prefix and their
+// number.
+func numberedSteps(prefix string, count int) []drudger.Step {
+	summaries := make([]string, 0, count)
+	for number := 1; number <= count; number++ {
+		summaries = append(summaries, fmt.Sprintf("%s %d", prefix, number))
+	}
+	return textSteps(summaries...)
+}
+
+// everyKindOfStep returns a step of every kind, a multi-line text of a
+// subagent among them.
+func everyKindOfStep() []drudger.Step {
+	return []drudger.Step{
+		{Kind: drudger.StepInit, Summary: "session started in /workspace"},
+		{Kind: drudger.StepAgentText, Summary: "I will add a retry to the uploader."},
+		{Kind: drudger.StepToolCall, Tool: "Read", Summary: "internal/upload/upload.go"},
+		{Kind: drudger.StepToolCall, Tool: "Bash", Summary: "go test ./internal/upload"},
+		{Kind: drudger.StepToolError, Summary: "exit status 1"},
+		{Kind: drudger.StepAgentText, Summary: "The subagent looks at the test.\nIt fails on slow machines.", Depth: 1},
+		{Kind: drudger.StepFinalResult, Summary: "got-shit-done in 42s"},
+	}
+}
+
+func TestView(t *testing.T) {
+	noDecoder := runRead(nil)
+	noDecoder.IsDecoded = false
+	noDecoder.IsStreamMissing = true
+	noRun := &drudger.RunStepsRead{Task: shownTask, RunDir: shownRunDir}
+	cases := []struct {
+		name     string
+		width    int
+		height   int
+		messages []tea.Msg
+	}{
+		{name: "reading", width: 80, height: 10},
+		{name: "read_error", width: 80, height: 10, messages: []tea.Msg{views.RunStepsReadMsg{TaskID: shownTaskID, IsFirstRead: true, Err: errPermissionDenied}}},
+		{name: "no_run", width: 80, height: 10, messages: []tea.Msg{firstRead(noRun)}},
+		{name: "run_starts", width: 80, height: 10, messages: []tea.Msg{firstRead(noRun), laterRead(runRead(textSteps("Reading the uploader")))}},
+		{name: "every_kind_of_step", width: 80, height: 12, messages: []tea.Msg{firstRead(runRead(everyKindOfStep()))}},
+		{name: "appends_steps", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), laterRead(runRead(textSteps("second", "third")))}},
+		{name: "error_keeps_steps", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), views.RunStepsReadMsg{TaskID: shownTaskID, Err: errPermissionDenied}}},
+		{name: "rerun_drops_steps", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("old run"), "old stderr")), rerunRead(runRead(textSteps("new run")))}},
+		{name: "stderr", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"), "warning: slow disk")), laterRead(runRead(nil, "error: timeout"))}},
+		{name: "no_decoder", width: 80, height: 10, messages: []tea.Msg{firstRead(noDecoder)}},
+		{name: "first_read_replaces", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), firstRead(runRead(textSteps("first", "second")))}},
+		{name: "other_task_ignored", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), views.RunStepsReadMsg{TaskID: "ffffffff", Read: runRead(textSteps("other"))}}},
+		{name: "narrow_cuts_lines", width: 20, height: 10, messages: []tea.Msg{firstRead(runRead(everyKindOfStep()))}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(testCase.width, testCase.height)
+			view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			tuitest.AssertGolden(t, testCase.name, view.Render())
+		})
+	}
+}
+
+func TestView_Follows(t *testing.T) {
+	// The steps take 20 lines below the run directory in a View 5 lines tall.
+	opened := firstRead(runRead(numberedSteps("step", 20)))
+	cases := []struct {
+		name       string
+		messages   []tea.Msg
+		wantStatus string
+		// wantFirstLine is the first line the View shows.
+		wantFirstLine string
+	}{
+		{name: "opens at the bottom", messages: []tea.Msg{opened}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "k pauses", messages: []tea.Msg{opened, tuitest.KeyUp}, wantStatus: pausedStatus, wantFirstLine: "step 15"},
+		{name: "up pauses", messages: []tea.Msg{opened, keyArrowUp}, wantStatus: pausedStatus, wantFirstLine: "step 15"},
+		{name: "j back to the bottom follows", messages: []tea.Msg{opened, tuitest.KeyUp, tuitest.KeyDown}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "down back to the bottom follows", messages: []tea.Msg{opened, keyArrowUp, tuitest.KeyArrowDown}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "j short of the bottom stays paused", messages: []tea.Msg{opened, tuitest.KeyUp, tuitest.KeyUp, tuitest.KeyDown}, wantStatus: pausedStatus, wantFirstLine: "step 15"},
+		{name: "u pauses", messages: []tea.Msg{opened, keyHalfUp}, wantStatus: pausedStatus, wantFirstLine: "step 14"},
+		{name: "pgup pauses", messages: []tea.Msg{opened, keyPageUp}, wantStatus: pausedStatus, wantFirstLine: "step 14"},
+		{name: "d back to the bottom follows", messages: []tea.Msg{opened, keyHalfUp, keyHalfDown}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "pgdown back to the bottom follows", messages: []tea.Msg{opened, keyPageUp, keyPageDown}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "g pauses at the top", messages: []tea.Msg{opened, tuitest.KeyTop}, wantStatus: pausedStatus, wantFirstLine: shownRunDir},
+		{name: "home pauses at the top", messages: []tea.Msg{opened, keyHome}, wantStatus: pausedStatus, wantFirstLine: shownRunDir},
+		{name: "G follows", messages: []tea.Msg{opened, tuitest.KeyTop, tuitest.KeyBottom}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "end follows", messages: []tea.Msg{opened, keyHome, keyEnd}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "wheel up pauses", messages: []tea.Msg{opened, wheelUp}, wantStatus: pausedStatus, wantFirstLine: "step 15"},
+		{name: "wheel down back to the bottom follows", messages: []tea.Msg{opened, wheelUp, wheelDown}, wantStatus: followingStatus, wantFirstLine: "step 16"},
+		{name: "new steps while following scroll to the bottom", messages: []tea.Msg{opened, laterRead(runRead(textSteps("step 21")))}, wantStatus: followingStatus, wantFirstLine: "step 17"},
+		{name: "new steps while paused keep the scroll", messages: []tea.Msg{opened, tuitest.KeyUp, laterRead(runRead(textSteps("step 21")))}, wantStatus: pausedStatus, wantFirstLine: "step 15"},
+		{name: "a rerun while following stays at the bottom", messages: []tea.Msg{opened, rerunRead(runRead(numberedSteps("rerun", 20)))}, wantStatus: followingStatus, wantFirstLine: "rerun 16"},
+		{name: "a rerun while paused goes to the top", messages: []tea.Msg{opened, tuitest.KeyUp, rerunRead(runRead(numberedSteps("rerun", 20)))}, wantStatus: pausedStatus, wantFirstLine: shownRunDir},
+		{name: "k on a run that fits keeps following", messages: []tea.Msg{firstRead(runRead(textSteps("step 1"))), tuitest.KeyUp}, wantStatus: followingStatus, wantFirstLine: shownRunDir},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(80, 5)
+			view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			if got := view.Status(); got != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
+			}
+			firstLine, _, _ := strings.Cut(ansi.Strip(view.Render()), "\n")
+			if got := strings.TrimSpace(firstLine); got != testCase.wantFirstLine {
+				t.Errorf("expected the first line %q, got %q", testCase.wantFirstLine, got)
+			}
+		})
+	}
+}
+
+func TestView_Title(t *testing.T) {
+	cases := []struct {
+		name     string
+		messages []tea.Msg
+		want     string
+	}{
+		{name: "before the first read", want: "task-runlog [3f9a1c2e]"},
+		{name: "after the first read", messages: []tea.Msg{firstRead(runRead(nil))}, want: "task-runlog [3f9a1c2e] Add retry to uploader"},
+		{name: "after a failed read", messages: []tea.Msg{views.RunStepsReadMsg{TaskID: shownTaskID, IsFirstRead: true, Err: errPermissionDenied}}, want: "task-runlog [3f9a1c2e]"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+			for _, msg := range testCase.messages {
+				view.Update(msg)
+			}
+			if got := view.Title(); got != testCase.want {
+				t.Errorf("expected title %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+// unknownOpenMsg is an open message the View can't show.
+type unknownOpenMsg struct {
+	views.OpenMsg
+}
+
+func TestView_Open(t *testing.T) {
+	cases := []struct {
+		name        string
+		msg         views.OpenMsg
+		wantIsShown bool
+		wantFeeds   []views.Feed
+	}{
+		{name: "open runlog subscribes to the runlog of the task", msg: views.OpenRunLogMsg{TaskID: shownTaskID}, wantIsShown: true, wantFeeds: []views.Feed{{Name: views.RunLogFeed, TaskID: shownTaskID}}},
+		{name: "open task is refused", msg: views.OpenTaskMsg{TaskID: shownTaskID}},
+		{name: "another open message is refused", msg: unknownOpenMsg{}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			if got := view.Open(testCase.msg); got != testCase.wantIsShown {
+				t.Errorf("expected shown %t, got %t", testCase.wantIsShown, got)
+			}
+			if got := view.Feeds(); !slices.Equal(got, testCase.wantFeeds) {
+				t.Errorf("expected feeds %v, got %v", testCase.wantFeeds, got)
+			}
+		})
+	}
+}

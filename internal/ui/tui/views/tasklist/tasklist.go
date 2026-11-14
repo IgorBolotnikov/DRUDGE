@@ -111,6 +111,7 @@ var (
 	jumpTopKey     = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g/G", "top/bottom"))
 	jumpBottomKey  = key.NewBinding(key.WithKeys("G", "end"))
 	openTaskKey    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task"))
+	openRunLogKey  = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "runlog"))
 	openFilterKey  = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	closeFilterKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
 	arrowUpKey     = key.NewBinding(key.WithKeys("up"))
@@ -118,7 +119,7 @@ var (
 )
 
 // Keys are the keys of the task list the help lists.
-var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openFilterKey, closeFilterKey}
+var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, openFilterKey, closeFilterKey}
 
 // columns of the task list. The status and the title always stay. The parent
 // drops first, then the ticket, the blockers and the ID.
@@ -212,7 +213,7 @@ func (view *View) SetSize(width, height int) {
 // Update takes the loaded tasks, moves the cursor and edits the filter on
 // keys, moves the cursor to a clicked row and scrolls on the wheel. Moving
 // the cursor onto another task selects that task. Enter opens the task under
-// the cursor.
+// the cursor and L opens its runlog.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.TasksLoadedMsg:
@@ -291,6 +292,16 @@ func (view *View) openTask() tea.Cmd {
 	return func() tea.Msg { return views.OpenTaskMsg{TaskID: taskID} }
 }
 
+// openRunLog asks to open the runlog of the task under the cursor. It does
+// nothing when no row is shown.
+func (view *View) openRunLog() tea.Cmd {
+	taskID := view.cursorTaskID()
+	if taskID == "" {
+		return nil
+	}
+	return func() tea.Msg { return views.OpenRunLogMsg{TaskID: taskID} }
+}
+
 // selectMovedCursor selects the task under the cursor when it is another task
 // than the one at previousTaskID.
 func (view *View) selectMovedCursor(previousTaskID task.TaskID) tea.Cmd {
@@ -302,10 +313,13 @@ func (view *View) selectMovedCursor(previousTaskID task.TaskID) tea.Cmd {
 }
 
 func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {
-	if key.Matches(msg, openFilterKey) {
+	switch {
+	case key.Matches(msg, openFilterKey):
 		view.isFiltering = true
 		view.scrollToCursor()
 		return view.filter.Focus()
+	case key.Matches(msg, openRunLogKey):
+		return view.openRunLog()
 	}
 	view.moveCursor(msg)
 	return nil

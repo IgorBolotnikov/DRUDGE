@@ -41,6 +41,14 @@ type Opener interface {
 	Open(msg OpenMsg) (isShown bool)
 }
 
+// Titler is a View that titles its Tile. A Tile with a title of its own
+// keeps it.
+type Titler interface {
+	View
+	// Title follows what the View shows.
+	Title() string
+}
+
 // Subscriber is a View that shows the data of feeds.
 type Subscriber interface {
 	View

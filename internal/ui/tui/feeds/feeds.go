@@ -21,12 +21,14 @@ type TaskSource interface {
 }
 
 // DrudgerSource reads the Drudgers of a project as the Drudger file records
-// them, checks them the way drg drudger list does and records the outcome of
-// every finished Session the way drg task status does.
+// them, checks them the way drg drudger list does, records the outcome of
+// every finished Session the way drg task status does and reads the latest
+// run of a task the way drg task runlog does.
 type DrudgerSource interface {
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 	ListDrudgers(projectSlug string, page int, size int) (common.Page[*drudger.Drudger], error)
 	RecordFinishedSessions(projectSlug string) ([]task.TaskID, error)
+	RunStepsFrom(projectSlug string, requestedID task.TaskID, cursor drudger.RunCursor) (*drudger.RunStepsRead, error)
 }
 
 // Sources are the services feeds read their data from.

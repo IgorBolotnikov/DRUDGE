@@ -179,12 +179,12 @@ func TestConfig_Intervals(t *testing.T) {
 	}{
 		{
 			name: "unset gives the defaults",
-			want: map[views.FeedName]time.Duration{views.TasksFeed: 2 * time.Second, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 30 * time.Second, views.SessionsFeed: 5 * time.Second},
+			want: map[views.FeedName]time.Duration{views.TasksFeed: 2 * time.Second, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 30 * time.Second, views.SessionsFeed: 5 * time.Second, views.RunLogFeed: time.Second},
 		},
 		{
 			name:   "a missing feed takes its default",
 			config: Config{RefreshSeconds: map[views.FeedName]float64{views.TasksFeed: 0.25, views.DrudgerCheckFeed: 10}},
-			want:   map[views.FeedName]time.Duration{views.TasksFeed: 250 * time.Millisecond, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 10 * time.Second, views.SessionsFeed: 5 * time.Second},
+			want:   map[views.FeedName]time.Duration{views.TasksFeed: 250 * time.Millisecond, views.DrudgersFeed: 2 * time.Second, views.DrudgerCheckFeed: 10 * time.Second, views.SessionsFeed: 5 * time.Second, views.RunLogFeed: time.Second},
 		},
 	}
 	for _, testCase := range cases {

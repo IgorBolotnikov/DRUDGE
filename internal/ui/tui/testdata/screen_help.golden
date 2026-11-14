@@ -6,6 +6,7 @@
 │  todo           7c1e4f90  Wire r│ j/k   move                   │  7c1e4f90  Wire retries into th…│
 │  fucked-up      9d8b2a11  Fix th│ g/G   top/bottom             │  9d8b2a11  Fix the flaky upload…│
 │  draft          a01f3b55  Draft │ enter open task              │  a01f3b55  Draft the release no…│
+│                                 │ L     runlog                 │                                 │
 │                                 │ /     filter                 │                                 │
 │                                 │ esc   clear filter           │                                 │
 │                                 │                              │                                 │
@@ -18,7 +19,6 @@
 │                                 │ ?             help           │                                 │
 │                                 │ q             quit           │                                 │
 │                                 ╰──────────────────────────────╯                                 │
-│                                                ││                                                │
 │                                                ││                                                │
 ╰────────────────────────────────────────── 1/5 ─╯╰────────────────────────────────────────── 1/5 ─╯
                                                                                            esc close
