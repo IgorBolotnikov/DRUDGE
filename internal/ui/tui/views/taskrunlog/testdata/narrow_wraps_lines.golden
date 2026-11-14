@@ -1,0 +1,20 @@
+.drudge/runs/3f9a1c2
+e-0000-0000-0000-000
+000000001           
+session started in  
+/workspace          
+I will add a retry  
+to the uploader.    
+Read    internal/upl
+        oad/upload.g
+        o           
+Bash    go test     
+        ./internal/u
+        pload       
+  ✗ exit status 1   
+  The subagent looks
+  at the test.      
+  It fails on slow  
+  machines.         
+got-shit-done in 42s
+                    

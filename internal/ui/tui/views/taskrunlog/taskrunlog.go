@@ -10,6 +10,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -79,6 +81,9 @@ type View struct {
 	steps           []drudger.Step
 	stderr          []string
 	isFollowing     bool
+	// blockStarts holds the index of the first wrapped line of every block
+	// of the content.
+	blockStarts []int
 }
 
 // New returns a runlog that shows nothing until it is opened on a task.
@@ -142,11 +147,22 @@ func (view *View) Feeds() []views.Feed {
 	return []views.Feed{{Name: views.RunLogFeed, TaskID: view.taskID}}
 }
 
+// SetSize wraps the run again on a new width. A paused View keeps the wrapped
+// line at its top in place.
 func (view *View) SetSize(width, height int) {
+	isNewWidth := width != view.content.Width()
+	blockIndex, lineIndex := view.topLine()
 	view.content.SetWidth(width)
 	view.content.SetHeight(height)
+	if isNewWidth {
+		view.renderContent()
+	}
 	if view.isFollowing {
 		view.content.GotoBottom()
+		return
+	}
+	if isNewWidth {
+		view.scrollToLine(blockIndex, lineIndex)
 	}
 }
 
@@ -231,60 +247,145 @@ func (view *View) Render() string {
 	return view.content.View()
 }
 
-// renderContent renders the lines of the run into the scrolled content and
-// keeps the bottom in sight while the View follows the run.
+// minWrapWidth is the fewest cells a wrapped line keeps for text. A line
+// whose hanging indent leaves less wraps with no indent.
+const minWrapWidth = 10
+
+// The wrap helpers always break after a hyphen, which splits a flag like -run
+// from its dash. A line wraps with every hyphen swapped for a non-breaking
+// hyphen of the same width and gets its hyphens back after.
+const (
+	hyphen            = "-"
+	nonBreakingHyphen = "\u2011"
+)
+
+// block is a piece of the runlog that wraps on its own: a line about the run,
+// a step or a stderr line. Every line of a block after the first and every
+// continuation of a wrapped line starts with its hanging indent.
+type block struct {
+	lines         []string
+	hangingIndent string
+}
+
+// renderContent wraps the lines of the run to the width of the View into the
+// scrolled content and keeps the bottom in sight while the View follows the
+// run.
 func (view *View) renderContent() {
-	view.content.SetContentLines(view.renderLines())
+	var lines []string
+	view.blockStarts = nil
+	for _, runBlock := range view.renderBlocks() {
+		view.blockStarts = append(view.blockStarts, len(lines))
+		for _, line := range runBlock.lines {
+			lines = append(lines, wrapLine(line, runBlock.hangingIndent, view.content.Width())...)
+		}
+	}
+	view.content.SetContentLines(lines)
 	if view.isFollowing {
 		view.content.GotoBottom()
 	}
 }
 
-// renderLines returns the run directory, the notes about the event stream,
-// the lines of every step and the stderr lines below them. A View with no
-// read of the run returns the line that says why.
-func (view *View) renderLines() []string {
-	switch {
-	case !view.hasRead && view.readErr != nil:
-		return []string{view.styles.Error.Render("Could not read the run: " + view.readErr.Error())}
-	case !view.hasRead:
-		return []string{view.styles.Muted.Render("Reading the run" + cells.Ellipsis)}
-	case !view.hasRun:
-		return []string{view.styles.Muted.Render("No run yet, its steps show here once the task runs")}
+// topLine returns the block at the top of the View and the wrapped line of it
+// at the top.
+func (view *View) topLine() (blockIndex, lineIndex int) {
+	if len(view.blockStarts) == 0 {
+		return 0, 0
 	}
-
-	lines := []string{view.styles.Muted.Render(view.runDir)}
-	if !view.isDecoded {
-		lines = append(lines, view.styles.Muted.Render(fmt.Sprintf(style.NoDecoderNote, view.harness)))
-	}
-	if view.isStreamMissing {
-		lines = append(lines, style.NotWrittenYetLabel)
-	}
-	for _, step := range view.steps {
-		lines = append(lines, view.renderStep(step)...)
-	}
-	if len(view.stderr) > 0 {
-		lines = append(lines, "", style.StderrHeading)
-		for _, line := range view.stderr {
-			lines = append(lines, view.styles.Error.Render(line))
+	offset := view.content.YOffset()
+	for index, start := range view.blockStarts {
+		if start > offset {
+			break
 		}
+		blockIndex = index
 	}
-	return lines
+	return blockIndex, offset - view.blockStarts[blockIndex]
 }
 
-// renderStep paints the segments of a step into its lines. Every line of
-// agent text is indented by the depth of the step.
-func (view *View) renderStep(step drudger.Step) []string {
-	indent := style.StepIndent(step.Depth)
-	lines := []string{indent}
+// scrollToLine scrolls the wrapped line of a block to the top of the View. A
+// line past the end of the block, gone after a widening, scrolls its last
+// line to the top.
+func (view *View) scrollToLine(blockIndex, lineIndex int) {
+	if blockIndex >= len(view.blockStarts) {
+		return
+	}
+	nextStart := view.content.TotalLineCount()
+	if blockIndex+1 < len(view.blockStarts) {
+		nextStart = view.blockStarts[blockIndex+1]
+	}
+	view.content.SetYOffset(min(view.blockStarts[blockIndex]+lineIndex, nextStart-1))
+}
+
+// wrapLine wraps a line at word boundaries to width and breaks a word wider
+// than width. A line breaks only at spaces. The continuation lines start with the hanging indent. A width
+// that leaves the text less than the minimum wrap width drops the indent.
+func wrapLine(line, hangingIndent string, width int) []string {
+	indentWidth := ansi.StringWidth(hangingIndent)
+	if width-indentWidth < minWrapWidth {
+		hangingIndent = ""
+		indentWidth = 0
+	}
+	head := ansi.Cut(line, 0, indentWidth)
+	text := ansi.Cut(line, indentWidth, ansi.StringWidth(line))
+	text = strings.ReplaceAll(text, hyphen, nonBreakingHyphen)
+	text = lipgloss.Wrap(text, width-indentWidth, "")
+	wrapped := strings.Split(strings.ReplaceAll(text, nonBreakingHyphen, hyphen), "\n")
+	wrapped[0] = head + wrapped[0]
+	for index := 1; index < len(wrapped); index++ {
+		wrapped[index] = hangingIndent + wrapped[index]
+	}
+	return wrapped
+}
+
+// renderBlocks returns the run directory, the notes about the event stream,
+// every step and the stderr lines below them. A View with no read of the run
+// returns the line that says why.
+func (view *View) renderBlocks() []block {
+	switch {
+	case !view.hasRead && view.readErr != nil:
+		return []block{lineBlock(view.styles.Error.Render("Could not read the run: " + view.readErr.Error()))}
+	case !view.hasRead:
+		return []block{lineBlock(view.styles.Muted.Render("Reading the run" + cells.Ellipsis))}
+	case !view.hasRun:
+		return []block{lineBlock(view.styles.Muted.Render("No run yet, its steps show here once the task runs"))}
+	}
+
+	blocks := []block{lineBlock(view.styles.Muted.Render(view.runDir))}
+	if !view.isDecoded {
+		blocks = append(blocks, lineBlock(view.styles.Muted.Render(fmt.Sprintf(style.NoDecoderNote, view.harness))))
+	}
+	if view.isStreamMissing {
+		blocks = append(blocks, lineBlock(style.NotWrittenYetLabel))
+	}
+	for _, step := range view.steps {
+		blocks = append(blocks, view.renderStep(step))
+	}
+	if len(view.stderr) > 0 {
+		blocks = append(blocks, lineBlock(""), lineBlock(style.StderrHeading))
+		for _, line := range view.stderr {
+			blocks = append(blocks, lineBlock(view.styles.Error.Render(line)))
+		}
+	}
+	return blocks
+}
+
+func lineBlock(line string) block {
+	return block{lines: []string{line}}
+}
+
+// renderStep paints the segments of a step into its lines. The first line is
+// indented by the depth of the step and every other line of agent text by its
+// hanging indent.
+func (view *View) renderStep(step drudger.Step) block {
+	hangingIndent := style.StepHangingIndent(step)
+	lines := []string{style.StepIndent(step.Depth)}
 	for _, segment := range style.StepSegments(step) {
 		segmentStyle := view.styles.Role(segment.Role)
 		for index, part := range strings.Split(segment.Text, "\n") {
 			if index > 0 {
-				lines = append(lines, indent)
+				lines = append(lines, hangingIndent)
 			}
 			lines[len(lines)-1] += segmentStyle.Render(part)
 		}
 	}
-	return lines
+	return block{lines: lines, hangingIndent: hangingIndent}
 }

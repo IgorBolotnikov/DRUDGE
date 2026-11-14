@@ -115,7 +115,7 @@ func TestView(t *testing.T) {
 		{name: "no_decoder", width: 80, height: 10, messages: []tea.Msg{firstRead(noDecoder)}},
 		{name: "first_read_replaces", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), firstRead(runRead(textSteps("first", "second")))}},
 		{name: "other_task_ignored", width: 80, height: 10, messages: []tea.Msg{firstRead(runRead(textSteps("first"))), views.RunStepsReadMsg{TaskID: "ffffffff", Read: runRead(textSteps("other"))}}},
-		{name: "narrow_cuts_lines", width: 20, height: 10, messages: []tea.Msg{firstRead(runRead(everyKindOfStep()))}},
+		{name: "narrow_wraps_lines", width: 20, height: 20, messages: []tea.Msg{firstRead(runRead(everyKindOfStep()))}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -176,6 +176,173 @@ func TestView_Follows(t *testing.T) {
 			firstLine, _, _ := strings.Cut(ansi.Strip(view.Render()), "\n")
 			if got := strings.TrimSpace(firstLine); got != testCase.wantFirstLine {
 				t.Errorf("expected the first line %q, got %q", testCase.wantFirstLine, got)
+			}
+		})
+	}
+}
+
+// renderedLines returns the lines a View shows with their colors and trailing
+// blanks stripped.
+func renderedLines(view *View) []string {
+	lines := strings.Split(ansi.Strip(view.Render()), "\n")
+	for index, line := range lines {
+		lines[index] = strings.TrimRight(line, " ")
+	}
+	return lines
+}
+
+func TestView_Wraps(t *testing.T) {
+	cases := []struct {
+		name  string
+		width int
+		steps []drudger.Step
+		// want is the lines the View shows below the run directory, which
+		// fits on one line.
+		want []string
+	}{
+		{
+			name:  "plain text wraps at word boundaries",
+			width: 20,
+			steps: textSteps("I will add a retry to the uploader."),
+			want:  []string{"I will add a retry", "to the uploader."},
+		},
+		{
+			name:  "a word wider than the width breaks",
+			width: 12,
+			steps: textSteps("see internal/upload/upload.go"),
+			want:  []string{"see", "internal/upl", "oad/upload.g", "o"},
+		},
+		{
+			name:  "a tool call hangs under its summary",
+			width: 44,
+			steps: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Bash", Summary: "go test ./internal/drudger/... -run TestRunStepsFrom -count=1"}},
+			want:  []string{"Bash    go test ./internal/drudger/... -run", "        TestRunStepsFrom -count=1"},
+		},
+		{
+			name:  "a flag keeps its dash",
+			width: 40,
+			steps: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Bash", Summary: "go test ./internal/drudger/... -run TestRunStepsFrom"}},
+			want:  []string{"Bash    go test ./internal/drudger/...", "        -run TestRunStepsFrom"},
+		},
+		{
+			name:  "a tool error hangs under its message",
+			width: 20,
+			steps: []drudger.Step{{Kind: drudger.StepToolError, Summary: "exit status 1 after the timeout"}},
+			want:  []string{"  ✗ exit status 1", "    after the", "    timeout"},
+		},
+		{
+			name:  "a nested step keeps its depth indent",
+			width: 20,
+			steps: []drudger.Step{{Kind: drudger.StepAgentText, Summary: "The subagent looks at the test.", Depth: 2}},
+			want:  []string{"    The subagent", "    looks at the", "    test."},
+		},
+		{
+			name:  "a nested tool call hangs under its summary",
+			width: 36,
+			steps: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Read", Summary: "internal/upload/upload.go internal/upload/retry.go", Depth: 1}},
+			want:  []string{"  Read    internal/upload/upload.go", "          internal/upload/retry.go"},
+		},
+		{
+			name:  "every line of agent text wraps",
+			width: 16,
+			steps: textSteps("The test fails on slow machines.\nIt needs a longer timeout."),
+			want:  []string{"The test fails", "on slow", "machines.", "It needs a", "longer timeout."},
+		},
+		{
+			name:  "a hanging indent that leaves too little room is dropped",
+			width: 14,
+			steps: []drudger.Step{{Kind: drudger.StepToolCall, Tool: "Bash", Summary: "go test ./internal/upload"}},
+			want:  []string{"Bash    go", "test", "./internal/upl", "oad"},
+		},
+		{
+			name:  "a width of one does not loop",
+			width: 1,
+			steps: textSteps("go"),
+			want:  []string{"g", "o"},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(testCase.width, 80)
+			view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+			read := runRead(testCase.steps)
+			read.RunDir = "r"
+			view.Update(firstRead(read))
+			got := slices.DeleteFunc(renderedLines(view)[1:], func(line string) bool { return line == "" })
+			if !slices.Equal(got, testCase.want) {
+				t.Errorf("expected lines %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
+func TestView_WrapKeepsColors(t *testing.T) {
+	view := New(tuitest.Styles())
+	view.SetSize(12, 10)
+	view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+	read := runRead(nil, "error: timeout after 30s")
+	read.RunDir = "r"
+	view.Update(firstRead(read))
+	// The run directory, a blank line and the stderr heading sit above the
+	// three wrapped lines of stderr.
+	stderrLines := strings.Split(view.Render(), "\n")[3:6]
+	for _, line := range stderrLines {
+		text := strings.TrimRight(ansi.Strip(line), " ")
+		if want := view.styles.Error.Render(text); !strings.HasPrefix(line, want) {
+			t.Errorf("expected the line %q to start with %q", line, want)
+		}
+	}
+}
+
+// resizeMsg sets the width of the View in a test of resizing.
+type resizeMsg struct {
+	width int
+}
+
+func TestView_Resizes(t *testing.T) {
+	// Every step takes one line at 80 cells and two at 20 in a View 5 lines
+	// tall.
+	opened := firstRead(runRead(numberedSteps("summary that wraps, step", 20)))
+	narrow := resizeMsg{width: 20}
+	wide := resizeMsg{width: 80}
+	cases := []struct {
+		name          string
+		messages      []tea.Msg
+		wantStatus    string
+		wantFirstLine string
+		wantLastLine  string
+	}{
+		{name: "narrowing while following stays at the bottom", messages: []tea.Msg{opened, narrow}, wantStatus: followingStatus, wantFirstLine: "step 18", wantLastLine: "step 20"},
+		{name: "widening while following stays at the bottom", messages: []tea.Msg{opened, narrow, wide}, wantStatus: followingStatus, wantFirstLine: "summary that wraps, step 16", wantLastLine: "summary that wraps, step 20"},
+		{name: "narrowing while paused keeps the step at the top", messages: []tea.Msg{opened, tuitest.KeyUp, narrow}, wantStatus: pausedStatus, wantFirstLine: "summary that wraps,", wantLastLine: "summary that wraps,"},
+		{name: "widening while paused keeps the step at the top", messages: []tea.Msg{opened, tuitest.KeyUp, narrow, wide}, wantStatus: pausedStatus, wantFirstLine: "summary that wraps, step 15", wantLastLine: "summary that wraps, step 19"},
+		{name: "widening while paused inside a step keeps the step at the top", messages: []tea.Msg{opened, narrow, tuitest.KeyTop, tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyDown, wide}, wantStatus: pausedStatus, wantFirstLine: "summary that wraps, step 1", wantLastLine: "summary that wraps, step 5"},
+		{name: "k pauses on wrapped lines", messages: []tea.Msg{opened, narrow, tuitest.KeyUp}, wantStatus: pausedStatus, wantFirstLine: "summary that wraps,", wantLastLine: "summary that wraps,"},
+		{name: "j back to the bottom of wrapped lines follows", messages: []tea.Msg{opened, narrow, tuitest.KeyUp, tuitest.KeyDown}, wantStatus: followingStatus, wantFirstLine: "step 18", wantLastLine: "step 20"},
+		{name: "new steps while following wrapped lines scroll to the bottom", messages: []tea.Msg{opened, narrow, laterRead(runRead(textSteps("summary that wraps, step 21")))}, wantStatus: followingStatus, wantFirstLine: "step 19", wantLastLine: "step 21"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			view := New(tuitest.Styles())
+			view.SetSize(80, 5)
+			view.Open(views.OpenRunLogMsg{TaskID: shownTaskID})
+			for _, msg := range testCase.messages {
+				if resize, ok := msg.(resizeMsg); ok {
+					view.SetSize(resize.width, 5)
+					continue
+				}
+				view.Update(msg)
+			}
+			if got := view.Status(); got != testCase.wantStatus {
+				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
+			}
+			lines := renderedLines(view)
+			if got := lines[0]; got != testCase.wantFirstLine {
+				t.Errorf("expected the first line %q, got %q", testCase.wantFirstLine, got)
+			}
+			if got := lines[len(lines)-1]; got != testCase.wantLastLine {
+				t.Errorf("expected the last line %q, got %q", testCase.wantLastLine, got)
 			}
 		})
 	}
