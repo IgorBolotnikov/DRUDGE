@@ -1,11 +1,8 @@
 package actions_test
 
 import (
-	"errors"
-	"slices"
+	"fmt"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -17,186 +14,83 @@ const testProjectSlug = "uploader"
 
 const testTaskID task.TaskID = "3f9a1c2e-0000-4000-8000-000000000001"
 
-var errNotTodo = errors.New(`task 3f9a1c2e is "in progress", only a task that is "todo" can run`)
+type fakeDrudgerService struct{}
 
-var errNotUnmerged = errors.New(`task 3f9a1c2e is "todo", only a task that is "unmerged" can be marked done`)
-
-var errDiskOnFire = errors.New("disk on fire")
-
-// fakeDrudgerService refuses every run with runErr, every mark done with
-// doneErr and fails every read with readErr. A mark done unblocks the
-// unblocked tasks. It records the task of every run and every mark done.
-type fakeDrudgerService struct {
-	drudgers  []*drudger.Drudger
-	unblocked []*task.Task
-	runErr    error
-	doneErr   error
-	readErr   error
-	runIDs    []task.TaskID
-	doneIDs   []task.TaskID
+func (fakeDrudgerService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
+	return nil
 }
 
-func (service *fakeDrudgerService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
-	if projectSlug != testProjectSlug || isDryRun {
-		return errors.New("the run went to another project or was a dry run")
-	}
-	service.runIDs = append(service.runIDs, requestedID)
-	return service.runErr
+func (fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
+	return nil, nil, nil
 }
 
-func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
-	if projectSlug != testProjectSlug {
-		return nil, nil, errors.New("the mark done went to another project")
-	}
-	service.doneIDs = append(service.doneIDs, id)
-	if service.doneErr != nil {
-		return nil, nil, service.doneErr
-	}
-	return &task.Task{ID: id, Status: task.StatusDone}, service.unblocked, nil
+func (fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
+	return nil, nil
 }
 
-func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
-	return service.drudgers, service.readErr
+// recordingKind runs the run command and records what each run got.
+type recordingKind struct {
+	runs []recordedRun
 }
 
-func TestActions_RunTask(t *testing.T) {
-	holders := []*drudger.Drudger{{Slot: 1, TaskID: "another"}, {Slot: 2, TaskID: testTaskID}}
-	runFeeds := []views.FeedName{views.TasksFeed, views.DrudgersFeed}
-	cases := []struct {
-		name        string
-		service     *fakeDrudgerService
-		wantVerdict string
-		wantErr     error
-	}{
-		{name: "run names the Drudger that took the task", service: &fakeDrudgerService{drudgers: holders}, wantVerdict: "3f9a1c2e handed to Drudger 2"},
-		{name: "run with no Drudger holding the task", service: &fakeDrudgerService{}, wantVerdict: "3f9a1c2e handed to a Drudger"},
-		{name: "run whose Drudgers cannot be read", service: &fakeDrudgerService{drudgers: holders, readErr: errDiskOnFire}, wantVerdict: "3f9a1c2e handed to a Drudger"},
-		{name: "refused run carries the error of the service", service: &fakeDrudgerService{runErr: errNotTodo}, wantErr: errNotTodo},
+type recordedRun struct {
+	services    actions.Services
+	projectSlug string
+	command     actions.Command
+	msg         views.CommandMsg
+}
+
+func (recorder *recordingKind) kind() actions.Kind {
+	return actions.Kind{Name: views.RunTaskCommand, Run: recorder.run}
+}
+
+func (recorder *recordingKind) run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) actions.DoneMsg {
+	recorder.runs = append(recorder.runs, recordedRun{services: services, projectSlug: projectSlug, command: command, msg: msg})
+	return actions.DoneMsg{Command: command, Verdict: "ran"}
+}
+
+func TestActions_Start(t *testing.T) {
+	recorder := &recordingKind{}
+	services := actions.Services{Drudgers: fakeDrudgerService{}}
+	commands := actions.New(services, testProjectSlug, []actions.Kind{recorder.kind()})
+	msg := views.RunTaskMsg{TaskID: testTaskID}
+
+	command, cmd := commands.Start(msg)
+
+	wantCommand := actions.Command{Name: views.RunTaskCommand, Target: "3f9a1c2e"}
+	if command != wantCommand {
+		t.Errorf("expected command %v, got %v", wantCommand, command)
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			commands := actions.New(actions.Services{Drudgers: testCase.service}, testProjectSlug)
-			command, cmd := commands.Start(views.RunTaskMsg{TaskID: testTaskID})
-			wantCommand := actions.Command{Name: actions.RunCommand, Target: "3f9a1c2e"}
-			if command != wantCommand {
-				t.Errorf("expected command %v, got %v", wantCommand, command)
-			}
-			if len(testCase.service.runIDs) != 0 {
-				t.Fatal("expected the run to wait for its command")
-			}
-			done, ok := cmd().(actions.DoneMsg)
-			if !ok {
-				t.Fatal("expected a done message")
-			}
-			if !slices.Equal(testCase.service.runIDs, []task.TaskID{testTaskID}) {
-				t.Errorf("expected one run of %s, got %v", testTaskID, testCase.service.runIDs)
-			}
-			if done.Command != wantCommand {
-				t.Errorf("expected done command %v, got %v", wantCommand, done.Command)
-			}
-			if done.Verdict != testCase.wantVerdict {
-				t.Errorf("expected verdict %q, got %q", testCase.wantVerdict, done.Verdict)
-			}
-			if !errors.Is(done.Err, testCase.wantErr) {
-				t.Errorf("expected error %v, got %v", testCase.wantErr, done.Err)
-			}
-			if !slices.Equal(done.Feeds, runFeeds) {
-				t.Errorf("expected feeds %v, got %v", runFeeds, done.Feeds)
-			}
-		})
+	if len(recorder.runs) != 0 {
+		t.Fatal("expected the run to wait for its command")
+	}
+	done, ok := cmd().(actions.DoneMsg)
+	if !ok {
+		t.Fatal("expected a done message")
+	}
+	if done.Verdict != "ran" {
+		t.Errorf("expected the done message of the kind, got %+v", done)
+	}
+	wantRun := recordedRun{services: services, projectSlug: testProjectSlug, command: wantCommand, msg: msg}
+	if len(recorder.runs) != 1 || recorder.runs[0] != wantRun {
+		t.Errorf("expected one run %+v, got %+v", wantRun, recorder.runs)
 	}
 }
 
-func TestActions_MarkDone(t *testing.T) {
-	oneUnblocked := []*task.Task{{ID: "4d5e6f70-0000-4000-8000-000000000002"}}
-	twoUnblocked := []*task.Task{{ID: "4d5e6f70-0000-4000-8000-000000000002"}, {ID: "7a8b9c0d-0000-4000-8000-000000000003"}}
-	doneFeeds := []views.FeedName{views.TasksFeed}
-	cases := []struct {
-		name        string
-		service     *fakeDrudgerService
-		wantVerdict string
-		wantErr     error
-	}{
-		{name: "done with no task unblocked", service: &fakeDrudgerService{}, wantVerdict: "3f9a1c2e done"},
-		{name: "done with one task unblocked", service: &fakeDrudgerService{unblocked: oneUnblocked}, wantVerdict: "3f9a1c2e done · 1 task runnable: 4d5e6f70"},
-		{name: "done with two tasks unblocked", service: &fakeDrudgerService{unblocked: twoUnblocked}, wantVerdict: "3f9a1c2e done · 2 tasks runnable: 4d5e6f70, 7a8b9c0d"},
-		{name: "refused done carries the error of the service", service: &fakeDrudgerService{doneErr: errNotUnmerged}, wantErr: errNotUnmerged},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			commands := actions.New(actions.Services{Drudgers: testCase.service}, testProjectSlug)
-			command, cmd := commands.Start(views.MarkDoneMsg{TaskID: testTaskID})
-			wantCommand := actions.Command{Name: actions.MarkDoneCommand, Target: "3f9a1c2e"}
-			if command != wantCommand {
-				t.Errorf("expected command %v, got %v", wantCommand, command)
-			}
-			if len(testCase.service.doneIDs) != 0 {
-				t.Fatal("expected the mark done to wait for its command")
-			}
-			done, ok := cmd().(actions.DoneMsg)
-			if !ok {
-				t.Fatal("expected a done message")
-			}
-			if !slices.Equal(testCase.service.doneIDs, []task.TaskID{testTaskID}) {
-				t.Errorf("expected one mark done of %s, got %v", testTaskID, testCase.service.doneIDs)
-			}
-			if done.Command != wantCommand {
-				t.Errorf("expected done command %v, got %v", wantCommand, done.Command)
-			}
-			if done.Verdict != testCase.wantVerdict {
-				t.Errorf("expected verdict %q, got %q", testCase.wantVerdict, done.Verdict)
-			}
-			if !errors.Is(done.Err, testCase.wantErr) {
-				t.Errorf("expected error %v, got %v", testCase.wantErr, done.Err)
-			}
-			if !slices.Equal(done.Feeds, doneFeeds) {
-				t.Errorf("expected feeds %v, got %v", doneFeeds, done.Feeds)
-			}
-		})
-	}
-}
-
-// TestActions_StartsEveryTaskCommand sends the key of every task command
-// through a View's key handling and starts its message. A command message the
-// actions do not know panics in the TUI on the first key press.
-func TestActions_StartsEveryTaskCommand(t *testing.T) {
-	commands := actions.New(actions.Services{Drudgers: &fakeDrudgerService{}}, testProjectSlug)
-	for _, binding := range views.TaskCommandKeys {
-		keyName := binding.Keys()[0]
-		t.Run(keyName, func(t *testing.T) {
-			cmd := views.TaskCommand(keyPress(t, keyName), testTaskID)
-			if cmd == nil {
-				t.Fatalf("expected key %q to send a command message, it sends nothing", keyName)
-			}
-			commandMsg, ok := cmd().(views.CommandMsg)
-			if !ok {
-				t.Fatalf("expected key %q to send a command message, got %T", keyName, cmd())
-			}
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					t.Fatalf("expected the actions to start %T, add it to Start: %v", commandMsg, recovered)
-				}
-			}()
-			command, _ := commands.Start(commandMsg)
-			if command.Target != task.ShortID(testTaskID) {
-				t.Errorf("expected the command to work on %s, got %q", task.ShortID(testTaskID), command.Target)
-			}
-		})
-	}
-}
-
-// keyPress returns the press of a key named by one printable character.
-func keyPress(t *testing.T, keyName string) tea.KeyPressMsg {
-	t.Helper()
-	characters := []rune(keyName)
-	if len(characters) != 1 {
-		t.Fatalf("key %q is not one character, teach keyPress to build its press", keyName)
-	}
-	return tea.KeyPressMsg{Code: characters[0], Text: keyName}
+func TestActions_StartPanicsOnUnknownCommand(t *testing.T) {
+	commands := actions.New(actions.Services{Drudgers: fakeDrudgerService{}}, testProjectSlug, nil)
+	defer func() {
+		recovered := recover()
+		want := `a view asked for command "run", which no command kind runs`
+		if fmt.Sprint(recovered) != want {
+			t.Errorf("expected panic %q, got %v", want, recovered)
+		}
+	}()
+	commands.Start(views.RunTaskMsg{TaskID: testTaskID})
 }
 
 func TestCommand_String(t *testing.T) {
-	command := actions.Command{Name: actions.RunCommand, Target: "3f9a1c2e"}
+	command := actions.Command{Name: views.RunTaskCommand, Target: "3f9a1c2e"}
 	if got := command.String(); got != "run 3f9a1c2e" {
 		t.Errorf("expected run 3f9a1c2e, got %q", got)
 	}

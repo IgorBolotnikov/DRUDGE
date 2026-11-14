@@ -9,6 +9,9 @@ import (
 	"charm.land/bubbles/v2/key"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/markdone"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/runtask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgercheck"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgers"
@@ -91,6 +94,12 @@ var feedKinds = []feeds.Kind{
 	drudgercheck.Kind,
 	sessions.Kind,
 	runlog.Kind,
+}
+
+// commandKinds lists every kind of command a View can ask for.
+var commandKinds = []actions.Kind{
+	markdone.Kind,
+	runtask.Kind,
 }
 
 // findFeedKind returns the kind of feed called name. ok is false for a name

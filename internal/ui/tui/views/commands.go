@@ -7,11 +7,23 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
+// CommandName names a kind of command.
+type CommandName string
+
+// Names of the kinds of commands. The bottom bar and the event log show them.
+const (
+	RunTaskCommand  CommandName = "run"
+	MarkDoneCommand CommandName = "done"
+)
+
 // CommandMsg asks the root to run a command. It names the command and carries
 // the IDs it works on. Whether the command is allowed is up to the service
 // that runs it.
 type CommandMsg interface {
-	isCommandMsg()
+	CommandName() CommandName
+	// Target names what the command works on in the bottom bar and the event
+	// log, like the short ID of a task.
+	Target() string
 }
 
 // RunTaskMsg asks to hand a task to a coding agent the way drg task run does.
@@ -19,14 +31,18 @@ type RunTaskMsg struct {
 	TaskID task.TaskID
 }
 
-func (RunTaskMsg) isCommandMsg() {}
+func (RunTaskMsg) CommandName() CommandName { return RunTaskCommand }
+
+func (msg RunTaskMsg) Target() string { return task.ShortID(msg.TaskID) }
 
 // MarkDoneMsg asks to mark an unmerged task done the way drg task done does.
 type MarkDoneMsg struct {
 	TaskID task.TaskID
 }
 
-func (MarkDoneMsg) isCommandMsg() {}
+func (MarkDoneMsg) CommandName() CommandName { return MarkDoneCommand }
+
+func (msg MarkDoneMsg) Target() string { return task.ShortID(msg.TaskID) }
 
 var (
 	runTaskKey  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))

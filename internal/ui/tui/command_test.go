@@ -47,7 +47,7 @@ func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.
 }
 
 func newTestCommands(service actions.DrudgerService) *actions.Actions {
-	return actions.New(actions.Services{Drudgers: service}, testProject.Slug)
+	return actions.New(actions.Services{Drudgers: service}, testProject.Slug, commandKinds)
 }
 
 // startedTimer is one timer a model started.
@@ -308,4 +308,50 @@ func TestEventLog_KeepsNewestEntries(t *testing.T) {
 	if got := events.entries[0].text; got != "2" {
 		t.Errorf("expected the oldest entry dropped, got first entry %q", got)
 	}
+}
+
+// TestCommandKinds_StartEveryTaskCommand sends the key of every task command
+// through a View's key handling and starts its message. A command with no
+// kind in the registry panics in the TUI on the first key press.
+func TestCommandKinds_StartEveryTaskCommand(t *testing.T) {
+	commands := newTestCommands(&fakeCommandService{})
+	for _, binding := range views.TaskCommandKeys {
+		keyName := binding.Keys()[0]
+		t.Run(keyName, func(t *testing.T) {
+			cmd := views.TaskCommand(keyPress(t, keyName), tuitest.ListedTasks()[0].Task.ID)
+			if cmd == nil {
+				t.Fatalf("expected key %q to send a command message, it sends nothing", keyName)
+			}
+			commandMsg, ok := cmd().(views.CommandMsg)
+			if !ok {
+				t.Fatalf("expected key %q to send a command message, got %T", keyName, cmd())
+			}
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("expected the registry to have a kind of command %q, add it: %v", commandMsg.CommandName(), recovered)
+				}
+			}()
+			commands.Start(commandMsg)
+		})
+	}
+}
+
+func TestCommandKinds_NamesAreUnique(t *testing.T) {
+	seen := map[views.CommandName]bool{}
+	for _, kind := range commandKinds {
+		if seen[kind.Name] {
+			t.Errorf("expected one kind of command %q, the registry has more", kind.Name)
+		}
+		seen[kind.Name] = true
+	}
+}
+
+// keyPress returns the press of a key named by one printable character.
+func keyPress(t *testing.T, keyName string) tea.KeyPressMsg {
+	t.Helper()
+	characters := []rune(keyName)
+	if len(characters) != 1 {
+		t.Fatalf("key %q is not one character, teach keyPress to build its press", keyName)
+	}
+	return tea.KeyPressMsg{Code: characters[0], Text: keyName}
 }

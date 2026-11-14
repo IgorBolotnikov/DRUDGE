@@ -1,33 +1,18 @@
-// Package actions runs the commands the Views of the TUI ask for. It holds the
-// services, runs the service method of each command message off the UI loop
-// and returns its outcome as a message. The services decide whether a command
-// is allowed.
+// Package actions runs the commands the Views of the TUI ask for. It holds
+// what every command shares: the description of a kind of command, the
+// services commands run on and the outcome of a command. Each kind of command
+// lives in a package of its own below it. The services decide whether a
+// command is allowed.
 package actions
 
 import (
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
-)
-
-const (
-	// RunCommand names the command that hands a task to a coding agent.
-	RunCommand = "run"
-	// MarkDoneCommand names the command that marks an unmerged task done.
-	MarkDoneCommand = "done"
-)
-
-const (
-	runVerdictFormat          = "%s handed to Drudger %d"
-	runVerdictNoDrudgerFormat = "%s handed to a Drudger"
-	doneVerdictFormat         = "%s done"
-	unblockedVerdictFormat    = " · %s runnable: %s"
-	unblockedSeparator        = ", "
 )
 
 // DrudgerService runs a task the way drg task run does, marks a task done the
@@ -45,12 +30,12 @@ type Services struct {
 
 // Command names a command and what it works on, like run 3f9a1c2e.
 type Command struct {
-	Name   string
+	Name   views.CommandName
 	Target string
 }
 
 func (command Command) String() string {
-	return command.Name + " " + command.Target
+	return string(command.Name) + " " + command.Target
 }
 
 // DoneMsg carries the end of a command: the verdict of a command that worked
@@ -63,86 +48,45 @@ type DoneMsg struct {
 	Feeds   []views.FeedName
 }
 
+// RunFunc runs a command on the services of a project off the UI loop. It
+// gets the command message of its own kind.
+type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) DoneMsg
+
+// Kind describes one kind of command.
+type Kind struct {
+	Name views.CommandName
+	Run  RunFunc
+}
+
 // Actions runs the commands of the Views on the services of one project.
 type Actions struct {
 	services    Services
 	projectSlug string
+	kinds       []Kind
 }
 
-// New returns the Actions of a project.
-func New(services Services, projectSlug string) *Actions {
-	return &Actions{services: services, projectSlug: projectSlug}
+// New returns the Actions of a project that run the commands of kinds.
+func New(services Services, projectSlug string, kinds []Kind) *Actions {
+	return &Actions{services: services, projectSlug: projectSlug, kinds: kinds}
 }
 
 // Start returns the command a message asks for and the command that runs it.
-// It panics on a command message it does not know, which is a bug in the
+// It panics on a command of a kind it does not know, which is a bug in the
 // View that sent it.
 func (actions *Actions) Start(msg views.CommandMsg) (Command, tea.Cmd) {
-	switch msg := msg.(type) {
-	case views.RunTaskMsg:
-		command := Command{Name: RunCommand, Target: task.ShortID(msg.TaskID)}
-		return command, func() tea.Msg { return actions.runTask(command, msg.TaskID) }
-	case views.MarkDoneMsg:
-		command := Command{Name: MarkDoneCommand, Target: task.ShortID(msg.TaskID)}
-		return command, func() tea.Msg { return actions.markDone(command, msg.TaskID) }
+	kind, ok := actions.findKind(msg.CommandName())
+	if !ok {
+		panic(fmt.Sprintf("a view asked for command %q, which no command kind runs", msg.CommandName()))
 	}
-	panic(fmt.Sprintf("a view asked for command %T, which the TUI does not run", msg))
+	command := Command{Name: msg.CommandName(), Target: msg.Target()}
+	return command, func() tea.Msg { return kind.Run(actions.services, actions.projectSlug, command, msg) }
 }
 
-// runTask runs a task. Its verdict names the Drudger that took the task.
-func (actions *Actions) runTask(command Command, taskID task.TaskID) DoneMsg {
-	done := DoneMsg{Command: command, Feeds: []views.FeedName{views.TasksFeed, views.DrudgersFeed}}
-	if err := actions.services.Drudgers.RunTask(actions.projectSlug, taskID, false); err != nil {
-		done.Err = err
-		return done
-	}
-	done.Verdict = actions.runVerdict(command, taskID)
-	return done
-}
-
-// runVerdict names the Drudger that holds a task. The run already worked, so
-// a failed read of the Drudgers leaves the Drudger out of the verdict.
-func (actions *Actions) runVerdict(command Command, taskID task.TaskID) string {
-	drudgers, err := actions.services.Drudgers.ReadDrudgers(actions.projectSlug)
-	if err != nil {
-		return fmt.Sprintf(runVerdictNoDrudgerFormat, command.Target)
-	}
-	for _, holder := range drudgers {
-		if holder.TaskID == taskID {
-			return fmt.Sprintf(runVerdictFormat, command.Target, holder.Slot)
+func (actions *Actions) findKind(name views.CommandName) (Kind, bool) {
+	for _, kind := range actions.kinds {
+		if kind.Name == name {
+			return kind, true
 		}
 	}
-	return fmt.Sprintf(runVerdictNoDrudgerFormat, command.Target)
-}
-
-// markDone marks a task done. Its verdict names the tasks that became
-// runnable.
-func (actions *Actions) markDone(command Command, taskID task.TaskID) DoneMsg {
-	done := DoneMsg{Command: command, Feeds: []views.FeedName{views.TasksFeed}}
-	_, unblocked, err := actions.services.Drudgers.MarkDone(actions.projectSlug, taskID)
-	if err != nil {
-		done.Err = err
-		return done
-	}
-	done.Verdict = doneVerdict(command, unblocked)
-	return done
-}
-
-func doneVerdict(command Command, unblocked []*task.Task) string {
-	verdict := fmt.Sprintf(doneVerdictFormat, command.Target)
-	if len(unblocked) == 0 {
-		return verdict
-	}
-	shortIDs := make([]string, 0, len(unblocked))
-	for _, dependent := range unblocked {
-		shortIDs = append(shortIDs, task.ShortID(dependent.ID))
-	}
-	return verdict + fmt.Sprintf(unblockedVerdictFormat, formatTaskCount(len(unblocked)), strings.Join(shortIDs, unblockedSeparator))
-}
-
-func formatTaskCount(count int) string {
-	if count == 1 {
-		return "1 task"
-	}
-	return fmt.Sprintf("%d tasks", count)
+	return Kind{}, false
 }
