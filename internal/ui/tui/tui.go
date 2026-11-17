@@ -60,12 +60,13 @@ func Run() error {
 		options = append(options, tea.WithColorProfile(colorprofile.ASCII))
 	}
 	sources := feeds.Sources{Tasks: feedServices.Tasks, Drudgers: feedServices.Drudgers}
-	commands := actions.New(actions.Services{Drudgers: commandServices.Drudgers, Tasks: commandServices.Tasks}, shownProject.Slug, commandKinds)
-	editor := app.NewEditor()
-	runEditor := func(path string) tea.Cmd {
-		return tea.ExecProcess(editor.Command(path), editorExited(editor.Name()))
+	services := actions.Services{
+		Drudgers: commandServices.Drudgers,
+		Tasks:    commandServices.Tasks,
+		Editor:   terminalEditor{editor: app.NewEditor()},
 	}
-	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), runEditor, warnings)
+	commands := actions.New(services, shownProject.Slug, commandKinds)
+	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
 	if err != nil {
 		return err
 	}

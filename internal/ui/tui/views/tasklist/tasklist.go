@@ -322,7 +322,7 @@ func (view *View) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, openRunLogKey):
 		return view.openRunLog()
 	case key.Matches(msg, views.NewTaskKey):
-		return views.EditDraft
+		return views.NewTask
 	}
 	if cmd := views.TaskCommand(msg, view.cursorTaskID()); cmd != nil {
 		return cmd

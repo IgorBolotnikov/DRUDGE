@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
@@ -44,7 +46,7 @@ func (recorder *recordingKind) kind() actions.Kind {
 	return actions.Kind{Name: views.RunTaskCommand, Run: recorder.run}
 }
 
-func (recorder *recordingKind) run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) actions.DoneMsg {
+func (recorder *recordingKind) run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) tea.Msg {
 	recorder.runs = append(recorder.runs, recordedRun{services: services, projectSlug: projectSlug, command: command, msg: msg})
 	return actions.DoneMsg{Command: command, Verdict: "ran"}
 }

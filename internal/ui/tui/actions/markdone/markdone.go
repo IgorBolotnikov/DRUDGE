@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
@@ -20,7 +22,7 @@ const (
 // tasks that became runnable.
 var Kind = actions.Kind{Name: views.MarkDoneCommand, Run: run}
 
-func run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) actions.DoneMsg {
+func run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) tea.Msg {
 	taskID := msg.(views.MarkDoneMsg).TaskID
 	done := actions.DoneMsg{Command: command, Feeds: []views.FeedName{views.TasksFeed}}
 	_, unblocked, err := services.Drudgers.MarkDone(projectSlug, taskID)

@@ -52,9 +52,13 @@ type fakeEditor struct {
 	paths   []string
 }
 
-func (editor *fakeEditor) edit(path string) tea.Cmd {
+func (editor *fakeEditor) Name() string {
+	return "vi"
+}
+
+func (editor *fakeEditor) Edit(path string, done tea.ExecCallback) tea.Cmd {
 	editor.paths = append(editor.paths, path)
-	return func() tea.Msg { return editorExited("vi")(editor.exitErr) }
+	return func() tea.Msg { return done(editor.exitErr) }
 }
 
 // newDraftTestModel returns a model of one task list Tab whose new tasks go
@@ -62,8 +66,8 @@ func (editor *fakeEditor) edit(path string) tea.Cmd {
 func newDraftTestModel(t *testing.T, source *fakeTaskSource, service *fakeTaskService, editor *fakeEditor) *Model {
 	t.Helper()
 	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), nil)
-	model.commands = actions.New(actions.Services{Drudgers: &fakeCommandService{}, Tasks: service}, testProject.Slug, commandKinds)
-	model.runEditor = editor.edit
+	services := actions.Services{Drudgers: &fakeCommandService{}, Tasks: service, Editor: editor}
+	model.commands = actions.New(services, testProject.Slug, commandKinds)
 	recordTimers(model)
 	update(model, tea.WindowSizeMsg{Width: 140, Height: 24})
 	startFeeds(model)

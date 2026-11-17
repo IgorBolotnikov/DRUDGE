@@ -29,10 +29,19 @@ type TaskService interface {
 	CreateTaskFromDraft(projectSlug string) (*task.Task, error)
 }
 
+// Editor edits a file in the terminal. The command Edit returns suspends the
+// program until the editor exits and then sends the message of done. Name
+// names the editor in errors.
+type Editor interface {
+	Name() string
+	Edit(path string, done tea.ExecCallback) tea.Cmd
+}
+
 // Services are the services commands run.
 type Services struct {
 	Drudgers DrudgerService
 	Tasks    TaskService
+	Editor   Editor
 }
 
 // Command names a command and what it works on, like run 3f9a1c2e.
@@ -58,8 +67,10 @@ type DoneMsg struct {
 }
 
 // RunFunc runs a command on the services of a project off the UI loop. It
-// gets the command message of its own kind.
-type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) DoneMsg
+// gets the command message of its own kind. It returns the DoneMsg of the
+// command, or the message of a step that needs the terminal, like an editor.
+// The callback of that step leads to the DoneMsg of the command.
+type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) tea.Msg
 
 // Kind describes one kind of command.
 type Kind struct {
@@ -98,9 +109,4 @@ func (actions *Actions) findKind(name views.CommandName) (Kind, bool) {
 		}
 	}
 	return Kind{}, false
-}
-
-// OpenDraft opens the draft of a new task of the project and returns its path.
-func (actions *Actions) OpenDraft() (string, error) {
-	return actions.services.Tasks.OpenDraft(actions.projectSlug)
 }

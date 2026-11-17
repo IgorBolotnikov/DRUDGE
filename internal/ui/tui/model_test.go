@@ -190,7 +190,7 @@ func newTestModelWithSource(t *testing.T, source feeds.TaskSource, tabs []*Tab, 
 
 func newTestModelWithSources(t *testing.T, sources feeds.Sources, tabs []*Tab, intervals map[views.FeedName]time.Duration, warnings []string) *Model {
 	t.Helper()
-	model, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), tabs, intervals, true, nil, warnings)
+	model, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), tabs, intervals, true, warnings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1615,7 +1615,7 @@ func tileStatuses(tab *Tab) []string {
 
 func TestNewModel_NoTabs(t *testing.T) {
 	sources := feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}
-	_, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), nil, intervalsOf(instantInterval), true, nil, nil)
+	_, err := NewModel(testProject, sources, newTestCommands(&fakeCommandService{}), tuitest.Styles(), nil, intervalsOf(instantInterval), true, nil)
 	if err == nil {
 		t.Fatal("expected an error for a screen with no tabs")
 	}

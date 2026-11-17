@@ -49,25 +49,21 @@ func (msg MarkDoneMsg) Target() string { return task.ShortID(msg.TaskID) }
 // is known only once the command parsed its draft.
 const newTaskTarget = "task"
 
-// NewTaskMsg asks to add the task the draft of a new task describes the way
-// drg task new does.
+// NewTaskMsg asks to open the draft of a new task in the editor and add the
+// task it describes the way drg task new does.
 type NewTaskMsg struct{}
 
 func (NewTaskMsg) CommandName() CommandName { return NewTaskCommand }
 
 func (NewTaskMsg) Target() string { return newTaskTarget }
 
-// EditDraftMsg asks the root to open the draft of a new task in the editor.
-// The root sends the new task command once the editor exits.
-type EditDraftMsg struct{}
-
 // NewTaskKey asks to add a task. It acts on the project, so the Views that
 // list the tasks of the project bind it.
 var NewTaskKey = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new task"))
 
-// EditDraft sends the message that opens the draft of a new task.
-func EditDraft() tea.Msg {
-	return EditDraftMsg{}
+// NewTask sends the message that asks to add a task.
+func NewTask() tea.Msg {
+	return NewTaskMsg{}
 }
 
 var (
