@@ -3,6 +3,7 @@ package styles
 
 import (
 	"charm.land/bubbles/v2/help"
+	glamouransi "charm.land/glamour/v2/ansi"
 	"charm.land/lipgloss/v2"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -42,6 +43,8 @@ type Styles struct {
 	Help      help.Styles
 	HelpBox   lipgloss.Style
 	HelpTitle lipgloss.Style
+	// Markdown is the glamour style of a rendered markdown document.
+	Markdown glamouransi.StyleConfig
 }
 
 // New builds the styles of the screen from the roles of palette.
@@ -88,6 +91,7 @@ func New(palette *theme.Theme) *Styles {
 		},
 		HelpBox:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(primary.GetForeground()).Padding(0, 1),
 		HelpTitle: primary.Bold(true),
+		Markdown:  markdown(palette),
 	}
 }
 

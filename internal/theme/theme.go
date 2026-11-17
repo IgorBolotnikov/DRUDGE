@@ -29,6 +29,7 @@ const (
 // Theme holds the effective foreground color of each role after all merges.
 // It is immutable after creation.
 type Theme struct {
+	name             string
 	colors           map[string]color
 	isColorOn        map[Stream]bool
 	skippedOverrides []SkippedOverride
@@ -126,12 +127,20 @@ func ThemeSchemaRef() string {
 func NewTheme(name string) *Theme {
 	colors, ok := bundledColors(name)
 	if !ok {
+		name = ""
 		colors = make(map[string]color)
 	}
 	return &Theme{
+		name:      name,
 		colors:    colors,
 		isColorOn: colorOnStreams(),
 	}
+}
+
+// Name returns the name of the bundled palette the theme is built from. It is
+// empty for a theme made from an unknown palette name.
+func (t *Theme) Name() string {
+	return t.name
 }
 
 // IsColorOn reports whether color is on for stream.
@@ -305,7 +314,7 @@ func load(cfgPath string, name string) (*Theme, error) {
 		merged[role] = hexColor(value)
 	}
 
-	return &Theme{colors: merged, isColorOn: colorOnStreams(), skippedOverrides: skipped}, nil
+	return &Theme{name: paletteName, colors: merged, isColorOn: colorOnStreams(), skippedOverrides: skipped}, nil
 }
 
 // LoadOrDefault is like Load with an empty name but returns the default theme

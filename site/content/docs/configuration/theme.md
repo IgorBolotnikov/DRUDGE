@@ -36,6 +36,12 @@ A missing file or a missing `theme` key means `system`. An unknown theme name ma
 
 An override that is not a `#rrggbb` color is skipped. Every command prints a warning naming the role and the value, and uses the color of the palette for that role.
 
+## Markdown
+
+The TUI renders task descriptions as markdown in the colors of the roles. Headings use `heading` and the top heading uses `primary`. Inline code is `path` on `selection`, link text is `info`, rules are `border`, and link URLs and the smallest heading are `muted`. Under `system`, `muted` and the other dim roles show in bright black, because the markdown renderer has no dim text.
+
+Code blocks under `nord`, `monokai`, `catppuccin-mocha` and `dracula` are highlighted with the [Chroma](https://github.com/alecthomas/chroma) style of the same name. Overrides don't change those colors. Under `system`, code blocks show in one color, `secondary`.
+
 ## Keys
 
 <!-- BEGIN GENERATED: edits between these markers are overwritten -->

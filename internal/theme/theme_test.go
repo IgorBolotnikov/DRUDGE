@@ -217,6 +217,50 @@ func TestNewTheme_UnknownName(t *testing.T) {
 	}
 }
 
+func TestName(t *testing.T) {
+	cases := []struct {
+		name      string
+		themeFile string
+		loadName  string
+		want      string
+	}{
+		{name: "no theme file", themeFile: "", loadName: "", want: systemTheme},
+		{name: "theme of the file", themeFile: `{"theme":"nord"}`, loadName: "", want: "nord"},
+		{name: "asked theme wins over the file", themeFile: `{"theme":"nord"}`, loadName: "dracula", want: "dracula"},
+		{name: "overrides keep the name", themeFile: `{"theme":"monokai","overrides":{"error":"#ff0000"}}`, loadName: "", want: "monokai"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setupTempHome(t, testCase.themeFile)
+			theme, err := Load(testCase.loadName)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := theme.Name(); got != testCase.want {
+				t.Errorf("Name() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestNewTheme_Name(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{name: "catppuccin-mocha", want: "catppuccin-mocha"},
+		{name: systemTheme, want: systemTheme},
+		{name: "nonexistent-theme", want: ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := NewTheme(testCase.name).Name(); got != testCase.want {
+				t.Errorf("Name() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestLoad_DefaultSystem(t *testing.T) {
 	cases := []struct {
 		name      string

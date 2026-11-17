@@ -14,7 +14,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 	glamouransi "charm.land/glamour/v2/ansi"
-	glamourstyles "charm.land/glamour/v2/styles"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -354,15 +353,23 @@ func (view *View) renderDescription(description string) string {
 	if strings.TrimSpace(description) == "" {
 		return view.styles.Muted.Render("No description")
 	}
-	rendered, err := renderMarkdown(description, view.width)
+	rendered, err := renderMarkdown(description, view.styles.Markdown, view.width)
 	if err != nil {
 		return view.styles.Error.Render("Could not render the description as markdown: "+err.Error()) + "\n" + description
 	}
 	return rendered
 }
 
-func renderMarkdown(markdown string, width int) (string, error) {
-	renderer, err := glamour.NewTermRenderer(glamour.WithStyles(markdownStyle()), glamour.WithWordWrap(width))
+// codeFormatter is the chroma formatter of code blocks. It writes 24-bit
+// colors, which the TUI lowers to the colors the terminal supports.
+const codeFormatter = "terminal16m"
+
+func renderMarkdown(markdown string, style glamouransi.StyleConfig, width int) (string, error) {
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(style),
+		glamour.WithWordWrap(width),
+		glamour.WithChromaFormatter(codeFormatter),
+	)
 	if err != nil {
 		return "", err
 	}
@@ -371,15 +378,6 @@ func renderMarkdown(markdown string, width int) (string, error) {
 		return "", err
 	}
 	return strings.Trim(rendered, "\n"), nil
-}
-
-// markdownStyle returns the dark glamour style without the margin around the
-// document, which the Tile border already gives.
-func markdownStyle() glamouransi.StyleConfig {
-	style := glamourstyles.DarkStyleConfig
-	noMargin := uint(0)
-	style.Document.Margin = &noMargin
-	return style
 }
 
 // taskFields returns the fields of a task that are set, in the order of the
