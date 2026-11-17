@@ -34,7 +34,7 @@ This codebase follows domain-driven design. `internal/ui` holds the user interfa
 
 - A unit turns input into a service call and the outcome into output. A View turns a key or a click into a message. An action kind calls one service method and turns the result into a `DoneMsg`. The TUI root routes messages and renders.
 - A rule that decides what happens to data lives in a domain service. That covers validation, defaults, keep, delete and cancel, and what counts as unchanged. If the web frontend would need the same rule, it belongs in the domain.
-- Interfaces never touch files, environment variables or processes. A service reaches them through a port, an adapter implements it and `internal/app` wires it. The terminal is the exception: stdin, stdout, stderr, signals, and handing the terminal to a child process with `tea.ExecProcess`. An adapter builds that child process.
+- Interfaces never touch files, environment variables or processes. A service reaches them through a port, an adapter implements it and `internal/app` wires it. The terminal is the exception: stdin, stdout, stderr, signals, and handing the terminal to a child process with `tea.Exec`. An adapter runs that child process.
 - Interfaces get config, resolved config values and adapters from `internal/app`. They never call `config.Load*`, a `config.Resolve*` function or an adapter constructor.
 - A service returns a sentinel error for an outcome the interfaces show differently, like "nothing changed". A warning is a typed event through `common.Progress`. The TUI root never checks a command's name to handle it specially.
 - A rule is tested on its service with fakes of its ports. Interface tests cover the key, the message and what gets rendered.

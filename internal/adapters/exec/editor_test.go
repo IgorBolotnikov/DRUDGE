@@ -2,6 +2,7 @@ package exec
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,7 +26,7 @@ func TestNewEditor(t *testing.T) {
 	}
 }
 
-func TestEditor_Command(t *testing.T) {
+func TestEditor_Edit(t *testing.T) {
 	cases := []struct {
 		name     string
 		editor   string
@@ -39,13 +40,15 @@ func TestEditor_Command(t *testing.T) {
 			t.Setenv(editorEnv, testCase.editor)
 			path := filepath.Join(t.TempDir(), testCase.fileName)
 
-			output, err := NewEditor().Command(path).Output()
+			var output strings.Builder
+
+			err := NewEditor().Edit(path, strings.NewReader(""), &output, &output)
 
 			if err != nil {
 				t.Fatalf("expected the editor to run, got %v", err)
 			}
-			if string(output) != path {
-				t.Errorf("expected the editor to get %q, got %q", path, output)
+			if output.String() != path {
+				t.Errorf("expected the editor to get %q, got %q", path, output.String())
 			}
 		})
 	}

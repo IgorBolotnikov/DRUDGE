@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"io"
 	"os"
 	osexec "os/exec"
 )
@@ -29,10 +30,14 @@ func (editor *Editor) Name() string {
 	return editor.name
 }
 
-// Command returns the process that edits the file at path. The editor runs
-// through the shell, so $EDITOR may carry arguments, like code --wait. The
-// path is a positional argument of the shell, so it is never parsed as shell
-// code.
-func (editor *Editor) Command(path string) *osexec.Cmd {
-	return osexec.Command("sh", "-c", editor.name+` "$1"`, "sh", path)
+// Edit runs the editor on the file at path with the given terminal streams and
+// waits for it to exit. The editor runs through the shell, so $EDITOR may
+// carry arguments, like code --wait. The path is a positional argument of the
+// shell, so it is never parsed as shell code.
+func (editor *Editor) Edit(path string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	command := osexec.Command("sh", "-c", editor.name+` "$1"`, "sh", path)
+	command.Stdin = stdin
+	command.Stdout = stdout
+	command.Stderr = stderr
+	return command.Run()
 }
