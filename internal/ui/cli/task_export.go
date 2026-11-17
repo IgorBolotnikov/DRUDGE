@@ -4,7 +4,6 @@ import (
 	"flag"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 )
@@ -47,11 +46,11 @@ func taskExport(flags *taskExportFlags) error {
 		return err
 	}
 
-	globalCfg, err := config.Load()
+	configs, err := app.LoadGlobalConfig()
 	if err != nil {
 		return err
 	}
-	tasks := app.NewTaskService(exportedProject.Slug, nil, globalCfg, progress)
+	tasks := app.NewTaskService(exportedProject.Slug, configs, progress)
 
 	exported, err := tasks.ExportTasks(task.ExportTasksDto{ProjectSlug: exportedProject.Slug, Path: flags.output})
 	if err != nil {

@@ -1,12 +1,15 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/persistence"
+	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -219,7 +222,7 @@ func TestNewTaskService(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			service := NewTaskService(projectSlug, nil, testCase.global, silentProgress{})
+			service := NewTaskService(projectSlug, &Configs{Global: testCase.global}, silentProgress{})
 			created, err := service.CreateTask(task.CreateTaskDto{Title: "Add retry to uploader", ProjectSlug: projectSlug})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -236,5 +239,156 @@ func TestNewTaskService(t *testing.T) {
 				t.Errorf("expected status %q, got %q", testCase.wantStatus, got)
 			}
 		})
+	}
+}
+
+func TestLoadGlobalConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	configs, err := LoadGlobalConfig()
+	if err != nil {
+		t.Fatalf("unexpected error outside a project directory: %v", err)
+	}
+	if configs.Local != nil {
+		t.Errorf("expected no local config, got %+v", configs.Local)
+	}
+	if !reflect.DeepEqual(configs.Global, config.DefaultConfig()) {
+		t.Errorf("expected the default global config, got %+v", configs.Global)
+	}
+}
+
+func TestConfigsPageSizes(t *testing.T) {
+	sizedGlobal := config.DefaultConfig()
+	sizedGlobal.Task.PageSize = new(5)
+	sizedGlobal.Drudger.PageSize = new(6)
+	sizedGlobal.Project.PageSize = new(7)
+
+	sizedLocal := &config.LocalConfig{}
+	sizedLocal.Task.PageSize = new(0)
+	sizedLocal.Drudger.PageSize = new(2)
+
+	cases := []struct {
+		name        string
+		configs     *Configs
+		wantTask    int
+		wantDrudger int
+		wantProject int
+	}{
+		{
+			name:        "the default configs",
+			configs:     &Configs{Local: &config.LocalConfig{}, Global: config.DefaultConfig()},
+			wantTask:    20,
+			wantDrudger: 20,
+			wantProject: 20,
+		},
+		{
+			name:        "sizes in the global config",
+			configs:     &Configs{Local: &config.LocalConfig{}, Global: sizedGlobal},
+			wantTask:    5,
+			wantDrudger: 6,
+			wantProject: 7,
+		},
+		{
+			name:        "sizes in the local config",
+			configs:     &Configs{Local: sizedLocal, Global: sizedGlobal},
+			wantTask:    0,
+			wantDrudger: 2,
+			wantProject: 7,
+		},
+		{
+			name:        "the global config alone",
+			configs:     &Configs{Global: sizedGlobal},
+			wantProject: 7,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.configs.Local != nil {
+				if got := testCase.configs.TaskPageSize(); got != testCase.wantTask {
+					t.Errorf("expected a task page size of %d, got %d", testCase.wantTask, got)
+				}
+				if got := testCase.configs.DrudgerPageSize(); got != testCase.wantDrudger {
+					t.Errorf("expected a Drudger page size of %d, got %d", testCase.wantDrudger, got)
+				}
+			}
+			if got := testCase.configs.ProjectPageSize(); got != testCase.wantProject {
+				t.Errorf("expected a project page size of %d, got %d", testCase.wantProject, got)
+			}
+		})
+	}
+}
+
+func TestNewReleaseService(t *testing.T) {
+	if NewReleaseService(silentProgress{}) == nil {
+		t.Fatal("expected a release service")
+	}
+}
+
+func TestNewFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "description.md")
+	if err := os.WriteFile(path, []byte("Add retry to uploader"), common.DefaultFilePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := NewFiles().ReadFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(content) != "Add retry to uploader" {
+		t.Errorf("expected the content of the file, got %q", content)
+	}
+}
+
+func TestReadTuiConfigFile(t *testing.T) {
+	cases := []struct {
+		name string
+		// content is the content of the TUI config file, nil for no file.
+		content     *string
+		wantContent []byte
+		wantIsFound bool
+	}{
+		{name: "no file"},
+		{name: "a file", content: new(`{"tabs": []}`), wantContent: []byte(`{"tabs": []}`), wantIsFound: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			path := common.TuiConfigPath(home)
+			if testCase.content != nil {
+				if err := common.EnsureDir(filepath.Dir(path)); err != nil {
+					t.Fatal(err)
+				}
+				if err := common.WriteFile(path, *testCase.content); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := ReadTuiConfigFile()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			want := TuiConfigFile{Path: path, Content: testCase.wantContent, IsFound: testCase.wantIsFound}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("expected %+v, got %+v", want, got)
+			}
+		})
+	}
+}
+
+func TestReadTuiConfigFile_Unreadable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := common.TuiConfigPath(home)
+	if err := common.EnsureDir(path); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ReadTuiConfigFile()
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("expected an error naming %s, got %v", path, err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -26,7 +27,7 @@ var TaskCmd = &Cmd{
 				flags := &taskNewFlags{}
 				flags.declare(fs)
 				return func([]string) error {
-					dto, err := flags.dto(os.Stdin)
+					dto, err := flags.dto(os.Stdin, app.NewFiles())
 					if err != nil {
 						return err
 					}
@@ -75,7 +76,7 @@ var TaskCmd = &Cmd{
 				flags := &taskEditFlags{}
 				flags.declare(fs)
 				return func(args []string) error {
-					changes, err := flags.changes(os.Stdin)
+					changes, err := flags.changes(os.Stdin, app.NewFiles())
 					if err != nil {
 						return err
 					}
@@ -252,10 +253,15 @@ func optionalList[Value ~string](flagValue optionalString) *[]Value {
 	return &values
 }
 
+// fileReader reads the files a user names on the command line.
+type fileReader interface {
+	ReadFile(path string) ([]byte, error)
+}
+
 // readDescriptionFile reads a description from the file at path, or from stdin
 // when path is stdinPath. It trims the one trailing newline a heredoc adds and
 // refuses content that is blank.
-func readDescriptionFile(path string, stdin io.Reader) (string, error) {
+func readDescriptionFile(path string, stdin io.Reader, files fileReader) (string, error) {
 	var content []byte
 	var err error
 	source := "stdin"
@@ -265,7 +271,7 @@ func readDescriptionFile(path string, stdin io.Reader) (string, error) {
 		}
 	} else {
 		source = fmt.Sprintf("description file %q", path)
-		if content, err = os.ReadFile(path); err != nil {
+		if content, err = files.ReadFile(path); err != nil {
 			var pathErr *fs.PathError
 			if errors.As(err, &pathErr) {
 				err = pathErr.Err
@@ -307,9 +313,9 @@ func (flags *taskNewFlags) declare(fs *flag.FlagSet) {
 	fs.Var(&flags.repos, reposFlagName, "Comma-separated `paths` of the repositories this task changes, as drg project init prints them, all of them when left out")
 }
 
-// dto returns the fields of a new task, reading a description file from disk
+// dto returns the fields of a new task, reading a description file from files
 // or from stdin. It leaves the project slug for the caller to fill in.
-func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
+func (flags *taskNewFlags) dto(stdin io.Reader, files fileReader) (task.CreateTaskDto, error) {
 	if flags.title.get() == "" {
 		return task.CreateTaskDto{}, errors.New("--title is required")
 	}
@@ -320,7 +326,7 @@ func (flags *taskNewFlags) dto(stdin io.Reader) (task.CreateTaskDto, error) {
 		return task.CreateTaskDto{}, errTwoDescriptions
 	case flags.descriptionFile.value != nil:
 		var err error
-		if description, err = readDescriptionFile(flags.descriptionFile.get(), stdin); err != nil {
+		if description, err = readDescriptionFile(flags.descriptionFile.get(), stdin, files); err != nil {
 			return task.CreateTaskDto{}, err
 		}
 	case flags.description.value == nil:

@@ -305,11 +305,11 @@ func projectRename(args []string) error {
 }
 
 func projectList(flags pageFlags) error {
-	globalCfg, err := config.Load()
+	configs, err := app.LoadGlobalConfig()
 	if err != nil {
 		return err
 	}
-	size, err := flags.pageSize(config.ResolveProjectPageSize(globalCfg))
+	size, err := flags.pageSize(configs.ProjectPageSize())
 	if err != nil {
 		return err
 	}

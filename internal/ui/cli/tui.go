@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui"
 )
 
@@ -14,6 +15,12 @@ var TuiCmd = &Cmd{
 		"The tabs and their tiles come from the TUI config file ~/.drudge/tui.json. Without it the dashboard shows the default layout.\n" +
 		"Press ? in the dashboard to list every key.",
 	Setup: func(*flag.FlagSet) func(args []string) error {
-		return func([]string) error { return tui.Run() }
+		return func([]string) error {
+			configFile, err := app.ReadTuiConfigFile()
+			if err != nil {
+				return err
+			}
+			return tui.Run(configFile)
+		}
 	},
 }

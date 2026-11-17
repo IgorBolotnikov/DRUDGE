@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
@@ -53,19 +52,15 @@ const (
 	keyNameSeparator = ", "
 )
 
-// LoadConfig reads the TUI config file at path. A missing file gives the
-// bundled default. An error starts with the path of the file.
-func LoadConfig(path string) (Config, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
+// LoadConfig parses the TUI config file. A missing file gives the bundled
+// default. An error starts with the path of the file.
+func LoadConfig(file app.TuiConfigFile) (Config, error) {
+	if !file.IsFound {
 		return defaultConfig(), nil
 	}
+	config, err := ParseConfig(file.Content)
 	if err != nil {
-		return Config{}, fmt.Errorf("could not read %s: %w", path, err)
-	}
-	config, err := ParseConfig(data)
-	if err != nil {
-		return Config{}, fmt.Errorf("%s: %w", path, err)
+		return Config{}, fmt.Errorf("%s: %w", file.Path, err)
 	}
 	return config, nil
 }

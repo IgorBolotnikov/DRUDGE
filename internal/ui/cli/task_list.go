@@ -66,13 +66,13 @@ func taskList(filter task.ListTasksFilter, page pageFlags) error {
 	if err != nil {
 		return err
 	}
-	size, err := page.pageSize(config.ResolveTaskPageSize(configs.Local, configs.Global))
+	size, err := page.pageSize(configs.TaskPageSize())
 	if err != nil {
 		return err
 	}
 
 	out := newCommandPrinter()
-	svc := app.NewTaskService(configs.Local.ProjectSlug, configs.Local, configs.Global, newCLIProgress(out))
+	svc := app.NewTaskService(configs.Local.ProjectSlug, configs, newCLIProgress(out))
 
 	listed, err := svc.ListTasks(configs.Local.ProjectSlug, filter, page.number, size)
 	if err != nil {

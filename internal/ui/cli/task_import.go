@@ -4,7 +4,6 @@ import (
 	"flag"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
-	"github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -34,11 +33,11 @@ func taskImport(flags *taskImportFlags, path string) error {
 		return err
 	}
 
-	globalCfg, err := config.Load()
+	configs, err := app.LoadGlobalConfig()
 	if err != nil {
 		return err
 	}
-	tasks := app.NewTaskService(importingProject.Slug, nil, globalCfg, progress)
+	tasks := app.NewTaskService(importingProject.Slug, configs, progress)
 
 	return tasks.ImportTasks(task.ImportTasksDto{ProjectSlug: importingProject.Slug, Path: path, IsDryRun: flags.isDryRun})
 }

@@ -51,9 +51,9 @@ func (flags *taskEditFlags) declare(fs *flag.FlagSet) {
 }
 
 // changes returns the fields an edit changes, reading a description file from
-// disk or from stdin. It refuses more than one way to change the blockers,
+// files or from stdin. It refuses more than one way to change the blockers,
 // the pull requests or the repositories, and an edit that changes nothing.
-func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
+func (flags *taskEditFlags) changes(stdin io.Reader, files fileReader) (task.EditTaskDto, error) {
 	if err := refuseTogether("the blockers", []namedFlag{
 		{name: blockedByFlagName, value: flags.blockedBy},
 		{name: blockFlagName, value: flags.block},
@@ -97,7 +97,7 @@ func (flags *taskEditFlags) changes(stdin io.Reader) (task.EditTaskDto, error) {
 		if changes.Description != nil {
 			return task.EditTaskDto{}, errTwoDescriptions
 		}
-		description, err := readDescriptionFile(flags.descriptionFile.get(), stdin)
+		description, err := readDescriptionFile(flags.descriptionFile.get(), stdin, files)
 		if err != nil {
 			return task.EditTaskDto{}, err
 		}

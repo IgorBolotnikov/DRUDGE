@@ -11,11 +11,11 @@ import (
 )
 
 type commandDeps struct {
-	localCfg  *config.LocalConfig
-	globalCfg *config.GlobalConfig
-	out       *printer.Printer
-	tasks     *task.TaskService
-	drudger   *drudger.DrudgerService
+	localCfg *config.LocalConfig
+	configs  *app.Configs
+	out      *printer.Printer
+	tasks    *task.TaskService
+	drudger  *drudger.DrudgerService
 }
 
 // NewLogger builds the logger of a command. Its errors and warnings carry the
@@ -61,10 +61,10 @@ func newCommandDeps() (*commandDeps, error) {
 	}
 
 	return &commandDeps{
-		localCfg:  configs.Local,
-		globalCfg: configs.Global,
-		out:       out,
-		tasks:     services.Tasks,
-		drudger:   services.Drudgers,
+		localCfg: configs.Local,
+		configs:  configs,
+		out:      out,
+		tasks:    services.Tasks,
+		drudger:  services.Drudgers,
 	}, nil
 }

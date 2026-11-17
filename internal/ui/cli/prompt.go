@@ -117,7 +117,7 @@ func newPrompter(input io.Reader, output io.Writer, palette *theme.Theme) *promp
 
 func notifyInterrupts() (<-chan os.Signal, func()) {
 	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt)
+	signal.Notify(interrupts, syscall.SIGINT)
 	return interrupts, func() { signal.Stop(interrupts) }
 }
 
@@ -145,15 +145,23 @@ func (p *prompter) ask(questions []common.Question) (common.Answers, error) {
 	return answers, nil
 }
 
+// terminalFile is an input with a file descriptor, like stdin.
+type terminalFile interface {
+	Fd() uintptr
+}
+
 // makeRaw switches the terminal of input to raw mode and returns the function
 // that restores it. SIGINT and SIGTERM restore the terminal before drg exits.
 // An input that is not a terminal is left as it is.
 func makeRaw(input io.Reader) (restore func(), err error) {
-	file, ok := input.(*os.File)
-	if !ok || !common.IsTerminal(file) {
+	file, ok := input.(terminalFile)
+	if !ok {
 		return func() {}, nil
 	}
 	fd := int(file.Fd())
+	if !term.IsTerminal(fd) {
+		return func() {}, nil
+	}
 	state, err := term.MakeRaw(fd)
 	if err != nil {
 		return nil, fmt.Errorf("could not switch the terminal to raw mode: %w", err)

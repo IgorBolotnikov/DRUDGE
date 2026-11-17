@@ -3,6 +3,9 @@
 package app
 
 import (
+	"errors"
+	"io/fs"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/exec"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/filesystem"
 	"github.com/IgorBolotnikov/DRUDGE/internal/adapters/gitcli"
@@ -14,6 +17,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/git"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
+	"github.com/IgorBolotnikov/DRUDGE/internal/release"
 	"github.com/IgorBolotnikov/DRUDGE/internal/remote"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -45,10 +49,36 @@ func LoadConfigs() (*Configs, error) {
 	return &Configs{Local: localCfg, Global: globalCfg}, nil
 }
 
+// LoadGlobalConfig loads the global config alone, for the commands that run
+// outside a project directory. The local config of the configs it returns is
+// nil.
+func LoadGlobalConfig() (*Configs, error) {
+	globalCfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	return &Configs{Global: globalCfg}, nil
+}
+
+// TaskPageSize returns how many tasks one page of a listing holds.
+func (configs *Configs) TaskPageSize() int {
+	return config.ResolveTaskPageSize(configs.Local, configs.Global)
+}
+
+// DrudgerPageSize returns how many Drudgers one page of a listing holds.
+func (configs *Configs) DrudgerPageSize() int {
+	return config.ResolveDrudgerPageSize(configs.Local, configs.Global)
+}
+
+// ProjectPageSize returns how many projects one page of a listing holds.
+func (configs *Configs) ProjectPageSize() int {
+	return config.ResolveProjectPageSize(configs.Global)
+}
+
 // NewServices wires the task and the Drudger services of the project configs
 // describe. Both report to progress.
 func NewServices(configs *Configs, progress common.Progress) (*Services, error) {
-	tasks := NewTaskService(configs.Local.ProjectSlug, configs.Local, configs.Global, progress)
+	tasks := NewTaskService(configs.Local.ProjectSlug, configs, progress)
 	drudgers := persistence.NewFileDrudgerRepository("")
 	runs := persistence.NewFileRunRepository("")
 	cmdRunner := exec.NewCommandRunner()
@@ -73,19 +103,58 @@ func NewServices(configs *Configs, progress common.Progress) (*Services, error) 
 
 // NewTaskService wires a task service over the task files and the drafts of a
 // project.
-// localCfg is nil outside a project directory. The default status then comes
-// from the global config and a task may list no repositories.
-func NewTaskService(projectSlug string, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, progress common.Progress) *task.TaskService {
+// The local config is nil outside a project directory. The default status then
+// comes from the global config and a task may list no repositories.
+func NewTaskService(projectSlug string, configs *Configs, progress common.Progress) *task.TaskService {
+	localCfg := configs.Local
 	if localCfg == nil {
 		localCfg = &config.LocalConfig{ProjectSlug: projectSlug}
 	}
 	repo := persistence.NewFileTaskRepository(projectSlug)
-	return task.NewTaskService(repo, persistence.NewFileDraftRepository(""), progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
+	return task.NewTaskService(repo, persistence.NewFileDraftRepository(""), progress, config.ResolveDefaultTaskStatus(localCfg, configs.Global), repositoryPaths(localCfg))
 }
 
 // NewEditor returns the editor of the user, the one $EDITOR names or vi.
 func NewEditor() *exec.Editor {
 	return exec.NewEditor()
+}
+
+// NewFiles returns the files of the host, for the commands that read a file
+// the user names.
+func NewFiles() filesystem.RepositoryFiles {
+	return filesystem.NewRepositoryFiles()
+}
+
+// NewReleaseService wires a release service over the releases of the drudge
+// repository.
+func NewReleaseService(progress common.Progress) *release.ReleaseService {
+	releases := remoteadapter.NewReleases(remoteadapter.RepositoryURL, remoteadapter.RequestTimeout)
+	return release.NewReleaseService(releases, progress)
+}
+
+// TuiConfigFile is the TUI config file as it is on disk.
+type TuiConfigFile struct {
+	Path    string
+	Content []byte
+	// IsFound is false when there is no file at the path.
+	IsFound bool
+}
+
+// ReadTuiConfigFile reads the TUI config file. A missing file is no error.
+func ReadTuiConfigFile() (TuiConfigFile, error) {
+	home, err := common.HomeDir()
+	if err != nil {
+		return TuiConfigFile{}, err
+	}
+	path := common.TuiConfigPath(home)
+	content, err := common.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return TuiConfigFile{Path: path}, nil
+	}
+	if err != nil {
+		return TuiConfigFile{}, err
+	}
+	return TuiConfigFile{Path: path, Content: []byte(content), IsFound: true}, nil
 }
 
 // NewProjectService wires a project service over the project records, the

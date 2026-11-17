@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
 
@@ -261,7 +262,7 @@ func TestTaskEditFlags(t *testing.T) {
 			flags := &taskEditFlags{}
 			parseTestFlags(t, flags.declare, testCase.args)
 
-			changes, err := flags.changes(strings.NewReader(testCase.stdin))
+			changes, err := flags.changes(strings.NewReader(testCase.stdin), app.NewFiles())
 
 			if testCase.wantErr {
 				if err == nil {

@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/colorprofile"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
-	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
@@ -22,12 +21,13 @@ type silentProgress struct{}
 func (silentProgress) Report(any) {}
 
 // Run shows the project of the current directory full screen until the user
-// quits. It fails before it takes over the terminal when the TUI config file
-// is invalid or the current directory is not a project.
-func Run() error {
+// quits, laid out by the TUI config file. It fails before it takes over the
+// terminal when the TUI config file is invalid or the current directory is not
+// a project.
+func Run(configFile app.TuiConfigFile) error {
 	palette, warnings := loadTheme()
 	screenStyles := styles.New(palette)
-	config, tabs, err := loadConfig(screenStyles)
+	config, tabs, err := loadConfig(configFile, screenStyles)
 	if err != nil {
 		return err
 	}
@@ -76,21 +76,16 @@ func Run() error {
 	return err
 }
 
-// loadConfig loads the TUI config file and builds its Tabs. An error starts
+// loadConfig parses the TUI config file and builds its Tabs. An error starts
 // with the path of the file.
-func loadConfig(screenStyles *styles.Styles) (Config, []*Tab, error) {
-	home, err := common.HomeDir()
-	if err != nil {
-		return Config{}, nil, err
-	}
-	path := common.TuiConfigPath(home)
-	config, err := LoadConfig(path)
+func loadConfig(configFile app.TuiConfigFile, screenStyles *styles.Styles) (Config, []*Tab, error) {
+	config, err := LoadConfig(configFile)
 	if err != nil {
 		return Config{}, nil, err
 	}
 	tabs, err := BuildTabs(config, screenStyles)
 	if err != nil {
-		return Config{}, nil, fmt.Errorf("%s: %w", path, err)
+		return Config{}, nil, fmt.Errorf("%s: %w", configFile.Path, err)
 	}
 	return config, tabs, nil
 }

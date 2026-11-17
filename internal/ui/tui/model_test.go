@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/project"
@@ -1625,7 +1626,7 @@ func TestRun_OutsideProject(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 
-	err := Run()
+	err := Run(app.TuiConfigFile{})
 	if err == nil {
 		t.Fatal("expected an error outside a project directory")
 	}

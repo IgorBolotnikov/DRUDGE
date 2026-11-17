@@ -88,7 +88,7 @@ func drudgerList(page pageFlags) error {
 	if err != nil {
 		return err
 	}
-	size, err := page.pageSize(config.ResolveDrudgerPageSize(deps.localCfg, deps.globalCfg))
+	size, err := page.pageSize(deps.configs.DrudgerPageSize())
 	if err != nil {
 		return err
 	}

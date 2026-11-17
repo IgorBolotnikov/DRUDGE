@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
@@ -348,7 +349,7 @@ func TestTaskNewFlags(t *testing.T) {
 			flags := &taskNewFlags{}
 			parseTestFlags(t, flags.declare, testCase.args)
 
-			dto, err := flags.dto(strings.NewReader(testCase.stdin))
+			dto, err := flags.dto(strings.NewReader(testCase.stdin), app.NewFiles())
 
 			if testCase.wantErr {
 				if err == nil {

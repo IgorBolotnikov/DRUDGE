@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
@@ -264,13 +265,13 @@ func TestLoadConfig(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), common.TuiConfigName)
+			path := filepath.Join("home", common.TuiConfigName)
+			file := app.TuiConfigFile{Path: path}
 			if testCase.data != nil {
-				if err := os.WriteFile(path, []byte(*testCase.data), common.DefaultFilePerm); err != nil {
-					t.Fatal(err)
-				}
+				file.Content = []byte(*testCase.data)
+				file.IsFound = true
 			}
-			got, err := LoadConfig(path)
+			got, err := LoadConfig(file)
 			if testCase.wantErr != "" {
 				if err == nil || !strings.HasPrefix(err.Error(), path+testCase.wantErr) {
 					t.Fatalf("expected an error starting with %q, got %v", path+testCase.wantErr, err)
@@ -335,18 +336,12 @@ func TestReferencePageMatchesSchema(t *testing.T) {
 }
 
 func TestRun_RefusesInvalidConfigBeforeAltScreen(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	path := common.TuiConfigPath(home)
-	if err := common.EnsureDir(filepath.Dir(path)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`{"tabs": [{"title": "Tasks", "layout": {"view": "kanban"}}]}`), common.DefaultFilePerm); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join("home", common.TuiConfigName)
+	content := []byte(`{"tabs": [{"title": "Tasks", "layout": {"view": "kanban"}}]}`)
 
-	err := Run()
+	err := Run(app.TuiConfigFile{Path: path, Content: content, IsFound: true})
 
 	wantErr := path + `: tabs[0].layout.view: unknown view "kanban"`
 	if err == nil || !strings.HasPrefix(err.Error(), wantErr) {
