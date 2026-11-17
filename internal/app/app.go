@@ -71,7 +71,8 @@ func NewServices(configs *Configs, progress common.Progress) (*Services, error) 
 	}, nil
 }
 
-// NewTaskService wires a task service over the task files of a project.
+// NewTaskService wires a task service over the task files and the drafts of a
+// project.
 // localCfg is nil outside a project directory. The default status then comes
 // from the global config and a task may list no repositories.
 func NewTaskService(projectSlug string, localCfg *config.LocalConfig, globalCfg *config.GlobalConfig, progress common.Progress) *task.TaskService {
@@ -79,7 +80,12 @@ func NewTaskService(projectSlug string, localCfg *config.LocalConfig, globalCfg 
 		localCfg = &config.LocalConfig{ProjectSlug: projectSlug}
 	}
 	repo := persistence.NewFileTaskRepository(projectSlug)
-	return task.NewTaskService(repo, progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
+	return task.NewTaskService(repo, persistence.NewFileDraftRepository(""), progress, config.ResolveDefaultTaskStatus(localCfg, globalCfg), repositoryPaths(localCfg))
+}
+
+// NewEditor returns the editor of the user, the one $EDITOR names or vi.
+func NewEditor() *exec.Editor {
+	return exec.NewEditor()
 }
 
 // NewProjectService wires a project service over the project records, the

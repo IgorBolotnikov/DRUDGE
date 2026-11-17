@@ -153,7 +153,7 @@ func TestTaskService_EditTask_Repositories(t *testing.T) {
 			stored := editableTask()
 			stored.Repositories = slices.Clone(testCase.storedRepositories)
 			repo := &fakeTaskRepo{tasks: []*Task{stored}}
-			service := NewTaskService(repo, &fakeProgress{}, StatusDraft, projectRepositories)
+			service := NewTaskService(repo, nil, &fakeProgress{}, StatusDraft, projectRepositories)
 
 			edited, err := service.EditTask(testProjectSlug, editableTaskID, testCase.changes, &fakeSessionGuard{})
 
@@ -192,7 +192,7 @@ func TestTaskService_EditTask_RefusesRepositoriesWhileASessionWorks(t *testing.T
 	refusal := errors.New("an agent is working on task 006684e3")
 	stored := editableTask()
 	repo := &fakeTaskRepo{tasks: []*Task{stored}}
-	service := NewTaskService(repo, &fakeProgress{}, StatusDraft, multiRepositoryProject)
+	service := NewTaskService(repo, nil, &fakeProgress{}, StatusDraft, multiRepositoryProject)
 
 	_, err := service.EditTask(testProjectSlug, editableTaskID, EditTaskDto{AddRepositories: &[]string{apiRepository}}, &fakeSessionGuard{refusal: refusal})
 
@@ -259,7 +259,7 @@ func TestTaskService_CreateTask_Repositories(t *testing.T) {
 			parent := backlogTask(migrationTaskID, "Add the migration", StatusTodo)
 			parent.Repositories = []string{apiRepository}
 			repo := &fakeTaskRepo{tasks: []*Task{parent}}
-			service := NewTaskService(repo, &fakeProgress{}, StatusDraft, projectRepositories)
+			service := NewTaskService(repo, nil, &fakeProgress{}, StatusDraft, projectRepositories)
 
 			created, err := service.CreateTask(CreateTaskDto{
 				Title:        "Wire the service",

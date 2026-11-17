@@ -8,7 +8,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
@@ -211,7 +210,7 @@ func TestConfig_MouseMode(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := oneTabConfig(taskListNode())
 			config.CaptureMouse = testCase.captureMouse
-			model, err := NewModel(testProject, feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, newTestCommands(&fakeCommandService{}), tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), task.StatusTodo, nil)
+			model, err := NewModel(testProject, feeds.Sources{Tasks: &fakeTaskSource{}, Drudgers: &fakeDrudgerSource{}}, newTestCommands(&fakeCommandService{}), tuitest.Styles(), buildTestTabs(t, config), config.Intervals(), config.IsMouseCaptured(), nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

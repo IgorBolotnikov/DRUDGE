@@ -23,9 +23,10 @@ type DrudgerService interface {
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 
-// TaskService adds a task the way drg task new does.
+// TaskService opens the draft of a new task and adds the task it describes.
 type TaskService interface {
-	CreateTask(dto task.CreateTaskDto) (*task.Task, error)
+	OpenDraft(projectSlug string) (string, error)
+	CreateTaskFromDraft(projectSlug string) (*task.Task, error)
 }
 
 // Services are the services commands run.
@@ -46,12 +47,14 @@ func (command Command) String() string {
 
 // DoneMsg carries the end of a command: the verdict of a command that worked
 // or the error of one that failed, and the feeds whose data the command may
-// have changed.
+// have changed. IsSkipped says the command did nothing, and its verdict says
+// why.
 type DoneMsg struct {
-	Command Command
-	Verdict string
-	Err     error
-	Feeds   []views.FeedName
+	Command   Command
+	Verdict   string
+	IsSkipped bool
+	Err       error
+	Feeds     []views.FeedName
 }
 
 // RunFunc runs a command on the services of a project off the UI loop. It
@@ -95,4 +98,9 @@ func (actions *Actions) findKind(name views.CommandName) (Kind, bool) {
 		}
 	}
 	return Kind{}, false
+}
+
+// OpenDraft opens the draft of a new task of the project and returns its path.
+func (actions *Actions) OpenDraft() (string, error) {
+	return actions.services.Tasks.OpenDraft(actions.projectSlug)
 }

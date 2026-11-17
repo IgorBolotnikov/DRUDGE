@@ -338,7 +338,7 @@ func TestTaskService_ImportTasks_RefusesBrokenArchives(t *testing.T) {
 				writeZipArchive(t, path, testCase.entries)
 			}
 			progress := &recordedProgress{}
-			service := task.NewTaskService(NewFileTaskRepository("test-project"), progress, "", nil)
+			service := task.NewTaskService(NewFileTaskRepository("test-project"), nil, progress, "", nil)
 
 			err := service.ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path})
 
@@ -409,7 +409,7 @@ func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
 			repo := NewFileTaskRepository("test-project")
 			progress := &recordedProgress{}
 
-			err := task.NewTaskService(repo, progress, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path})
+			err := task.NewTaskService(repo, nil, progress, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path})
 
 			wantErrText := "skipped 1 entry of " + path + " as bad, a fresh export on the source device fixes them"
 			if err == nil || err.Error() != wantErrText {
@@ -451,7 +451,9 @@ func TestTaskService_ImportTasks_DryRunOfBadEntries(t *testing.T) {
 				testCase.badEntryName: testCase.badEntry,
 			})
 			repo := NewFileTaskRepository("test-project")
-			service := func(progress common.Progress) *task.TaskService { return task.NewTaskService(repo, progress, "", nil) }
+			service := func(progress common.Progress) *task.TaskService {
+				return task.NewTaskService(repo, nil, progress, "", nil)
+			}
 			before := snapshotDir(t, home)
 
 			dryRun := &recordedProgress{}
@@ -520,13 +522,13 @@ func TestTaskService_ImportTasks_RoundTrip(t *testing.T) {
 		}
 	}
 	path := filepath.Join(t.TempDir(), "tasks.zip")
-	if _, err := task.NewTaskService(source, &recordedProgress{}, "", nil).ExportTasks(task.ExportTasksDto{ProjectSlug: "alpha", Path: path}); err != nil {
+	if _, err := task.NewTaskService(source, nil, &recordedProgress{}, "", nil).ExportTasks(task.ExportTasksDto{ProjectSlug: "alpha", Path: path}); err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
 	target := NewFileTaskRepository("beta")
 	firstImport := &recordedProgress{}
-	if err := task.NewTaskService(target, firstImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "beta", Path: path}); err != nil {
+	if err := task.NewTaskService(target, nil, firstImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "beta", Path: path}); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
 
@@ -546,7 +548,7 @@ func TestTaskService_ImportTasks_RoundTrip(t *testing.T) {
 	}
 
 	secondImport := &recordedProgress{}
-	if err := task.NewTaskService(target, secondImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "beta", Path: path}); err != nil {
+	if err := task.NewTaskService(target, nil, secondImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "beta", Path: path}); err != nil {
 		t.Fatalf("second import: %v", err)
 	}
 	if again := listTasksByID(t, target); !reflect.DeepEqual(again, imported) {
@@ -558,11 +560,11 @@ func TestTaskService_ImportTasks_RoundTrip(t *testing.T) {
 	}
 
 	returnPath := filepath.Join(t.TempDir(), "tasks.zip")
-	if _, err := task.NewTaskService(target, &recordedProgress{}, "", nil).ExportTasks(task.ExportTasksDto{ProjectSlug: "beta", Path: returnPath}); err != nil {
+	if _, err := task.NewTaskService(target, nil, &recordedProgress{}, "", nil).ExportTasks(task.ExportTasksDto{ProjectSlug: "beta", Path: returnPath}); err != nil {
 		t.Fatalf("return export: %v", err)
 	}
 	returnImport := &recordedProgress{}
-	if err := task.NewTaskService(source, returnImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "alpha", Path: returnPath}); err != nil {
+	if err := task.NewTaskService(source, nil, returnImport, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "alpha", Path: returnPath}); err != nil {
 		t.Fatalf("return import: %v", err)
 	}
 	if returned := listTasksByID(t, source); !reflect.DeepEqual(returned, exported) {
@@ -590,7 +592,7 @@ func TestTaskService_ImportTasks_RenamesUpdatedTask(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.zip")
 	writeZipArchive(t, path, map[string]string{ManifestFileName: testManifest, loginTaskFile: content})
 
-	if err := task.NewTaskService(repo, &recordedProgress{}, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path}); err != nil {
+	if err := task.NewTaskService(repo, nil, &recordedProgress{}, "", nil).ImportTasks(task.ImportTasksDto{ProjectSlug: "test-project", Path: path}); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 

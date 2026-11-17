@@ -1,6 +1,7 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,6 +30,17 @@ const listJoiner = ", "
 
 // draftKeyJoiner joins the keys of a draft in an error.
 const draftKeyJoiner = ", "
+
+// ErrDraftUnchanged says the draft of a new task describes no task, so no task
+// was added.
+var ErrDraftUnchanged = errors.New("the draft is unchanged")
+
+// DraftRemovalFailed reports a task added from a draft whose draft could not
+// be removed. The task stands.
+type DraftRemovalFailed struct {
+	Task *Task
+	Err  error
+}
 
 // Draft is a new task written in an editor. It holds the fields of drg task
 // new and the description.
@@ -121,6 +133,73 @@ func (draft Draft) Dto(projectSlug string) CreateTaskDto {
 		PullRequests: draft.PullRequests,
 		Repositories: draft.Repositories,
 	}
+}
+
+// OpenDraft writes the template of a new task to the draft of a project
+// unless the project keeps a draft, and returns the path of the draft. The
+// template has the status a new task gets by default.
+func (service *TaskService) OpenDraft(projectSlug string) (string, error) {
+	_, isFound, err := service.drafts.ReadDraft(projectSlug, NewTaskDraftName)
+	if err != nil {
+		return "", err
+	}
+	if !isFound {
+		if err := service.drafts.WriteDraft(projectSlug, NewTaskDraftName, service.draftTemplate()); err != nil {
+			return "", err
+		}
+	}
+	return service.drafts.DraftPath(projectSlug, NewTaskDraftName)
+}
+
+// CreateTaskFromDraft adds the task the draft of a project describes and
+// removes the draft. A missing or empty draft, the template and a draft with
+// no title and no description remove the draft and return ErrDraftUnchanged.
+// A draft that does not parse or describes a task the service refuses stays,
+// and the next open shows it again. A draft that cannot be removed once the
+// task exists is reported as a warning event.
+func (service *TaskService) CreateTaskFromDraft(projectSlug string) (*Task, error) {
+	content, _, err := service.drafts.ReadDraft(projectSlug, NewTaskDraftName)
+	if err != nil {
+		return nil, err
+	}
+	if service.isBlankDraft(content) {
+		return nil, service.cancelDraft(projectSlug)
+	}
+	draft, err := ParseDraft(content)
+	if err != nil {
+		return nil, err
+	}
+	if draft.Title == "" && draft.Description == "" {
+		return nil, service.cancelDraft(projectSlug)
+	}
+	created, err := service.CreateTask(draft.Dto(projectSlug))
+	if err != nil {
+		return nil, err
+	}
+	if err := service.drafts.RemoveDraft(projectSlug, NewTaskDraftName); err != nil {
+		service.progress.Report(DraftRemovalFailed{Task: created, Err: err})
+	}
+	return created, nil
+}
+
+func (service *TaskService) draftTemplate() string {
+	return FormatDraft(Draft{Status: service.newTaskStatus()})
+}
+
+// isBlankDraft reports whether content is empty or the template, give or take
+// the blank space an editor adds or strips at the ends.
+func (service *TaskService) isBlankDraft(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	return trimmed == "" || trimmed == strings.TrimSpace(service.draftTemplate())
+}
+
+// cancelDraft removes the draft of a new task and returns ErrDraftUnchanged,
+// or the error the removal failed with.
+func (service *TaskService) cancelDraft(projectSlug string) error {
+	if err := service.drafts.RemoveDraft(projectSlug, NewTaskDraftName); err != nil {
+		return err
+	}
+	return ErrDraftUnchanged
 }
 
 // ParseList reads a comma-separated list. Blank entries are dropped, so an

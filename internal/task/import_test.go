@@ -176,7 +176,7 @@ func TestTaskService_ImportTasks(t *testing.T) {
 					files:    []TaskFile{{Name: "11111111 Add retry.md", Task: testCase.archived}},
 				}
 				progress := &fakeProgress{}
-				service := NewTaskService(repo, progress, "", nil)
+				service := NewTaskService(repo, nil, progress, "", nil)
 
 				err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip", IsDryRun: isDryRun})
 				if err != nil {
@@ -250,7 +250,7 @@ func TestTaskService_ImportTasks_Refusals(t *testing.T) {
 				readErr:  testCase.readErr,
 			}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, progress, "", nil)
+			service := NewTaskService(repo, nil, progress, "", nil)
 
 			err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip"})
 
@@ -295,7 +295,7 @@ func TestTaskService_ImportTasks_SkipsBadEntries(t *testing.T) {
 				badEntries: []BadArchiveEntry{stray},
 			}
 			progress := &fakeProgress{}
-			service := NewTaskService(repo, progress, "", nil)
+			service := NewTaskService(repo, nil, progress, "", nil)
 
 			err := service.ImportTasks(ImportTasksDto{ProjectSlug: testProjectSlug, Path: "tasks.zip", IsDryRun: isDryRun})
 

@@ -45,15 +45,17 @@ func (MarkDoneMsg) CommandName() CommandName { return MarkDoneCommand }
 
 func (msg MarkDoneMsg) Target() string { return task.ShortID(msg.TaskID) }
 
-// NewTaskMsg asks to add the task a draft describes the way drg task new
-// does.
-type NewTaskMsg struct {
-	Draft task.Draft
-}
+// newTaskTarget names the target of a new task command. The title of the task
+// is known only once the command parsed its draft.
+const newTaskTarget = "task"
+
+// NewTaskMsg asks to add the task the draft of a new task describes the way
+// drg task new does.
+type NewTaskMsg struct{}
 
 func (NewTaskMsg) CommandName() CommandName { return NewTaskCommand }
 
-func (msg NewTaskMsg) Target() string { return msg.Draft.Title }
+func (NewTaskMsg) Target() string { return newTaskTarget }
 
 // EditDraftMsg asks the root to open the draft of a new task in the editor.
 // The root sends the new task command once the editor exits.

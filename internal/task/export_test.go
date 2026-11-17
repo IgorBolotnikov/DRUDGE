@@ -72,7 +72,7 @@ func TestTaskService_ExportTasks(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{files: testCase.files, readErr: testCase.readErr, existingPaths: testCase.existingPaths}
-			service := NewTaskService(repo, &fakeProgress{}, "", nil)
+			service := NewTaskService(repo, nil, &fakeProgress{}, "", nil)
 
 			exported, err := service.ExportTasks(ExportTasksDto{ProjectSlug: testProjectSlug, Path: testCase.path, ExportedAt: exportedAt})
 

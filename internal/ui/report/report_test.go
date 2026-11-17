@@ -36,6 +36,11 @@ func TestLines(t *testing.T) {
 			want:  []Line{{Kind: KindLine, Level: LevelSuccess, Text: "Created task 006684e3  Fix login"}},
 		},
 		{
+			name:  "a draft that could not be removed",
+			event: task.DraftRemovalFailed{Task: sampleTask, Err: errors.New("permission denied")},
+			want:  []Line{{Kind: KindLine, Level: LevelWarning, Text: "Added task 006684e3  Fix login, but could not remove its draft: permission denied"}},
+		},
+		{
 			name:  "a declined removal",
 			event: task.TaskRemovalDeclined{Task: sampleTask},
 			want:  []Line{{Kind: KindLine, Level: LevelSkipped, Text: "Left task 006684e3  Fix login alone"}},

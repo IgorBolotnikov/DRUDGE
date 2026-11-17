@@ -97,12 +97,10 @@ func (model *Model) handleProgress(msg actions.ProgressMsg) {
 }
 
 // handleCommandDone shows the verdict of the command that ended and refreshes
-// the feeds it touched. The verdict of a command that worked clears after its
-// lifetime. The error of a command that failed goes to the event log too.
+// the feeds it touched. The verdict of a command that worked or skipped clears
+// after its lifetime. The error of a command that failed goes to the event log
+// too.
 func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
-	if msg.Command.Name == views.NewTaskCommand {
-		msg = model.closeDraft(msg)
-	}
 	warningCount := 0
 	if model.running != nil {
 		warningCount = model.running.warningCount
@@ -116,7 +114,7 @@ func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
 		return refresh
 	}
 	number := model.verdictCount
-	model.verdict = &verdict{text: msg.Verdict, warningCount: warningCount, number: number}
+	model.verdict = &verdict{text: msg.Verdict, isSkipped: msg.IsSkipped, warningCount: warningCount, number: number}
 	expire := model.startTimer(verdictLifetime, func(time.Time) tea.Msg { return verdictExpiredMsg{number: number} })
 	return tea.Batch(refresh, expire)
 }

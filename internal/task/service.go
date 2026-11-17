@@ -31,6 +31,7 @@ func FormatTaskCount(count int) string {
 
 type TaskService struct {
 	repo          TaskRepository
+	drafts        DraftRepository
 	progress      common.Progress
 	defaultStatus TaskStatus
 	repositories  []string
@@ -44,9 +45,9 @@ type TaskCreated struct {
 // NewTaskService builds a task service. defaultStatus is the status CreateTask
 // gives a task that names none, and todo applies when it is empty too.
 // repositories are the paths of the repositories the project records, the
-// only paths a task may list.
-func NewTaskService(repo TaskRepository, progress common.Progress, defaultStatus TaskStatus, repositories []string) *TaskService {
-	return &TaskService{repo: repo, progress: progress, defaultStatus: defaultStatus, repositories: repositories}
+// only paths a task may list. drafts keeps the drafts of new tasks.
+func NewTaskService(repo TaskRepository, drafts DraftRepository, progress common.Progress, defaultStatus TaskStatus, repositories []string) *TaskService {
+	return &TaskService{repo: repo, drafts: drafts, progress: progress, defaultStatus: defaultStatus, repositories: repositories}
 }
 
 func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
@@ -59,10 +60,7 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 	}
 
 	if dto.Status == "" {
-		dto.Status = service.defaultStatus
-	}
-	if dto.Status == "" {
-		dto.Status = StatusTodo
+		dto.Status = service.newTaskStatus()
 	}
 
 	if dto.CreatedAt.IsZero() {
@@ -99,6 +97,14 @@ func (service *TaskService) CreateTask(dto CreateTaskDto) (*Task, error) {
 
 	service.progress.Report(TaskCreated{Task: task})
 	return task, nil
+}
+
+// newTaskStatus is the status of a new task that names none.
+func (service *TaskService) newTaskStatus() TaskStatus {
+	if service.defaultStatus == "" {
+		return StatusTodo
+	}
+	return service.defaultStatus
 }
 
 // GetTask finds one task by its full id, or by any prefix of an id that names

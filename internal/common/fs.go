@@ -26,6 +26,8 @@ const (
 	ThemeConfigName  = "theme.json"
 	TuiConfigName    = "tui.json"
 	LocalSchemaName  = "local-config.json"
+	DraftsDirName    = "drafts"
+	DraftExt         = ".md"
 )
 
 // Shape of a front matter block: a delimiter line around a body of
@@ -454,6 +456,12 @@ func DrudgeDir(home string) string {
 // ProjectsDir returns the path to the user's drudge projects directory.
 func ProjectsDir(home string) string {
 	return filepath.Join(DrudgeDir(home), ProjectsDirName)
+}
+
+// DraftPath returns the path to a draft of a project in the user's drudge
+// projects directory.
+func DraftPath(home string, projectSlug string, name string) string {
+	return filepath.Join(ProjectsDir(home), projectSlug, DraftsDirName, name+DraftExt)
 }
 
 // LocalPromptsDir returns the path to the prompts directory of the local

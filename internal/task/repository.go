@@ -73,3 +73,18 @@ type TaskRepository interface {
 // callback returns it after reading the stored task and finding nothing to
 // record.
 var ErrTaskUnchanged = errors.New("task is unchanged")
+
+// NewTaskDraftName names the draft of a new task.
+const NewTaskDraftName = "new-task"
+
+// DraftRepository keeps the drafts of a project, each under a draft name.
+type DraftRepository interface {
+	// ReadDraft reads a draft. isFound is false and err is nil when the
+	// project has no draft by that name.
+	ReadDraft(projectSlug string, name string) (content string, isFound bool, err error)
+	WriteDraft(projectSlug string, name string, content string) error
+	// RemoveDraft removes a draft. A missing draft is no error.
+	RemoveDraft(projectSlug string, name string) error
+	// DraftPath returns the path of a draft, for an editor to open.
+	DraftPath(projectSlug string, name string) (string, error)
+}

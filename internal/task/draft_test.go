@@ -1,7 +1,9 @@
 package task
 
 import (
+	"errors"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -147,4 +149,186 @@ func TestDraft_Dto(t *testing.T) {
 	if got := draft.Dto("uploader"); !reflect.DeepEqual(got, want) {
 		t.Errorf("expected %+v, got %+v", want, got)
 	}
+}
+
+const (
+	draftTestProject = "uploader"
+	draftTestPath    = "/home/user/.drudge/projects/uploader/drafts/new-task.md"
+	draftTemplate    = "---\ntitle: \nstatus: draft\nticket: \nparent: \nblocked-by: \nrepos: \npull-requests: \n---\n\n"
+	validDraft       = "---\ntitle: Add retry\nstatus: todo\n---\n\nRetry the upload.\n"
+)
+
+var errDraftRemoval = errors.New("could not remove the draft: permission denied")
+
+// fakeDraftRepo keeps the drafts of one project in memory. removeErr fails
+// every removal.
+type fakeDraftRepo struct {
+	drafts    map[string]string
+	removeErr error
+}
+
+func newFakeDraftRepo(drafts map[string]string) *fakeDraftRepo {
+	if drafts == nil {
+		drafts = map[string]string{}
+	}
+	return &fakeDraftRepo{drafts: drafts}
+}
+
+func (repo *fakeDraftRepo) ReadDraft(projectSlug string, name string) (string, bool, error) {
+	content, isFound := repo.drafts[name]
+	return content, isFound, nil
+}
+
+func (repo *fakeDraftRepo) WriteDraft(projectSlug string, name string, content string) error {
+	repo.drafts[name] = content
+	return nil
+}
+
+func (repo *fakeDraftRepo) RemoveDraft(projectSlug string, name string) error {
+	if repo.removeErr != nil {
+		return repo.removeErr
+	}
+	delete(repo.drafts, name)
+	return nil
+}
+
+func (repo *fakeDraftRepo) DraftPath(projectSlug string, name string) (string, error) {
+	return draftTestPath, nil
+}
+
+func TestTaskService_OpenDraft(t *testing.T) {
+	cases := []struct {
+		name          string
+		defaultStatus TaskStatus
+		drafts        map[string]string
+		wantDraft     string
+	}{
+		{name: "no draft gets the template", defaultStatus: StatusDraft, wantDraft: draftTemplate},
+		{name: "the template falls back to todo", wantDraft: "---\ntitle: \nstatus: todo\nticket: \nparent: \nblocked-by: \nrepos: \npull-requests: \n---\n\n"},
+		{name: "a kept draft is reopened", defaultStatus: StatusDraft, drafts: map[string]string{NewTaskDraftName: validDraft}, wantDraft: validDraft},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			drafts := newFakeDraftRepo(testCase.drafts)
+			service := NewTaskService(&fakeTaskRepo{}, drafts, &fakeProgress{}, testCase.defaultStatus, nil)
+
+			path, err := service.OpenDraft(draftTestProject)
+
+			if err != nil {
+				t.Fatalf("OpenDraft: %v", err)
+			}
+			if path != draftTestPath {
+				t.Errorf("expected path %q, got %q", draftTestPath, path)
+			}
+			if got := drafts.drafts[NewTaskDraftName]; got != testCase.wantDraft {
+				t.Errorf("expected draft %q, got %q", testCase.wantDraft, got)
+			}
+		})
+	}
+}
+
+func TestTaskService_CreateTaskFromDraft(t *testing.T) {
+	cases := []struct {
+		name       string
+		drafts     map[string]string
+		removeErr  error
+		wantTitles []string
+		wantErr    error
+		wantErrMsg string
+		wantDraft  string
+		// wantIsWarned says the failed removal is reported as a warning.
+		wantIsWarned bool
+	}{
+		{name: "no draft cancels", wantErr: ErrDraftUnchanged},
+		{name: "an empty draft cancels", drafts: map[string]string{NewTaskDraftName: " \n"}, wantErr: ErrDraftUnchanged},
+		{name: "the template cancels", drafts: map[string]string{NewTaskDraftName: draftTemplate}, wantErr: ErrDraftUnchanged},
+		{
+			name:    "a template the editor trimmed cancels",
+			drafts:  map[string]string{NewTaskDraftName: "---\ntitle:\nstatus: draft\nticket:\nparent:\nblocked-by:\nrepos:\npull-requests:\n---\n"},
+			wantErr: ErrDraftUnchanged,
+		},
+		{name: "a draft with no title and no description cancels", drafts: map[string]string{NewTaskDraftName: "---\nstatus: todo\n---\n"}, wantErr: ErrDraftUnchanged},
+		{
+			name:      "a cancel that cannot remove the draft fails",
+			drafts:    map[string]string{NewTaskDraftName: draftTemplate},
+			removeErr: errDraftRemoval,
+			wantErr:   errDraftRemoval,
+			wantDraft: draftTemplate,
+		},
+		{
+			name:       "a draft that does not parse stays",
+			drafts:     map[string]string{NewTaskDraftName: "---\ntilte: Add retry\n---\n"},
+			wantErrMsg: `line 2: a draft has no key "tilte", use one of: title, status, ticket, parent, blocked-by, repos, pull-requests`,
+			wantDraft:  "---\ntilte: Add retry\n---\n",
+		},
+		{
+			name:       "a draft the service refuses stays",
+			drafts:     map[string]string{NewTaskDraftName: "---\ntitle: Add retry\nblocked-by: a01f3b55\n---\n"},
+			wantErrMsg: `could not block on "a01f3b55": task "a01f3b55" not found`,
+			wantDraft:  "---\ntitle: Add retry\nblocked-by: a01f3b55\n---\n",
+		},
+		{
+			name:       "a created task removes the draft",
+			drafts:     map[string]string{NewTaskDraftName: validDraft},
+			wantTitles: []string{"Add retry"},
+		},
+		{
+			name:         "a draft that cannot be removed after the create is a warning",
+			drafts:       map[string]string{NewTaskDraftName: validDraft},
+			removeErr:    errDraftRemoval,
+			wantTitles:   []string{"Add retry"},
+			wantDraft:    validDraft,
+			wantIsWarned: true,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := &fakeTaskRepo{}
+			drafts := newFakeDraftRepo(testCase.drafts)
+			drafts.removeErr = testCase.removeErr
+			progress := &fakeProgress{}
+			service := NewTaskService(repo, drafts, progress, StatusDraft, nil)
+
+			created, err := service.CreateTaskFromDraft(draftTestProject)
+
+			switch {
+			case testCase.wantErrMsg != "":
+				if err == nil || err.Error() != testCase.wantErrMsg {
+					t.Errorf("expected error %q, got %v", testCase.wantErrMsg, err)
+				}
+			case !errors.Is(err, testCase.wantErr):
+				t.Errorf("expected error %v, got %v", testCase.wantErr, err)
+			}
+			var gotTitles []string
+			for _, stored := range repo.tasks {
+				gotTitles = append(gotTitles, stored.Title)
+			}
+			if !slices.Equal(gotTitles, testCase.wantTitles) {
+				t.Errorf("expected tasks %q, got %q", testCase.wantTitles, gotTitles)
+			}
+			if wantIsReturned := len(testCase.wantTitles) > 0; wantIsReturned != (created != nil) {
+				t.Errorf("expected the created task back: %v, got %+v", wantIsReturned, created)
+			}
+			if got := drafts.drafts[NewTaskDraftName]; got != testCase.wantDraft {
+				t.Errorf("expected draft %q, got %q", testCase.wantDraft, got)
+			}
+			var wantWarnings []any
+			if testCase.wantIsWarned {
+				wantWarnings = []any{DraftRemovalFailed{Task: created, Err: errDraftRemoval}}
+			}
+			if got := draftRemovalWarnings(progress.events); !reflect.DeepEqual(got, wantWarnings) {
+				t.Errorf("expected warnings %+v, got %+v", wantWarnings, got)
+			}
+		})
+	}
+}
+
+func draftRemovalWarnings(events []any) []any {
+	var warnings []any
+	for _, event := range events {
+		if _, ok := event.(DraftRemovalFailed); ok {
+			warnings = append(warnings, event)
+		}
+	}
+	return warnings
 }

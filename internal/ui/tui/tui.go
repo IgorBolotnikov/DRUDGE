@@ -9,7 +9,6 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
-	drudgeconfig "github.com/IgorBolotnikov/DRUDGE/internal/config"
 	"github.com/IgorBolotnikov/DRUDGE/internal/theme"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
@@ -62,8 +61,11 @@ func Run() error {
 	}
 	sources := feeds.Sources{Tasks: feedServices.Tasks, Drudgers: feedServices.Drudgers}
 	commands := actions.New(actions.Services{Drudgers: commandServices.Drudgers, Tasks: commandServices.Tasks}, shownProject.Slug, commandKinds)
-	defaultStatus := drudgeconfig.ResolveDefaultTaskStatus(configs.Local, configs.Global)
-	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), defaultStatus, warnings)
+	editor := app.NewEditor()
+	runEditor := func(path string) tea.Cmd {
+		return tea.ExecProcess(editor.Command(path), editorExited(editor.Name()))
+	}
+	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), runEditor, warnings)
 	if err != nil {
 		return err
 	}
