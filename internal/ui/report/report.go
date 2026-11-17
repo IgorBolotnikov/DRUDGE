@@ -73,6 +73,8 @@ func Lines(event any, nameTask TaskNamer) []Line {
 		return []Line{done("Created task %s", nameTask(event.Task))}
 	case task.DraftRemovalFailed:
 		return []Line{warn("Added task %s, but could not remove its draft: %v", nameTask(event.Task), event.Err)}
+	case task.EditDraftRemovalFailed:
+		return []Line{warn("Edited task %s, but could not remove its draft: %v", nameTask(event.Task), event.Err)}
 	case task.TaskRemovalDeclined:
 		return []Line{skip("Left task %s alone", nameTask(event.Task))}
 	case task.TaskRemovalStarted:

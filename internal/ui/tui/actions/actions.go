@@ -16,16 +16,20 @@ import (
 )
 
 // DrudgerService runs a task the way drg task run does, marks a task done the
-// way drg task done does and reads the Drudgers of a project.
+// way drg task done does, edits a task from its draft and reads the Drudgers
+// of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
+	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 
-// TaskService opens the draft of a new task and adds the task it describes.
+// TaskService opens the draft of a new task and adds the task it describes,
+// and opens the draft of a task.
 type TaskService interface {
 	OpenDraft(projectSlug string) (string, error)
+	OpenTaskDraft(projectSlug string, id task.TaskID) (string, error)
 	CreateTaskFromDraft(projectSlug string) (*task.Task, error)
 }
 

@@ -41,6 +41,10 @@ func (service *fakeTaskService) OpenDraft(projectSlug string) (string, error) {
 	return testDraftPath, nil
 }
 
+func (service *fakeTaskService) OpenTaskDraft(projectSlug string, id task.TaskID) (string, error) {
+	return "", errors.New("a new task opens no draft of a task")
+}
+
 func (service *fakeTaskService) CreateTaskFromDraft(projectSlug string) (*task.Task, error) {
 	service.projectSlugs = append(service.projectSlugs, projectSlug)
 	if service.createErr != nil {

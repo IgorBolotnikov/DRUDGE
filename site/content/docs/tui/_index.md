@@ -89,6 +89,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `L` | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail |
 | `r` | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog |
 | `m` | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done |
+| `e` | Edits the task under the cursor of a list or a board, or the task shown in a detail or a runlog, in `$EDITOR` |
 | `n` | Adds a task from a draft in `$EDITOR`, in a list or a board |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
@@ -125,6 +126,10 @@ Retry a failed upload three times with a backoff.
 The header takes the keys `title`, `status`, `ticket`, `parent`, `blocked-by`, `repos` and `pull-requests`. Lists are comma-separated, like the flags of `drg task new`. The status starts as `task.defaultStatus` from the [config]({{< relref "/docs/configuration/config" >}}), `todo` when it is unset. An empty `repos` means every repository of the project. Save and quit the editor to add the task. The verdict names it, like `✓ 3f9a1c2e  Add retry to uploader added`. Quitting without a change, or leaving the title and the description empty, adds nothing and the bar says `· nothing changed`.
 
 A draft with an unknown key, a line that is not `key: value` or a header without its `---` lines shows an error that names the line, like `✗ line 3: a draft has no key "tilte", …`. A draft DRUDGE refuses, like one blocked by a task that does not exist, shows the error of the CLI. In both cases DRUDGE keeps the draft, the error ends with `n to reopen your draft`, and the next `n` opens it again with your text. The draft lives at `~/.drudge/projects/<project>/drafts/new-task.md`, and DRUDGE deletes it once the task is added.
+
+`e` edits a task the way [`drg task edit`]({{< relref "/docs/cli/task/edit" >}}) does. It works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. It opens a draft of the task in `$EDITOR` with the same keys as the draft of a new task, filled with the current values of the task. Save and quit the editor to change the task. The verdict names the task and the fields that changed, like `✓ 3f9a1c2e  Add retry to uploader edited · title, status`. A list in the draft replaces the whole list of the task, and an empty list clears it. Quitting without a change, or emptying the file, changes nothing and the bar says `· nothing changed`.
+
+The draft never forces a status. Setting `in-progress`, `fucked-up` or `unmerged`, the statuses DRUDGE writes itself, shows the error of `drg task edit` without `--force`. A draft that does not parse or that DRUDGE refuses stays like the draft of a new task, and the error ends with `e to reopen your draft`. Each task has a draft of its own at `~/.drudge/projects/<project>/drafts/<task id>.md`, and DRUDGE deletes it once the task is edited.
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

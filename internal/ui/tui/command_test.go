@@ -23,10 +23,12 @@ var keyEventLog = tea.KeyPressMsg{Code: '!', Text: "!"}
 var errNotTodo = errors.New(`task 7c1e4f90 is "in progress", only a task that is "todo" can run`)
 
 // fakeCommandService refuses every run with runErr and records the task of
-// every run. Its Drudgers hold the tasks it ran, from slot 2 up.
+// every run and of every edit from a draft. Its Drudgers hold the tasks it
+// ran, from slot 2 up.
 type fakeCommandService struct {
-	runErr error
-	runIDs []task.TaskID
+	runErr  error
+	runIDs  []task.TaskID
+	editIDs []task.TaskID
 }
 
 func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
@@ -36,6 +38,11 @@ func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.
 
 func (service *fakeCommandService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	return nil, nil, errors.New("the command tests mark no task done")
+}
+
+func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
+	service.editIDs = append(service.editIDs, id)
+	return &task.Task{ID: id, Title: "Add retry"}, []string{"title"}, nil
 }
 
 func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {

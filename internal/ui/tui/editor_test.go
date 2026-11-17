@@ -13,9 +13,15 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-var keyNewTask = tea.KeyPressMsg{Code: 'n', Text: "n"}
+var (
+	keyNewTask  = tea.KeyPressMsg{Code: 'n', Text: "n"}
+	keyEditTask = tea.KeyPressMsg{Code: 'e', Text: "e"}
+)
 
-const testDraftPath = "/home/user/.drudge/projects/demo/drafts/new-task.md"
+const (
+	testDraftPath     = "/home/user/.drudge/projects/demo/drafts/new-task.md"
+	testTaskDraftPath = "/home/user/.drudge/projects/demo/drafts/3f9a1c2e-0000-0000-0000-000000000001.md"
+)
 
 var (
 	errDraftUnwritable = errors.New("could not write the draft: permission denied")
@@ -24,7 +30,8 @@ var (
 
 // fakeTaskService opens its draft at the test draft path or fails with
 // openErr, and answers every create from the draft with createErr or a task
-// titled Add retry.
+// titled Add retry. It opens the draft of every task at the test task draft
+// path.
 type fakeTaskService struct {
 	openErr     error
 	createErr   error
@@ -36,6 +43,10 @@ func (service *fakeTaskService) OpenDraft(projectSlug string) (string, error) {
 		return "", service.openErr
 	}
 	return testDraftPath, nil
+}
+
+func (service *fakeTaskService) OpenTaskDraft(projectSlug string, id task.TaskID) (string, error) {
+	return testTaskDraftPath, nil
 }
 
 func (service *fakeTaskService) CreateTaskFromDraft(projectSlug string) (*task.Task, error) {
@@ -62,11 +73,12 @@ func (editor *fakeEditor) Edit(path string, done tea.ExecCallback) tea.Cmd {
 }
 
 // newDraftTestModel returns a model of one task list Tab whose new tasks go
-// to service and whose drafts are edited by editor.
-func newDraftTestModel(t *testing.T, source *fakeTaskSource, service *fakeTaskService, editor *fakeEditor) *Model {
+// to service, whose edits from a draft go to drudgers and whose drafts are
+// edited by editor.
+func newDraftTestModel(t *testing.T, source *fakeTaskSource, service *fakeTaskService, drudgers *fakeCommandService, editor *fakeEditor) *Model {
 	t.Helper()
 	model := newTestModelWithSource(t, source, testTabs(t, "Tasks"), nil)
-	services := actions.Services{Drudgers: &fakeCommandService{}, Tasks: service, Editor: editor}
+	services := actions.Services{Drudgers: drudgers, Tasks: service, Editor: editor}
 	model.commands = actions.New(services, testProject.Slug, commandKinds)
 	recordTimers(model)
 	update(model, tea.WindowSizeMsg{Width: 140, Height: 24})
@@ -117,7 +129,7 @@ func TestModel_NewTask(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			source := &fakeTaskSource{tasks: tuitest.ListedTasks()}
 			editor := &fakeEditor{exitErr: testCase.editorErr}
-			model := newDraftTestModel(t, source, testCase.service, editor)
+			model := newDraftTestModel(t, source, testCase.service, &fakeCommandService{}, editor)
 			listCountBefore := source.callCount.Load()
 
 			pressKeys(model, []tea.Msg{keyNewTask})
@@ -140,7 +152,7 @@ func TestModel_NewTask(t *testing.T) {
 
 func TestModel_NewTaskRefusedWhileCommandRuns(t *testing.T) {
 	editor := &fakeEditor{}
-	model := newDraftTestModel(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, &fakeTaskService{}, editor)
+	model := newDraftTestModel(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, &fakeTaskService{}, &fakeCommandService{}, editor)
 	startHeld(model, views.RunTaskMsg{TaskID: runTaskID})
 
 	pressKeys(model, []tea.Msg{keyNewTask})
@@ -150,5 +162,48 @@ func TestModel_NewTaskRefusedWhileCommandRuns(t *testing.T) {
 	}
 	if got, want := commandLine(model), "! wait, still running run 7c1e4f90"; got != want {
 		t.Errorf("expected line %q, got %q", want, got)
+	}
+}
+
+func TestModel_EditTask(t *testing.T) {
+	cursorTaskID := tuitest.ListedTasks()[0].Task.ID
+	cases := []struct {
+		name            string
+		editorErr       error
+		wantEditedPaths []string
+		wantEditIDs     []task.TaskID
+		wantLine        string
+	}{
+		{
+			name:            "an edited draft edits the task under the cursor",
+			wantEditedPaths: []string{testTaskDraftPath},
+			wantEditIDs:     []task.TaskID{cursorTaskID},
+			wantLine:        "✓ 3f9a1c2e  Add retry edited · title",
+		},
+		{
+			name:            "a failed editor edits no task",
+			editorErr:       errEditorExit,
+			wantEditedPaths: []string{testTaskDraftPath},
+			wantLine:        "✗ editor vi failed: exit status 1",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			drudgers := &fakeCommandService{}
+			editor := &fakeEditor{exitErr: testCase.editorErr}
+			model := newDraftTestModel(t, &fakeTaskSource{tasks: tuitest.ListedTasks()}, &fakeTaskService{}, drudgers, editor)
+
+			pressKeys(model, []tea.Msg{keyEditTask})
+
+			if !slices.Equal(editor.paths, testCase.wantEditedPaths) {
+				t.Errorf("expected edits of %q, got %q", testCase.wantEditedPaths, editor.paths)
+			}
+			if !slices.Equal(drudgers.editIDs, testCase.wantEditIDs) {
+				t.Errorf("expected edits from a draft of %v, got %v", testCase.wantEditIDs, drudgers.editIDs)
+			}
+			if got := commandLine(model); got != testCase.wantLine {
+				t.Errorf("expected line %q, got %q", testCase.wantLine, got)
+			}
+		})
 	}
 }

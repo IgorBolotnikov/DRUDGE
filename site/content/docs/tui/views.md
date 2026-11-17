@@ -43,6 +43,7 @@ The view takes no options.
 | `L` | runlog |
 | `r` | run |
 | `m` | mark done |
+| `e` | edit |
 | `n` | new task |
 
 ## `task-detail`
@@ -63,6 +64,7 @@ The view takes no options.
 | `L` | runlog |
 | `r` | run |
 | `m` | mark done |
+| `e` | edit |
 
 ## `task-list`
 
@@ -86,6 +88,7 @@ Lists the tasks of the project with the rows of drg task list.
 | `esc` | clear filter |
 | `r` | run |
 | `m` | mark done |
+| `e` | edit |
 | `n` | new task |
 
 ## `task-runlog`
@@ -105,3 +108,4 @@ The view takes no options.
 | `g/G` | top/bottom |
 | `r` | run |
 | `m` | mark done |
+| `e` | edit |

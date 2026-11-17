@@ -41,6 +41,10 @@ func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) 
 	return &task.Task{ID: id, Status: task.StatusDone}, service.unblocked, nil
 }
 
+func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
+	return nil, nil, errors.New("a mark done edits no task")
+}
+
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, errors.New("a mark done reads no Drudgers")
 }

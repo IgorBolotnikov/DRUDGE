@@ -3,6 +3,7 @@ package task
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/common"
@@ -31,8 +32,12 @@ const listJoiner = ", "
 // draftKeyJoiner joins the keys of a draft in an error.
 const draftKeyJoiner = ", "
 
-// ErrDraftUnchanged says the draft of a new task describes no task, so no task
-// was added.
+// draftDescriptionField names the description among the fields an edit from a
+// draft changes.
+const draftDescriptionField = "description"
+
+// ErrDraftUnchanged says a draft describes no new task or changes nothing on
+// its task, so no task was added or edited.
 var ErrDraftUnchanged = errors.New("the draft is unchanged")
 
 // DraftRemovalFailed reports a task added from a draft whose draft could not
@@ -42,7 +47,14 @@ type DraftRemovalFailed struct {
 	Err  error
 }
 
-// Draft is a new task written in an editor. It holds the fields of drg task
+// EditDraftRemovalFailed reports a task edited from its draft whose draft could
+// not be removed. The edit stands.
+type EditDraftRemovalFailed struct {
+	Task *Task
+	Err  error
+}
+
+// Draft is a task written in an editor. It holds the fields of drg task
 // new and the description.
 type Draft struct {
 	Title        string
@@ -135,20 +147,143 @@ func (draft Draft) Dto(projectSlug string) CreateTaskDto {
 	}
 }
 
+// taskDraft returns the draft that holds the current values of a task, with
+// the description trimmed the way a parsed draft has it.
+func taskDraft(stored *Task) Draft {
+	return Draft{
+		Title:        stored.Title,
+		Status:       stored.Status,
+		TicketID:     stored.TicketID,
+		ParentTaskID: stored.ParentTaskID,
+		BlockedBy:    stored.BlockedBy,
+		Repositories: stored.Repositories,
+		PullRequests: stored.PullRequests,
+		Description:  strings.TrimSpace(stored.Description),
+	}
+}
+
+// DiffDraft returns the edit that turns a task into what a draft of it
+// describes. The edit names only the fields that differ, and a list that
+// differs replaces the whole list. The blank space at the ends of the
+// description of the task is ignored, because a parsed draft has none.
+func DiffDraft(stored *Task, draft Draft) EditTaskDto {
+	var changes EditTaskDto
+	if draft.Title != stored.Title {
+		changes.Title = &draft.Title
+	}
+	if draft.Status != stored.Status {
+		changes.Status = &draft.Status
+	}
+	if draft.TicketID != stored.TicketID {
+		changes.TicketID = &draft.TicketID
+	}
+	if draft.ParentTaskID != stored.ParentTaskID {
+		changes.ParentTaskID = &draft.ParentTaskID
+	}
+	if !slices.Equal(draft.BlockedBy, stored.BlockedBy) {
+		changes.BlockedBy = &draft.BlockedBy
+	}
+	if !slices.Equal(draft.Repositories, stored.Repositories) {
+		changes.Repositories = &draft.Repositories
+	}
+	if !slices.Equal(draft.PullRequests, stored.PullRequests) {
+		changes.PullRequests = &draft.PullRequests
+	}
+	if draft.Description != strings.TrimSpace(stored.Description) {
+		changes.Description = &draft.Description
+	}
+	return changes
+}
+
+// DraftFields returns the names of the fields of a draft an edit changes, in
+// the order a draft shows them.
+func (changes EditTaskDto) DraftFields() []string {
+	var fields []string
+	appendIf := func(isChanged bool, field string) {
+		if isChanged {
+			fields = append(fields, field)
+		}
+	}
+	appendIf(changes.Title != nil, draftTitleKey)
+	appendIf(changes.Status != nil, draftStatusKey)
+	appendIf(changes.TicketID != nil, draftTicketKey)
+	appendIf(changes.ParentTaskID != nil, draftParentKey)
+	appendIf(changes.BlockedBy != nil, draftBlockedByKey)
+	appendIf(changes.Repositories != nil, draftReposKey)
+	appendIf(changes.PullRequests != nil, draftPullRequestsKey)
+	appendIf(changes.Description != nil, draftDescriptionField)
+	return fields
+}
+
 // OpenDraft writes the template of a new task to the draft of a project
 // unless the project keeps a draft, and returns the path of the draft. The
 // template has the status a new task gets by default.
 func (service *TaskService) OpenDraft(projectSlug string) (string, error) {
-	_, isFound, err := service.drafts.ReadDraft(projectSlug, NewTaskDraftName)
+	return service.openDraft(projectSlug, NewTaskDraftName, service.draftTemplate())
+}
+
+// OpenTaskDraft writes the current values of a task to its draft unless the
+// task keeps a draft, and returns the path of the draft. The id may be a
+// prefix. Each task has a draft of its own, named after its full id.
+func (service *TaskService) OpenTaskDraft(projectSlug string, id TaskID) (string, error) {
+	if id == "" {
+		return "", ErrNoTaskID
+	}
+	found, err := service.repo.FindTask(projectSlug, string(id))
+	if err != nil {
+		return "", err
+	}
+	return service.openDraft(projectSlug, taskDraftName(found.ID), FormatDraft(taskDraft(found)))
+}
+
+// ReadTaskDraft returns a task as it stands and the draft of it. The id may be
+// a prefix. A missing or blank draft reads as the current values of the task.
+// It refuses a draft that does not parse.
+func (service *TaskService) ReadTaskDraft(projectSlug string, id TaskID) (*Task, Draft, error) {
+	if id == "" {
+		return nil, Draft{}, ErrNoTaskID
+	}
+	found, err := service.repo.FindTask(projectSlug, string(id))
+	if err != nil {
+		return nil, Draft{}, err
+	}
+	content, _, err := service.drafts.ReadDraft(projectSlug, taskDraftName(found.ID))
+	if err != nil {
+		return nil, Draft{}, err
+	}
+	if strings.TrimSpace(content) == "" {
+		return found, taskDraft(found), nil
+	}
+	draft, err := ParseDraft(content)
+	if err != nil {
+		return nil, Draft{}, err
+	}
+	return found, draft, nil
+}
+
+// RemoveTaskDraft removes the draft of the task with the full id. A missing
+// draft is no error.
+func (service *TaskService) RemoveTaskDraft(projectSlug string, id TaskID) error {
+	return service.drafts.RemoveDraft(projectSlug, taskDraftName(id))
+}
+
+func taskDraftName(id TaskID) string {
+	return string(id)
+}
+
+// openDraft writes content to the draft called name unless the project keeps
+// a draft by that name, and returns the path of the draft.
+func (service *TaskService) openDraft(projectSlug string, name string, content string) (string, error) {
+	_, isFound, err := service.drafts.ReadDraft(projectSlug, name)
 	if err != nil {
 		return "", err
 	}
 	if !isFound {
-		if err := service.drafts.WriteDraft(projectSlug, NewTaskDraftName, service.draftTemplate()); err != nil {
+		if err := service.drafts.WriteDraft(projectSlug, name, content); err != nil {
 			return "", err
 		}
 	}
-	return service.drafts.DraftPath(projectSlug, NewTaskDraftName)
+	return service.drafts.DraftPath(projectSlug, name)
 }
 
 // CreateTaskFromDraft adds the task the draft of a project describes and

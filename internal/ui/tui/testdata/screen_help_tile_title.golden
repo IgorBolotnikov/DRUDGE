@@ -8,6 +8,7 @@
 │  draft          a01f3b55  Draft │ esc   clear filter           │  a01f3b55  Draft the release no…│
 │                                 │ r     run                    │                                 │
 │                                 │ m     mark done              │                                 │
+│                                 │ e     edit                   │                                 │
 │                                 │ n     new task               │                                 │
 │                                 │                              │                                 │
 │                                 │ Global                       │                                 │
@@ -19,6 +20,5 @@
 │                                 │ !             event log      │                                 │
 │                                 │ esc           clear error    │                                 │
 │                                 │ ?             help           │                                 │
-│                                 │ q             quit           │                                 │
-╰─────────────────────────────────╰──────────────────────────────╯─────────────────────────── 1/5 ─╯
-                                                                                         esc/q close
+╰─────────────────────────────────│ q             quit           │─────────────────────────── 1/5 ─╯
+                                  ╰──────────────────────────────╯                       esc/q close

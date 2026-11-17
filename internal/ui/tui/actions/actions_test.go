@@ -26,6 +26,10 @@ func (fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Ta
 	return nil, nil, nil
 }
 
+func (fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
+	return nil, nil, nil
+}
+
 func (fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, nil
 }

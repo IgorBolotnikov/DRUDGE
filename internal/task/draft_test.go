@@ -332,3 +332,171 @@ func draftRemovalWarnings(events []any) []any {
 	}
 	return warnings
 }
+
+func TestDiffDraft(t *testing.T) {
+	stored := &Task{
+		ID:           "3f9a1c2e-0000-4000-8000-000000000001",
+		Title:        "Add retry",
+		Status:       StatusTodo,
+		TicketID:     "UP-12",
+		ParentTaskID: "5b20d7aa",
+		BlockedBy:    []TaskID{"a01f3b55"},
+		Repositories: []string{"api"},
+		PullRequests: []string{"https://github.com/acme/api/pull/7"},
+		Description:  "Retry the upload.\n",
+	}
+	unchanged := func() Draft {
+		return Draft{
+			Title:        "Add retry",
+			Status:       StatusTodo,
+			TicketID:     "UP-12",
+			ParentTaskID: "5b20d7aa",
+			BlockedBy:    []TaskID{"a01f3b55"},
+			Repositories: []string{"api"},
+			PullRequests: []string{"https://github.com/acme/api/pull/7"},
+			Description:  "Retry the upload.",
+		}
+	}
+	title := "Add retry to uploader"
+	status := StatusDraft
+	ticket := "UP-13"
+	parent := TaskID("")
+	blockedBy := []TaskID{"a01f3b55", "7c1e4f90"}
+	repositories := []string{"api", "web"}
+	noPullRequests := []string{}
+	description := "Retry the upload three times."
+	cases := []struct {
+		name       string
+		edit       func(draft *Draft)
+		want       EditTaskDto
+		wantFields []string
+	}{
+		{name: "nothing changed", edit: func(draft *Draft) {}},
+		{name: "title", edit: func(draft *Draft) { draft.Title = title }, want: EditTaskDto{Title: &title}, wantFields: []string{"title"}},
+		{name: "status", edit: func(draft *Draft) { draft.Status = status }, want: EditTaskDto{Status: &status}, wantFields: []string{"status"}},
+		{name: "ticket", edit: func(draft *Draft) { draft.TicketID = ticket }, want: EditTaskDto{TicketID: &ticket}, wantFields: []string{"ticket"}},
+		{name: "parent cleared", edit: func(draft *Draft) { draft.ParentTaskID = parent }, want: EditTaskDto{ParentTaskID: &parent}, wantFields: []string{"parent"}},
+		{name: "blockers replaced", edit: func(draft *Draft) { draft.BlockedBy = blockedBy }, want: EditTaskDto{BlockedBy: &blockedBy}, wantFields: []string{"blocked-by"}},
+		{name: "repositories replaced", edit: func(draft *Draft) { draft.Repositories = repositories }, want: EditTaskDto{Repositories: &repositories}, wantFields: []string{"repos"}},
+		{name: "pull requests cleared", edit: func(draft *Draft) { draft.PullRequests = noPullRequests }, want: EditTaskDto{PullRequests: &noPullRequests}, wantFields: []string{"pull-requests"}},
+		{name: "description", edit: func(draft *Draft) { draft.Description = description }, want: EditTaskDto{Description: &description}, wantFields: []string{"description"}},
+		{
+			name:       "fields in the order of a draft",
+			edit:       func(draft *Draft) { draft.Description, draft.Title = description, title },
+			want:       EditTaskDto{Title: &title, Description: &description},
+			wantFields: []string{"title", "description"},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			draft := unchanged()
+			testCase.edit(&draft)
+
+			got := DiffDraft(stored, draft)
+
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("expected %+v, got %+v", testCase.want, got)
+			}
+			if fields := got.DraftFields(); !slices.Equal(fields, testCase.wantFields) {
+				t.Errorf("expected fields %q, got %q", testCase.wantFields, fields)
+			}
+		})
+	}
+}
+
+const (
+	draftTestTaskID TaskID = "3f9a1c2e-0000-4000-8000-000000000001"
+	storedTaskDraft        = "---\ntitle: Add retry\nstatus: todo\nticket: UP-12\nparent: \nblocked-by: \nrepos: api\npull-requests: \n---\n\nRetry the upload."
+	keptTaskDraft          = "---\ntitle: Add retry to uploader\n---\n"
+)
+
+func TestTaskService_OpenTaskDraft(t *testing.T) {
+	cases := []struct {
+		name      string
+		id        TaskID
+		drafts    map[string]string
+		wantErr   string
+		wantDraft string
+	}{
+		{name: "no draft gets the values of the task", id: draftTestTaskID, wantDraft: storedTaskDraft},
+		{name: "a prefix names the task", id: "3f9a", wantDraft: storedTaskDraft},
+		{name: "a kept draft is reopened", id: draftTestTaskID, drafts: map[string]string{string(draftTestTaskID): keptTaskDraft}, wantDraft: keptTaskDraft},
+		{name: "the draft of a new task is left alone", id: draftTestTaskID, drafts: map[string]string{NewTaskDraftName: validDraft}, wantDraft: storedTaskDraft},
+		{name: "an unknown task opens no draft", id: "ffff", wantErr: `task "ffff" not found`},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := &fakeTaskRepo{tasks: []*Task{draftTestTask()}}
+			drafts := newFakeDraftRepo(testCase.drafts)
+			service := NewTaskService(repo, drafts, &fakeProgress{}, StatusDraft, nil)
+
+			path, err := service.OpenTaskDraft(draftTestProject, testCase.id)
+
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("expected error %q, got %v", testCase.wantErr, err)
+				}
+				if len(drafts.drafts) != len(testCase.drafts) {
+					t.Errorf("expected no draft written, got %q", drafts.drafts)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("OpenTaskDraft: %v", err)
+			}
+			if path != draftTestPath {
+				t.Errorf("expected path %q, got %q", draftTestPath, path)
+			}
+			if got := drafts.drafts[string(draftTestTaskID)]; got != testCase.wantDraft {
+				t.Errorf("expected draft %q, got %q", testCase.wantDraft, got)
+			}
+		})
+	}
+}
+
+func TestTaskService_ReadTaskDraft(t *testing.T) {
+	storedDraft := Draft{Title: "Add retry", Status: StatusTodo, TicketID: "UP-12", Repositories: []string{"api"}, Description: "Retry the upload."}
+	cases := []struct {
+		name      string
+		drafts    map[string]string
+		wantDraft Draft
+		wantErr   string
+	}{
+		{name: "no draft reads as the task", wantDraft: storedDraft},
+		{name: "a blank draft reads as the task", drafts: map[string]string{string(draftTestTaskID): " \n"}, wantDraft: storedDraft},
+		{name: "an edited draft", drafts: map[string]string{string(draftTestTaskID): keptTaskDraft}, wantDraft: Draft{Title: "Add retry to uploader"}},
+		{
+			name:    "a draft that does not parse",
+			drafts:  map[string]string{string(draftTestTaskID): "---\ntilte: Add retry\n---\n"},
+			wantErr: `line 2: a draft has no key "tilte", use one of: title, status, ticket, parent, blocked-by, repos, pull-requests`,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := &fakeTaskRepo{tasks: []*Task{draftTestTask()}}
+			service := NewTaskService(repo, newFakeDraftRepo(testCase.drafts), &fakeProgress{}, StatusDraft, nil)
+
+			stored, draft, err := service.ReadTaskDraft(draftTestProject, "3f9a")
+
+			if testCase.wantErr != "" {
+				if err == nil || err.Error() != testCase.wantErr {
+					t.Fatalf("expected error %q, got %v", testCase.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadTaskDraft: %v", err)
+			}
+			if stored.ID != draftTestTaskID {
+				t.Errorf("expected task %s, got %s", draftTestTaskID, stored.ID)
+			}
+			if !reflect.DeepEqual(draft, testCase.wantDraft) {
+				t.Errorf("expected draft %+v, got %+v", testCase.wantDraft, draft)
+			}
+		})
+	}
+}
+
+func draftTestTask() *Task {
+	return &Task{ID: draftTestTaskID, Title: "Add retry", Status: StatusTodo, TicketID: "UP-12", Repositories: []string{"api"}, Description: "Retry the upload.\n"}
+}

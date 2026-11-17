@@ -15,6 +15,7 @@ const (
 	RunTaskCommand  CommandName = "run"
 	MarkDoneCommand CommandName = "done"
 	NewTaskCommand  CommandName = "new"
+	EditTaskCommand CommandName = "edit"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -45,6 +46,16 @@ func (MarkDoneMsg) CommandName() CommandName { return MarkDoneCommand }
 
 func (msg MarkDoneMsg) Target() string { return task.ShortID(msg.TaskID) }
 
+// EditTaskMsg asks to open the draft of a task in the editor and change the
+// task to what the draft describes the way drg task edit does.
+type EditTaskMsg struct {
+	TaskID task.TaskID
+}
+
+func (EditTaskMsg) CommandName() CommandName { return EditTaskCommand }
+
+func (msg EditTaskMsg) Target() string { return task.ShortID(msg.TaskID) }
+
 // newTaskTarget names the target of a new task command. The title of the task
 // is known only once the command parsed its draft.
 const newTaskTarget = "task"
@@ -69,11 +80,12 @@ func NewTask() tea.Msg {
 var (
 	runTaskKey  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
 	markDoneKey = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
+	editTaskKey = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
 )
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey, markDoneKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, markDoneKey, editTaskKey}
 
 // TaskCommand returns the command that sends the command message of a key for
 // the task with id. It returns nil for a key of no command and for an empty
@@ -88,6 +100,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 		commandMsg = RunTaskMsg{TaskID: id}
 	case key.Matches(msg, markDoneKey):
 		commandMsg = MarkDoneMsg{TaskID: id}
+	case key.Matches(msg, editTaskKey):
+		commandMsg = EditTaskMsg{TaskID: id}
 	default:
 		return nil
 	}
