@@ -121,6 +121,7 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "r runs the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyRun, want: []tea.Msg{views.RunTaskMsg{TaskID: secondID}}},
 		{name: "r with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyRun},
 		{name: "r goes into the open filter", messages: []tea.Msg{loaded, tuitest.KeyFilter}, input: tuitest.KeyRun},
+		{name: "R reruns the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyRerun, want: []tea.Msg{views.RerunTaskMsg{TaskID: secondID}}},
 		{name: "m marks the task under the cursor done", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: secondID}}},
 		{name: "m with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyMarkDone},
 		{name: "click moves the cursor onto a task", messages: []tea.Msg{loaded}, input: tea.MouseClickMsg{Y: 3, Button: tea.MouseLeft}, want: []tea.Msg{views.TaskSelectedMsg{TaskID: thirdID}}},

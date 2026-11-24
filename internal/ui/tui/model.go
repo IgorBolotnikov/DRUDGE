@@ -135,6 +135,10 @@ func (model *Model) handleMsg(msg tea.Msg) tea.Cmd {
 		return tea.Batch(model.deliver(feed, feedMsg), rerun)
 	case views.CommandMsg:
 		return model.handleCommand(msg)
+	case commandConfirmedMsg:
+		return model.handleCommandConfirmed(msg)
+	case actions.ConfirmMsg:
+		model.push(newConfirmOverlay(msg.Question, msg.Answer, model.help, model.styles))
 	case actions.ProgressMsg:
 		model.handleProgress(msg)
 	case actions.DoneMsg:
@@ -292,7 +296,7 @@ func (model *Model) handleResize(msg tea.WindowSizeMsg) {
 // all keys gets every key but ctrl+c.
 func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key.Matches(msg, interruptKey) {
-		return tea.Quit
+		return model.quit()
 	}
 	if top, ok := model.topOverlay(); ok {
 		return model.handleOverlayKey(top, msg)
@@ -303,7 +307,7 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch {
 	case key.Matches(msg, quitKey):
-		return tea.Quit
+		return model.quit()
 	case key.Matches(msg, helpKey):
 		model.pushHelp()
 	case key.Matches(msg, eventLogKey):
@@ -340,13 +344,19 @@ func (model *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // handleOverlayKey passes a key to the overlay on top when it takes all keys.
-// Otherwise esc or q closes the overlay, the help key closes the help or opens it
-// over the overlay, and every other key goes to the overlay.
+// A confirm overlay gets every key but the help key and closes once a key
+// answers it. Otherwise esc or q closes the overlay, the help key closes the
+// help or opens it over the overlay, and every other key goes to the overlay.
 func (model *Model) handleOverlayKey(top Overlay, msg tea.KeyPressMsg) tea.Cmd {
 	_, isHelp := top.(*helpOverlay)
+	confirm, isConfirm := top.(*confirmOverlay)
 	switch {
 	case top.TakesAllKeys():
 		return tagOverlay(top.Update(msg))
+	case isConfirm && !key.Matches(msg, helpKey):
+		if confirm.answerKey(msg) {
+			model.pop()
+		}
 	case key.Matches(msg, closeOverlayKey):
 		model.pop()
 	case key.Matches(msg, helpKey) && isHelp:
@@ -359,6 +369,16 @@ func (model *Model) handleOverlayKey(top Overlay, msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// quit answers no to every open confirm overlay and quits.
+func (model *Model) quit() tea.Cmd {
+	for _, overlay := range model.overlays {
+		if confirm, isConfirm := overlay.(*confirmOverlay); isConfirm {
+			confirm.cancel()
+		}
+	}
+	return tea.Quit
+}
+
 // pushHelp opens the help with the keys that work on the screen right now.
 func (model *Model) pushHelp() {
 	model.push(newHelpOverlay(model.help, model.styles, model.helpSections()))
@@ -367,12 +387,17 @@ func (model *Model) pushHelp() {
 // helpSections returns the keys the help lists, each section titled by what
 // the keys act on. With no overlay open they are the keys of the focused View
 // under the title of its Tile and the root keys. With an overlay on top they
-// are the keys of the overlay and the keys that close it and open the help.
+// are the keys of the overlay and the keys that close it and open the help. A
+// confirm overlay closes only on its answer, so its global key is the help.
 func (model *Model) helpSections() []helpSection {
 	if top, ok := model.topOverlay(); ok {
+		globalKeys := overlayBindings
+		if _, isConfirm := top.(*confirmOverlay); isConfirm {
+			globalKeys = []key.Binding{helpKey}
+		}
 		return []helpSection{
 			{title: top.Title(), keys: top.Keys()},
-			{title: globalHelpTitle, keys: overlayBindings},
+			{title: globalHelpTitle, keys: globalKeys},
 		}
 	}
 	focusedTile := model.ActiveTab().FocusedTile()

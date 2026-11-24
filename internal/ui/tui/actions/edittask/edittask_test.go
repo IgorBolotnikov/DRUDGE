@@ -61,6 +61,10 @@ func (service *fakeDrudgerService) RunTask(projectSlug string, requestedID task.
 	return errors.New("an edit runs no task")
 }
 
+func (service *fakeDrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
+	return errors.New("an edit reruns no task")
+}
+
 func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	return nil, nil, errors.New("an edit marks no task done")
 }

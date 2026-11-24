@@ -12,10 +12,11 @@ type CommandName string
 
 // Names of the kinds of commands. The bottom bar and the event log show them.
 const (
-	RunTaskCommand  CommandName = "run"
-	MarkDoneCommand CommandName = "done"
-	NewTaskCommand  CommandName = "new"
-	EditTaskCommand CommandName = "edit"
+	RunTaskCommand   CommandName = "run"
+	RerunTaskCommand CommandName = "rerun"
+	MarkDoneCommand  CommandName = "done"
+	NewTaskCommand   CommandName = "new"
+	EditTaskCommand  CommandName = "edit"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -36,6 +37,15 @@ type RunTaskMsg struct {
 func (RunTaskMsg) CommandName() CommandName { return RunTaskCommand }
 
 func (msg RunTaskMsg) Target() string { return task.ShortID(msg.TaskID) }
+
+// RerunTaskMsg asks to start a task over the way drg task rerun does.
+type RerunTaskMsg struct {
+	TaskID task.TaskID
+}
+
+func (RerunTaskMsg) CommandName() CommandName { return RerunTaskCommand }
+
+func (msg RerunTaskMsg) Target() string { return task.ShortID(msg.TaskID) }
 
 // MarkDoneMsg asks to mark an unmerged task done the way drg task done does.
 type MarkDoneMsg struct {
@@ -78,14 +88,15 @@ func NewTask() tea.Msg {
 }
 
 var (
-	runTaskKey  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
-	markDoneKey = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
-	editTaskKey = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
+	runTaskKey   = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
+	rerunTaskKey = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rerun"))
+	markDoneKey  = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
+	editTaskKey  = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
 )
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey, markDoneKey, editTaskKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey}
 
 // TaskCommand returns the command that sends the command message of a key for
 // the task with id. It returns nil for a key of no command and for an empty
@@ -98,6 +109,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 	switch {
 	case key.Matches(msg, runTaskKey):
 		commandMsg = RunTaskMsg{TaskID: id}
+	case key.Matches(msg, rerunTaskKey):
+		commandMsg = RerunTaskMsg{TaskID: id}
 	case key.Matches(msg, markDoneKey):
 		commandMsg = MarkDoneMsg{TaskID: id}
 	case key.Matches(msg, editTaskKey):

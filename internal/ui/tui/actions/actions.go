@@ -15,11 +15,12 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
 
-// DrudgerService runs a task the way drg task run does, marks a task done the
-// way drg task done does, edits a task from its draft and reads the Drudgers
-// of a project.
+// DrudgerService runs a task the way drg task run does, starts a task over the
+// way drg task rerun does, marks a task done the way drg task done does, edits
+// a task from its draft and reads the Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
+	RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
 	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
@@ -41,11 +42,19 @@ type Editor interface {
 	Edit(path string, done tea.ExecCallback) tea.Cmd
 }
 
+// Asker asks the user a question while a command runs. Confirm blocks until
+// the user answers and reports whether the answer is yes. It must be called
+// off the UI loop.
+type Asker interface {
+	Confirm(question string) bool
+}
+
 // Services are the services commands run.
 type Services struct {
 	Drudgers DrudgerService
 	Tasks    TaskService
 	Editor   Editor
+	Asker    Asker
 }
 
 // Command names a command and what it works on, like run 3f9a1c2e.
@@ -76,10 +85,15 @@ type DoneMsg struct {
 // The callback of that step leads to the DoneMsg of the command.
 type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) tea.Msg
 
-// Kind describes one kind of command.
+// QuestionFunc returns the question a command asks before it starts.
+type QuestionFunc func(command Command) string
+
+// Kind describes one kind of command. A kind with a question starts only once
+// the user answers yes to it.
 type Kind struct {
-	Name views.CommandName
-	Run  RunFunc
+	Name     views.CommandName
+	Run      RunFunc
+	Question QuestionFunc
 }
 
 // Actions runs the commands of the Views on the services of one project.
@@ -98,19 +112,31 @@ func New(services Services, projectSlug string, kinds []Kind) *Actions {
 // It panics on a command of a kind it does not know, which is a bug in the
 // View that sent it.
 func (actions *Actions) Start(msg views.CommandMsg) (Command, tea.Cmd) {
-	kind, ok := actions.findKind(msg.CommandName())
-	if !ok {
-		panic(fmt.Sprintf("a view asked for command %q, which no command kind runs", msg.CommandName()))
-	}
-	command := Command{Name: msg.CommandName(), Target: msg.Target()}
+	kind := actions.kind(msg)
+	command := newCommand(msg)
 	return command, func() tea.Msg { return kind.Run(actions.services, actions.projectSlug, command, msg) }
 }
 
-func (actions *Actions) findKind(name views.CommandName) (Kind, bool) {
+// Question returns the question the command a message asks for asks before it
+// starts. ok is false for a command that starts right away. It panics on a
+// command of a kind it does not know, like Start.
+func (actions *Actions) Question(msg views.CommandMsg) (question string, ok bool) {
+	kind := actions.kind(msg)
+	if kind.Question == nil {
+		return "", false
+	}
+	return kind.Question(newCommand(msg)), true
+}
+
+func newCommand(msg views.CommandMsg) Command {
+	return Command{Name: msg.CommandName(), Target: msg.Target()}
+}
+
+func (actions *Actions) kind(msg views.CommandMsg) Kind {
 	for _, kind := range actions.kinds {
-		if kind.Name == name {
-			return kind, true
+		if kind.Name == msg.CommandName() {
+			return kind
 		}
 	}
-	return Kind{}, false
+	panic(fmt.Sprintf("a view asked for command %q, which no command kind runs", msg.CommandName()))
 }

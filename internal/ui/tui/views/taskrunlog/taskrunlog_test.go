@@ -410,6 +410,7 @@ func TestView_CommandsOnShownTask(t *testing.T) {
 	}{
 		{name: "r runs the shown task", taskID: shownTaskID, input: tuitest.KeyRun, want: []tea.Msg{views.RunTaskMsg{TaskID: shownTaskID}}},
 		{name: "r with no task does nothing", input: tuitest.KeyRun},
+		{name: "R reruns the shown task", taskID: shownTaskID, input: tuitest.KeyRerun, want: []tea.Msg{views.RerunTaskMsg{TaskID: shownTaskID}}},
 		{name: "m marks the shown task done", taskID: shownTaskID, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: shownTaskID}}},
 		{name: "m with no task does nothing", input: tuitest.KeyMarkDone},
 	}

@@ -23,17 +23,23 @@ var keyEventLog = tea.KeyPressMsg{Code: '!', Text: "!"}
 var errNotTodo = errors.New(`task 7c1e4f90 is "in progress", only a task that is "todo" can run`)
 
 // fakeCommandService refuses every run with runErr and records the task of
-// every run and of every edit from a draft. Its Drudgers hold the tasks it
-// ran, from slot 2 up.
+// every run, of every rerun and of every edit from a draft. Its Drudgers hold
+// the tasks it ran and then the tasks it reran, from slot 2 up.
 type fakeCommandService struct {
-	runErr  error
-	runIDs  []task.TaskID
-	editIDs []task.TaskID
+	runErr   error
+	runIDs   []task.TaskID
+	rerunIDs []task.TaskID
+	editIDs  []task.TaskID
 }
 
 func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
 	service.runIDs = append(service.runIDs, requestedID)
 	return service.runErr
+}
+
+func (service *fakeCommandService) RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
+	service.rerunIDs = append(service.rerunIDs, requestedID)
+	return nil
 }
 
 func (service *fakeCommandService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
@@ -46,8 +52,9 @@ func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task
 }
 
 func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
-	holders := make([]*drudger.Drudger, 0, len(service.runIDs))
-	for index, runID := range service.runIDs {
+	heldIDs := slices.Concat(service.runIDs, service.rerunIDs)
+	holders := make([]*drudger.Drudger, 0, len(heldIDs))
+	for index, runID := range heldIDs {
 		holders = append(holders, &drudger.Drudger{Slot: index + 2, TaskID: runID})
 	}
 	return holders, nil

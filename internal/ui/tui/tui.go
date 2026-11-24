@@ -50,6 +50,7 @@ func Run(configFile app.TuiConfigFile) error {
 	// Commands get services of their own, so the event log and the bottom bar
 	// show only the events of commands.
 	progress := &actions.Progress{}
+	prompt := &actions.Prompt{}
 	commandServices, err := app.NewServices(configs, progress)
 	if err != nil {
 		return err
@@ -64,6 +65,7 @@ func Run(configFile app.TuiConfigFile) error {
 		Drudgers: commandServices.Drudgers,
 		Tasks:    commandServices.Tasks,
 		Editor:   terminalEditor{editor: app.NewEditor()},
+		Asker:    prompt,
 	}
 	commands := actions.New(services, shownProject.Slug, commandKinds)
 	model, err := NewModel(shownProject, sources, commands, screenStyles, tabs, config.Intervals(), config.IsMouseCaptured(), warnings)
@@ -72,6 +74,7 @@ func Run(configFile app.TuiConfigFile) error {
 	}
 	program := tea.NewProgram(model, options...)
 	progress.Attach(program)
+	prompt.Attach(program)
 	_, err = program.Run()
 	return err
 }

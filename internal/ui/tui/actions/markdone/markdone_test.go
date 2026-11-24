@@ -30,6 +30,10 @@ func (service *fakeDrudgerService) RunTask(projectSlug string, requestedID task.
 	return errors.New("a mark done runs no task")
 }
 
+func (service *fakeDrudgerService) RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
+	return errors.New("a mark done reruns no task")
+}
+
 func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	if projectSlug != testProjectSlug {
 		return nil, nil, errors.New("the mark done went to another project")

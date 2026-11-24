@@ -27,13 +27,13 @@ func run(services actions.Services, projectSlug string, command actions.Command,
 		done.Err = err
 		return done
 	}
-	done.Verdict = verdict(services, projectSlug, command, taskID)
+	done.Verdict = Verdict(services, projectSlug, command, taskID)
 	return done
 }
 
-// verdict names the Drudger that holds a task. The run already worked, so a
+// Verdict names the Drudger that holds a task once a run of it worked. A
 // failed read of the Drudgers leaves the Drudger out of the verdict.
-func verdict(services actions.Services, projectSlug string, command actions.Command, taskID task.TaskID) string {
+func Verdict(services actions.Services, projectSlug string, command actions.Command, taskID task.TaskID) string {
 	drudgers, err := services.Drudgers.ReadDrudgers(projectSlug)
 	if err != nil {
 		return fmt.Sprintf(verdictNoDrudgerFormat, command.Target)

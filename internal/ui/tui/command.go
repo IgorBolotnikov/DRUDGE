@@ -65,13 +65,54 @@ func nameTask(named *task.Task) string {
 	return task.ShortID(named.ID)
 }
 
-// handleCommand starts the command a View asks for and drops the verdict of
-// the command before it. It refuses the command while another one runs.
+// commandConfirmedMsg says the user answered yes to the question of a command.
+type commandConfirmedMsg struct {
+	msg views.CommandMsg
+}
+
+// handleCommand starts the command a View asks for. A command with a question
+// opens the confirm overlay first and starts only on a yes. It refuses the
+// command while another one runs.
 func (model *Model) handleCommand(msg views.CommandMsg) tea.Cmd {
-	if model.running != nil {
-		model.running.isRefused = true
+	if model.refuseWhileRunning() {
 		return nil
 	}
+	question, ok := model.commands.Question(msg)
+	if !ok {
+		return model.startCommand(msg)
+	}
+	answer := make(chan bool, 1)
+	model.push(newConfirmOverlay(question, answer, model.help, model.styles))
+	return func() tea.Msg {
+		if <-answer {
+			return commandConfirmedMsg{msg: msg}
+		}
+		return nil
+	}
+}
+
+// handleCommandConfirmed starts a command the user confirmed. It refuses the
+// command while another one runs.
+func (model *Model) handleCommandConfirmed(msg commandConfirmedMsg) tea.Cmd {
+	if model.refuseWhileRunning() {
+		return nil
+	}
+	return model.startCommand(msg.msg)
+}
+
+// refuseWhileRunning refuses a new command while another one runs and reports
+// whether it refused it.
+func (model *Model) refuseWhileRunning() bool {
+	if model.running == nil {
+		return false
+	}
+	model.running.isRefused = true
+	return true
+}
+
+// startCommand starts a command and drops the verdict of the command before
+// it.
+func (model *Model) startCommand(msg views.CommandMsg) tea.Cmd {
 	command, run := model.commands.Start(msg)
 	model.running = &runningCommand{command: command, step: firstStepText}
 	model.verdict = nil
