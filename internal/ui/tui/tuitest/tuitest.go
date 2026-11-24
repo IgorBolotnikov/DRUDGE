@@ -59,6 +59,9 @@ var KeyMarkDone = tea.KeyPressMsg{Code: 'm', Text: "m"}
 // KeyRemove asks to remove the task under a cursor.
 var KeyRemove = tea.KeyPressMsg{Code: 'x', Text: "x"}
 
+// KeyReclaim asks to free the Drudger slots whose agent is gone.
+var KeyReclaim = tea.KeyPressMsg{Code: 'f', Text: "f"}
+
 // Type returns the key presses that type text.
 func Type(text string) []tea.Msg {
 	keyPresses := make([]tea.Msg, 0, len(text))

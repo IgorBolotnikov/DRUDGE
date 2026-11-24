@@ -139,6 +139,8 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "L opens the runlog of the task of the Drudger under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyDown}, input: tuitest.KeyRunLog, want: []tea.Msg{views.OpenRunLogMsg{TaskID: fourthTaskID}}},
 		{name: "L on an idle Drudger does nothing", messages: []tea.Msg{loaded, tuitest.KeyBottom}, input: tuitest.KeyRunLog},
 		{name: "L with no Drudgers does nothing", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyRunLog},
+		{name: "f asks to free the slots whose agent is gone", messages: []tea.Msg{loaded}, input: tuitest.KeyReclaim, want: []tea.Msg{views.ReclaimMsg{}}},
+		{name: "f with no Drudgers asks to free the slots", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyReclaim, want: []tea.Msg{views.ReclaimMsg{}}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

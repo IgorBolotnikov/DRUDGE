@@ -18,6 +18,7 @@ const (
 	NewTaskCommand    CommandName = "new"
 	EditTaskCommand   CommandName = "edit"
 	RemoveTaskCommand CommandName = "rm"
+	ReclaimCommand    CommandName = "reclaim"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -87,6 +88,18 @@ type NewTaskMsg struct{}
 func (NewTaskMsg) CommandName() CommandName { return NewTaskCommand }
 
 func (NewTaskMsg) Target() string { return newTaskTarget }
+
+// reclaimTarget names the target of a reclaim command. It acts on every slot
+// of the project.
+const reclaimTarget = "slots"
+
+// ReclaimMsg asks to free the Drudger slots whose agent is gone the way drg
+// drudger reclaim does.
+type ReclaimMsg struct{}
+
+func (ReclaimMsg) CommandName() CommandName { return ReclaimCommand }
+
+func (ReclaimMsg) Target() string { return reclaimTarget }
 
 // NewTaskKey asks to add a task. It acts on the project, so the Views that
 // list the tasks of the project bind it.

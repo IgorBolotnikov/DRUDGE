@@ -17,12 +17,14 @@ import (
 
 // DrudgerService runs a task the way drg task run does, starts a task over the
 // way drg task rerun does, marks a task done the way drg task done does, edits
-// a task from its draft and reads the Drudgers of a project.
+// a task from its draft, frees the slots whose agent is gone the way drg
+// drudger reclaim does and reads the Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
 	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
+	ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error)
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 

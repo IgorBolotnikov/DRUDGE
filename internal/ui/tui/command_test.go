@@ -51,6 +51,10 @@ func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task
 	return &task.Task{ID: id, Title: "Add retry"}, []string{"title"}, nil
 }
 
+func (service *fakeCommandService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
+	return nil, errors.New("the command tests reclaim no slot")
+}
+
 func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	heldIDs := slices.Concat(service.runIDs, service.rerunIDs)
 	holders := make([]*drudger.Drudger, 0, len(heldIDs))

@@ -49,6 +49,10 @@ func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task
 	return nil, nil, errors.New("a run edits no task")
 }
 
+func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
+	return nil, errors.New("a run reclaims no slot")
+}
+
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return service.drudgers, service.readErr
 }

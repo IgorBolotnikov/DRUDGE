@@ -93,6 +93,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `e` | Edits the task under the cursor of a list or a board, or the task shown in a detail or a runlog, in `$EDITOR` |
 | `x` | Removes the task under the cursor of a list or a board, or the task shown in a detail or a runlog, after you confirm |
 | `n` | Adds a task from a draft in `$EDITOR`, in a list or a board |
+| `f` | Frees the Drudger slots whose agent is gone, in a Drudger list |
 | `/` | Opens the filter of the focused list |
 | `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
 | `!` | Opens the event log |
@@ -136,6 +137,8 @@ The draft never forces a status. Setting `in-progress`, `fucked-up` or `unmerged
 `R` starts a task over the way [`drg task rerun`]({{< relref "/docs/cli/task/rerun" >}}) does. It first asks `Start 7c1e4f90 over? What its last run left behind is cleared.` in a box over the screen. `y` starts the task over, and the bar shows its steps and its verdict like `r` does. `n` or `esc` closes the box and changes nothing. Every other key does nothing while the box is open, `?` lists its keys and `ctrl+c` quits and answers no. A task DRUDGE refuses to rerun, like one whose agent still works, shows the error of the CLI.
 
 `x` removes a task the way [`drg task rm`]({{< relref "/docs/cli/task/rm" >}}) does. It first asks in a box over the screen. The question names the task and lists the tasks the removal unblocks and ungroups. `y` removes the task and the bar says `✓ 7c1e4f90 removed`. `n` or `esc` closes the box and keeps the task. `ctrl+c` quits and answers no. Branches kept because they hold commits and a failed branch cleanup show up as warnings in the event log and are counted on the verdict line. A task whose agent still works is refused and the bar shows the error.
+
+`f` in a `drudger-list` tile frees the slots still claimed by agents that are gone, the way [`drg drudger reclaim`]({{< relref "/docs/cli/drudger/reclaim" >}}) does. It asks nothing first, because it only rewrites the Drudgers file. The verdict names the freed slots and the tasks they held, like `✓ freed slots 2, 4 · rerun 1a2b3c4d, 4d5e6f70 to start them over`. When no slot was claimed by a gone agent, the bar says `· no slot was claimed by a gone agent`.
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

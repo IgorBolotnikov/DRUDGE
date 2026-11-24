@@ -87,10 +87,11 @@ var (
 	jumpBottomKey = key.NewBinding(key.WithKeys("G", "end"))
 	openTaskKey   = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task"))
 	openRunLogKey = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "runlog"))
+	reclaimKey    = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "free slots"))
 )
 
 // Keys are the keys of the Drudger list the help lists.
-var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey}
+var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, reclaimKey}
 
 // columns of the Drudger list. The slot always stays. The last check drops
 // first, then the task, the agent and the sandbox.
@@ -164,7 +165,8 @@ func (view *View) SetSize(width, height int) {
 // Update takes the read Drudgers and the end of a check, moves the cursor on
 // keys, moves the cursor to a clicked row and scrolls on the wheel. Moving the
 // cursor onto another busy Drudger selects its task. Enter opens the task of
-// the Drudger under the cursor and L opens its runlog.
+// the Drudger under the cursor, L opens its runlog and f frees the slots whose
+// agent is gone.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.DrudgersLoadedMsg:
@@ -185,6 +187,8 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			return view.openTask()
 		case key.Matches(msg, openRunLogKey):
 			return view.openRunLog()
+		case key.Matches(msg, reclaimKey):
+			return func() tea.Msg { return views.ReclaimMsg{} }
 		}
 		previousCursor := view.cursorDrudger()
 		view.moveCursor(msg)

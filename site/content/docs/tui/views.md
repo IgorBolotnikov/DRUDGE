@@ -23,6 +23,7 @@ The view takes no options.
 | `g/G` | top/bottom |
 | `enter` | open task |
 | `L` | runlog |
+| `f` | free slots |
 
 ## `task-board`
 

@@ -80,6 +80,10 @@ func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task
 	return &task.Task{ID: id, Title: "Add retry"}, []string{"title", "status"}, nil
 }
 
+func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
+	return nil, errors.New("an edit reclaims no slot")
+}
+
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, errors.New("an edit reads no Drudgers")
 }
