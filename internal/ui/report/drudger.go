@@ -115,8 +115,6 @@ func drudgerLines(event any, nameTask TaskNamer) []Line {
 		return []Line{skip("No pull request description of %s is left, the pull request of branch %s is open or the agent never wrote one", event.Repository, event.Branch)}
 	case drudger.PullRequestWithoutLanding:
 		return []Line{warn("Task %s has no work in %s, its pull request description stays in the run directory", event.TaskID, event.Repository)}
-	case drudger.PullRequestsRetried:
-		return []Line{pullRequestsRetried(event, nameTask)}
 	case drudger.SessionRecorded:
 		return []Line{result(sessionLevel(event.Status), "Task %s %s, it is %s", nameTask(event.Task), event.Status, event.Task.Status)}
 	case drudger.DependentsUnblocked:
@@ -224,19 +222,6 @@ func sessionLevel(status drudger.SessionStatus) Level {
 		return level
 	}
 	return LevelSuccess
-}
-
-// pullRequestsRetried closes a retry with how many of the pull requests it
-// tried are open now.
-func pullRequestsRetried(event drudger.PullRequestsRetried, nameTask TaskNamer) Line {
-	switch {
-	case event.Tried == 0:
-		return result(LevelSkipped, "Task %s has no pull requests left to open", nameTask(event.Task))
-	case event.Opened == event.Tried:
-		return result(LevelSuccess, "Opened %d pull requests of task %s", event.Opened, nameTask(event.Task))
-	default:
-		return result(LevelWarning, "Opened %d of %d pull requests of task %s", event.Opened, event.Tried, nameTask(event.Task))
-	}
 }
 
 func healthRecordFailed(event drudger.HealthRecordFailed) []Line {

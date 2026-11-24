@@ -17,6 +17,32 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
 )
 
+func TestPrintPullRequestsRetried(t *testing.T) {
+	retriedTask := &task.Task{ID: "006684e3-dbe9-4316-8aba-8a67a8f01f8f", Title: "Fix login"}
+	cases := []struct {
+		name    string
+		retried drudger.PullRequestsRetried
+		want    string
+	}{
+		{name: "every pull request opened", retried: drudger.PullRequestsRetried{Task: retriedTask, Tried: 2, Opened: 2}, want: "✓ Opened 2 pull requests of task 006684e3  Fix login\n"},
+		{name: "a pull request failed", retried: drudger.PullRequestsRetried{Task: retriedTask, Tried: 2, Opened: 1}, want: "! Opened 1 of 2 pull requests of task 006684e3  Fix login\n"},
+		{name: "none left", retried: drudger.PullRequestsRetried{Task: retriedTask}, want: "· Task 006684e3  Fix login has no pull requests left to open\n"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "1")
+			palette := theme.NewTheme(theme.DefaultTheme())
+			output := captureOutput(func() {
+				printPullRequestsRetried(printer.NewPrinter(newThemedLogger(palette), palette), testCase.retried)
+			})
+			if output != testCase.want {
+				t.Errorf("expected:\n%q\ngot:\n%q", testCase.want, output)
+			}
+		})
+	}
+}
+
 func TestPrintSessionStatus(t *testing.T) {
 	cases := []struct {
 		name   string

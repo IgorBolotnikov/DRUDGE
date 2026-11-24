@@ -12,7 +12,9 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/app"
 	"github.com/IgorBolotnikov/DRUDGE/internal/config"
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/cli/printer"
 )
 
 var TaskCmd = &Cmd{
@@ -433,8 +435,26 @@ func taskPullRequests(args []string) error {
 		return err
 	}
 
-	_, err = deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
-	return err
+	retried, err := deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
+	if err != nil {
+		return err
+	}
+
+	printPullRequestsRetried(deps.out, retried)
+	return nil
+}
+
+// printPullRequestsRetried closes a retry with how many of the pull requests
+// it tried are open now.
+func printPullRequestsRetried(out *printer.Printer, retried drudger.PullRequestsRetried) {
+	switch {
+	case retried.Tried == 0:
+		out.SkipResult("Task %s has no pull requests left to open", out.Task(retried.Task))
+	case retried.Opened == retried.Tried:
+		out.Result("Opened %d pull requests of task %s", retried.Opened, out.Task(retried.Task))
+	default:
+		out.ResultWarn("Opened %d of %d pull requests of task %s", retried.Opened, retried.Tried, out.Task(retried.Task))
+	}
 }
 
 // taskSessionStatus reports how the last Session of a task is going.

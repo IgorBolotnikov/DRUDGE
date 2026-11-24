@@ -188,7 +188,7 @@ func TestModel_CommandLine(t *testing.T) {
 		{
 			name:     "a result line leaves the step",
 			service:  &fakeCommandService{},
-			events:   []any{drudger.SandboxLookupStarted{Sandbox: "drudge-uploader-2"}, drudger.PullRequestsRetried{Task: &task.Task{ID: runTaskID}, Tried: 2, Opened: 1}},
+			events:   []any{drudger.SandboxLookupStarted{Sandbox: "drudge-uploader-2"}, drudger.RunRefused{Task: &task.Task{ID: runTaskID, Status: task.StatusTodo, VendorErrorClass: task.VendorErrorRateLimit}}},
 			wantLine: "⠋ 7c1e4f90: Looking for sandbox drudge-uploader-2…",
 		},
 		{
@@ -220,7 +220,7 @@ func TestModel_CommandLine(t *testing.T) {
 		{
 			name:     "the verdict leaves out the warning of a result line",
 			service:  &fakeCommandService{},
-			events:   []any{drudger.SbxDaemonRetried{}, drudger.PullRequestsRetried{Task: &task.Task{ID: runTaskID}, Tried: 2, Opened: 1}},
+			events:   []any{drudger.SbxDaemonRetried{}, drudger.RunRefused{Task: &task.Task{ID: runTaskID, Status: task.StatusTodo, VendorErrorClass: task.VendorErrorRateLimit}}},
 			isDone:   true,
 			wantLine: "✓ 7c1e4f90 handed to Drudger 2 · 1 warning, ! to see",
 		},

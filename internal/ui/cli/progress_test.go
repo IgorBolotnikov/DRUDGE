@@ -567,21 +567,6 @@ func TestCLIProgress_Report(t *testing.T) {
 			want:  "· No pull request description of api is left, the pull request of branch drudge/006684e3-fix-login is open or the agent never wrote one\n",
 		},
 		{
-			name:  "pull requests retried",
-			event: drudger.PullRequestsRetried{Task: sampleTask, Tried: 2, Opened: 2},
-			want:  "✓ Opened 2 pull requests of task 006684e3  Fix login\n",
-		},
-		{
-			name:  "pull requests retried with a failure",
-			event: drudger.PullRequestsRetried{Task: sampleTask, Tried: 2, Opened: 1},
-			want:  "! Opened 1 of 2 pull requests of task 006684e3  Fix login\n",
-		},
-		{
-			name:  "pull requests retried with none left",
-			event: drudger.PullRequestsRetried{Task: sampleTask},
-			want:  "· Task 006684e3  Fix login has no pull requests left to open\n",
-		},
-		{
 			name: "dependents unblocked",
 			event: drudger.DependentsUnblocked{Tasks: []*task.Task{
 				{ID: "4f2a1b3c-0001", Title: "Wire the repository"},

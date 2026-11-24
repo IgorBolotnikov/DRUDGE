@@ -82,7 +82,7 @@ type PullRequestWithoutLanding struct {
 	Repository string
 }
 
-// PullRequestsRetried reports how a retry went. Tried counts the pull requests
+// PullRequestsRetried is how a retry went. Tried counts the pull requests
 // it had a description for.
 type PullRequestsRetried struct {
 	Task   *task.Task
@@ -148,7 +148,6 @@ func (service *DrudgerService) RetryPullRequests(projectSlug string, requestedID
 		return PullRequestsRetried{}, fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
 
-	service.progress.Report(retried)
 	return retried, nil
 }
 

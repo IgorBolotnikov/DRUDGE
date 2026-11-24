@@ -191,11 +191,6 @@ func TestLines(t *testing.T) {
 			},
 		},
 		{
-			name:  "some pull requests retried",
-			event: drudger.PullRequestsRetried{Task: sampleTask, Tried: 2, Opened: 1},
-			want:  []Line{{Kind: KindResult, Level: LevelWarning, Text: "Opened 1 of 2 pull requests of task 006684e3  Fix login"}},
-		},
-		{
 			name:  "a task killed",
 			event: drudger.TaskKilled{Task: fuckedUpTask},
 			want:  []Line{{Kind: KindLine, Level: LevelError, Text: "Task 006684e3  Fix login is fucked-up, its agent was killed with the Drudger"}},

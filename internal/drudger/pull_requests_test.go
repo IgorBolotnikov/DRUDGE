@@ -400,9 +400,6 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if retried.Opened != len(testCase.wantOpened) {
-				t.Errorf("expected the retry to count %d opened pull requests, got %d", len(testCase.wantOpened), retried.Opened)
-			}
 
 			stored := service.taskRepo.stored(finished.ID)
 			if !slices.EqualFunc(pullRequestRemote.opened, testCase.wantOpened, func(got, want remote.PullRequestDto) bool { return got == want }) {
@@ -457,9 +454,8 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 				}
 			}
 
-			result := singleEvent[PullRequestsRetried](t, service.progress)
-			if result.Task == nil || result.Task.ID != finished.ID || result.Tried != testCase.wantResult.Tried || result.Opened != testCase.wantResult.Opened {
-				t.Errorf("expected the result %+v, got %+v", testCase.wantResult, result)
+			if retried.Task == nil || retried.Task.ID != finished.ID || retried.Tried != testCase.wantResult.Tried || retried.Opened != testCase.wantResult.Opened {
+				t.Errorf("expected the result %+v, got %+v", testCase.wantResult, retried)
 			}
 		})
 	}
@@ -474,9 +470,12 @@ func TestDrudgerService_RetryPullRequests_SecondRetryFindsNothingLeft(t *testing
 	service.runs.write(finished.ID, pullRequestFileName("api"), "Add retry")
 	service.git.pushErrs = map[string]error{}
 
+	var retried PullRequestsRetried
 	for retry := 1; retry <= 2; retry++ {
 		service.progress.events = nil
-		if _, err := service.RetryPullRequests(testProjectSlug, finished.ID); err != nil {
+		var err error
+		retried, err = service.RetryPullRequests(testProjectSlug, finished.ID)
+		if err != nil {
 			t.Fatalf("retry %d: unexpected error: %v", retry, err)
 		}
 	}
@@ -494,8 +493,8 @@ func TestDrudgerService_RetryPullRequests_SecondRetryFindsNothingLeft(t *testing
 	if stored := service.taskRepo.stored(finished.ID); !slices.Equal(stored.PullRequests, []string{testPullRequestURL(1)}) {
 		t.Errorf("expected the task to carry the one pull request, got %v", stored.PullRequests)
 	}
-	if result := singleEvent[PullRequestsRetried](t, service.progress); result.Tried != 0 {
-		t.Errorf("expected the second retry to try nothing, got %+v", result)
+	if retried.Tried != 0 {
+		t.Errorf("expected the second retry to try nothing, got %+v", retried)
 	}
 }
 
