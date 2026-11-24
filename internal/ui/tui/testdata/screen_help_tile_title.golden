@@ -10,6 +10,7 @@
 │                                 │ R     rerun                  │                                 │
 │                                 │ m     mark done              │                                 │
 │                                 │ e     edit                   │                                 │
+│                                 │ x     remove                 │                                 │
 │                                 │ n     new task               │                                 │
 │                                 │                              │                                 │
 │                                 │ Global                       │                                 │
@@ -19,6 +20,5 @@
 │                                 │ ctrl+h/j/k/l  move focus     │                                 │
 │                                 │ tab/shift+tab next/prev tile │                                 │
 │                                 │ !             event log      │                                 │
-│                                 │ esc           clear error    │                                 │
-╰─────────────────────────────────│ ?             help           │─────────────────────────── 1/5 ─╯
-                                  │ q             quit           │                       esc/q close
+╰─────────────────────────────────│ esc           clear error    │─────────────────────────── 1/5 ─╯
+                                  │ ?             help           │                       esc/q close

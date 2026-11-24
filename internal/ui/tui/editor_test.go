@@ -207,3 +207,7 @@ func TestModel_EditTask(t *testing.T) {
 		})
 	}
 }
+
+func (service *fakeTaskService) RemoveTask(projectSlug string, id task.TaskID, isForced bool, sessions task.SessionKeeper, confirm task.ConfirmRemoval) error {
+	return errors.New("this command removes no task")
+}

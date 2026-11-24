@@ -64,6 +64,7 @@ func Run(configFile app.TuiConfigFile) error {
 	services := actions.Services{
 		Drudgers: commandServices.Drudgers,
 		Tasks:    commandServices.Tasks,
+		Sessions: commandServices.Drudgers,
 		Editor:   terminalEditor{editor: app.NewEditor()},
 		Asker:    prompt,
 	}

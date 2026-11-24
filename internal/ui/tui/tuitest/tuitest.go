@@ -56,6 +56,9 @@ var KeyRerun = tea.KeyPressMsg{Code: 'r', Text: "R", Mod: tea.ModShift}
 // KeyMarkDone asks to mark the task under a cursor done.
 var KeyMarkDone = tea.KeyPressMsg{Code: 'm', Text: "m"}
 
+// KeyRemove asks to remove the task under a cursor.
+var KeyRemove = tea.KeyPressMsg{Code: 'x', Text: "x"}
+
 // Type returns the key presses that type text.
 func Type(text string) []tea.Msg {
 	keyPresses := make([]tea.Msg, 0, len(text))

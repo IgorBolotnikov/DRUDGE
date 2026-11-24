@@ -27,11 +27,12 @@ type DrudgerService interface {
 }
 
 // TaskService opens the draft of a new task and adds the task it describes,
-// and opens the draft of a task.
+// opens the draft of a task and removes a task the way drg task rm does.
 type TaskService interface {
 	OpenDraft(projectSlug string) (string, error)
 	OpenTaskDraft(projectSlug string, id task.TaskID) (string, error)
 	CreateTaskFromDraft(projectSlug string) (*task.Task, error)
+	RemoveTask(projectSlug string, id task.TaskID, isForced bool, sessions task.SessionKeeper, confirm task.ConfirmRemoval) error
 }
 
 // Editor edits a file in the terminal. The command Edit returns suspends the
@@ -53,6 +54,7 @@ type Asker interface {
 type Services struct {
 	Drudgers DrudgerService
 	Tasks    TaskService
+	Sessions task.SessionKeeper
 	Editor   Editor
 	Asker    Asker
 }

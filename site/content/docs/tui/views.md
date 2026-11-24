@@ -45,6 +45,7 @@ The view takes no options.
 | `R` | rerun |
 | `m` | mark done |
 | `e` | edit |
+| `x` | remove |
 | `n` | new task |
 
 ## `task-detail`
@@ -67,6 +68,7 @@ The view takes no options.
 | `R` | rerun |
 | `m` | mark done |
 | `e` | edit |
+| `x` | remove |
 
 ## `task-list`
 
@@ -92,6 +94,7 @@ Lists the tasks of the project with the rows of drg task list.
 | `R` | rerun |
 | `m` | mark done |
 | `e` | edit |
+| `x` | remove |
 | `n` | new task |
 
 ## `task-runlog`
@@ -113,3 +116,4 @@ The view takes no options.
 | `R` | rerun |
 | `m` | mark done |
 | `e` | edit |
+| `x` | remove |
