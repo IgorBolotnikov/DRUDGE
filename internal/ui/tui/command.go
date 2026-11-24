@@ -148,7 +148,7 @@ func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
 	}
 	model.running = nil
 	model.verdictCount++
-	refresh := tea.Batch(model.feedRunner.Refresh(msg.Feeds), msg.Cmd)
+	refresh := model.feedRunner.Refresh(msg.Feeds)
 	if msg.Err != nil {
 		model.events.add(eventLogEntry{at: time.Now(), command: msg.Command, level: report.LevelError, text: msg.Err.Error()})
 		model.verdict = &verdict{text: msg.Err.Error(), isError: true, warningCount: warningCount, number: model.verdictCount}

@@ -74,15 +74,13 @@ func (command Command) String() string {
 // DoneMsg carries the end of a command: the verdict of a command that worked
 // or the error of one that failed, and the feeds whose data the command may
 // have changed. IsSkipped says the command did nothing, and its verdict says
-// why. Cmd is a command for the root to run next, like a write to the
-// terminal.
+// why.
 type DoneMsg struct {
 	Command   Command
 	Verdict   string
 	IsSkipped bool
 	Err       error
 	Feeds     []views.FeedName
-	Cmd       tea.Cmd
 }
 
 // RunFunc runs a command on the services of a project off the UI loop. It
