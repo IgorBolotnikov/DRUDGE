@@ -40,6 +40,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 		wantListed      bool
 		wantSlotsLeft   []int
 		wantErrContains string
+		wantIsBusy      bool
 		// taskStatus is what the task of the nuked Drudger is recorded as
 		// before the nuke. An empty value stands for a task still running.
 		taskStatus task.TaskStatus
@@ -67,6 +68,7 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 			slot:            1,
 			wantSlotsLeft:   []int{1},
 			wantErrContains: string(busyTaskID(1)),
+			wantIsBusy:      true,
 		},
 		{
 			name:           "forcing a working Drudger kills its agent",
@@ -202,6 +204,10 @@ func TestDrudgerService_NukeDrudger(t *testing.T) {
 				if !strings.Contains(err.Error(), testCase.wantErrContains) {
 					t.Errorf("expected error to name %q, got %q", testCase.wantErrContains, err)
 				}
+			}
+			var busy *DrudgerBusyError
+			if isBusy := errors.As(err, &busy); isBusy != testCase.wantIsBusy {
+				t.Errorf("expected busy error %v, got %v", testCase.wantIsBusy, err)
 			}
 
 			wantCalls := [][]string{}

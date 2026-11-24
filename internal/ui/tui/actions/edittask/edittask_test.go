@@ -84,6 +84,10 @@ func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudge
 	return nil, errors.New("an edit reclaims no slot")
 }
 
+func (service *fakeDrudgerService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
+	return errors.New("an edit nukes no Drudger")
+}
+
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, errors.New("an edit reads no Drudgers")
 }

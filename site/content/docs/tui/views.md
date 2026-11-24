@@ -24,6 +24,8 @@ The view takes no options.
 | `enter` | open task |
 | `L` | runlog |
 | `f` | free slots |
+| `x` | nuke |
+| `X` | force nuke |
 
 ## `task-board`
 

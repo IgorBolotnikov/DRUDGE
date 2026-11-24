@@ -88,10 +88,12 @@ var (
 	openTaskKey   = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task"))
 	openRunLogKey = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "runlog"))
 	reclaimKey    = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "free slots"))
+	nukeKey       = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "nuke"))
+	forceNukeKey  = key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "force nuke"))
 )
 
 // Keys are the keys of the Drudger list the help lists.
-var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, reclaimKey}
+var Keys = []key.Binding{moveUpKey, jumpTopKey, openTaskKey, openRunLogKey, reclaimKey, nukeKey, forceNukeKey}
 
 // columns of the Drudger list. The slot always stays. The last check drops
 // first, then the task, the agent and the sandbox.
@@ -166,7 +168,7 @@ func (view *View) SetSize(width, height int) {
 // keys, moves the cursor to a clicked row and scrolls on the wheel. Moving the
 // cursor onto another busy Drudger selects its task. Enter opens the task of
 // the Drudger under the cursor, L opens its runlog and f frees the slots whose
-// agent is gone.
+// agent is gone. x nukes the Drudger under the cursor and X forces the nuke.
 func (view *View) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case views.DrudgersLoadedMsg:
@@ -189,6 +191,10 @@ func (view *View) Update(msg tea.Msg) tea.Cmd {
 			return view.openRunLog()
 		case key.Matches(msg, reclaimKey):
 			return func() tea.Msg { return views.ReclaimMsg{} }
+		case key.Matches(msg, nukeKey):
+			return view.nuke(false)
+		case key.Matches(msg, forceNukeKey):
+			return view.nuke(true)
 		}
 		previousCursor := view.cursorDrudger()
 		view.moveCursor(msg)
@@ -291,6 +297,17 @@ func (view *View) openRunLog() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg { return views.OpenRunLogMsg{TaskID: taskID} }
+}
+
+// nuke asks to delete the Drudger under the cursor. It does nothing when no
+// row is shown.
+func (view *View) nuke(isForced bool) tea.Cmd {
+	cursorDrudger := view.cursorDrudger()
+	if cursorDrudger == nil {
+		return nil
+	}
+	msg := views.NukeMsg{Slot: cursorDrudger.Slot, TaskID: cursorDrudger.TaskID, IsForced: isForced}
+	return func() tea.Msg { return msg }
 }
 
 // selectMovedCursor selects the task of the Drudger under the cursor when the

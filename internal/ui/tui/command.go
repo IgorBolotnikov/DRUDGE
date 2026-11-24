@@ -26,6 +26,7 @@ const (
 	skippedVerdictPrefix = "· "
 	errorVerdictPrefix   = "✗ "
 	warningCountFormat   = " · %s, ! to see"
+	hintSeparator        = " · "
 )
 
 // timerFunc returns a command that sends the message of fn once d is up.
@@ -140,7 +141,7 @@ func (model *Model) handleProgress(msg actions.ProgressMsg) {
 // handleCommandDone shows the verdict of the command that ended and refreshes
 // the feeds it touched. The verdict of a command that worked or skipped clears
 // after its lifetime. The error of a command that failed goes to the event log
-// too.
+// too, and the bar adds the hint of the command to it.
 func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
 	warningCount := 0
 	if model.running != nil {
@@ -151,7 +152,11 @@ func (model *Model) handleCommandDone(msg actions.DoneMsg) tea.Cmd {
 	refresh := model.feedRunner.Refresh(msg.Feeds)
 	if msg.Err != nil {
 		model.events.add(eventLogEntry{at: time.Now(), command: msg.Command, level: report.LevelError, text: msg.Err.Error()})
-		model.verdict = &verdict{text: msg.Err.Error(), isError: true, warningCount: warningCount, number: model.verdictCount}
+		text := msg.Err.Error()
+		if msg.Hint != "" {
+			text += hintSeparator + msg.Hint
+		}
+		model.verdict = &verdict{text: text, isError: true, warningCount: warningCount, number: model.verdictCount}
 		return refresh
 	}
 	number := model.verdictCount

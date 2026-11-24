@@ -141,6 +141,12 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "L with no Drudgers does nothing", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyRunLog},
 		{name: "f asks to free the slots whose agent is gone", messages: []tea.Msg{loaded}, input: tuitest.KeyReclaim, want: []tea.Msg{views.ReclaimMsg{}}},
 		{name: "f with no Drudgers asks to free the slots", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyReclaim, want: []tea.Msg{views.ReclaimMsg{}}},
+		{name: "x asks to nuke the busy Drudger under the cursor", messages: []tea.Msg{loaded}, input: tuitest.KeyNuke, want: []tea.Msg{views.NukeMsg{Slot: 1, TaskID: firstTaskID}}},
+		{name: "x asks to nuke the idle Drudger under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyNuke, want: []tea.Msg{views.NukeMsg{Slot: 2}}},
+		{name: "X asks to force the nuke of the busy Drudger under the cursor", messages: []tea.Msg{loaded}, input: tuitest.KeyForceNuke, want: []tea.Msg{views.NukeMsg{Slot: 1, TaskID: firstTaskID, IsForced: true}}},
+		{name: "X asks to force the nuke of the idle Drudger under the cursor", messages: []tea.Msg{loaded, tuitest.KeyBottom}, input: tuitest.KeyForceNuke, want: []tea.Msg{views.NukeMsg{Slot: 5, IsForced: true}}},
+		{name: "x with no Drudgers does nothing", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyNuke},
+		{name: "X with no Drudgers does nothing", messages: []tea.Msg{views.DrudgersLoadedMsg{ReadAt: readAt}}, input: tuitest.KeyForceNuke},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

@@ -22,14 +22,17 @@ var keyEventLog = tea.KeyPressMsg{Code: '!', Text: "!"}
 
 var errNotTodo = errors.New(`task 7c1e4f90 is "in progress", only a task that is "todo" can run`)
 
-// fakeCommandService refuses every run with runErr and records the task of
-// every run, of every rerun and of every edit from a draft. Its Drudgers hold
-// the tasks it ran and then the tasks it reran, from slot 2 up.
+// fakeCommandService refuses every run with runErr and every nuke with
+// nukeErr. It records the task of every run, of every rerun and of every edit
+// from a draft, and the slot of every nuke. Its Drudgers hold the tasks it ran
+// and then the tasks it reran, from slot 2 up.
 type fakeCommandService struct {
-	runErr   error
-	runIDs   []task.TaskID
-	rerunIDs []task.TaskID
-	editIDs  []task.TaskID
+	runErr     error
+	nukeErr    error
+	runIDs     []task.TaskID
+	rerunIDs   []task.TaskID
+	editIDs    []task.TaskID
+	nukedSlots []int
 }
 
 func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
@@ -53,6 +56,11 @@ func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task
 
 func (service *fakeCommandService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
 	return nil, errors.New("the command tests reclaim no slot")
+}
+
+func (service *fakeCommandService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
+	service.nukedSlots = append(service.nukedSlots, slot)
+	return service.nukeErr
 }
 
 func (service *fakeCommandService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {

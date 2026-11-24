@@ -39,6 +39,10 @@ func (fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSl
 	return nil, nil
 }
 
+func (fakeDrudgerService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
+	return nil
+}
+
 func (fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, nil
 }
@@ -141,9 +145,11 @@ func TestActions_RunAsksThroughTheAsker(t *testing.T) {
 
 func TestActions_Question(t *testing.T) {
 	asking := actions.Kind{
-		Name:     views.RerunTaskCommand,
-		Run:      askingRun,
-		Question: func(command actions.Command) string { return "Start " + command.Target + " over?" },
+		Name: views.RerunTaskCommand,
+		Run:  askingRun,
+		Question: func(command actions.Command, msg views.CommandMsg) string {
+			return "Start " + command.Target + " over?"
+		},
 	}
 	recorder := &recordingKind{}
 	commands := actions.New(actions.Services{Drudgers: fakeDrudgerService{}}, testProjectSlug, []actions.Kind{asking, recorder.kind()})

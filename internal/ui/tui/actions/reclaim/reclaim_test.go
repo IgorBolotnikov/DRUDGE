@@ -48,6 +48,10 @@ func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudge
 	return service.freed, service.reclaimErr
 }
 
+func (service *fakeDrudgerService) NukeDrudger(projectSlug string, slot int, isForced bool) error {
+	return errors.New("a reclaim nukes no Drudger")
+}
+
 func (service *fakeDrudgerService) ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error) {
 	return nil, errors.New("a reclaim reads no Drudgers")
 }

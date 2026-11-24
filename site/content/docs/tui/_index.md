@@ -51,10 +51,7 @@ The tabs and the tiles of each tab come from the [TUI config]({{< relref "/docs/
           },
           {
             "arrangement": "side-by-side",
-            "children": [
-              { "view": "task-board" },
-              { "view": "task-detail" }
-            ]
+            "children": [{ "view": "task-board" }, { "view": "task-detail" }]
           }
         ]
       }
@@ -77,35 +74,36 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 
 `?` opens a box over the tabs that lists the keys in two sections, one above the other. The first section carries the title of the focused tile and lists the keys of its view. The `Global` section below it lists the keys that work everywhere on the dashboard. Over the task box, the first section lists the keys of the task box and `Global` lists `esc/q` and `?`. While the help is open, every other key does nothing and `ctrl+c` still quits. `esc`, `q` or `?` closes it. A terminal smaller than the box shows the part of it that fits.
 
-| Key | Does |
-| --- | --- |
-| `j` or `↓` | Moves the cursor down, or scrolls a list without a cursor |
-| `k` or `↑` | Moves the cursor up, or scrolls a list without a cursor |
-| `g` or `home` | Jumps to the top |
-| `G` or `end` | Jumps to the bottom |
-| `h` or `←` | Moves the cursor of a board to the column on the left |
-| `l` or `→` | Moves the cursor of a board to the column on the right |
-| `enter` | Opens the task under the cursor |
-| `L` | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail |
-| `r` | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog |
-| `R` | Starts the task under the cursor of a list or a board, or the task shown in a detail or a runlog, over after you confirm |
-| `m` | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done |
-| `e` | Edits the task under the cursor of a list or a board, or the task shown in a detail or a runlog, in `$EDITOR` |
-| `x` | Removes the task under the cursor of a list or a board, or the task shown in a detail or a runlog, after you confirm |
-| `y` | Copies the ID of the task under the cursor of a list or a board, or the task shown in a detail or a runlog, to the clipboard |
-| `n` | Adds a task from a draft in `$EDITOR`, in a list or a board |
-| `f` | Frees the Drudger slots whose agent is gone, in a Drudger list |
-| `/` | Opens the filter of the focused list |
-| `esc` | Closes the filter and clears it, closes the top box, or clears the error of a command |
-| `!` | Opens the event log |
-| `1` to `9` | Goes to that tab |
-| `[` or `]` | Goes to the previous or next tab |
-| `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right |
-| `tab` or `shift+tab` | Moves focus to the next or previous tile in layout order |
-| `z` | Zooms the focused tile or restores the tiles |
-| `?` | Lists the keys of the focused tile or of the top box, `esc`, `q` or `?` closes the list |
-| `q` | Closes the top box, or quits when no box is open |
-| `ctrl+c` | Quits |
+| Key                                                      | Does                                                                                                                                                                                         |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `j` or `↓`                                               | Moves the cursor down, or scrolls a list without a cursor                                                                                                                                    |
+| `k` or `↑`                                               | Moves the cursor up, or scrolls a list without a cursor                                                                                                                                      |
+| `g` or `home`                                            | Jumps to the top                                                                                                                                                                             |
+| `G` or `end`                                             | Jumps to the bottom                                                                                                                                                                          |
+| `h` or `←`                                               | Moves the cursor of a board to the column on the left                                                                                                                                        |
+| `l` or `→`                                               | Moves the cursor of a board to the column on the right                                                                                                                                       |
+| `enter`                                                  | Opens the task under the cursor                                                                                                                                                              |
+| `L`                                                      | Opens the runlog of the task under the cursor of a list or a board, or of the task shown in a detail                                                                                         |
+| `r`                                                      | Runs the task under the cursor of a list or a board, or the task shown in a detail or a runlog                                                                                               |
+| `R`                                                      | Starts the task under the cursor of a list or a board, or the task shown in a detail or a runlog, over after you confirm                                                                     |
+| `m`                                                      | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done                                                                                        |
+| `e`                                                      | Edits the task under the cursor of a list or a board, or the task shown in a detail or a runlog, in `$EDITOR`                                                                                |
+| `x`                                                      | Removes the task under the cursor of a list or a board, or the task shown in a detail or a runlog, after you confirm. Nukes the Drudger under the cursor of a Drudger list after you confirm |
+| `X`                                                      | Nukes the Drudger under the cursor of a Drudger list even while it works, after you confirm                                                                                                  |
+| `y`                                                      | Copies the ID of the task under the cursor of a list or a board, or the task shown in a detail or a runlog, to the clipboard                                                                 |
+| `n`                                                      | Adds a task from a draft in `$EDITOR`, in a list or a board                                                                                                                                  |
+| `f`                                                      | Frees the Drudger slots whose agent is gone, in a Drudger list                                                                                                                               |
+| `/`                                                      | Opens the filter of the focused list                                                                                                                                                         |
+| `esc`                                                    | Closes the filter and clears it, closes the top box, or clears the error of a command                                                                                                        |
+| `!`                                                      | Opens the event log                                                                                                                                                                          |
+| `1` to `9`                                               | Goes to that tab                                                                                                                                                                             |
+| `[` or `]`                                               | Goes to the previous or next tab                                                                                                                                                             |
+| `ctrl+h`, `ctrl+j`, `ctrl+k`, `ctrl+l` or `ctrl+` arrows | Moves focus to the tile left, below, above or right                                                                                                                                          |
+| `tab` or `shift+tab`                                     | Moves focus to the next or previous tile in layout order                                                                                                                                     |
+| `z`                                                      | Zooms the focused tile or restores the tiles                                                                                                                                                 |
+| `?`                                                      | Lists the keys of the focused tile or of the top box, `esc`, `q` or `?` closes the list                                                                                                      |
+| `q`                                                      | Closes the top box, or quits when no box is open                                                                                                                                             |
+| `ctrl+c`                                                 | Quits                                                                                                                                                                                        |
 
 Some keys run a command on a task, like `r` that hands the task to a coding agent the way [`drg task run`]({{< relref "/docs/cli/task/run" >}}) does. `m` marks an `unmerged` task done the way [`drg task done`]({{< relref "/docs/cli/task/done" >}}) does, and its verdict names the tasks that became runnable, like `✓ 1a2b3c4d done · 2 tasks runnable: 4d5e6f70, 7a8b9c0d`. The [views page]({{< relref "/docs/tui/views" >}}) lists the command keys of each view. A command works on the task under the cursor of a list or a board, or on the task a detail or a runlog shows. DRUDGE checks a command the way the CLI does. A command it refuses, like `r` on a task that is not `todo`, shows the error of the CLI.
 
@@ -141,7 +139,13 @@ The draft never forces a status. Setting `in-progress`, `fucked-up` or `unmerged
 
 `f` in a `drudger-list` tile frees the slots still claimed by agents that are gone, the way [`drg drudger reclaim`]({{< relref "/docs/cli/drudger/reclaim" >}}) does. It asks nothing first, because it only rewrites the Drudgers file. The verdict names the freed slots and the tasks they held, like `✓ freed slots 2, 4 · rerun 1a2b3c4d, 4d5e6f70 to start them over`. When no slot was claimed by a gone agent, the bar says `· no slot was claimed by a gone agent`.
 
+<<<<<<< HEAD
 `y` copies the full ID of a task and the bar says `✓ 7c1e4f90 copied to clipboard`. The copy is an OSC52 write to the terminal, so it needs a terminal that supports OSC52. A terminal that does not support it ignores the copy and the bar still says it worked.
+=======
+
+`x` in a `drudger-list` tile deletes the Drudger under the cursor the way [`drg drudger nuke`]({{< relref "/docs/cli/drudger/nuke" >}}) does. It first asks `Nuke Drudger 2? Its sandbox is deleted.` A Drudger that works on a task is refused, and the bar shows the error and adds `busy with 1a2b3c4d, X to force`. `X` nukes it anyway the way `drg drudger nuke --force` does. It asks `Nuke Drudger 2 while it works on 1a2b3c4d? Its agent is killed and the task is fucked up.` On an idle Drudger `X` asks the same as `x`. The verdict names the Drudger, like `✓ Drudger 2 nuked`. A sandbox that was already gone shows up as a warning in the event log.
+
+> > > > > > > 8a431ca (feat: nuke a Drudger from the TUI with x and X behind a confirm overlay)
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

@@ -59,6 +59,12 @@ var KeyMarkDone = tea.KeyPressMsg{Code: 'm', Text: "m"}
 // KeyRemove asks to remove the task under a cursor.
 var KeyRemove = tea.KeyPressMsg{Code: 'x', Text: "x"}
 
+// KeyNuke asks to delete the Drudger under a cursor.
+var KeyNuke = tea.KeyPressMsg{Code: 'x', Text: "x"}
+
+// KeyForceNuke asks to delete the Drudger under a cursor while it works.
+var KeyForceNuke = tea.KeyPressMsg{Code: 'X', Text: "X"}
+
 // KeyReclaim asks to free the Drudger slots whose agent is gone.
 var KeyReclaim = tea.KeyPressMsg{Code: 'f', Text: "f"}
 

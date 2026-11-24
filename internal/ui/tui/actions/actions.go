@@ -18,13 +18,15 @@ import (
 // DrudgerService runs a task the way drg task run does, starts a task over the
 // way drg task rerun does, marks a task done the way drg task done does, edits
 // a task from its draft, frees the slots whose agent is gone the way drg
-// drudger reclaim does and reads the Drudgers of a project.
+// drudger reclaim does, deletes a Drudger the way drg drudger nuke does and
+// reads the Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
 	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
 	ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error)
+	NukeDrudger(projectSlug string, slot int, isForced bool) error
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)
 }
 
@@ -74,12 +76,14 @@ func (command Command) String() string {
 // DoneMsg carries the end of a command: the verdict of a command that worked
 // or the error of one that failed, and the feeds whose data the command may
 // have changed. IsSkipped says the command did nothing, and its verdict says
-// why.
+// why. Hint says what the user can do about the error, like a key that forces
+// the command.
 type DoneMsg struct {
 	Command   Command
 	Verdict   string
 	IsSkipped bool
 	Err       error
+	Hint      string
 	Feeds     []views.FeedName
 }
 
@@ -89,8 +93,9 @@ type DoneMsg struct {
 // The callback of that step leads to the DoneMsg of the command.
 type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) tea.Msg
 
-// QuestionFunc returns the question a command asks before it starts.
-type QuestionFunc func(command Command) string
+// QuestionFunc returns the question a command asks before it starts. It gets
+// the command message of its own kind.
+type QuestionFunc func(command Command, msg views.CommandMsg) string
 
 // Kind describes one kind of command. A kind with a question starts only once
 // the user answers yes to it.
@@ -129,7 +134,7 @@ func (actions *Actions) Question(msg views.CommandMsg) (question string, ok bool
 	if kind.Question == nil {
 		return "", false
 	}
-	return kind.Question(newCommand(msg)), true
+	return kind.Question(newCommand(msg), msg), true
 }
 
 func newCommand(msg views.CommandMsg) Command {

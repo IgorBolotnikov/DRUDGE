@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
@@ -182,5 +183,45 @@ func TestModel_RefusesCommandWithQuestionWhileOneRuns(t *testing.T) {
 	}
 	if got, want := commandLine(model), "! wait, still running run a01f3b55"; got != want {
 		t.Errorf("expected line %q, got %q", want, got)
+	}
+}
+
+func TestModel_NukesDrudgerOnConfirm(t *testing.T) {
+	busyTaskID := tuitest.ListedTasks()[2].Task.ID
+	errBusy := &drudger.DrudgerBusyError{Slot: 2, Sandbox: "drudge-demo-2", TaskID: busyTaskID}
+	idleQuestion := "Nuke Drudger 2? Its sandbox is deleted."
+	cases := []struct {
+		name         string
+		msg          views.NukeMsg
+		nukeErr      error
+		wantQuestion string
+		wantLine     string
+	}{
+		{name: "x on an idle Drudger", msg: views.NukeMsg{Slot: 2}, wantQuestion: idleQuestion, wantLine: "✓ Drudger 2 nuked"},
+		{name: "x on a busy Drudger shows the refusal with a hint", msg: views.NukeMsg{Slot: 2, TaskID: busyTaskID}, nukeErr: errBusy, wantQuestion: idleQuestion, wantLine: "✗ " + errBusy.Error() + " · busy with 7c1e4f90, X to force"},
+		{name: "X on an idle Drudger", msg: views.NukeMsg{Slot: 2, IsForced: true}, wantQuestion: idleQuestion, wantLine: "✓ Drudger 2 nuked"},
+		{name: "X on a busy Drudger names the task it kills", msg: views.NukeMsg{Slot: 2, TaskID: busyTaskID, IsForced: true}, wantQuestion: "Nuke Drudger 2 while it works on 7c1e4f90? Its agent is killed and the task is fucked up.", wantLine: "✓ Drudger 2 nuked"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := &fakeCommandService{nukeErr: testCase.nukeErr}
+			model := newCommandTestModel(t, service)
+			recordTimers(model)
+
+			waitAnswer := startHeld(model, testCase.msg)
+			if screen := ansi.Strip(model.View().Content); !strings.Contains(screen, testCase.wantQuestion) {
+				t.Errorf("expected the overlay to ask %q, got\n%s", testCase.wantQuestion, screen)
+			}
+
+			pressKeys(model, []tea.Msg{keyYes})
+			runCommand(model, waitAnswer)
+
+			if !slices.Equal(service.nukedSlots, []int{2}) {
+				t.Errorf("expected one nuke of slot 2, got %v", service.nukedSlots)
+			}
+			if got := commandLine(model); got != testCase.wantLine {
+				t.Errorf("expected line %q, got %q", testCase.wantLine, got)
+			}
+		})
 	}
 }

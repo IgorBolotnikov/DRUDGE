@@ -1,6 +1,8 @@
 package views
 
 import (
+	"fmt"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
@@ -20,6 +22,7 @@ const (
 	RemoveTaskCommand CommandName = "rm"
 	CopyTaskIDCommand CommandName = "copy"
 	ReclaimCommand    CommandName = "reclaim"
+	NukeCommand       CommandName = "nuke"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -110,6 +113,21 @@ type ReclaimMsg struct{}
 func (ReclaimMsg) CommandName() CommandName { return ReclaimCommand }
 
 func (ReclaimMsg) Target() string { return reclaimTarget }
+
+const nukeTargetFormat = "Drudger %d"
+
+// NukeMsg asks to delete the Drudger in a slot the way drg drudger nuke does.
+// TaskID is the task the View last saw the Drudger work on, and is empty for
+// an idle Drudger. IsForced kills the agent of a busy Drudger.
+type NukeMsg struct {
+	Slot     int
+	TaskID   task.TaskID
+	IsForced bool
+}
+
+func (NukeMsg) CommandName() CommandName { return NukeCommand }
+
+func (msg NukeMsg) Target() string { return fmt.Sprintf(nukeTargetFormat, msg.Slot) }
 
 // NewTaskKey asks to add a task. It acts on the project, so the Views that
 // list the tasks of the project bind it.

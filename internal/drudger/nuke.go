@@ -31,10 +31,23 @@ type TaskKilled struct {
 	Task *task.Task
 }
 
+// DrudgerBusyError is what NukeDrudger returns when it refuses a Drudger whose
+// Session still runs and the nuke is not forced.
+type DrudgerBusyError struct {
+	Slot    int
+	Sandbox string
+	TaskID  task.TaskID
+}
+
+func (err *DrudgerBusyError) Error() string {
+	return fmt.Sprintf("Drudger %d (%s) is working on task %s, wait for that Session to finish or force the removal to kill it regardless (beware that it will fuck up the task)", err.Slot, err.Sandbox, err.TaskID)
+}
+
 // NukeDrudger destroys a Drudger: takes its workspace apart, deletes its
 // sandbox and removes the entry from the store.
 //
-// Nuking is refused if Drudger Session is still running. Forcing goes through
+// Nuking is refused with a *DrudgerBusyError if Drudger Session is still
+// running. Forcing goes through
 // anyway, which kills the agent along with the sandbox and fucks up the task.
 // If Session is finished, it works the same way allocation does.
 //
@@ -61,7 +74,7 @@ func (service *DrudgerService) NukeDrudger(projectSlug string, slot int, isForce
 			return nil, fmt.Errorf("project %s has no Drudger in slot %d, list the Drudgers to see the slots they have", projectSlug, slot)
 		}
 		if !doomed.Idle() && !isForced {
-			return nil, fmt.Errorf("Drudger %d (%s) is working on task %s, wait for that Session to finish or force the removal to kill it regardless (beware that it will fuck up the task)", doomed.Slot, doomed.Sandbox, doomed.TaskID)
+			return nil, &DrudgerBusyError{Slot: doomed.Slot, Sandbox: doomed.Sandbox, TaskID: doomed.TaskID}
 		}
 
 		remove, err := service.pickRemoveCommand(doomed.Sandbox)
