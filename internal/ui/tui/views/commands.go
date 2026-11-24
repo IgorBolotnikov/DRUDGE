@@ -14,16 +14,17 @@ type CommandName string
 
 // Names of the kinds of commands. The bottom bar and the event log show them.
 const (
-	RunTaskCommand    CommandName = "run"
-	RerunTaskCommand  CommandName = "rerun"
-	MarkDoneCommand   CommandName = "done"
-	NewTaskCommand    CommandName = "new"
-	EditTaskCommand   CommandName = "edit"
-	RemoveTaskCommand CommandName = "rm"
-	CopyTaskIDCommand CommandName = "copy"
-	SetStatusCommand  CommandName = "status"
-	ReclaimCommand    CommandName = "reclaim"
-	NukeCommand       CommandName = "nuke"
+	RunTaskCommand      CommandName = "run"
+	RerunTaskCommand    CommandName = "rerun"
+	MarkDoneCommand     CommandName = "done"
+	NewTaskCommand      CommandName = "new"
+	EditTaskCommand     CommandName = "edit"
+	RemoveTaskCommand   CommandName = "rm"
+	CopyTaskIDCommand   CommandName = "copy"
+	SetStatusCommand    CommandName = "status"
+	PullRequestsCommand CommandName = "pr"
+	ReclaimCommand      CommandName = "reclaim"
+	NukeCommand         CommandName = "nuke"
 )
 
 // CommandMsg asks the root to run a command. It names the command and carries
@@ -108,6 +109,16 @@ type PickStatusMsg struct {
 	TaskID task.TaskID
 }
 
+// PullRequestsMsg asks to open the pull requests close-out left behind for a
+// task the way drg task pr does.
+type PullRequestsMsg struct {
+	TaskID task.TaskID
+}
+
+func (PullRequestsMsg) CommandName() CommandName { return PullRequestsCommand }
+
+func (msg PullRequestsMsg) Target() string { return task.ShortID(msg.TaskID) }
+
 // newTaskTarget names the target of a new task command. The title of the task
 // is known only once the command parsed its draft.
 const newTaskTarget = "task"
@@ -157,18 +168,19 @@ func NewTask() tea.Msg {
 }
 
 var (
-	runTaskKey    = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
-	rerunTaskKey  = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rerun"))
-	markDoneKey   = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
-	editTaskKey   = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
-	removeTaskKey = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove"))
-	copyTaskIDKey = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy id"))
-	pickStatusKey = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "set status"))
+	runTaskKey      = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run"))
+	rerunTaskKey    = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rerun"))
+	markDoneKey     = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
+	editTaskKey     = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
+	removeTaskKey   = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove"))
+	copyTaskIDKey   = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy id"))
+	pickStatusKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "set status"))
+	pullRequestsKey = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "open prs"))
 )
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey, copyTaskIDKey, pickStatusKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey, copyTaskIDKey, pickStatusKey, pullRequestsKey}
 
 // TaskCommand returns the command that sends the message of a key for the task
 // with id. It is a command message, or the message that opens the status
@@ -194,6 +206,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 		commandMsg = CopyTaskIDMsg{TaskID: id}
 	case key.Matches(msg, pickStatusKey):
 		commandMsg = PickStatusMsg{TaskID: id}
+	case key.Matches(msg, pullRequestsKey):
+		commandMsg = PullRequestsMsg{TaskID: id}
 	default:
 		return nil
 	}

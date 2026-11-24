@@ -44,6 +44,10 @@ func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task
 	return nil, nil, errors.New("a reclaim edits no task")
 }
 
+func (service *fakeDrudgerService) RetryPullRequests(projectSlug string, requestedID task.TaskID) (drudger.PullRequestsRetried, error) {
+	return drudger.PullRequestsRetried{}, errors.New("a reclaim opens no pull request")
+}
+
 func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
 	if projectSlug != testProjectSlug {
 		return nil, errors.New("the reclaim went to another project")

@@ -396,8 +396,12 @@ func TestDrudgerService_RetryPullRequests(t *testing.T) {
 				service.git.pushErrs[filepath.Join(projectDir, repository)] = err
 			}
 
-			if err := service.RetryPullRequests(testProjectSlug, "task"); err != nil {
+			retried, err := service.RetryPullRequests(testProjectSlug, "task")
+			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if retried.Opened != len(testCase.wantOpened) {
+				t.Errorf("expected the retry to count %d opened pull requests, got %d", len(testCase.wantOpened), retried.Opened)
 			}
 
 			stored := service.taskRepo.stored(finished.ID)
@@ -472,7 +476,7 @@ func TestDrudgerService_RetryPullRequests_SecondRetryFindsNothingLeft(t *testing
 
 	for retry := 1; retry <= 2; retry++ {
 		service.progress.events = nil
-		if err := service.RetryPullRequests(testProjectSlug, finished.ID); err != nil {
+		if _, err := service.RetryPullRequests(testProjectSlug, finished.ID); err != nil {
 			t.Fatalf("retry %d: unexpected error: %v", retry, err)
 		}
 	}
@@ -544,7 +548,7 @@ func TestDrudgerService_RetryPullRequests_Refuses(t *testing.T) {
 			service.runs.write(finished.ID, pullRequestFileName(testRepoPath), "Add retry")
 			testCase.setup(service, finished)
 
-			err := service.RetryPullRequests(testProjectSlug, finished.ID)
+			_, err := service.RetryPullRequests(testProjectSlug, finished.ID)
 			if err == nil {
 				t.Fatal("expected the retry to be refused")
 			}

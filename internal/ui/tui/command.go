@@ -120,15 +120,20 @@ func (model *Model) startCommand(msg views.CommandMsg) tea.Cmd {
 	return tea.Batch(run, model.spinner.Tick)
 }
 
-// handleProgress shows the step of an event of the running command and logs
-// its warnings and errors. It drops an event while no command runs.
+// handleProgress shows the steps and the finished pieces of work of the
+// running command and logs its warnings and errors. It skips the result lines,
+// because the verdict of the command carries its outcome. It drops an event
+// while no command runs.
 func (model *Model) handleProgress(msg actions.ProgressMsg) {
 	if model.running == nil {
 		return
 	}
 	for _, line := range report.Lines(msg.Event, nameTask) {
+		if line.Kind == report.KindResult {
+			continue
+		}
 		switch line.Level {
-		case report.LevelStep:
+		case report.LevelStep, report.LevelSuccess:
 			model.running.step = line.Text
 			model.running.isRefused = false
 		case report.LevelWarning, report.LevelError:

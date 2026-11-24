@@ -18,15 +18,16 @@ import (
 // DrudgerService runs a task the way drg task run does, starts a task over the
 // way drg task rerun does, marks a task done the way drg task done does, edits
 // a task from its draft, sets the status of a task the way drg task edit
-// --status does, frees the slots whose agent is gone the way drg drudger
-// reclaim does, deletes a Drudger the way drg drudger nuke does and reads the
-// Drudgers of a project.
+// --status does, opens the pull requests of a task the way drg task pr does,
+// frees the slots whose agent is gone the way drg drudger reclaim does, deletes
+// a Drudger the way drg drudger nuke does and reads the Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
 	EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error)
 	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
+	RetryPullRequests(projectSlug string, requestedID task.TaskID) (drudger.PullRequestsRetried, error)
 	ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error)
 	NukeDrudger(projectSlug string, slot int, isForced bool) error
 	ReadDrudgers(projectSlug string) ([]*drudger.Drudger, error)

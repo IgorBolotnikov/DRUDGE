@@ -51,6 +51,10 @@ func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task
 	return nil, nil, errors.New("a status change edits no draft")
 }
 
+func (service *fakeDrudgerService) RetryPullRequests(projectSlug string, requestedID task.TaskID) (drudger.PullRequestsRetried, error) {
+	return drudger.PullRequestsRetried{}, errors.New("a status change opens no pull request")
+}
+
 func (service *fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
 	return nil, errors.New("a status change reclaims no slot")
 }

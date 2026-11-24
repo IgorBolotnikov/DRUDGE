@@ -15,6 +15,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/markdone"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/newtask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/nuke"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/pullrequests"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/reclaim"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/removetask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/reruntask"
@@ -111,6 +112,7 @@ var commandKinds = []actions.Kind{
 	markdone.Kind,
 	newtask.Kind,
 	nuke.Kind,
+	pullrequests.Kind,
 	reclaim.Kind,
 	removetask.Kind,
 	reruntask.Kind,

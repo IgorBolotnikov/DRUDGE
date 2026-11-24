@@ -90,34 +90,35 @@ type PullRequestsRetried struct {
 	Opened int
 }
 
-// RetryPullRequests opens the pull requests close-out left behind for a task.
-// Every description left in the run directory goes through the steps of
-// close-out, with the branch pushed from the repository in the project
-// directory. The slot the task ran in may hold another task by now.
+// RetryPullRequests opens the pull requests close-out left behind for a task
+// and returns how the retry went. Every description left in the run directory
+// goes through the steps of close-out, with the branch pushed from the
+// repository in the project directory. The slot the task ran in may hold
+// another task by now.
 //
 // It refuses a project with pull requests off or failing the pre-run check, a
 // task whose Session is still working, and a task another command holds. A
 // repository whose pull request fails is reported and the rest are still
 // tried.
-func (service *DrudgerService) RetryPullRequests(projectSlug string, requestedID task.TaskID) error {
+func (service *DrudgerService) RetryPullRequests(projectSlug string, requestedID task.TaskID) (PullRequestsRetried, error) {
 	found, err := service.tasks.GetTask(projectSlug, requestedID)
 	if err != nil {
-		return err
+		return PullRequestsRetried{}, err
 	}
 	if service.remote == nil {
-		return fmt.Errorf("pull requests are off, turn on %s to open the pull requests of task %s", remote.PullRequestsEnabledKey, found.ID)
+		return PullRequestsRetried{}, fmt.Errorf("pull requests are off, turn on %s to open the pull requests of task %s", remote.PullRequestsEnabledKey, found.ID)
 	}
 
 	layout, err := service.layout()
 	if err != nil {
-		return err
+		return PullRequestsRetried{}, err
 	}
 	if err := service.checkRemote(layout); err != nil {
-		return err
+		return PullRequestsRetried{}, err
 	}
 	repositories, err := service.resolveRepositories(layout)
 	if err != nil {
-		return err
+		return PullRequestsRetried{}, err
 	}
 
 	var retried PullRequestsRetried
@@ -139,16 +140,16 @@ func (service *DrudgerService) RetryPullRequests(projectSlug string, requestedID
 	})
 	if err != nil {
 		if retried.Opened > 0 {
-			return fmt.Errorf("opened %d pull requests of task %s, but they could not be recorded on the task: %w", retried.Opened, found.ID, err)
+			return PullRequestsRetried{}, fmt.Errorf("opened %d pull requests of task %s, but they could not be recorded on the task: %w", retried.Opened, found.ID, err)
 		}
-		return err
+		return PullRequestsRetried{}, err
 	}
 	if !isStored {
-		return fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
+		return PullRequestsRetried{}, fmt.Errorf("another drudge command is working on task %s, wait for it to finish and run this again", found.ID)
 	}
 
 	service.progress.Report(retried)
-	return nil
+	return retried, nil
 }
 
 // retryPullRequests opens a pull request for every landing of a task with a

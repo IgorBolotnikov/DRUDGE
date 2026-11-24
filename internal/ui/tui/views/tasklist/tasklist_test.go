@@ -127,6 +127,8 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "y copies the ID of the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyCopy, want: []tea.Msg{views.CopyTaskIDMsg{TaskID: secondID}}},
 		{name: "y with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyCopy},
 		{name: "s picks a status for the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyStatus, want: []tea.Msg{views.PickStatusMsg{TaskID: secondID}}},
+		{name: "p opens the pull requests of the task under the cursor", messages: []tea.Msg{loaded, tuitest.KeyDown}, input: tuitest.KeyPullRequests, want: []tea.Msg{views.PullRequestsMsg{TaskID: secondID}}},
+		{name: "p with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyPullRequests},
 		{name: "x with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyRemove},
 		{name: "m with no task does nothing", messages: []tea.Msg{views.TasksLoadedMsg{}}, input: tuitest.KeyMarkDone},
 		{name: "click moves the cursor onto a task", messages: []tea.Msg{loaded}, input: tea.MouseClickMsg{Y: 3, Button: tea.MouseLeft}, want: []tea.Msg{views.TaskSelectedMsg{TaskID: thirdID}}},

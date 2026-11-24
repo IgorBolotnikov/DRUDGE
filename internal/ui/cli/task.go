@@ -433,7 +433,8 @@ func taskPullRequests(args []string) error {
 		return err
 	}
 
-	return deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
+	_, err = deps.drudger.RetryPullRequests(deps.localCfg.ProjectSlug, taskID)
+	return err
 }
 
 // taskSessionStatus reports how the last Session of a task is going.

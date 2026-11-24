@@ -13,12 +13,12 @@
 │                                 │ x     remove                 │                                 │
 │                                 │ y     copy id                │                                 │
 │                                 │ s     set status             │                                 │
+│                                 │ p     open prs               │                                 │
 │                                 │ n     new task               │                                 │
 │                                 │                              │                                 │
 │                                 │ Global                       │                                 │
 │                                 │ z             zoom           │                                 │
 │                                 │ 1-9           tab            │                                 │
 │                                 │ [/]           prev/next tab  │                                 │
-│                                 │ ctrl+h/j/k/l  move focus     │                                 │
-╰─────────────────────────────────│ tab/shift+tab next/prev tile │─────────────────────────── 1/5 ─╯
-                                  │ !             event log      │                       esc/q close
+╰─────────────────────────────────│ ctrl+h/j/k/l  move focus     │─────────────────────────── 1/5 ─╯
+                                  │ tab/shift+tab next/prev tile │                       esc/q close

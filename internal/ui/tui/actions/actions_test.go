@@ -40,6 +40,10 @@ func (fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) 
 	return nil, nil, nil
 }
 
+func (fakeDrudgerService) RetryPullRequests(projectSlug string, requestedID task.TaskID) (drudger.PullRequestsRetried, error) {
+	return drudger.PullRequestsRetried{}, nil
+}
+
 func (fakeDrudgerService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
 	return nil, nil
 }

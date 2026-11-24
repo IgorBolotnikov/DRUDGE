@@ -68,6 +68,10 @@ func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task
 	return &task.Task{ID: id, Title: "Add retry"}, []string{"title"}, nil
 }
 
+func (service *fakeCommandService) RetryPullRequests(projectSlug string, requestedID task.TaskID) (drudger.PullRequestsRetried, error) {
+	return drudger.PullRequestsRetried{}, errors.New("the command tests open no pull request")
+}
+
 func (service *fakeCommandService) ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error) {
 	return nil, errors.New("the command tests reclaim no slot")
 }
@@ -176,6 +180,18 @@ func TestModel_CommandLine(t *testing.T) {
 			wantLine: "⠋ 7c1e4f90: Creating sandbox drudge-uploader-2, the first one pulls its image, up to 5m0s…",
 		},
 		{
+			name:     "a finished piece of work replaces the step",
+			service:  &fakeCommandService{},
+			events:   []any{drudger.BranchPushStarted{Repository: "api", Branch: "drudge/7c1e-add-retry", Remote: "origin"}, drudger.PullRequestOpened{Repository: "api", URL: "https://github.com/owner/api/pull/8"}},
+			wantLine: "⠋ 7c1e4f90: Opened the pull request of api: https://github.com/owner/api/pull/8…",
+		},
+		{
+			name:     "a result line leaves the step",
+			service:  &fakeCommandService{},
+			events:   []any{drudger.SandboxLookupStarted{Sandbox: "drudge-uploader-2"}, drudger.PullRequestsRetried{Task: &task.Task{ID: runTaskID}, Tried: 2, Opened: 1}},
+			wantLine: "⠋ 7c1e4f90: Looking for sandbox drudge-uploader-2…",
+		},
+		{
 			name:     "a warning leaves the step",
 			service:  &fakeCommandService{},
 			events:   []any{drudger.SandboxLookupStarted{Sandbox: "drudge-uploader-2"}, drudger.SbxDaemonRetried{}},
@@ -200,6 +216,13 @@ func TestModel_CommandLine(t *testing.T) {
 			events:   []any{drudger.BaseFetchFailed{Repository: "api", Branch: "main", Err: errDiskOnFire}, drudger.SbxDaemonRetried{}},
 			isDone:   true,
 			wantLine: "✓ 7c1e4f90 handed to Drudger 2 · 2 warnings, ! to see",
+		},
+		{
+			name:     "the verdict leaves out the warning of a result line",
+			service:  &fakeCommandService{},
+			events:   []any{drudger.SbxDaemonRetried{}, drudger.PullRequestsRetried{Task: &task.Task{ID: runTaskID}, Tried: 2, Opened: 1}},
+			isDone:   true,
+			wantLine: "✓ 7c1e4f90 handed to Drudger 2 · 1 warning, ! to see",
 		},
 		{name: "a refused run shows the error of the service", service: &fakeCommandService{runErr: errNotTodo}, isDone: true, wantLine: "✗ " + errNotTodo.Error()},
 		{
