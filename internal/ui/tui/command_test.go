@@ -14,6 +14,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/overlays/statuspicker"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/tuitest"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
@@ -22,17 +23,25 @@ var keyEventLog = tea.KeyPressMsg{Code: '!', Text: "!"}
 
 var errNotTodo = errors.New(`task 7c1e4f90 is "in progress", only a task that is "todo" can run`)
 
+// statusEdit is one edit that set the status of a task.
+type statusEdit struct {
+	id       task.TaskID
+	status   task.TaskStatus
+	isForced bool
+}
+
 // fakeCommandService refuses every run with runErr and every nuke with
-// nukeErr. It records the task of every run, of every rerun and of every edit
-// from a draft, and the slot of every nuke. Its Drudgers hold the tasks it ran
-// and then the tasks it reran, from slot 2 up.
+// nukeErr. It records the task of every run, of every rerun, of every edit
+// from a draft and of every status edit, and the slot of every nuke. Its
+// Drudgers hold the tasks it ran and then the tasks it reran, from slot 2 up.
 type fakeCommandService struct {
-	runErr     error
-	nukeErr    error
-	runIDs     []task.TaskID
-	rerunIDs   []task.TaskID
-	editIDs    []task.TaskID
-	nukedSlots []int
+	statusEdits []statusEdit
+	runErr      error
+	nukeErr     error
+	runIDs      []task.TaskID
+	rerunIDs    []task.TaskID
+	editIDs     []task.TaskID
+	nukedSlots  []int
 }
 
 func (service *fakeCommandService) RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error {
@@ -47,6 +56,11 @@ func (service *fakeCommandService) RerunTask(projectSlug string, requestedID tas
 
 func (service *fakeCommandService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	return nil, nil, errors.New("the command tests mark no task done")
+}
+
+func (service *fakeCommandService) EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error) {
+	service.statusEdits = append(service.statusEdits, statusEdit{id: id, status: *changes.Status, isForced: changes.AllowsManagedStatus})
+	return &task.Task{ID: id, Status: *changes.Status}, nil
 }
 
 func (service *fakeCommandService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
@@ -338,7 +352,9 @@ func TestEventLog_KeepsNewestEntries(t *testing.T) {
 
 // TestCommandKinds_StartEveryTaskCommand sends the key of every task command
 // through a View's key handling and starts its message. A command with no
-// kind in the registry panics in the TUI on the first key press.
+// kind in the registry panics in the TUI on the first key press. The key of the
+// status picker sends the message that opens the picker, and the picker sends
+// the command message.
 func TestCommandKinds_StartEveryTaskCommand(t *testing.T) {
 	commands := newTestCommands(&fakeCommandService{})
 	for _, binding := range views.TaskCommandKeys {
@@ -348,9 +364,13 @@ func TestCommandKinds_StartEveryTaskCommand(t *testing.T) {
 			if cmd == nil {
 				t.Fatalf("expected key %q to send a command message, it sends nothing", keyName)
 			}
-			commandMsg, ok := cmd().(views.CommandMsg)
+			sent := cmd()
+			if pick, isPick := sent.(views.PickStatusMsg); isPick {
+				sent = views.SetStatusMsg{TaskID: pick.TaskID, Status: task.StatusTodo}
+			}
+			commandMsg, ok := sent.(views.CommandMsg)
 			if !ok {
-				t.Fatalf("expected key %q to send a command message, got %T", keyName, cmd())
+				t.Fatalf("expected key %q to send a command message, got %T", keyName, sent)
 			}
 			defer func() {
 				if recovered := recover(); recovered != nil {
@@ -380,4 +400,108 @@ func keyPress(t *testing.T, keyName string) tea.KeyPressMsg {
 		t.Fatalf("key %q is not one character, teach keyPress to build its press", keyName)
 	}
 	return tea.KeyPressMsg{Code: characters[0], Text: keyName}
+}
+
+var pickedTaskID = tuitest.ListedTasks()[2].Task.ID
+
+// newPickerTestModel returns a model with the status picker open on the todo
+// task.
+func newPickerTestModel(t *testing.T, service *fakeCommandService) *Model {
+	t.Helper()
+	model := newCommandTestModel(t, service)
+	recordTimers(model)
+	pressKeys(model, []tea.Msg{tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyStatus})
+	return model
+}
+
+func TestModel_StatusPicker(t *testing.T) {
+	model := newPickerTestModel(t, &fakeCommandService{})
+	if got := overlayTitles(model); !slices.Equal(got, []string{statuspicker.Title}) {
+		t.Fatalf("expected s to open the picker, got overlays %q", got)
+	}
+	if screen := ansi.Strip(model.View().Content); !strings.Contains(screen, "› todo") {
+		t.Errorf("expected the cursor on the current status todo, got\n%s", screen)
+	}
+
+	pressKeys(model, []tea.Msg{tuitest.KeyEscape})
+	if got := overlayTitles(model); len(got) != 0 {
+		t.Errorf("expected esc to close the picker, got overlays %q", got)
+	}
+}
+
+func TestModel_AppliesStatus(t *testing.T) {
+	cases := []struct {
+		name string
+		keys []tea.Msg
+		// isAsked is whether a confirm overlay opens before the edit.
+		isAsked   bool
+		wantEdits []statusEdit
+		wantLine  string
+	}{
+		{
+			name:      "a status the user owns applies without asking",
+			keys:      []tea.Msg{tuitest.KeyUp},
+			wantEdits: []statusEdit{{id: pickedTaskID, status: task.StatusDraft}},
+			wantLine:  "✓ 7c1e4f90 now draft",
+		},
+		{
+			name:      "done applies without asking",
+			keys:      []tea.Msg{tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyDown, tuitest.KeyDown},
+			wantEdits: []statusEdit{{id: pickedTaskID, status: task.StatusDone}},
+			wantLine:  "✓ 7c1e4f90 now done",
+		},
+		{
+			name:      "a status drudge maintains asks first and a yes forces it",
+			keys:      []tea.Msg{tuitest.KeyDown},
+			isAsked:   true,
+			wantEdits: []statusEdit{{id: pickedTaskID, status: task.StatusInProgress, isForced: true}},
+			wantLine:  "✓ 7c1e4f90 now in-progress",
+		},
+		{name: "the current status does nothing", wantLine: ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := &fakeCommandService{}
+			model := newPickerTestModel(t, service)
+
+			var waitAnswer tea.Cmd
+			for _, keyPress := range testCase.keys {
+				_, cmd := model.Update(keyPress)
+				runCommand(model, cmd)
+			}
+			_, apply := model.Update(tuitest.KeyEnter)
+			commandMsg, isSent := findCommandMsg(model, apply)
+			if got := overlayTitles(model); len(got) != 0 {
+				t.Fatalf("expected enter to close the picker, got overlays %q", got)
+			}
+			if isSent {
+				waitAnswer = startHeld(model, commandMsg)
+			}
+
+			if testCase.isAsked {
+				if got := overlayTitles(model); !slices.Equal(got, []string{confirmTitle}) {
+					t.Fatalf("expected a confirm overlay, got overlays %q", got)
+				}
+				want := "Force 7c1e4f90 to in-progress? drudge maintains this status itself."
+				if screen := ansi.Strip(model.View().Content); !strings.Contains(screen, want) {
+					t.Errorf("expected the overlay to ask %q, got\n%s", want, screen)
+				}
+				if len(service.statusEdits) != 0 {
+					t.Fatalf("expected no edit before the answer, got %v", service.statusEdits)
+				}
+				pressKeys(model, []tea.Msg{keyYes})
+			} else if got := overlayTitles(model); len(got) != 0 {
+				t.Fatalf("expected no question, got overlays %q", got)
+			}
+
+			runCommand(model, waitAnswer)
+
+			if !slices.Equal(service.statusEdits, testCase.wantEdits) {
+				t.Errorf("expected edits %v, got %v", testCase.wantEdits, service.statusEdits)
+			}
+			if got := commandLine(model); got != testCase.wantLine {
+				t.Errorf("expected line %q, got %q", testCase.wantLine, got)
+			}
+		})
+	}
 }

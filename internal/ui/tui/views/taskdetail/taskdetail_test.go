@@ -259,6 +259,7 @@ func TestView_TaskKeys(t *testing.T) {
 		{name: "R reruns the shown task", taskID: shownTaskID, input: tuitest.KeyRerun, want: []tea.Msg{views.RerunTaskMsg{TaskID: shownTaskID}}},
 		{name: "m marks the shown task done", taskID: shownTaskID, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: shownTaskID}}},
 		{name: "x removes the shown task", taskID: shownTaskID, input: tuitest.KeyRemove, want: []tea.Msg{views.RemoveTaskMsg{TaskID: shownTaskID}}},
+		{name: "s picks a status for the shown task", taskID: shownTaskID, input: tuitest.KeyStatus, want: []tea.Msg{views.PickStatusMsg{TaskID: shownTaskID}}},
 		{name: "x with no task does nothing", input: tuitest.KeyRemove},
 		{name: "y copies the ID of the shown task", taskID: shownTaskID, input: tuitest.KeyCopy, want: []tea.Msg{views.CopyTaskIDMsg{TaskID: shownTaskID}}},
 		{name: "y with no task does nothing", input: tuitest.KeyCopy},

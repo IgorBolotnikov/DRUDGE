@@ -19,6 +19,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/removetask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/reruntask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/runtask"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/setstatus"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgercheck"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds/drudgers"
@@ -114,6 +115,7 @@ var commandKinds = []actions.Kind{
 	removetask.Kind,
 	reruntask.Kind,
 	runtask.Kind,
+	setstatus.Kind,
 }
 
 // findFeedKind returns the kind of feed called name. ok is false for a name

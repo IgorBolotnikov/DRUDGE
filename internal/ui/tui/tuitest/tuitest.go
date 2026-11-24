@@ -56,6 +56,9 @@ var KeyRerun = tea.KeyPressMsg{Code: 'r', Text: "R", Mod: tea.ModShift}
 // KeyMarkDone asks to mark the task under a cursor done.
 var KeyMarkDone = tea.KeyPressMsg{Code: 'm', Text: "m"}
 
+// KeyStatus asks to pick a status for the task under a cursor.
+var KeyStatus = tea.KeyPressMsg{Code: 's', Text: "s"}
+
 // KeyRemove asks to remove the task under a cursor.
 var KeyRemove = tea.KeyPressMsg{Code: 'x', Text: "x"}
 

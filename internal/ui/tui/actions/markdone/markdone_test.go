@@ -45,6 +45,10 @@ func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) 
 	return &task.Task{ID: id, Status: task.StatusDone}, service.unblocked, nil
 }
 
+func (service *fakeDrudgerService) EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error) {
+	return nil, errors.New("this test edits no task")
+}
+
 func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
 	return nil, nil, errors.New("a mark done edits no task")
 }

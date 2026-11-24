@@ -19,6 +19,7 @@ import (
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/cells"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/feeds"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/overlays/statuspicker"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/styles"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/views"
 )
@@ -135,6 +136,14 @@ func (model *Model) handleMsg(msg tea.Msg) tea.Cmd {
 		return tea.Batch(model.deliver(feed, feedMsg), rerun)
 	case views.CommandMsg:
 		return model.handleCommand(msg)
+	case views.PickStatusMsg:
+		return model.pushWithFeeds(statuspicker.New(msg.TaskID, helpKey, model.styles))
+	case views.CloseOverlayMsg:
+		model.pop()
+		if msg.Next == nil {
+			return nil
+		}
+		return func() tea.Msg { return msg.Next }
 	case commandConfirmedMsg:
 		return model.handleCommandConfirmed(msg)
 	case actions.ConfirmMsg:
@@ -234,24 +243,27 @@ func (model *Model) handleOverlayMsg(msg overlayMsg) tea.Cmd {
 
 // openInOverlay builds every View of the registry in order with the default
 // values of its options and pushes the first one that shows the open message
-// in an overlay. The View gets the last messages of its feeds before it is
-// pushed. Nothing opens when no View shows the message.
+// in an overlay. Nothing opens when no View shows the message.
 func (model *Model) openInOverlay(msg views.OpenMsg) tea.Cmd {
 	for _, kind := range viewKinds {
 		opener, ok := kind.newView(model.styles, kind.defaultOptionValues()).(views.Opener)
 		if !ok || !opener.Open(msg) {
 			continue
 		}
-		overlay := newViewOverlay(opener, model.styles)
-		lastMessages := model.feedRunner.LastMessages(overlay.Feeds())
-		commands := make([]tea.Cmd, 0, len(lastMessages))
-		for _, lastMsg := range lastMessages {
-			commands = append(commands, tagOverlay(overlay.Update(lastMsg)))
-		}
-		model.push(overlay)
-		return tea.Batch(commands...)
+		return model.pushWithFeeds(newViewOverlay(opener, model.styles))
 	}
 	return nil
+}
+
+// pushWithFeeds gives an overlay the last messages of its feeds and pushes it.
+func (model *Model) pushWithFeeds(overlay Overlay) tea.Cmd {
+	lastMessages := model.feedRunner.LastMessages(overlay.Feeds())
+	commands := make([]tea.Cmd, 0, len(lastMessages))
+	for _, lastMsg := range lastMessages {
+		commands = append(commands, tagOverlay(overlay.Update(lastMsg)))
+	}
+	model.push(overlay)
+	return tea.Batch(commands...)
 }
 
 // push sizes an overlay to the screen and puts it on top of the stack.

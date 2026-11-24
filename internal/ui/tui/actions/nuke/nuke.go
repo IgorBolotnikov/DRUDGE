@@ -25,12 +25,12 @@ const (
 // a refused nuke names the task the Drudger is busy with.
 var Kind = actions.Kind{Name: views.NukeCommand, Run: run, Question: question}
 
-func question(command actions.Command, msg views.CommandMsg) string {
+func question(command actions.Command, msg views.CommandMsg) (string, bool) {
 	nukeMsg := msg.(views.NukeMsg)
 	if nukeMsg.IsForced && nukeMsg.TaskID != "" {
-		return fmt.Sprintf(forcedQuestionFormat, command.Target, task.ShortID(nukeMsg.TaskID))
+		return fmt.Sprintf(forcedQuestionFormat, command.Target, task.ShortID(nukeMsg.TaskID)), true
 	}
-	return fmt.Sprintf(questionFormat, command.Target)
+	return fmt.Sprintf(questionFormat, command.Target), true
 }
 
 func run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) tea.Msg {

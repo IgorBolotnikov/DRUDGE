@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -29,6 +30,10 @@ func (fakeDrudgerService) RerunTask(projectSlug string, requestedID task.TaskID,
 
 func (fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error) {
 	return nil, nil, nil
+}
+
+func (fakeDrudgerService) EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error) {
+	return nil, errors.New("this test edits no task")
 }
 
 func (fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
@@ -147,8 +152,8 @@ func TestActions_Question(t *testing.T) {
 	asking := actions.Kind{
 		Name: views.RerunTaskCommand,
 		Run:  askingRun,
-		Question: func(command actions.Command, msg views.CommandMsg) string {
-			return "Start " + command.Target + " over?"
+		Question: func(command actions.Command, msg views.CommandMsg) (string, bool) {
+			return "Start " + command.Target + " over?", true
 		},
 	}
 	recorder := &recordingKind{}

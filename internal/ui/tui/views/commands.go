@@ -21,6 +21,7 @@ const (
 	EditTaskCommand   CommandName = "edit"
 	RemoveTaskCommand CommandName = "rm"
 	CopyTaskIDCommand CommandName = "copy"
+	SetStatusCommand  CommandName = "status"
 	ReclaimCommand    CommandName = "reclaim"
 	NukeCommand       CommandName = "nuke"
 )
@@ -90,6 +91,23 @@ func (CopyTaskIDMsg) CommandName() CommandName { return CopyTaskIDCommand }
 
 func (msg CopyTaskIDMsg) Target() string { return task.ShortID(msg.TaskID) }
 
+// SetStatusMsg asks to set the status of a task the way drg task edit --status
+// does. IsForced sets a status drudge maintains itself, the way --force does.
+type SetStatusMsg struct {
+	TaskID   task.TaskID
+	Status   task.TaskStatus
+	IsForced bool
+}
+
+func (SetStatusMsg) CommandName() CommandName { return SetStatusCommand }
+
+func (msg SetStatusMsg) Target() string { return task.ShortID(msg.TaskID) }
+
+// PickStatusMsg asks the root to open the status picker for a task.
+type PickStatusMsg struct {
+	TaskID task.TaskID
+}
+
 // newTaskTarget names the target of a new task command. The title of the task
 // is known only once the command parsed its draft.
 const newTaskTarget = "task"
@@ -145,20 +163,22 @@ var (
 	editTaskKey   = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
 	removeTaskKey = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove"))
 	copyTaskIDKey = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy id"))
+	pickStatusKey = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "set status"))
 )
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey, copyTaskIDKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey, copyTaskIDKey, pickStatusKey}
 
-// TaskCommand returns the command that sends the command message of a key for
-// the task with id. It returns nil for a key of no command and for an empty
+// TaskCommand returns the command that sends the message of a key for the task
+// with id. It is a command message, or the message that opens the status
+// picker. It returns nil for a key of no command and for an empty
 // id.
 func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 	if id == "" {
 		return nil
 	}
-	var commandMsg CommandMsg
+	var commandMsg tea.Msg
 	switch {
 	case key.Matches(msg, runTaskKey):
 		commandMsg = RunTaskMsg{TaskID: id}
@@ -172,6 +192,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 		commandMsg = RemoveTaskMsg{TaskID: id}
 	case key.Matches(msg, copyTaskIDKey):
 		commandMsg = CopyTaskIDMsg{TaskID: id}
+	case key.Matches(msg, pickStatusKey):
+		commandMsg = PickStatusMsg{TaskID: id}
 	default:
 		return nil
 	}

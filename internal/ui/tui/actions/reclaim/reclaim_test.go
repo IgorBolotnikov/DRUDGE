@@ -36,6 +36,10 @@ func (service *fakeDrudgerService) MarkDone(projectSlug string, id task.TaskID) 
 	return nil, nil, errors.New("a reclaim marks no task done")
 }
 
+func (service *fakeDrudgerService) EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error) {
+	return nil, errors.New("this test edits no task")
+}
+
 func (service *fakeDrudgerService) EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error) {
 	return nil, nil, errors.New("a reclaim edits no task")
 }

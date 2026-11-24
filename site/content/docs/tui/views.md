@@ -50,6 +50,7 @@ The view takes no options.
 | `e` | edit |
 | `x` | remove |
 | `y` | copy id |
+| `s` | set status |
 | `n` | new task |
 
 ## `task-detail`
@@ -74,6 +75,7 @@ The view takes no options.
 | `e` | edit |
 | `x` | remove |
 | `y` | copy id |
+| `s` | set status |
 
 ## `task-list`
 
@@ -101,6 +103,7 @@ Lists the tasks of the project with the rows of drg task list.
 | `e` | edit |
 | `x` | remove |
 | `y` | copy id |
+| `s` | set status |
 | `n` | new task |
 
 ## `task-runlog`
@@ -124,3 +127,4 @@ The view takes no options.
 | `e` | edit |
 | `x` | remove |
 | `y` | copy id |
+| `s` | set status |

@@ -147,6 +147,7 @@ func TestView_SelectsAndOpensTasks(t *testing.T) {
 		{name: "m marks the task under the cursor done", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: todoIDs[1]}}},
 		{name: "x removes the task under the cursor", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyRemove, want: []tea.Msg{views.RemoveTaskMsg{TaskID: todoIDs[1]}}},
 		{name: "y copies the ID of the task under the cursor", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyCopy, want: []tea.Msg{views.CopyTaskIDMsg{TaskID: todoIDs[1]}}},
+		{name: "s picks a status for the task under the cursor", messages: []tea.Msg{loaded, keyRight, tuitest.KeyDown}, input: tuitest.KeyStatus, want: []tea.Msg{views.PickStatusMsg{TaskID: todoIDs[1]}}},
 		{name: "m in an empty column does nothing", messages: []tea.Msg{loaded, keyRight, keyRight, keyRight, keyRight}, input: tuitest.KeyMarkDone},
 	}
 	for _, testCase := range cases {

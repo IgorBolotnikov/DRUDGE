@@ -91,6 +91,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `x`                                                      | Removes the task under the cursor of a list or a board, or the task shown in a detail or a runlog, after you confirm. Nukes the Drudger under the cursor of a Drudger list after you confirm |
 | `X`                                                      | Nukes the Drudger under the cursor of a Drudger list even while it works, after you confirm                                                                                                  |
 | `y`                                                      | Copies the ID of the task under the cursor of a list or a board, or the task shown in a detail or a runlog, to the clipboard                                                                 |
+| `s`                                                      | Opens the status picker for the task under the cursor of a list or a board, or the task shown in a detail or a runlog                                                                        |
 | `n`                                                      | Adds a task from a draft in `$EDITOR`, in a list or a board                                                                                                                                  |
 | `f`                                                      | Frees the Drudger slots whose agent is gone, in a Drudger list                                                                                                                               |
 | `/`                                                      | Opens the filter of the focused list                                                                                                                                                         |
@@ -139,13 +140,11 @@ The draft never forces a status. Setting `in-progress`, `fucked-up` or `unmerged
 
 `f` in a `drudger-list` tile frees the slots still claimed by agents that are gone, the way [`drg drudger reclaim`]({{< relref "/docs/cli/drudger/reclaim" >}}) does. It asks nothing first, because it only rewrites the Drudgers file. The verdict names the freed slots and the tasks they held, like `✓ freed slots 2, 4 · rerun 1a2b3c4d, 4d5e6f70 to start them over`. When no slot was claimed by a gone agent, the bar says `· no slot was claimed by a gone agent`.
 
-<<<<<<< HEAD
-`y` copies the full ID of a task and the bar says `✓ 7c1e4f90 copied to clipboard`. The copy is an OSC52 write to the terminal, so it needs a terminal that supports OSC52. A terminal that does not support it ignores the copy and the bar still says it worked.
-=======
-
 `x` in a `drudger-list` tile deletes the Drudger under the cursor the way [`drg drudger nuke`]({{< relref "/docs/cli/drudger/nuke" >}}) does. It first asks `Nuke Drudger 2? Its sandbox is deleted.` A Drudger that works on a task is refused, and the bar shows the error and adds `busy with 1a2b3c4d, X to force`. `X` nukes it anyway the way `drg drudger nuke --force` does. It asks `Nuke Drudger 2 while it works on 1a2b3c4d? Its agent is killed and the task is fucked up.` On an idle Drudger `X` asks the same as `x`. The verdict names the Drudger, like `✓ Drudger 2 nuked`. A sandbox that was already gone shows up as a warning in the event log.
 
-> > > > > > > 8a431ca (feat: nuke a Drudger from the TUI with x and X behind a confirm overlay)
+`y` copies the full ID of a task and the bar says `✓ 7c1e4f90 copied to clipboard`. The copy is an OSC52 write to the terminal, so it needs a terminal that supports OSC52. A terminal that does not support it ignores the copy and the bar still says it worked.
+
+`s` opens a small box that lists the six statuses with the cursor on the current one. `j` and `k` move, `enter` applies and `esc` closes the box. Picking the current status does nothing. The bar says `✓ 7c1e4f90 now todo`, and a refusal of [`drg task edit --status`]({{< relref "/docs/cli/task/edit" >}}) shows its error. `in-progress`, `fucked-up` and `unmerged` are shown muted because drudge maintains them itself. Picking one first asks `Force 7c1e4f90 to in-progress? drudge maintains this status itself.` in a box over the screen, and a `y` sets it the way `--force` does. `m` stays the way to mark an unmerged task done.
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

@@ -17,8 +17,8 @@ const questionFormat = "Start %s over? What its last run left behind is cleared.
 // it. Its verdict names the Drudger that took the task, like a run.
 var Kind = actions.Kind{Name: views.RerunTaskCommand, Run: run, Question: question}
 
-func question(command actions.Command, msg views.CommandMsg) string {
-	return fmt.Sprintf(questionFormat, command.Target)
+func question(command actions.Command, msg views.CommandMsg) (string, bool) {
+	return fmt.Sprintf(questionFormat, command.Target), true
 }
 
 func run(services actions.Services, projectSlug string, command actions.Command, msg views.CommandMsg) tea.Msg {

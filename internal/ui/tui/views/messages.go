@@ -3,6 +3,8 @@ package views
 import (
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/IgorBolotnikov/DRUDGE/internal/drudger"
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 )
@@ -75,3 +77,10 @@ type OpenRunLogMsg struct {
 }
 
 func (OpenRunLogMsg) isOpenMsg() {}
+
+// CloseOverlayMsg asks the root to close the overlay on top and then handle
+// Next. The root closes the overlay first, so a confirm overlay that Next opens
+// stays open.
+type CloseOverlayMsg struct {
+	Next tea.Msg
+}

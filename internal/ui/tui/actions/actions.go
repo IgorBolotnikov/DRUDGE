@@ -17,13 +17,15 @@ import (
 
 // DrudgerService runs a task the way drg task run does, starts a task over the
 // way drg task rerun does, marks a task done the way drg task done does, edits
-// a task from its draft, frees the slots whose agent is gone the way drg
-// drudger reclaim does, deletes a Drudger the way drg drudger nuke does and
-// reads the Drudgers of a project.
+// a task from its draft, sets the status of a task the way drg task edit
+// --status does, frees the slots whose agent is gone the way drg drudger
+// reclaim does, deletes a Drudger the way drg drudger nuke does and reads the
+// Drudgers of a project.
 type DrudgerService interface {
 	RunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	RerunTask(projectSlug string, requestedID task.TaskID, isDryRun bool) error
 	MarkDone(projectSlug string, id task.TaskID) (*task.Task, []*task.Task, error)
+	EditTask(projectSlug string, id task.TaskID, changes task.EditTaskDto) (*task.Task, error)
 	EditTaskFromDraft(projectSlug string, id task.TaskID) (*task.Task, []string, error)
 	ReclaimDrudgers(projectSlug string) ([]drudger.FreedSlot, error)
 	NukeDrudger(projectSlug string, slot int, isForced bool) error
@@ -94,8 +96,9 @@ type DoneMsg struct {
 type RunFunc func(services Services, projectSlug string, command Command, msg views.CommandMsg) tea.Msg
 
 // QuestionFunc returns the question a command asks before it starts. It gets
-// the command message of its own kind.
-type QuestionFunc func(command Command, msg views.CommandMsg) string
+// the command message of its own kind. ok is false for a command message that
+// starts right away.
+type QuestionFunc func(command Command, msg views.CommandMsg) (question string, ok bool)
 
 // Kind describes one kind of command. A kind with a question starts only once
 // the user answers yes to it.
@@ -134,7 +137,7 @@ func (actions *Actions) Question(msg views.CommandMsg) (question string, ok bool
 	if kind.Question == nil {
 		return "", false
 	}
-	return kind.Question(newCommand(msg), msg), true
+	return kind.Question(newCommand(msg), msg)
 }
 
 func newCommand(msg views.CommandMsg) Command {
