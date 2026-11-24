@@ -62,6 +62,9 @@ var KeyRemove = tea.KeyPressMsg{Code: 'x', Text: "x"}
 // KeyReclaim asks to free the Drudger slots whose agent is gone.
 var KeyReclaim = tea.KeyPressMsg{Code: 'f', Text: "f"}
 
+// KeyCopy asks to copy the ID of the task under a cursor.
+var KeyCopy = tea.KeyPressMsg{Code: 'y', Text: "y"}
+
 // Type returns the key presses that type text.
 func Type(text string) []tea.Msg {
 	keyPresses := make([]tea.Msg, 0, len(text))

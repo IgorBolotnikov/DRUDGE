@@ -18,6 +18,7 @@ const (
 	NewTaskCommand    CommandName = "new"
 	EditTaskCommand   CommandName = "edit"
 	RemoveTaskCommand CommandName = "rm"
+	CopyTaskIDCommand CommandName = "copy"
 	ReclaimCommand    CommandName = "reclaim"
 )
 
@@ -77,6 +78,15 @@ func (RemoveTaskMsg) CommandName() CommandName { return RemoveTaskCommand }
 
 func (msg RemoveTaskMsg) Target() string { return task.ShortID(msg.TaskID) }
 
+// CopyTaskIDMsg asks to copy the ID of a task to the clipboard.
+type CopyTaskIDMsg struct {
+	TaskID task.TaskID
+}
+
+func (CopyTaskIDMsg) CommandName() CommandName { return CopyTaskIDCommand }
+
+func (msg CopyTaskIDMsg) Target() string { return task.ShortID(msg.TaskID) }
+
 // newTaskTarget names the target of a new task command. The title of the task
 // is known only once the command parsed its draft.
 const newTaskTarget = "task"
@@ -116,11 +126,12 @@ var (
 	markDoneKey   = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mark done"))
 	editTaskKey   = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
 	removeTaskKey = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove"))
+	copyTaskIDKey = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy id"))
 )
 
 // TaskCommandKeys are the keys of the commands on a task. Every View that
 // shows tasks binds them and lists them in its keys.
-var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey}
+var TaskCommandKeys = []key.Binding{runTaskKey, rerunTaskKey, markDoneKey, editTaskKey, removeTaskKey, copyTaskIDKey}
 
 // TaskCommand returns the command that sends the command message of a key for
 // the task with id. It returns nil for a key of no command and for an empty
@@ -141,6 +152,8 @@ func TaskCommand(msg tea.KeyPressMsg, id task.TaskID) tea.Cmd {
 		commandMsg = EditTaskMsg{TaskID: id}
 	case key.Matches(msg, removeTaskKey):
 		commandMsg = RemoveTaskMsg{TaskID: id}
+	case key.Matches(msg, copyTaskIDKey):
+		commandMsg = CopyTaskIDMsg{TaskID: id}
 	default:
 		return nil
 	}

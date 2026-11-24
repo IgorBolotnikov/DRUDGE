@@ -11,6 +11,7 @@
 │                                 │ m     mark done              │                                 │
 │                                 │ e     edit                   │                                 │
 │                                 │ x     remove                 │                                 │
+│                                 │ y     copy id                │                                 │
 │                                 │ n     new task               │                                 │
 │                                 │                              │                                 │
 │                                 │ Global                       │                                 │
@@ -19,6 +20,5 @@
 │                                 │ [/]           prev/next tab  │                                 │
 │                                 │ ctrl+h/j/k/l  move focus     │                                 │
 │                                 │ tab/shift+tab next/prev tile │                                 │
-│                                 │ !             event log      │                                 │
-╰─────────────────────────────────│ esc           clear error    │─────────────────────────── 1/5 ─╯
-                                  │ ?             help           │                       esc/q close
+╰─────────────────────────────────│ !             event log      │─────────────────────────── 1/5 ─╯
+                                  │ esc           clear error    │                       esc/q close

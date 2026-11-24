@@ -10,6 +10,7 @@ import (
 
 	"github.com/IgorBolotnikov/DRUDGE/internal/task"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions"
+	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/copytaskid"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/edittask"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/markdone"
 	"github.com/IgorBolotnikov/DRUDGE/internal/ui/tui/actions/newtask"
@@ -103,6 +104,7 @@ var feedKinds = []feeds.Kind{
 
 // commandKinds lists every kind of command a View can ask for.
 var commandKinds = []actions.Kind{
+	copytaskid.Kind,
 	edittask.Kind,
 	markdone.Kind,
 	newtask.Kind,

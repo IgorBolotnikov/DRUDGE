@@ -92,6 +92,7 @@ When the terminal is too small to show every tile of a tab, the tab shows a warn
 | `m` | Marks the task under the cursor of a list or a board, or the task shown in a detail or a runlog, done |
 | `e` | Edits the task under the cursor of a list or a board, or the task shown in a detail or a runlog, in `$EDITOR` |
 | `x` | Removes the task under the cursor of a list or a board, or the task shown in a detail or a runlog, after you confirm |
+| `y` | Copies the ID of the task under the cursor of a list or a board, or the task shown in a detail or a runlog, to the clipboard |
 | `n` | Adds a task from a draft in `$EDITOR`, in a list or a board |
 | `f` | Frees the Drudger slots whose agent is gone, in a Drudger list |
 | `/` | Opens the filter of the focused list |
@@ -139,6 +140,8 @@ The draft never forces a status. Setting `in-progress`, `fucked-up` or `unmerged
 `x` removes a task the way [`drg task rm`]({{< relref "/docs/cli/task/rm" >}}) does. It first asks in a box over the screen. The question names the task and lists the tasks the removal unblocks and ungroups. `y` removes the task and the bar says `✓ 7c1e4f90 removed`. `n` or `esc` closes the box and keeps the task. `ctrl+c` quits and answers no. Branches kept because they hold commits and a failed branch cleanup show up as warnings in the event log and are counted on the verdict line. A task whose agent still works is refused and the bar shows the error.
 
 `f` in a `drudger-list` tile frees the slots still claimed by agents that are gone, the way [`drg drudger reclaim`]({{< relref "/docs/cli/drudger/reclaim" >}}) does. It asks nothing first, because it only rewrites the Drudgers file. The verdict names the freed slots and the tasks they held, like `✓ freed slots 2, 4 · rerun 1a2b3c4d, 4d5e6f70 to start them over`. When no slot was claimed by a gone agent, the bar says `· no slot was claimed by a gone agent`.
+
+`y` copies the full ID of a task and the bar says `✓ 7c1e4f90 copied to clipboard`. The copy is an OSC52 write to the terminal, so it needs a terminal that supports OSC52. A terminal that does not support it ignores the copy and the bar still says it worked.
 
 One command runs at a time. A command key pressed while one runs does nothing, and the bar says `wait, still running run 7c1e4f90`.
 

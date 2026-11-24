@@ -260,6 +260,8 @@ func TestView_TaskKeys(t *testing.T) {
 		{name: "m marks the shown task done", taskID: shownTaskID, input: tuitest.KeyMarkDone, want: []tea.Msg{views.MarkDoneMsg{TaskID: shownTaskID}}},
 		{name: "x removes the shown task", taskID: shownTaskID, input: tuitest.KeyRemove, want: []tea.Msg{views.RemoveTaskMsg{TaskID: shownTaskID}}},
 		{name: "x with no task does nothing", input: tuitest.KeyRemove},
+		{name: "y copies the ID of the shown task", taskID: shownTaskID, input: tuitest.KeyCopy, want: []tea.Msg{views.CopyTaskIDMsg{TaskID: shownTaskID}}},
+		{name: "y with no task does nothing", input: tuitest.KeyCopy},
 		{name: "m with no task does nothing", input: tuitest.KeyMarkDone},
 	}
 	for _, testCase := range cases {
